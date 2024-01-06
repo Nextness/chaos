@@ -1,0 +1,55 @@
+#begin.compile_time
+
+#[no_namespace(true)]
+#[auto_increment_value(<<value: u_int64.binary = 1, value bsl 2>>)]
+Log_Level :: enum string {
+    debug = "LOG_DEBUG",
+    information = "LOG_INFORMATION",
+    error = "LOG_ERROR",
+    critical = "LOG_CRITICAL",
+    disaster = "LOG_DISASTER"
+}
+
+#[no_namespace(true)]
+#[auto_increment_value(<<value : u_int64.binary = 1, value bsl 2>>)]
+Log_Config_Flags :: enum u_int64.binary {
+    // ...
+}
+
+Date_Format :: alias string.allowed {
+    set "%YEAR" or "%year" or "%MONTH" or "%month" or "%DAY" or "%day" or " " or "-" or "%HOUR" or "%hour" or "%minute"
+        or "%second" or "%milisecond" or "%microseconds" or "%nanoseconds";
+}
+
+date_language :: enum string {
+    en_us = "EN-US",
+    pt_br = "PT-BR"
+}
+
+authentication_method_t :: enum string {
+    api_token = "API_TOKEN",
+    o_auth = "O_AUTH"
+}
+
+log_config_t :: struct singleton {
+    log_config_flags : Log_Config_Flags : ...,
+    date_format : Date_Format : "%YEAR-%MONTH-%DAY %hour-%minutes-%seconds",
+    date_language : date_language : date_language.en_us,
+    log_os_name : bool : ...,
+    send_logs_using_url : bool : ...,
+    #if self.send_logs_using_url {
+        log_url : string : ...,
+        authentication_method : authentication_method_t : ...,
+        log_credential : string : ...,
+        retry_on_failure : bool : ...,
+        #if self.retry_on_failure {
+            retry_count : u_int64 : ...,
+        }
+    }
+    save_log_locally : bool : ...,
+    #if self.save_log_locally {
+        save_log_location : string.path : ...,
+    }
+}
+
+#end.compile_time

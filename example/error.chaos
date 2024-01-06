@@ -1,0 +1,32 @@
+error_i :: struct interface {
+    error_number : u_int32 = ...,
+    error_id : string = ...,
+    error_description : string = ...
+}
+
+impl error_t using error_i :: struct {
+    error_number : u_int32 = ...,
+    error_id : string = ...,
+    error_description : string = ...,
+    current_file_location : #redacted string.path = #current_file(),
+    current_line_location : #redacted string = #current_line(),
+    log_error : bool = false
+
+    __string__ :: behavior {
+        let struct_string_behavior :: "{self.error_number}-{self.error_id}: {self.error_description}";
+        #if __debug__ {
+            let debug_info :: "{self.current_file_location}:{self.current_line_location}";
+            set "{debug_info} {struct_string_behavior}";
+        }
+        set "{struct_string_behavior}";
+    }
+}
+
+#[no_namespace(true)]
+#[auto_increment_value([1] << increment: u_int64? = null >>, [1] << (increment == null)? 0 : increment++ >>)]
+error :: enum error_t {
+    out_of_memory :: (increment, "EOUMM", "Buy more memory, lol!"),
+    null_pointer :: (increment, "ENUPT", "Null pointer, do better!"),
+    zero_value :: (increment, "EZEVL", "Provided 0 valued parameters, but expected something else..."),
+    overflow_value :: (increment, "EOFVL", "The value overlow...")
+}

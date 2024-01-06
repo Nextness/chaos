@@ -1,0 +1,7 @@
+allocator_i :: #interface (value: type) -> bool
+
+impl heap using allocator_i :: (value: type) -> bool {
+    let allocated := true
+
+    return allocated
+}

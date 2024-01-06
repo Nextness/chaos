@@ -1,0 +1,9 @@
+# Binary files
+*
+!/**/
+!*.*
+
+# Random shit noone cares
+.vscode
+chaos_compiler*
+*.asm

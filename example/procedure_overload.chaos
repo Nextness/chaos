@@ -1,0 +1,33 @@
+#entry_point 
+main :: (nothing : nihil) -> nihil {
+    some_example_procedure("Example Input", "Goes Here", 99);
+    try some_example_procedure("Example Input", "Goes Here", 100) |error| {
+        println("Something failed: {error}");
+    }
+    some_example_procedure("Example Input", false, 10, "Hello");
+    some_example_procedure("Example Input", true, 10);
+}
+
+#overload_by_signature
+some_example_procedure :: (some_input1 : string, some_input2 : string, some_input3 : float64) |some_error| -> bool {
+    let tmp := 0 while tmp..some_input3 iterate tmp + 0.5 {
+        if tmp == 100 raise some_error;
+        println!("{some_input3}:{some_input1}:{some_input2}");
+    }
+    return true;
+}
+
+#overload_by_signature
+some_example_procedure :: (
+    some_input1 : string, some_input2 : string, some_input3 : float64, some_input4 : string
+) |some_error| -> bool {
+    let tmp := 0 while tmp..some_input3 iterate tmp + 0.5 {
+        if tmp == 100
+            raise some_error;
+        if some_input2
+            println("{some_input3}:{some_input1}");
+        else
+            println("{some_input1} {some_input4}");
+    }
+    return true;
+}

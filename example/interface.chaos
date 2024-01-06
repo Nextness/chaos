@@ -1,0 +1,40 @@
+example_interface :: interface (input1 : u_int64, , input_2: u_int64, input_3: string) -> bool;
+
+impl example_one_procedure_with_interface using example_interface :: (
+    input_1 : u_int64, input_2 : u_int64, input_3 : string, custom_input_1 : string, custom_input_2 : bool
+) |invalid_parameter| -> bool {
+    if input_2 > input_1
+        raise invalid_parameters;
+    let i := 0 while i..input_1 iterate i + input_2 {
+        if custom_input_2
+            print("{input_3}: {custom_input_1} - {input_1}");
+        else
+            print("{custom_input_1} - {input_1}");
+    }
+    return true;
+}
+
+impl example_two_procedure_with_interface using example_interface :: (
+    input_1 : u_int64, input_2 : u_int64, input_3 : string, custom_input_1 : float32
+) |invalid_parameters| -> bool {
+    if input_2 < input_1
+        raise invalid_parameters;
+    if custom_input_2
+        print("{input_3}: {custom_input_1} - {input_1}");
+    else
+        print("{custom_input_1} - {input_1}");
+    return true;
+}
+
+example_struct_interface :: struct interface {
+    field_1, field_2 : float32,
+    field_4, field_5 : string,
+    field_3 : u_int64,
+}
+
+impl example_struct_one using example_struct_interface :: struct {
+    field_1, field_2, field_8 : float32,
+    field_4, field_5 : string,
+    field_3 : u_int64,
+    field_6, field_7 : bool,
+}

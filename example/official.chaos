@@ -1,0 +1,50 @@
+// Setting an infered variable.
+let changable_value := true;
+
+// Setting variable with type.
+let changable_value : bool = true;
+
+// Setting an infered compile time constant.
+let unchangable_value :: true;
+
+// Setting compile time constant with type.
+let unchangable_value : bool : true;
+
+/** Making a new type: `value_1` needs to be initialized and has no default value, `value_2` has a default value when
+ *  the struct is initialized, `value_3` needs to have a value assigned when the struct is initiallized, otherwise a
+ *  compile time error will be raised.
+ *  Assigning the new type to a variable explicitaly.
+**/
+new_type_t :: struct {
+    value_1 : string,
+    value_2 : u_int64 = 0,
+    value_3 : bool = ...,
+}
+
+let variable_with_new_type : new_type_t = (
+    value_1 = "Some arbitrary string in here",
+    value_2 = 100,
+    value_3 = true,
+);
+
+/** Constructing new types using generics.
+ *  Assigning the new types using generics to a variable explicitaly.
+**/
+another_type_t :: struct[T] {
+    value_1 : string,
+    value_2 : u_int64 = 0,
+    value_3 : bool = ...,
+    value_4 : T,
+}
+
+let variable_with_another_type : another_type_t[string] = (
+    value_1 = "Some arbitrary string in here",
+    value_2 = 100,
+    value_3 = true,
+    value_4 = "Another string goes in here",
+);
+
+// Making a constant compile time list, with fixed size.
+#let static_size_list : [5] list[string] : [
+    "first_element", "second_element", "third_element", "fourth_element", "fith_element"
+];

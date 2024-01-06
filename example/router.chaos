@@ -1,0 +1,26 @@
+End_Point :: alias { 
+    set #string.template.allow["a-zA-Z"||"_"||"-"||"0-9"||"/"] 
+}
+
+route_config :: struct[T] interface {
+    response : T? = null,
+    method : enum = ...,
+    end_point : end_point = ...,
+    authentication : enum? = null,
+}
+
+impl route_config[T] using __route_config :: struct {
+    response : T? = null,
+    method : enum = ...,
+    end_point : end_point = ...,
+    authentication : enum? = null,
+}
+
+#[excluding_ids(&allocator, &deallocator)]
+@wrapper some_specific_context_name {
+    let this_config :: route_config[string].("Some response", /** some_enum_value **/, "/some_end_point/{some_id}");
+    let this_config_2 :: route_config[string].("Some response", /** some_enum_value **/, "/some_end_point_2/{some_id}");
+    let service_route :: try route_init(this_config, this_config_2) |error| {
+        exit_with 1;
+    }
+}

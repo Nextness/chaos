@@ -1,0 +1,279 @@
+*(custom_allocator) :: #interface (value: type)
+
+initialize :: (value: type, custom_initialization: *custom_allocator? = null) |null_pointer| -> bool {
+    initialize_linux(value, custom_deinitialization) 
+    initialize_windows(value, custom_deinitialization)
+}
+
+#[os_specific(__linux__)]
+initialize_linux :: (value: type, custom_initialization: *custom_allocator? = null) |null_pointer| -> nihil {
+    let initialization: *proc? = null
+        #if custom_initialization != null initialization = &custom_initialization
+        #elif value -> #alloc initialization = &value -> #alloc
+        #else initialization = &alloc
+    if initialization == null raise null_pointer
+    return *initialization(value)
+}
+
+#[os_specific(__windows__)]
+initialize_windows :: (value: type, custom_initialization: *custom_allocator? = null) |null_pointer| -> nihil {
+    let initialization: *proc? = null
+        #if custom_initialization != null initialization = &custom_initialization
+        #elif value -> #alloc initialization = &value -> #alloc
+        #else initialization = &alloc
+    if initialization == null raise null_pointer
+    return *initialization(value)
+}
+
+de_initialize :: (value: type, custom_deinitialization: proc? = null) |null_pointer| -> nihil {
+    let memory_deallocation : *proc? = null
+    #begin.os_specific(linux)
+        #if custom_deinitialization != null memory_deallocation = &custom_deinitialization
+        #elif value->#dealloc memory_deallocation = &value -> #dealloc
+        #else memory_deallocation = &mem_dealloc
+    #end.os_specific(linux)
+    #begin.os_specific(windows)
+        #if custom_deinitialization != null memory_deallocation = &custom_deinitialization
+        #elif value->#dealloc memory_deallocation = &value->#dealloc
+        #else memory_deallocation = &mem_dealloc
+    #end.os_specific(windows)
+    if memory_deallocation == null raise null_pointer
+    *memory_deallocation(value)
+}
+
+#entry_point
+#overload_by_signature
+#[os_specific(__linux__)]
+main_entry_point :: (argc: variadic[string], argc: u_int64) -> nihil {
+    while argc >= 0 do argc-- {
+        println!("Hello, world {argv[argc]}: {argc}\n");
+    }
+    return null;
+}
+
+#entry_point
+#overload_by_signature
+#[os_specific(__windows__)]
+main_entry_point :: (argc: variadic[string], argc: u_int64) -> nihil {
+    while argc >= 0 do argc-- {
+        println!("Hello, world {argc}\n");
+    }
+    return null;
+}
+
+#singleton
+another_struct_here_t :: struct[T] {
+    some_thing_else: T? = null,
+    item: string = "empty_string",
+    number: u_int32 = 0,
+}
+let another_struct_here : another_struct_here_t[string] = ("hello", default, default);
+
+#c_linking_function("NameOfFunctionFromLibraryInC") name_of_function_from_library: proc;
+name_of_function_from_library("123", 123, true);
+
+#c_linking_struct("Some_Library_Struct_In_C") some_struct_t;
+some_struct: some_struct_t;
+
+#swizzling something_t :: struct {
+    a | val_a: u_int32 = ...,
+    b | val_b: u_int32 = ...,
+    c | val_c: u_int32 = ...,
+}
+something: Something = (1000, 2000, 3000);
+something.abc = something.abc * 10;
+assert!(something.a == 10000, something.b == 20000, something.c == 30000, ..., "not working as expected D:");
+
+#reference_count(1, identification) another_weird_ass_value: string? = "Hello, Fucking World!"
+println!(another_weird_ass_value)
+assert!(another_weird_ass_value == null, ...,
+        i"reference_count is not working as expected - missing count {identification.count}")
+
+#begin.context
+some_struct_t :: struct {
+    username: string,
+    password: #redacted string,
+}
+some_struct : some_struct_t = ("username", #get_environmental_variable_value("ENV_VAR_NAME"));
+#end.context
+
+some_macro! :: (input1: string, some_input: string, something_else: literal, else_thing: expression) {
+    println!(input1)
+    some_input
+}
+
+// result is a local variables that needs to be used in the if scope
+let result := anotherfunc(d, e) if result == null {
+    println!("{result}");
+} elif result == "1" {
+    println!("{result}");
+}
+
+#[receiver(string_v: string)]
+split :: (separator: char? = null) |error_t| -> [?] list[string]? {
+    if separator == null
+        return null;
+}
+
+let result := "hello, world!".split(separator = ",");
+let global __real_numbers :: list(u_int8, u_int16, u_int32, u_int64, u_int128, u_int256, int8, int16, int32, int64,
+                                  int128, int256, float16, float32, float64);
+
+let some: [?] array[string] = ...;
+
+#some_proc :: (a : string, b : string) -> string {
+
+}
+
+some_name :: struct {
+    hello: string = ...,
+    world: u_int64 = ...,
+    something_else: bool = ...,
+
+    __string__ :: behavior { set "{hello} - {world}: {something_else}" }
+    __allocator__ :: behavior { }
+}
+
+#[overload_by_signature()]
+#check_for_string_behavior :: (item : #any) |no_string_behavior| -> #string? {
+    #if #not #match_behavior(item, __string__) {
+        #do_not_compile #raise_and_return (
+            no_string_behavior, "The provided '{item.literal}' does not have a string behavior."
+        );
+    }
+    #return null;
+}
+
+#[overload_by_signature()]
+#check_for_string_behavior :: (items : #variadic[#any]) |no_string_behavior| -> #string? {
+    #while index, item #in #enumerate items {
+        #if #not #match_behavior(item, __string__) {
+            #do_not_compile #raise_and_return (
+                no_string_behavior,
+                "The provided '{item.literal}' at position '{index}' does not have a string behavior."
+            );
+        }
+    }
+    #return null;
+}
+
+assert! :: (evaluations : variadic[bool], message : string) -> nihil {
+    #try #check_for_string_behavior(message) |nothing|
+        #exit_with 1, "COMPILATION ERROR: '{message.literal}' has no string behavior.";
+    let failed_assertion : bool = false;
+    while index, evaluation in enumerate evaluations {
+        unless evaluation {
+            failed_assertion = true;
+            eprintln!("Failed at assertion {index}: {message}");
+        }
+    }
+    if failed_assertion
+        exit_with 1;
+    return null;
+}
+
+println! :: (value: string, a: variadic[any], out: some_enum = standard_file_descriptor) -> nihil {
+    #check_for_string_behavior(a);
+}
+
+eprintln! :: (value: string, a: variadic[any], out: some_enum = error_file_descriptor) -> nihil {
+    #check_for_string_behavior(a);
+}
+
+#[overload_by_version(version_range = 1.0...)]
+something_else_t :: struct {
+    a: string,
+    b: u_int64,
+    c: bool,
+}
+
+#[overload_by_signature(version_range = 2.0...)]
+something_else_t :: struct {
+    a: string,
+    b: u_int64,
+    c: bool,
+    d: complex64,
+}
+
+#overload_by_version :: #declarative (version_range: range[float64].limit(min=0.0, max=10.0)) -> #bool {
+    
+}
+
+let something_else := if (something_here) {
+    let variable_a := "hello_else";
+    set variable_a;
+} else {
+    let variable_b := some_ass_function_here("another_hello_else");
+    set variable_b;
+}
+
+look_for_something :: (
+    #if   #match_version(1.0...) { input1: string, input2: string, input3: something_else_t }
+    #elif #match_version(2.0...) { input1: string, input2: string, input3: something_else_t, input4: u_int64 }
+    #else { input1: string, input2: string, input3: something_else_t, input4: u_int64, input5: u_int64 }
+) |error| -> value {
+    
+}
+
+#[receiver(string_v: string)] // %' indicates that ownership is from the person who calls the procedure
+split :: (separator: char) |error_t| -> %' [?] list[string]? {
+    while some_value {
+        break
+    }
+}
+
+testing_variadic_syntax :: (param1: variadic[string], param2: u_int64 = 10) -> bool {
+    return true
+}
+
+main :: (nothing : nihil) -> nihil {
+    let some_value := try testing_variadic_syntax("string1", "string2", "string3", ..., default) |error| {
+        exit_with 1;
+    }
+    some_value.do_something();
+}
+
+#overload_by_signature
+#[receiver(some_information : string)]
+append_string(append_string : string) |some_error| -> string {
+    return some_information + append_string;
+}
+
+
+let something := try somefunc() |error| {
+    exit_with 1
+}
+
+let list_of_something : [?] list[string] = something.split(",");
+
+
+try allocate_something(some_variable) |error| {
+    exit_with 1, "Buy more RAM, lol";
+}
+defer_on_raise deallocate_something(some_variable);
+
+try some_other_operation() |error| {
+     // deallocate_something(some_variable)
+     exit_with 1, "Another message";
+}
+
+let some_value :: try executing_some_action("hello", true, 10) |error| {
+
+}
+defer_on_raise free(some_value);
+
+let some_result_here := try some_value
+    .some_method1("hello", true)
+    .some_method2(100)
+    .some_method3(2f) |error| {
+        if error == {
+            case error_1 {
+                do_something();
+            }
+        }
+    }
+
+include "errors";
+from "errors" include error_e;
+from "errors" include error_e as error;
+from "errors" as error_namespace include error_e as error;

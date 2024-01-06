@@ -1,0 +1,37 @@
+node_t :: struct <- $T
+{
+    value : T = ...;
+    next: node_t? = ...;
+}
+
+node_initialization :: (nothing: nihil) -> node_t?
+{
+    let node_head: node_t = try mem.alloc(node_t, alloc.heap) |error| {
+        println!(i"{error.error_number}-{error.error_id}: {error.description}", ..., standard_error);
+        raise_and_return out_of_memory, node_head;
+    }
+    node_head.value = 1;
+    return node_head;
+}
+
+#begin.reciever[node_head: *node_t]
+
+insert :: (value: u_int64) ^ out_of_memory or null_pointer -> bool
+{
+    for current_node := *node_head while current_node != null {
+        current_node = current_node.next;
+    }
+    current_node.next = try mem.alloc(node_t, alloc.heap) |error| {
+        println!(i"{error.error_number}-{error.error_id}: {error.description}", ..., standard_error);
+        raise_and_return out_of_memory, false;
+    }
+    current_node.next.value = value;
+    return true;
+}
+
+#end.receiver
+
+from "default" include *;
+from "error" include *;
+from "memory" as mem include *;
+from "allocator" as alloc include *;
