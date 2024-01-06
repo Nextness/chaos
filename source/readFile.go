@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-type chaosFileData struct {
+type ChaosFileData struct {
 	runeBuffer   []rune
 	tokenBuffer  bytes.Buffer
 	currentIndex int
@@ -13,13 +13,13 @@ type chaosFileData struct {
 	lineCount    int
 }
 
-func ReadChaosFile(filePath string) (chaosFileData, error) {
+func ReadChaosFile(filePath string) (ChaosFileData, error) {
 	buffer, err := os.ReadFile(filePath)
 	if err != nil {
-		return chaosFileData{}, err
+		return ChaosFileData{}, err
 	}
 	newBuffer := bytes.NewBuffer(buffer)
-	data := chaosFileData{
+	data := ChaosFileData{
 		runeBuffer:   bytes.Runes(newBuffer.Bytes()),
 		currentIndex: 0,
 		bufferSize:   newBuffer.Len(),

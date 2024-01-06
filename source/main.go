@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 )
 
 func main() {
@@ -17,6 +18,14 @@ func main() {
 	if err != nil {
 		return
 	}
+	generate := GenerateChaosParse(tokens)
+	parsed := Parser(generate)
+	result := GenerateAssembly(parsed)
+	file, err := os.OpenFile("chaos_compiler.asm", os.O_WRONLY|os.O_CREATE, 0666)
+	if err != nil {
+		return
+	}
+	defer file.Close()
 
-	fmt.Printf("tokens: %v\n", tokens)
+	file.Write([]byte(result))
 }
