@@ -274,6 +274,3 @@ let some_result_here := try some_value
     }
 
 include "errors";
-from "errors" include error_e;
-from "errors" include error_e as error;
-from "errors" as error_namespace include error_e as error;

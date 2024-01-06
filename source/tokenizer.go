@@ -27,7 +27,7 @@ type Token struct {
 	Line, Column int
 }
 
-func (p *TokenizerMetadataT) ConsumeRune() {
+func (p *chaosFileData) ConsumeRune() {
 	(*p).currentIndex++
 }
 
@@ -48,66 +48,98 @@ func (t *Token) logToken(errorMsg string) {
 	)
 }
 
-func (tok *TokenizerMetadataT) Tokenizer() {
-	for tok.bufferSize > tok.currentIndex {
-		if tok.runeBuffer[tok.currentIndex] == '\n' {
-			tok.lineCount++
-			tok.ConsumeRune()
+func (chaosData *chaosFileData) Tokenizer() ([]Token, error) {
+	var tokens []Token
+	for chaosData.bufferSize > chaosData.currentIndex {
+		if chaosData.runeBuffer[chaosData.currentIndex] == '\n' {
+			chaosData.lineCount++
+			chaosData.ConsumeRune()
 			continue
-		} else if unicode.IsSpace(tok.runeBuffer[tok.currentIndex]) {
-			tok.ConsumeRune()
+		} else if unicode.IsSpace(chaosData.runeBuffer[chaosData.currentIndex]) {
+			chaosData.ConsumeRune()
 			continue
-		} else if unicode.IsLetter(tok.runeBuffer[tok.currentIndex]) {
-			startingIndex := tok.currentIndex + 1
-			for unicode.IsLetter(tok.runeBuffer[tok.currentIndex]) {
-				if _, err := tok.tokenBuffer.WriteRune(tok.runeBuffer[tok.currentIndex]); err != nil {
-					fmt.Printf("ERROR: %v", err.Error())
-					return
-				}
-				tok.ConsumeRune()
+		} else if chaosData.runeBuffer[chaosData.currentIndex] == ';' {
+			startingIndex := chaosData.currentIndex + 1
+			if _, err := chaosData.tokenBuffer.WriteRune(chaosData.runeBuffer[chaosData.currentIndex]); err != nil {
+				fmt.Printf("ERROR: %v\n", err.Error())
+				return []Token{}, err
 			}
-			if tok.tokenBuffer.String() == "exit_with" {
-				identifier := Token{
-					Type:   exit,
-					Value:  tok.tokenBuffer.String(),
-					Line:   tok.lineCount,
-					Column: startingIndex,
-				}
-				identifier.logToken("")
-				tok.tokens = append(tok.tokens, identifier)
-				tok.tokenBuffer.Reset()
-				continue
-			}
-		} else if unicode.IsDigit(tok.runeBuffer[tok.currentIndex]) {
-			startingIndex := tok.currentIndex + 1
-			for unicode.IsDigit(tok.runeBuffer[tok.currentIndex]) {
-				if _, err := tok.tokenBuffer.WriteRune(tok.runeBuffer[tok.currentIndex]); err != nil {
-					fmt.Printf("ERROR: %v", err.Error())
-					return
-				}
-				tok.ConsumeRune()
-			}
+			chaosData.ConsumeRune()
 			identifier := Token{
-				Type:   intLiteral,
-				Value:  tok.tokenBuffer.String(),
-				Line:   tok.lineCount,
+				Type:   semiColon,
+				Value:  chaosData.tokenBuffer.String(),
+				Line:   chaosData.lineCount,
 				Column: startingIndex,
 			}
 			identifier.logToken("")
-			tok.tokens = append(tok.tokens, identifier)
-			tok.tokenBuffer.Reset()
+			tokens = append(tokens, identifier)
+			chaosData.tokenBuffer.Reset()
+			continue
+		} else if unicode.IsLetter(chaosData.runeBuffer[chaosData.currentIndex]) {
+			startingIndex := chaosData.currentIndex + 1
+			for unicode.IsLetter(chaosData.runeBuffer[chaosData.currentIndex]) ||
+				chaosData.runeBuffer[chaosData.currentIndex] == '_' {
+				if _, err := chaosData.tokenBuffer.WriteRune(chaosData.runeBuffer[chaosData.currentIndex]); err != nil {
+					fmt.Printf("ERROR: %v\n", err.Error())
+					return []Token{}, err
+				}
+				chaosData.ConsumeRune()
+			}
+			if chaosData.tokenBuffer.String() == "exit_with" {
+				identifier := Token{
+					Type:   exit,
+					Value:  chaosData.tokenBuffer.String(),
+					Line:   chaosData.lineCount,
+					Column: startingIndex,
+				}
+				identifier.logToken("")
+				tokens = append(tokens, identifier)
+				chaosData.tokenBuffer.Reset()
+				continue
+			} else {
+				identifier := Token{
+					Type:   invalidToken,
+					Value:  chaosData.tokenBuffer.String(),
+					Line:   chaosData.lineCount,
+					Column: startingIndex,
+				}
+				identifier.logToken("Invalid token while parsing")
+				chaosData.tokenBuffer.Reset()
+				continue
+			}
+		} else if unicode.IsDigit(chaosData.runeBuffer[chaosData.currentIndex]) {
+			startingIndex := chaosData.currentIndex + 1
+			for unicode.IsDigit(chaosData.runeBuffer[chaosData.currentIndex]) {
+				if _, err := chaosData.tokenBuffer.WriteRune(chaosData.runeBuffer[chaosData.currentIndex]); err != nil {
+					fmt.Printf("ERROR: %v\n", err.Error())
+					return []Token{}, err
+				}
+				chaosData.ConsumeRune()
+			}
+			identifier := Token{
+				Type:   intLiteral,
+				Value:  chaosData.tokenBuffer.String(),
+				Line:   chaosData.lineCount,
+				Column: startingIndex,
+			}
+			identifier.logToken("")
+			tokens = append(tokens, identifier)
+			chaosData.tokenBuffer.Reset()
 			continue
 		} else {
-			startingIndex := tok.currentIndex + 1
-			tok.tokenBuffer.WriteRune(tok.runeBuffer[tok.currentIndex])
+			startingIndex := chaosData.currentIndex + 1
+			chaosData.tokenBuffer.WriteRune(chaosData.runeBuffer[chaosData.currentIndex])
+			chaosData.ConsumeRune()
 			identifier := Token{
 				Type:   invalidToken,
-				Value:  tok.tokenBuffer.String(),
-				Line:   tok.lineCount,
+				Value:  chaosData.tokenBuffer.String(),
+				Line:   chaosData.lineCount,
 				Column: startingIndex,
 			}
 			identifier.logToken("Invalid token while parsing")
-			tok.tokenBuffer.Reset()
+			chaosData.tokenBuffer.Reset()
+			continue
 		}
 	}
+	return tokens, nil
 }
