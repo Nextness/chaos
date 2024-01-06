@@ -8,6 +8,7 @@ import (
 type ChaosFileData struct {
 	runeBuffer   []rune
 	tokenBuffer  bytes.Buffer
+	filePath     string
 	currentIndex int
 	bufferSize   int
 	lineCount    int
@@ -21,6 +22,7 @@ func ReadChaosFile(filePath string) (ChaosFileData, error) {
 	newBuffer := bytes.NewBuffer(buffer)
 	data := ChaosFileData{
 		runeBuffer:   bytes.Runes(newBuffer.Bytes()),
+		filePath:     filePath,
 		currentIndex: 0,
 		bufferSize:   newBuffer.Len(),
 		lineCount:    0,

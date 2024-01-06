@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type CompilationConfig struct {
@@ -56,7 +57,7 @@ func RunCmdArguments() (CompilationConfig, error) {
 	for argsWithoutProgram.CountArguments != 0 {
 		if argsWithoutProgram.MatchCurrentArgument([]string{"--file_path", "-f"}) {
 			argsWithoutProgram.ConsumeArgument(0, 1)
-			compilationConfig.filePath = argsWithoutProgram.CurrentArgument()
+			compilationConfig.filePath, _ = filepath.Abs(argsWithoutProgram.CurrentArgument())
 			// TODO: Make the else part of this scope
 		} else {
 			fmt.Printf("ERROR: Missing argument after %s\n", argsWithoutProgram.CurrentArgument())

@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
-	"runtime"
 )
 
 type NodeExpression struct {
-	token TokenType
+	token ChaosToken
 }
 
 type NodeExit struct {
@@ -46,7 +45,7 @@ func GenerateChaosParse(tokens []ChaosToken) ChaosParse {
 func parseExpression(parse ChaosParse) NodeExpression {
 	if parse.Peek(0).Type == intLiteral {
 		return NodeExpression{
-			token: parse.ConsumeToken().Type,
+			token: parse.ConsumeToken(),
 		}
 	}
 	return NodeExpression{}
@@ -54,12 +53,11 @@ func parseExpression(parse ChaosParse) NodeExpression {
 
 func Parser(chaosParse ChaosParse) NodeExit {
 	var nodeExit NodeExit
-	_, fileName, _, _ := runtime.Caller(1)
 	for chaosParse.bufferSize > chaosParse.currentIndex {
 		if chaosParse.Peek(0).Type == exit {
 			chaosParse.ConsumeToken()
 			nodeExpression := parseExpression(chaosParse)
-			if nodeExpression.token == intLiteral {
+			if nodeExpression.token.Type == intLiteral {
 				nodeExit = NodeExit{nodeExpression: nodeExpression}
 				chaosParse.ConsumeToken()
 			} else {
@@ -67,11 +65,19 @@ func Parser(chaosParse ChaosParse) NodeExit {
 			}
 			if chaosParse.Peek(0).Type != semiColon {
 				fmt.Printf(
-					"%v ERROR: Invalid token while parsing. Expected ';' but got '%v' (%v)\n",
-					fileName, chaosParse.Peek(0).Value, TokenTypeMap[chaosParse.Peek(0).Type])
-				return NodeExit{}
+					"ERROR: %v:%04v:%03v - Invalid token while parsing. Expected ';' but got '%v' (%v)\n",
+					chaosParse.Peek(0).FilePath, chaosParse.Peek(0).Line, chaosParse.Peek(0).Column,
+					chaosParse.Peek(0).Value, TokenTypeMap[chaosParse.Peek(0).Type])
 			}
 			chaosParse.ConsumeToken()
+			continue
+		} else {
+			fmt.Printf(
+				"ERROR: %v:%04v:%03v - Invalid token while parsing '%v' (%v)\n",
+				chaosParse.Peek(0).FilePath, chaosParse.Peek(0).Line, chaosParse.Peek(0).Column,
+				chaosParse.Peek(0).Value, TokenTypeMap[chaosParse.Peek(0).Type])
+			chaosParse.ConsumeToken()
+			continue
 		}
 	}
 	return nodeExit

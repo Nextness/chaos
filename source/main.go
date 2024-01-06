@@ -6,9 +6,13 @@ import (
 )
 
 func main() {
-	filePath := "./example/exit_with.chaos"
+	compilationConfig, err := RunCmdArguments()
+	if err != nil {
+		fmt.Printf("ERROR: %s\n", err.Error())
+		return
+	}
 
-	chaosDataBuffer, err := ReadChaosFile(filePath)
+	chaosDataBuffer, err := ReadChaosFile(compilationConfig.filePath)
 	if err != nil {
 		fmt.Printf("ERROR: %s\n", err.Error())
 		return
@@ -23,6 +27,7 @@ func main() {
 	result := GenerateAssembly(parsed)
 	file, err := os.OpenFile("chaos_compiler.asm", os.O_WRONLY|os.O_CREATE, 0666)
 	if err != nil {
+		fmt.Printf("ERROR: %s\n", err.Error())
 		return
 	}
 	defer file.Close()

@@ -26,6 +26,7 @@ type ChaosToken struct {
 	Type         TokenType
 	Value        string
 	Line, Column int
+	FilePath     string
 }
 
 func (t *ChaosToken) LogToken(errorMsg string) {
@@ -33,14 +34,14 @@ func (t *ChaosToken) LogToken(errorMsg string) {
 	_, fileName, _, _ := runtime.Caller(1)
 	if errorMsg == "" {
 		fmt.Printf(
-			"%v:%04v:%03v:INFO { Type: '%v (%v)', Value: '%v' };\n",
+			"INFO: %v:%04v:%03v - Type: '%v (%v)', Value: '%v'\n",
 			fileName, token.Line, token.Column,
 			TokenTypeMap[token.Type], token.Type, token.Value,
 		)
 		return
 	}
 	fmt.Printf(
-		"%v:%04v:%03v:ERROR %s { Type: '%v (%v)', Value: '%v' };\n",
+		"ERROR: %v:%04v:%03v %s - Type: '%v (%v)', Value: '%v';\n",
 		fileName, token.Line, token.Column, errorMsg,
 		TokenTypeMap[token.Type], token.Type, token.Value,
 	)
@@ -79,10 +80,11 @@ func (chaosData *ChaosFileData) Tokenizer() ([]ChaosToken, error) {
 				return []ChaosToken{}, err
 			}
 			identifier := ChaosToken{
-				Type:   semiColon,
-				Value:  chaosData.tokenBuffer.String(),
-				Line:   chaosData.lineCount,
-				Column: startingIndex,
+				Type:     semiColon,
+				Value:    chaosData.tokenBuffer.String(),
+				Line:     chaosData.lineCount,
+				Column:   startingIndex,
+				FilePath: chaosData.filePath,
 			}
 			identifier.LogToken("")
 			tokens = append(tokens, identifier)
@@ -97,10 +99,11 @@ func (chaosData *ChaosFileData) Tokenizer() ([]ChaosToken, error) {
 			}
 			if chaosData.tokenBuffer.String() == "exit_with" {
 				identifier := ChaosToken{
-					Type:   exit,
-					Value:  chaosData.tokenBuffer.String(),
-					Line:   chaosData.lineCount,
-					Column: startingIndex,
+					Type:     exit,
+					Value:    chaosData.tokenBuffer.String(),
+					Line:     chaosData.lineCount,
+					Column:   startingIndex,
+					FilePath: chaosData.filePath,
 				}
 				identifier.LogToken("")
 				tokens = append(tokens, identifier)
@@ -108,12 +111,14 @@ func (chaosData *ChaosFileData) Tokenizer() ([]ChaosToken, error) {
 				continue
 			} else {
 				identifier := ChaosToken{
-					Type:   invalidToken,
-					Value:  chaosData.tokenBuffer.String(),
-					Line:   chaosData.lineCount,
-					Column: startingIndex,
+					Type:     invalidToken,
+					Value:    chaosData.tokenBuffer.String(),
+					Line:     chaosData.lineCount,
+					Column:   startingIndex,
+					FilePath: chaosData.filePath,
 				}
 				identifier.LogToken("Invalid string while parsing")
+				tokens = append(tokens, identifier)
 				chaosData.tokenBuffer.Reset()
 				continue
 			}
@@ -125,10 +130,11 @@ func (chaosData *ChaosFileData) Tokenizer() ([]ChaosToken, error) {
 				}
 			}
 			identifier := ChaosToken{
-				Type:   intLiteral,
-				Value:  chaosData.tokenBuffer.String(),
-				Line:   chaosData.lineCount,
-				Column: startingIndex,
+				Type:     intLiteral,
+				Value:    chaosData.tokenBuffer.String(),
+				Line:     chaosData.lineCount,
+				Column:   startingIndex,
+				FilePath: chaosData.filePath,
 			}
 			identifier.LogToken("")
 			tokens = append(tokens, identifier)
@@ -137,12 +143,14 @@ func (chaosData *ChaosFileData) Tokenizer() ([]ChaosToken, error) {
 		} else {
 			chaosData.tokenBuffer.WriteRune(chaosData.ConsumeRune())
 			identifier := ChaosToken{
-				Type:   invalidToken,
-				Value:  chaosData.tokenBuffer.String(),
-				Line:   chaosData.lineCount,
-				Column: startingIndex,
+				Type:     invalidToken,
+				Value:    chaosData.tokenBuffer.String(),
+				Line:     chaosData.lineCount,
+				Column:   startingIndex,
+				FilePath: chaosData.filePath,
 			}
 			identifier.LogToken("Invalid character while parsing")
+			tokens = append(tokens, identifier)
 			chaosData.tokenBuffer.Reset()
 			continue
 		}

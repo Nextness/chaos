@@ -11,7 +11,7 @@ func GenerateAssembly(nodeExit NodeExit) string {
 		"\n",
 		"_start:\n",
 		"    mov rax, 60\n",
-		fmt.Sprintf("    mov rdi, %v\n", nodeExit.nodeExpression.token),
+		fmt.Sprintf("    mov rdi, %v\n", nodeExit.nodeExpression.token.Value),
 		"    syscall\n",
 	}
 	return strings.Join(result, "")
