@@ -6,47 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unicode"
 )
-
-type TokenType int
-
-var TokenTypeMap = map[TokenType]string{
-	0: "INVALID_TOKEN",
-	1: "EXIT_WITH",
-	2: "INT_LITERAL",
-	3: "SEMI_COLON",
-}
-
-const (
-	invalidToken TokenType = iota
-	exit
-	intLiteral
-	semiColon
-)
-
-type Token struct {
-	Type         TokenType
-	Value        string
-	Line, Column int
-}
-
-func (t *Token) logToken(errorMsg string) {
-	token := *t
-	if errorMsg == "" {
-		fmt.Printf(
-			"%04v:%03v:INFO { Type: '%v (%v)', Value: '%v' };\n",
-			token.Line, token.Column,
-			TokenTypeMap[token.Type], token.Type, token.Value,
-		)
-		return
-	}
-	fmt.Printf(
-		"%04v:%03v:ERROR %s { Type: '%v (%v)', Value: '%v' };\n",
-		token.Line, token.Column, errorMsg,
-		TokenTypeMap[token.Type], token.Type, token.Value,
-	)
-}
 
 type TokenizerMetadataT struct {
 	runeBuffer               []rune
@@ -54,10 +14,6 @@ type TokenizerMetadataT struct {
 	tokenBuffer              bytes.Buffer
 	tokens                   []Token
 	lineCount                int
-}
-
-func (p *TokenizerMetadataT) consumeRune() {
-	(*p).currentIndex++
 }
 
 func readFileAsRune(filePath string) ([]rune, int, error) {
@@ -105,85 +61,7 @@ func main() {
 		bufferSize:   bufferSize,
 		lineCount:    0,
 	}
-
-	for tokenizer.bufferSize > tokenizer.currentIndex {
-		if tokenizer.runeBuffer[tokenizer.currentIndex] == '\n' {
-			tokenizer.lineCount++
-			tokenizer.consumeRune()
-		}
-		if unicode.IsSpace(tokenizer.runeBuffer[tokenizer.currentIndex]) {
-			tokenizer.consumeRune()
-		}
-		if tokenizer.runeBuffer[tokenizer.currentIndex] == ';' {
-			tokenizer.tokenBuffer.WriteRune(tokenizer.runeBuffer[tokenizer.currentIndex])
-			startingIndex := tokenizer.currentIndex + 1
-			identifier := Token{
-				Type:   semiColon,
-				Value:  tokenizer.tokenBuffer.String(),
-				Line:   tokenizer.lineCount,
-				Column: startingIndex,
-			}
-			identifier.logToken("")
-			tokenizer.tokens = append(tokenizer.tokens, identifier)
-			tokenizer.tokenBuffer.Reset()
-			tokenizer.consumeRune()
-			continue
-		} else if unicode.IsLetter(tokenizer.runeBuffer[tokenizer.currentIndex]) {
-			startingIndex := tokenizer.currentIndex + 1
-			for unicode.IsLetter(tokenizer.runeBuffer[tokenizer.currentIndex]) ||
-				unicode.IsNumber(tokenizer.runeBuffer[tokenizer.currentIndex]) ||
-				tokenizer.runeBuffer[tokenizer.currentIndex] == '_' {
-				if _, err := tokenizer.tokenBuffer.WriteRune(tokenizer.runeBuffer[tokenizer.currentIndex]); err != nil {
-					fmt.Printf("ERROR: %v", err.Error())
-					return
-				}
-				tokenizer.consumeRune()
-			}
-			if tokenizer.tokenBuffer.String() == "exit_with" {
-				identifier := Token{
-					Type:   exit,
-					Value:  tokenizer.tokenBuffer.String(),
-					Line:   tokenizer.lineCount,
-					Column: startingIndex,
-				}
-				identifier.logToken("")
-				tokenizer.tokens = append(tokenizer.tokens, identifier)
-				tokenizer.tokenBuffer.Reset()
-			}
-			continue
-		} else if unicode.IsNumber(tokenizer.runeBuffer[tokenizer.currentIndex]) {
-			startingIndex := tokenizer.currentIndex + 1
-			for unicode.IsNumber(tokenizer.runeBuffer[tokenizer.currentIndex]) {
-				if _, err := tokenizer.tokenBuffer.WriteRune(tokenizer.runeBuffer[tokenizer.currentIndex]); err != nil {
-					fmt.Printf("ERROR: %v", err.Error())
-					return
-				}
-				tokenizer.consumeRune()
-			}
-			identifier := Token{
-				Type:   intLiteral,
-				Value:  tokenizer.tokenBuffer.String(),
-				Line:   tokenizer.lineCount,
-				Column: startingIndex,
-			}
-			identifier.logToken("")
-			tokenizer.tokens = append(tokenizer.tokens, identifier)
-			tokenizer.tokenBuffer.Reset()
-			continue
-		} else {
-			startingIndex := tokenizer.currentIndex + 1
-			tokenizer.tokenBuffer.WriteRune(tokenizer.runeBuffer[tokenizer.currentIndex])
-			identifier := Token{
-				Type:   invalidToken,
-				Value:  tokenizer.tokenBuffer.String(),
-				Line:   tokenizer.lineCount,
-				Column: startingIndex,
-			}
-			identifier.logToken("Invalid token while parsing")
-			tokenizer.tokenBuffer.Reset()
-		}
-		tokenizer.consumeRune()
-	}
+	tokenizer.Tokenizer()
 	destination, err := os.Create("./chaos_compiler.asm")
 	if err != nil {
 		return

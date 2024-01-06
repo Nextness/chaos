@@ -2,7 +2,10 @@
 
 set -xe;
 
-go build ./source/main.go && ./main
+go build ./source/*.go
+
+./main
+
 nasm -f elf64 -o "chaos_compiler.o" "chaos_compiler.asm"
 ld "chaos_compiler.o" -o "chaos_compiler"
 
