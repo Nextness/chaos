@@ -67,56 +67,7 @@ func GenerateChaosParse(tokens []ChaosToken) ChaosParse {
 	}
 }
 
-func parseStatement(parse ChaosParse) NodeStatement {
-	if parse.Peek(0).Type == exit {
-		parse.ConsumeToken()
-		nodeExpression := parseExpression(parse)
-		var nodeStatementExit NodeStatementExit
-		if nodeExpression.nodeType == intLiteral {
-			nodeStatementExit = NodeStatementExit{
-				nodeExpression: nodeExpression,
-			}
-			parse.ConsumeToken()
-		}
-		if parse.Peek(0).Type != semiColon {
-			fmt.Printf(
-				"ERROR: %v:%04v:%03v - Invalid token while parsing. Expected ';' but got '%v' (%v)\n",
-				parse.Peek(0).FilePath, parse.Peek(0).Line, parse.Peek(0).Column,
-				parse.Peek(0).Value, TokenTypeMap[parse.Peek(0).Type])
-		}
-		parse.ConsumeToken()
-		return NodeStatement{
-			nodeType:          exit,
-			nodeStatementExit: nodeStatementExit,
-		}
-	} else if parse.Peek(0).Type == let &&
-		parse.Peek(1).Type == identifier &&
-		parse.Peek(2).Type == equals {
-		parse.ConsumeToken()
-		nodeStatementLet := NodeStatementLet{
-			identifier: parse.ConsumeToken(),
-		}
-		expression := parseExpression(parse)
-		if expression.nodeType == identifier {
-			nodeStatementLet.nodeExpression.nodeExpresionIdentifier = expression.nodeExpresionIdentifier
-			parse.ConsumeToken()
-		} else {
-			fmt.Printf("Invalid expression: %v\n", expression.nodeExpresionIdentifier.identifier.Value)
-		}
-		if parse.Peek(0).Type == semiColon {
-			parse.ConsumeToken()
-		} else {
-			fmt.Printf("Expected ';'\n")
-		}
-		return NodeStatement{
-			nodeType:         let,
-			nodeStatementLet: nodeStatementLet,
-		}
-	}
-	return NodeStatement{}
-}
-
-func parseExpression(parse ChaosParse) NodeExpression {
+func parseExpression(parse *ChaosParse) NodeExpression {
 	if parse.Peek(0).Type == intLiteral {
 		token := parse.ConsumeToken()
 		return NodeExpression{
@@ -137,14 +88,62 @@ func parseExpression(parse ChaosParse) NodeExpression {
 	return NodeExpression{}
 }
 
+func parseStatement(parse *ChaosParse) NodeStatement {
+	if parse.Peek(0).Type == exit {
+		parse.ConsumeToken()
+		nodeExpression := parseExpression(parse)
+		var nodeStatementExit NodeStatementExit
+		if nodeExpression.nodeType == intLiteral {
+			nodeStatementExit = NodeStatementExit{
+				nodeExpression: nodeExpression,
+			}
+		}
+		if parse.Peek(0).Type != semiColon {
+			fmt.Printf(
+				"ERROR: %v:%04v:%03v - Invalid token while parsing. Expected ';' but got '%v' (%v)\n",
+				parse.Peek(0).FilePath, parse.Peek(0).Line, parse.Peek(0).Column,
+				parse.Peek(0).Value, TokenTypeMap[parse.Peek(0).Type])
+		}
+		parse.ConsumeToken()
+		return NodeStatement{
+			nodeType:          exit,
+			nodeStatementExit: nodeStatementExit,
+		}
+	} else if parse.Peek(0).Type == let &&
+		parse.Peek(1).Type == identifier &&
+		parse.Peek(2).Type == equals {
+		nodeStatementLet := NodeStatementLet{
+			identifier: parse.ConsumeToken(),
+		}
+		expression := parseExpression(parse)
+		if expression.nodeType == identifier {
+			nodeStatementLet.nodeExpression.nodeExpresionIdentifier = expression.nodeExpresionIdentifier
+			parse.ConsumeToken()
+		} else {
+			fmt.Printf("Invalid expression: %v\n", expression.nodeExpresionIdentifier.identifier.Value)
+		}
+		if parse.Peek(1).Type == semiColon {
+			parse.ConsumeToken()
+			parse.ConsumeToken()
+		} else {
+			fmt.Printf("Expected ';'\n")
+		}
+		return NodeStatement{
+			nodeType:         let,
+			nodeStatementLet: nodeStatementLet,
+		}
+	}
+	return NodeStatement{}
+}
+
 func ParseProgram(chaosParse ChaosParse) NodeProgram {
 	var nodeProgram NodeProgram
-	for chaosParse.bufferSize > chaosParse.currentIndex {
-		statement := parseStatement(chaosParse)
+	for chaosParse.currentIndex < chaosParse.bufferSize {
+		statement := parseStatement(&chaosParse)
 		if statement.nodeType != 0 {
 			nodeProgram.nodeStatement = append(nodeProgram.nodeStatement, statement)
 		} else {
-			fmt.Printf("Invalidi statement\n")
+			fmt.Printf("Invalidi statement aosijdasoijd\n")
 		}
 	}
 	return nodeProgram

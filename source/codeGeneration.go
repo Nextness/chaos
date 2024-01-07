@@ -16,14 +16,14 @@ type StackData struct {
 
 func (sd *StackData) push(register string) string {
 	stringBuffer := bytes.NewBuffer([]byte{})
-	stringBuffer.WriteString(fmt.Sprintf("    push %v\n", register))
+	stringBuffer.WriteString(fmt.Sprintf("    push %v", register))
 	(*sd).size++
 	return stringBuffer.String()
 }
 
 func (sd *StackData) pop(register string) string {
 	stringBuffer := bytes.NewBuffer([]byte{})
-	stringBuffer.WriteString(fmt.Sprintf("    pop %v\n", register))
+	stringBuffer.WriteString(fmt.Sprintf("    pop %v", register))
 	(*sd).size--
 	return stringBuffer.String()
 }
@@ -35,7 +35,7 @@ func GenerateExpression(nodeExpression *NodeExpression, stackData *StackData) st
 		stringBuffer.WriteString(
 			fmt.Sprintf("    mov rax, %v\n",
 				nodeExpression.nodeExpresionIntegerLiteral.integerLiteral.Value))
-		stringBuffer.WriteString(stackData.push("rax"))
+		stringBuffer.WriteString(stackData.push("rax\n"))
 		return stringBuffer.String()
 	} else if nodeExpression.nodeType == identifier {
 		key := nodeExpression.nodeExpresionIdentifier.identifier.Value
@@ -56,20 +56,21 @@ func GenerateStatement(nodeStatement *NodeStatement, stackData *StackData) strin
 	if nodeStatement.nodeType == exit {
 		result := GenerateExpression(&nodeStatement.nodeStatementExit.nodeExpression, stackData)
 		stringBuffer.WriteString("    ;; Poping int literal from the stack\n")
-		stringBuffer.WriteString("    ;; and using in the exit")
+		stringBuffer.WriteString("    ;; and using in the exit\n")
 		stringBuffer.WriteString(result)
 		stringBuffer.WriteString("    mov rax, 60\n")
-		stringBuffer.WriteString(stackData.pop("rdi"))
+		stringBuffer.WriteString(stackData.pop("rdi\n"))
 		stringBuffer.WriteString("    syscall\n")
 		return stringBuffer.String()
 	} else if nodeStatement.nodeType == let {
 		key := nodeStatement.nodeStatementLet.nodeExpression.nodeExpresionIdentifier.identifier.Value
-		if _, ok := stackData.variables[key]; !ok {
+		if _, ok := stackData.variables[key]; ok {
 			fmt.Printf("Variable already defined...\n")
 		}
 		stackData.variables[key] = VariableDetails{
 			location: stackData.size,
 		}
+		ChaosLogger(DEBUG, "Map: %v\n", stackData.variables)
 		result := GenerateExpression(&nodeStatement.nodeStatementLet.nodeExpression, stackData)
 		stringBuffer.WriteString(result)
 		return stringBuffer.String()
@@ -77,10 +78,12 @@ func GenerateStatement(nodeStatement *NodeStatement, stackData *StackData) strin
 	return ""
 }
 
-func GenerateProgram(nodeProgram NodeProgram, stackData StackData) string {
+func GenerateProgram(nodeProgram *NodeProgram, stackData *StackData) string {
 	stringBuffer := bytes.NewBuffer([]byte{})
+	stringBuffer.WriteString("global _start\n\n")
+	stringBuffer.WriteString("_start:\n")
 	for _, nodeStatement := range nodeProgram.nodeStatement {
-		statement := GenerateStatement(&nodeStatement, &stackData)
+		statement := GenerateStatement(&nodeStatement, stackData)
 		stringBuffer.WriteString(statement)
 	}
 	stringBuffer.WriteString("    ;; Exit Succesfully\n")
