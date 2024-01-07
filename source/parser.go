@@ -4,12 +4,37 @@ import (
 	"fmt"
 )
 
-type NodeExpression struct {
-	token ChaosToken
+type NodeExpresionIntegerLiteral struct {
+	integerLiteral ChaosToken
 }
 
-type NodeExit struct {
+type NodeExpresionIdentifier struct {
+	identifier ChaosToken
+}
+
+type NodeExpression struct {
+	nodeType                    TokenType
+	nodeExpresionIntegerLiteral NodeExpresionIntegerLiteral
+	nodeExpresionIdentifier     NodeExpresionIdentifier
+}
+
+type NodeStatementExit struct {
 	nodeExpression NodeExpression
+}
+
+type NodeStatementLet struct {
+	identifier     ChaosToken
+	nodeExpression NodeExpression
+}
+
+type NodeStatement struct {
+	nodeType          TokenType
+	nodeStatementExit NodeStatementExit
+	nodeStatementLet  NodeStatementLet
+}
+
+type NodeProgram struct {
+	nodeStatement []NodeStatement
 }
 
 type ChaosParse struct {
@@ -42,43 +67,85 @@ func GenerateChaosParse(tokens []ChaosToken) ChaosParse {
 	}
 }
 
+func parseStatement(parse ChaosParse) NodeStatement {
+	if parse.Peek(0).Type == exit {
+		parse.ConsumeToken()
+		nodeExpression := parseExpression(parse)
+		var nodeStatementExit NodeStatementExit
+		if nodeExpression.nodeType == intLiteral {
+			nodeStatementExit = NodeStatementExit{
+				nodeExpression: nodeExpression,
+			}
+			parse.ConsumeToken()
+		}
+		if parse.Peek(0).Type != semiColon {
+			fmt.Printf(
+				"ERROR: %v:%04v:%03v - Invalid token while parsing. Expected ';' but got '%v' (%v)\n",
+				parse.Peek(0).FilePath, parse.Peek(0).Line, parse.Peek(0).Column,
+				parse.Peek(0).Value, TokenTypeMap[parse.Peek(0).Type])
+		}
+		parse.ConsumeToken()
+		return NodeStatement{
+			nodeType:          exit,
+			nodeStatementExit: nodeStatementExit,
+		}
+	} else if parse.Peek(0).Type == let &&
+		parse.Peek(1).Type == identifier &&
+		parse.Peek(2).Type == equals {
+		parse.ConsumeToken()
+		nodeStatementLet := NodeStatementLet{
+			identifier: parse.ConsumeToken(),
+		}
+		expression := parseExpression(parse)
+		if expression.nodeType == identifier {
+			nodeStatementLet.nodeExpression.nodeExpresionIdentifier = expression.nodeExpresionIdentifier
+			parse.ConsumeToken()
+		} else {
+			fmt.Printf("Invalid expression: %v\n", expression.nodeExpresionIdentifier.identifier.Value)
+		}
+		if parse.Peek(0).Type == semiColon {
+			parse.ConsumeToken()
+		} else {
+			fmt.Printf("Expected ';'\n")
+		}
+		return NodeStatement{
+			nodeType:         let,
+			nodeStatementLet: nodeStatementLet,
+		}
+	}
+	return NodeStatement{}
+}
+
 func parseExpression(parse ChaosParse) NodeExpression {
 	if parse.Peek(0).Type == intLiteral {
+		token := parse.ConsumeToken()
 		return NodeExpression{
-			token: parse.ConsumeToken(),
+			nodeType: token.Type,
+			nodeExpresionIntegerLiteral: NodeExpresionIntegerLiteral{
+				integerLiteral: token,
+			},
+		}
+	} else if parse.Peek(0).Type == identifier {
+		token := parse.ConsumeToken()
+		return NodeExpression{
+			nodeType: token.Type,
+			nodeExpresionIdentifier: NodeExpresionIdentifier{
+				identifier: token,
+			},
 		}
 	}
 	return NodeExpression{}
 }
 
-func Parser(chaosParse ChaosParse) NodeExit {
-	var nodeExit NodeExit
+func ParseProgram(chaosParse ChaosParse) NodeProgram {
+	var nodeProgram NodeProgram
 	for chaosParse.bufferSize > chaosParse.currentIndex {
-		if chaosParse.Peek(0).Type == exit {
-			chaosParse.ConsumeToken()
-			nodeExpression := parseExpression(chaosParse)
-			if nodeExpression.token.Type == intLiteral {
-				nodeExit = NodeExit{nodeExpression: nodeExpression}
-				chaosParse.ConsumeToken()
-			} else {
-				return NodeExit{}
-			}
-			if chaosParse.Peek(0).Type != semiColon {
-				fmt.Printf(
-					"ERROR: %v:%04v:%03v - Invalid token while parsing. Expected ';' but got '%v' (%v)\n",
-					chaosParse.Peek(0).FilePath, chaosParse.Peek(0).Line, chaosParse.Peek(0).Column,
-					chaosParse.Peek(0).Value, TokenTypeMap[chaosParse.Peek(0).Type])
-			}
-			chaosParse.ConsumeToken()
-			continue
+		statement := parseStatement(chaosParse)
+		if statement.nodeType != 0 {
+			nodeProgram.nodeStatement = append(nodeProgram.nodeStatement, statement)
 		} else {
-			fmt.Printf(
-				"ERROR: %v:%04v:%03v - Invalid token while parsing '%v' (%v)\n",
-				chaosParse.Peek(0).FilePath, chaosParse.Peek(0).Line, chaosParse.Peek(0).Column,
-				chaosParse.Peek(0).Value, TokenTypeMap[chaosParse.Peek(0).Type])
-			chaosParse.ConsumeToken()
-			continue
+			fmt.Printf("Invalidi statement\n")
 		}
 	}
-	return nodeExit
+	return nodeProgram
 }

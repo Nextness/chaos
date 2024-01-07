@@ -13,6 +13,9 @@ var TokenTypeMap = map[TokenType]string{
 	1: "EXIT_WITH",
 	2: "INT_LITERAL",
 	3: "SEMI_COLON",
+	4: "IDENTIFIER",
+	5: "LET",
+	6: "EQUALS",
 }
 
 const (
@@ -20,6 +23,9 @@ const (
 	exit
 	intLiteral
 	semiColon
+	identifier
+	let
+	equals
 )
 
 type ChaosToken struct {
@@ -90,6 +96,22 @@ func (chaosData *ChaosFileData) Tokenizer() ([]ChaosToken, error) {
 			tokens = append(tokens, identifier)
 			chaosData.tokenBuffer.Reset()
 			continue
+		} else if chaosData.Peek(0) == '=' {
+			if _, err := chaosData.tokenBuffer.WriteRune(chaosData.ConsumeRune()); err != nil {
+				fmt.Printf("ERROR: %v\n", err.Error())
+				return []ChaosToken{}, err
+			}
+			identifier := ChaosToken{
+				Type:     equals,
+				Value:    chaosData.tokenBuffer.String(),
+				Line:     chaosData.lineCount,
+				Column:   startingIndex,
+				FilePath: chaosData.filePath,
+			}
+			identifier.LogToken("")
+			tokens = append(tokens, identifier)
+			chaosData.tokenBuffer.Reset()
+			continue
 		} else if unicode.IsLetter(chaosData.Peek(0)) {
 			for unicode.IsLetter(chaosData.Peek(0)) || chaosData.Peek(0) == '_' {
 				if _, err := chaosData.tokenBuffer.WriteRune(chaosData.ConsumeRune()); err != nil {
@@ -109,15 +131,27 @@ func (chaosData *ChaosFileData) Tokenizer() ([]ChaosToken, error) {
 				tokens = append(tokens, identifier)
 				chaosData.tokenBuffer.Reset()
 				continue
-			} else {
+			} else if chaosData.tokenBuffer.String() == "let" {
 				identifier := ChaosToken{
-					Type:     invalidToken,
+					Type:     let,
 					Value:    chaosData.tokenBuffer.String(),
 					Line:     chaosData.lineCount,
 					Column:   startingIndex,
 					FilePath: chaosData.filePath,
 				}
-				identifier.LogToken("Invalid string while parsing")
+				identifier.LogToken("")
+				tokens = append(tokens, identifier)
+				chaosData.tokenBuffer.Reset()
+				continue
+			} else {
+				identifier := ChaosToken{
+					Type:     identifier,
+					Value:    chaosData.tokenBuffer.String(),
+					Line:     chaosData.lineCount,
+					Column:   startingIndex,
+					FilePath: chaosData.filePath,
+				}
+				identifier.LogToken("")
 				tokens = append(tokens, identifier)
 				chaosData.tokenBuffer.Reset()
 				continue
