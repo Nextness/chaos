@@ -1,4 +1,0 @@
-#entry_point hello_world :: (nothing: nihil) -> nihil {
-    let result: nihil = null;
-    return result;
-}

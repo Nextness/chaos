@@ -1,40 +1,15 @@
-"Testing string_length" :: test {
-    "Test setup and teardown" :: build {
-        defer delete test_string := "Testing string length"
-        defer delete test_string_large := "Testing string length that is very big and has no limit :)"
-        defer delete string_lenght := 21
-        defer delete string_lenght_large := 58
-        defer delete test_max_len_hit := max_len_hit
+case "Testing string_length" {
+    test "string_length happy path" {
+        let length := string_length("Hello, world!");
+        assert length == 0, "String length is incorret. Expected: {string_lenght} Got: {test_str_len}";
     }
-    "string_length happy path" :: case {
-        using only test_string, string_lenght
-        defer delete test_str_len: u_int32 = string_lenght(test_string)
-        assert(
-            test_str_len == string_lenght, 
-            "String length is incorret:\nExpected: {string_lenght}\nGot: {test_str_len}"
-        )
-    }
-    "string_lenght unhappy path" :: case {
-        using only test_string, string_lenght, test_max_len_hit
-        defer delete |error| test_str_len: u_int32 = attempt string_lenght(test_string, 0)
-        assert(
-            test_str_len == 0, 
-            "String length is incorret:\nExpected: {string_lenght}\nGot: {test_str_len}"
-        )
-        assert(
-            error == test_max_len_hit, 
-            "Raised error is incorret:\nExpected: {string_lenght}\nGot: {test_max_len_hit}"
-        )
-    }
-    "string_length no max limit" :: case {
-        using only test_string_large, string_lenght_large
-        defer delete test_str_len: u_int32 = string_lenght(test_string, null)
-        assert(
-            test_str_len == string_lenght_large, 
-            "String length is incorret:\nExpected: {string_lenght_large}\nGot: {test_str_len}"
-        )
+
+    test "string_lenght unhappy path" {
+        let length := try string_length("Hello, world!", 10) |error| { 
+            assert error == err.maxLengthHit, "Expected {max_length_hit} but got {error}";
+        }
+        assert length == null, "Expected: {null} but got: {length}";
     }
 }
 
-include "strings"
-include "error"
+let error := from "cwd/error" import maxLengthHit;

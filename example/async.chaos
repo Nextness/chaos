@@ -1,0 +1,90 @@
+// Stole from https://github.com/glhrmfrts/future.c to have as an example. Most likely this code
+// doesn't work properly. Later needs to be recreated...
+
+module future;
+
+struct FutureHeader {
+    conditionalVariable: CndT,
+    mutex: Mutex,
+    isValid: AtomicBool,
+    isSet: Bool,
+    valueSize, inOffs, outOffs: U64,
+}
+
+proc newFuture(wholeSize, valueSize, inOffs, outOffs: U64) -> *FutureHeader | err.genericFutureError {
+    let future := calloc(1, wholeSize) as *FutureHeader;
+    try future.init(valueSize, inOffs, outOffs) |error| {
+        println(i"Error initializing future: {error}");
+        return err.genericErrorFuture;
+    };
+    return future;
+}
+
+proc FutureHeader.await(self: *Self, timeout: I32'Microseconds) -> Nihil | err.timeout | err.genericFutureError {
+    try with self.mutex() {
+        if (self.isSet) return null;
+        if (timeout < 0) return err.timeout;
+
+        start, end: Timespec = ...;
+        timespecGet(&start, TIME_UTC);
+        end.tvSec = start.tvSec + (timeout / 1_000);
+        end.nSec = (timeout % 1_000) * 1_000_000;
+
+        try cndTimedWait(self.conditionalVariable, self.mutex, end) |error| {
+            case (err.threadTimedout) return err.timeout;
+            case (default)            return err.genericFutureError;
+        };
+    };
+    return null;
+}
+
+proc FutureHeader.get(self: *Self, timeout: I32'Microseconds, destination: *Nihil, destination, check: U64) -> (
+    Nihil | err.nullPointer | err.invalid | err.destinationSizeNotMatched | err.timeout | err.genericFutureError
+) {
+    self :? return err.nullPointer;
+    if (!self.isValid) return err.invalid;
+    if (destinationSize != self.valueSize) return err.destinationSizeNotMatched;
+    try self.await(timeout) |error| return error;
+
+    let source: *Nihil = (self as *U8) + self.outOffs as *Nihil;
+    memcpy(destination, source, self.valueSize);
+    return null;
+}
+
+struct FutureOf[T] {
+    header: FutureHeader,
+    inValue, outValue: T,
+}
+
+#scope(__File__);
+
+#let err: NameScope[Error] = {
+    from "cwd/error" import nullPointer;
+    timeout: Error = { "timeout" };
+    invalid: Error = { "invalid" };
+    noMemory: Error = { "noMemory" };
+    destinationSizeNotMatched: Error = { "destinationSizeNotMatched" };
+    genericFutureError: Error = { "genericFutureError" };
+};
+
+proc FutureHeader.mutex(self: *Self) -> Nihil {
+    #enterScope { mutexLock(self.mutex); }
+    defer #exitScope { mutexUnlock(self.mutex); }
+    return null;
+}
+
+proc FutureHeader.init(self: *Self, valueSize, inOffs, outOffs: U64) -> Nihil {
+    cndInit(self.conditionalVariable);
+    mutexInit(self.mutex, mutxPlain);
+    self.{isValid: true, isSet: false, valueSize: valueSize, inOffs: inOffs, outOffs: outOffs};
+    return null;
+}
+
+proc FutureHeader.destroy(self: *Self?) -> Nihil | err.nullPointer {
+    self :? return err.nullPointer;
+    self.isValid = false;
+    cndDestroy(self.conditionalVariable);
+    mutexDestroy(self.mutex);
+    return null;
+}
+

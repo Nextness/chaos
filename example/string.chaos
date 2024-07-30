@@ -1,49 +1,24 @@
-string_lenght :: (
-    string_v : string pointer, string_max_length_v : u_int64 = max_lenght
-) |max_length_limit_hit| -> u_int32 {
-    let string_position : string pointer = string_v;
-    while deref string_v != "\0" do ++string_v, --string_max_length_v
-        if not string_max_length_v
-            raise max_length_limit_hit;
-    return string_v - string_position;
-}
-
-string_copy :: (
-    string_source_v : string pointer, string_destination_v : ret string pointer,
-    string_max_length : u_int64 = MAX_LENGHT
-) |max_length_limit_hit| -> nihil {
-    let temporary : string pointer = string_destination_v while deref temporary != "\0" do --string_max_length {
-        deref temporary++ = deref string_source_v++;
-        if not string_max_length
-            raise max_length_limit_hit;
+proc stringLength(string: *String, maxLenght: U64? = MAX_LENGHT) -> U32 | err.maxLengthLimitHit {
+    let stringPosition: *String = string;
+    #if maxLenght == null {
+        for (nothing; *string != "\0"; ++string) continue;
+    } #else {
+        for (nothing; *string != "\0"; ++string, --maxLenght) {
+            if (!maxLenght) return error.maxLengthLimitHit;
+        }
     }
-    return null;
+    return string - stringPosition;
 }
 
-string_concatenation :: (
-    string_source_v : string pointer, string_destination_v : ret string pointer,
-    string_max_lenght_v : u_int64 = MAX_LENGHT, separetor_v : char? = " "
-) |max_length_limit_hit| -> nihil {
-    let temporary : string pointer = string_destination_v;
-    while deref temporary != "\0" do ++string_destination_v, --string_max_lenght_v
-        if not max_length_limit_hit
-            raise max_length_limit_hit;
-    if is_char(separetor_v) deref temporary++ = separetor;
-    while deref temporary != "\0" do --string_max_lenght_v {
-        deref temporary++ = deref string_source_v++;
-        if not max_length_limit_hit
-            raise max_length_limit_hit;
+proc stringCopy(string: *String, maxLenght: U64? = MAX_LENGHT) -> String | error.maxLengthLimitHit {
+    let temporary: *String = #0;
+    #if maxLenght == null {
+        for (nothing; *temporary != "\0"; nothing) *temporary++ = *string++;
+    } #else {
+        for nothing; *temporary != "\0"; --maxLenght {
+            if (!maxLenght) return error.maxLengthLimitHit;
+            *temporary++ = *string++;
+        }
     }
-    return null;
+    return temporary;
 }
-
-string_compare :: (
-    string_v1 : string pointer, string_v2 : string pointer, string_max_lenght_v : u_int64 = MAX_LENGHT
-) |max_length_limit_hit| -> bool {
-    while deref string_v1 == deref string_v2 and deref string_v2 do ++string_v1, ++string_v2, --string_max_lenght_v
-        if not string_max_lenght_v
-            raise max_length_limit_hit;
-    return deref string_v1 != deref string_v2;
-}
-
-include "errors";

@@ -1,0 +1,3 @@
+#extern("printf") proc printf() -> Nihil;
+#extern("windowShouldClose") proc windowShouldClose() -> CBool;
+

@@ -1,276 +1,258 @@
-*(custom_allocator) :: #interface (value: type)
+// interface with no input names
+interface proc someNameForProc1(U32, U64, F64 = 10) -> Bool | ___ { ... }
 
-initialize :: (value: type, custom_initialization: *custom_allocator? = null) |null_pointer| -> bool {
-    initialize_linux(value, custom_deinitialization) 
-    initialize_windows(value, custom_deinitialization)
+// interface with input names
+interface proc someNameForProc2(in1: U32, in2: U64, in3: F64 = 100) -> Bool | ___ { ... }
+
+// Exact match interface
+#exact interface proc someNameForProc3(in1: U32, in2: U64, in3: F64 = 100) -> Bool | ___ { ... }
+
+struct Version {
+    major, minor, fix: U32,
+    phase: String? = null,
 }
 
-#[os_specific(__linux__)]
-initialize_linux :: (value: type, custom_initialization: *custom_allocator? = null) |null_pointer| -> nihil {
-    let initialization: *proc? = null
-        #if custom_initialization != null initialization = &custom_initialization
-        #elif value -> #alloc initialization = &value -> #alloc
-        #else initialization = &alloc
-    if initialization == null raise null_pointer
-    return *initialization(value)
-}
-
-#[os_specific(__windows__)]
-initialize_windows :: (value: type, custom_initialization: *custom_allocator? = null) |null_pointer| -> nihil {
-    let initialization: *proc? = null
-        #if custom_initialization != null initialization = &custom_initialization
-        #elif value -> #alloc initialization = &value -> #alloc
-        #else initialization = &alloc
-    if initialization == null raise null_pointer
-    return *initialization(value)
-}
-
-de_initialize :: (value: type, custom_deinitialization: proc? = null) |null_pointer| -> nihil {
-    let memory_deallocation : *proc? = null
-    #begin.os_specific(linux)
-        #if custom_deinitialization != null memory_deallocation = &custom_deinitialization
-        #elif value->#dealloc memory_deallocation = &value -> #dealloc
-        #else memory_deallocation = &mem_dealloc
-    #end.os_specific(linux)
-    #begin.os_specific(windows)
-        #if custom_deinitialization != null memory_deallocation = &custom_deinitialization
-        #elif value->#dealloc memory_deallocation = &value->#dealloc
-        #else memory_deallocation = &mem_dealloc
-    #end.os_specific(windows)
-    if memory_deallocation == null raise null_pointer
-    *memory_deallocation(value)
-}
-
-#entry_point
-#overload_by_signature
-#[os_specific(__linux__)]
-main_entry_point :: (argc: variadic[string], argc: u_int64) -> nihil {
-    while argc >= 0 do argc-- {
-        println!("Hello, world {argv[argc]}: {argc}\n");
+proc Version.__String__(using self: *Self) -> String {
+    if !major || !minor || !fix {
+        exitWith 1, "Missing major, minor or fix field in the struct...";
     }
-    return null;
+    let versionString := i"{major}.{minor}.{fix}";
+    phase :? versionString = i"{versionString}-{phase}";
+    return versionString;
 }
 
-#entry_point
-#overload_by_signature
-#[os_specific(__windows__)]
-main_entry_point :: (argc: variadic[string], argc: u_int64) -> nihil {
-    while argc >= 0 do argc-- {
-        println!("Hello, world {argc}\n");
+{
+    proc somethingElseNow(#gainOwnership string: *String, #loseOwnership newValue: *String) -> error.nullPointer {
+        if (!string || !newValue) return error.nullPointer;
+        defer free(newValue);
+        string = i"{*string} {newValue}";
+        println(*string);
     }
-    return null;
+
+    let stillExists := "hello world";
+    let noLongerExists := "how are you?";
+    somethingElseNow(stillExists, noLongerExists);
+
+    struct SomeStruct {
+        username: String = ...,
+        password: #redacted String = ...,
+    }
+    let someStruct := SomeStruct {
+        username="username",
+        password=getEnvVar("ENV_VAR_NAME")
+    };
 }
 
-#singleton
-another_struct_here_t :: struct[T] {
-    some_thing_else: T? = null,
-    item: string = "empty_string",
-    number: u_int32 = 0,
+proc testingNullable(input1: Bool?) -> Bool | err.nullPointer {
+    input1 :? return err.nullPointer;
+    return true;
 }
-let another_struct_here : another_struct_here_t[string] = ("hello", default, default);
 
-#c_linking_function("NameOfFunctionFromLibraryInC") name_of_function_from_library: proc;
-name_of_function_from_library("123", 123, true);
+proc main(nothing: Nihil) -> U64 {
+    let window := try initializeWindow(100, 100, "Chaos Window!") |error| {
+        eprintln("Something went wrong in here...");
+        return 1;
+    };
+    defer destroyWindow(window=window);
+}
 
-#c_linking_struct("Some_Library_Struct_In_C") some_struct_t;
-some_struct: some_struct_t;
+struct #singleton Another[T] {
+    somethingElse: T? = null,
+    item: String = "",
+    number: U32 = 0,
+}
 
-#swizzling something_t :: struct {
-    a | val_a: u_int32 = ...,
-    b | val_b: u_int32 = ...,
-    c | val_c: u_int32 = ...,
+struct Something {
+    valA: U32 = ..., `swizzling:"a"`
+    valB: U32 = ..., `swizzling:"b"`
+    valC: U32 = ..., `swizzling:"c"`
 }
 something: Something = (1000, 2000, 3000);
 something.abc = something.abc * 10;
-assert!(something.a == 10000, something.b == 20000, something.c == 30000, ..., "not working as expected D:");
 
-#reference_count(1, identification) another_weird_ass_value: string? = "Hello, Fucking World!"
-println!(another_weird_ass_value)
-assert!(another_weird_ass_value == null, ...,
-        i"reference_count is not working as expected - missing count {identification.count}")
-
-#begin.context
-some_struct_t :: struct {
-    username: string,
-    password: #redacted string,
-}
-some_struct : some_struct_t = ("username", #get_environmental_variable_value("ENV_VAR_NAME"));
-#end.context
-
-some_macro! :: (input1: string, some_input: string, something_else: literal, else_thing: expression) {
-    println!(input1)
-    some_input
+proc multipleReturns(toggle: Bool) -> String, U32 | err.nullPointer {
+    if (toggle) return err.nullPointer;
+    return "hi", 10;
 }
 
-// result is a local variables that needs to be used in the if scope
-let result := anotherfunc(d, e) if result == null {
-    println!("{result}");
-} elif result == "1" {
-    println!("{result}");
+proc noDiscardReturn() -> #noDiscard Bool, String {
+    return true, "hello world";
 }
 
-#[receiver(string_v: string)]
-split :: (separator: char? = null) |error_t| -> [?] list[string]? {
-    if separator == null
-        return null;
+noDiscardReturn(); --- This should result in a compile time error
+let someVariableName := noDiscardReturn(); --- This should result in a compile time error
+let someVariableName1, someVariableName2 := noDiscardReturn(); --- This should work just fine
+let nothing := noDiscardReturn(); --- This should work just fine
+
+struct JsonResponse[T] {
+    statusCode: U32 = ...,
+    content: Dict[String, T] = ...,
 }
 
-let result := "hello, world!".split(separator = ",");
-let global __real_numbers :: list(u_int8, u_int16, u_int32, u_int64, u_int128, u_int256, int8, int16, int32, int64,
-                                  int128, int256, float16, float32, float64);
+let #inline Number := U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F16 | F32 | F64;
 
-let some: [?] array[string] = ...;
-
-#some_proc :: (a : string, b : string) -> string {
-
+struct Array[S: Literal[Number] | Literal[dynamic], T: Type] {
+    items: T = ...,
+    local count: U64 = #0,
+    local capacity: U64 = #id (S != dynamic) S #else 256,
 }
 
-some_name :: struct {
-    hello: string = ...,
-    world: u_int64 = ...,
-    something_else: bool = ...,
-
-    __string__ :: behavior { set "{hello} - {world}: {something_else}" }
-    __allocator__ :: behavior { }
+proc Array.__RunTimeCheck__(self: *Self) -> Nihil {
 }
 
-#[overload_by_signature()]
-#check_for_string_behavior :: (item : #any) |no_string_behavior| -> #string? {
-    #if #not #match_behavior(item, __string__) {
-        #do_not_compile #raise_and_return (
-            no_string_behavior, "The provided '{item.literal}' does not have a string behavior."
-        );
+struct Array[S: Literal[U64] | Literal[dynamic] = ..., T: Type = ...] {
+    items: T = ...,
+    count: U64 = #0,
+    capacity: U64 = #if (S != dynamic) S #else 256,
+
+    #if __RunTimeCheck__ {
+        --- do some run time check here using introspection...
     }
-    #return null;
-}
 
-#[overload_by_signature()]
-#check_for_string_behavior :: (items : #variadic[#any]) |no_string_behavior| -> #string? {
-    #while index, item #in #enumerate items {
-        #if #not #match_behavior(item, __string__) {
-            #do_not_compile #raise_and_return (
-                no_string_behavior,
-                "The provided '{item.literal}' at position '{index}' does not have a string behavior."
-            );
-        }
-    }
-    #return null;
-}
-
-assert! :: (evaluations : variadic[bool], message : string) -> nihil {
-    #try #check_for_string_behavior(message) |nothing|
-        #exit_with 1, "COMPILATION ERROR: '{message.literal}' has no string behavior.";
-    let failed_assertion : bool = false;
-    while index, evaluation in enumerate evaluations {
-        unless evaluation {
-            failed_assertion = true;
-            eprintln!("Failed at assertion {index}: {message}");
-        }
-    }
-    if failed_assertion
-        exit_with 1;
-    return null;
-}
-
-println! :: (value: string, a: variadic[any], out: some_enum = standard_file_descriptor) -> nihil {
-    #check_for_string_behavior(a);
-}
-
-eprintln! :: (value: string, a: variadic[any], out: some_enum = error_file_descriptor) -> nihil {
-    #check_for_string_behavior(a);
-}
-
-#[overload_by_version(version_range = 1.0...)]
-something_else_t :: struct {
-    a: string,
-    b: u_int64,
-    c: bool,
-}
-
-#[overload_by_signature(version_range = 2.0...)]
-something_else_t :: struct {
-    a: string,
-    b: u_int64,
-    c: bool,
-    d: complex64,
-}
-
-#overload_by_version :: #declarative (version_range: range[float64].limit(min=0.0, max=10.0)) -> #bool {
-    
-}
-
-let something_else := if (something_here) {
-    let variable_a := "hello_else";
-    set variable_a;
-} else {
-    let variable_b := some_ass_function_here("another_hello_else");
-    set variable_b;
-}
-
-look_for_something :: (
-    #if   #match_version(1.0...) { input1: string, input2: string, input3: something_else_t }
-    #elif #match_version(2.0...) { input1: string, input2: string, input3: something_else_t, input4: u_int64 }
-    #else { input1: string, input2: string, input3: something_else_t, input4: u_int64, input5: u_int64 }
-) |error| -> value {
-    
-}
-
-#[receiver(string_v: string)] // %' indicates that ownership is from the person who calls the procedure
-split :: (separator: char) |error_t| -> %' [?] list[string]? {
-    while some_value {
-        break
-    }
-}
-
-testing_variadic_syntax :: (param1: variadic[string], param2: u_int64 = 10) -> bool {
-    return true
-}
-
-main :: (nothing : nihil) -> nihil {
-    let some_value := try testing_variadic_syntax("string1", "string2", "string3", ..., default) |error| {
-        exit_with 1;
-    }
-    some_value.do_something();
-}
-
-#overload_by_signature
-#[receiver(some_information : string)]
-append_string(append_string : string) |some_error| -> string {
-    return some_information + append_string;
-}
-
-
-let something := try somefunc() |error| {
-    exit_with 1
-}
-
-let list_of_something : [?] list[string] = something.split(",");
-
-
-try allocate_something(some_variable) |error| {
-    exit_with 1, "Buy more RAM, lol";
-}
-defer_on_raise deallocate_something(some_variable);
-
-try some_other_operation() |error| {
-     // deallocate_something(some_variable)
-     exit_with 1, "Another message";
-}
-
-let some_value :: try executing_some_action("hello", true, 10) |error| {
-
-}
-defer_on_raise free(some_value);
-
-let some_result_here := try some_value
-    .some_method1("hello", true)
-    .some_method2(100)
-    .some_method3(2f) |error| {
-        if error == {
-            case error_1 {
-                do_something();
+    #if S == dynamic {
+        #configuration __IncludeElement__ := (using * self: *Self, other: T) Nihil, error.outOfMemory {
+            if count >= capacity {
+                capacity = 2 * capacity;
+                items = try mem.realloc(items, capacity * sizeOf(items)) |error| {
+                    eprintln("{error}");
+                    return error.outOfMemory;
+                }
             }
-        }
+            items[count++] = other;
+        },
+        #configuration __RemoveElement__ := {},
+        #configuration __ReplaceElement__ := {},
     }
+}
 
-include "errors";
+proc checkFirstElementExists(element: Array?[dynamic, ___]) -> Bool, err.nullPointer {
+    --- expands to the following:
+    --- if (element == null) { element = Array[dynamic, String]{}; }
+    element :? element = Array[dynamic, String]{};
+
+    --- Checks for the size of the array, if the accessing index is greater,
+    --- raises and nullpointer error or something like this.
+    // try let some := element[0] orReturn <err.nullPointer>;
+    let some := try element[0] orSet "";
+    return true;
+}
+
+let someList := Array[dynamic, String]{};
+try checkFirstElementExists(someList);
+
+proc SimpleStruct.__Addition__[T, U, V](self: T, other: U) -> V {
+    #if typeOf(self) == *Self && typeOf(other) == *Self {
+        self.field1 += other.field1;
+        self.field2 += other.field2;
+        return Nihil;
+    }
+}
+
+proc SimpleStruct.__Subtraction__() -> Nihil {
+}
+
+struct SimpleStruct {
+    field1: F64 = ...,
+    field2: U64 = ...,
+
+    #configuration private __Addition__ := {
+        #case (self: *Self, other: *Self) -> Nihil {
+            self.field1 += other.field1;
+            self.field2 += other.field2;
+        }
+    },
+    #configuration private __Subtraction__ := { }
+    #configuration private __Multiplication__ := { }
+    #configuration private __Division__ := { }
+    #configuration private __Modulo__ := { }
+    #configuration private __Exponentiation__ := { }
+    #configuration private __PreIncrement__ := { }
+    #configuration private __PostIncrement__ := { }
+    #configuration private __PreDecrement__ := { }
+    #configuration private __PostDecrement__ := { }
+    #configuration private __Equals__ := { }
+    #configuration private __NotEequals__ := { }
+    #configuration private __GreaterThan__ := { }
+    #configuration private __GreatThanOrEqual__ := { }
+    #configuration private __LessThan__ := { }
+    #configuration private __LessThanOrEqual__ := { }
+    #configuration private __LogicalNot__ := { }
+    #configuration private __LogicalAnd__ := { }
+    #configuration private __LogicalOr__ := { }
+    #configuration private __BitwiseNot__ := { }
+    #configuration private __BitwiseAnd__ := { }
+    #configuration private __BitwiseOr__ := { }
+    #configuration private __BitwiseXor__ := { }
+    #configuration private __BitwiseLeftShit__ := { }
+    #configuration private __BitwiseRightShit__ := { }
+    #configuration private __DirectAssignment__ := { } // to be confirmed
+    #configuration private __AdditionAssignment__ := { }
+    #configuration private __SubtractionAssignment__ := { }
+    #configuration private __MultiplicationAssignment__ := { }
+    #configuration private __DivisionAssigment__ := { }
+    #configuration private __ModuloAssignment__ := { }
+    #configuration private __ExponentiationAssignment__ := { } // **=
+    #configuration private __BitwiseAndAssignment__ := { }
+    #configuration private __BitwiseOrAssignment__ := { }
+    #configuration private __BitwiseXorAssignment__ := { }
+    #configuration private __BitwiseLeftShiftAssignment__ := { } // <<=
+    #configuration private __BitwiseRightShiftAssignment__ := { } // >>=
+}
+
+struct Time {
+    local currentDate: U64,
+    local currentTime: U64,
+    #configuration local const __Specification__ := {
+        Seconds, Minutes, Hours, Days, Months, Years
+    },
+}
+
+proc Time.now(self: *Self) -> String {
+    return "";
+}
+
+let const helloWorld: Const[String] = "Hello World";
+
+proc main() -> U32 {
+    try with openFile("/somepath", "r") using openedFile {
+        for line in openedFile.readline() {
+            println("%s\n", line);
+        }
+    } |error| {
+        case default {
+            println(i"error while loading file: {error}");
+            return err.fileNotFound;
+        }
+    };
+    return 0;
+}
+
+proc testingLikelyUnlikely(field1, field2, field3: String) -> Bool {
+    if likely field1 != field2 && field2 != field3 {
+        doSomethingHere();
+    } else unlikely {
+        doSomethingElseHere();
+    }
+}
+
+interface struct HelloWorldInterface {
+    field1: String,
+    field2: Bool,
+}
+
+interface proc HelloWorldInterface::impl.loadField1Interface(self: *Self) -> Nihil { ... }
+
+struct HelloWorldInterface::Hello {
+    field1: String,
+    field2: Bool,
+    field3: U32,
+}
+
+proc Hello.loadField1Interface::loadField1(self: *Self) -> Nihil { ... }
+
+let logLevel := from "core" import loggingLevelEnum;
+let error := {
+    from "cwd/errors" import outOfMemory, stupidError;
+    from "cwd/anotherFile" import anotherError;
+};
+

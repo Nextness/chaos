@@ -1,63 +1,49 @@
-main :: #entry_point (nothing: nihil) => nihil {
-    example_while_deafult()
-    example_while_with_expression()
-    example_while_with_range_default()
-    example_while_with_range_and_custom_iterator()
-    example_while_with_range_and_complex_iterator()
-    example_while_in_list()
-    example_while_in_dict()
+proc main(nothing: Nihil) -> Nihil {
+    exampleWhileDefault();
+    exampleWhileWithExpression();
+    exampleWhileWithRang();
+    exampleWhileInList();
+    exampleWhileWithDict();
 }
 
-
-example_while_deafult :: (nothing: nihil) => nihil {
-    some_condition, increment := true, 0
-    while some_condition {
-        increment++
-        println("Increment count: {increment}")
-        if (inc == 3) {
-            println("Breaking out of the loop")
-            break
+proc exampleWhileDefault(nothing: Nihil) -> Nihil {
+    let someCondition, increment := true, 0;
+    for someCondition {
+        increment++;
+        println(i"Increment count: {increment}");
+        if increment == 3 {
+            println("Breaking out of the loop");
+            break;
         }
     }
 }
 
-example_while_with_expression :: (nothing: nihil) => nihil {
-    some_condition, increment := true, 0
-    while some_condition do increment++ {
-        println("Increment count: {increment}")
+proc exampleWhileWithExpression(nothing: Nihil) -> Nihil {
+    let someCondition, increment := true, 0;
+    for nothing; someCondition; increment++ {
+        println(i"Increment count: {increment}");
         if (increment == 3) {
-            println("Breaking out of the loop")
-            some_condition = false
+            println("Breaking out of the loop");
+            someCondition = false;
         }
     }
 }
 
-example_while_with_range_default :: (nothing: nihil) => nihil {
-    while some_value : u_int64 = 0..10
-        println("Current value: {some_value}")
+proc exampleWhileWithRange(nothing: Nihil) -> Nihil {
+    for (0..10) println(i"Current value: {it}");
 }
 
-example_while_with_range_and_custom_iterator :: (nothing: nihil) => nihil {
-    while some_value : float32 = 0..0.1f iterate 0.01f
-        println("Current value: {some_value}")
+proc exampleWhileWithNamedRange(nothing: Nihil) -> Nihil {
+    for (someValue in 0..10) println(i"Current value: {some_value}");
 }
 
-example_while_with_range_and_complex_iterator :: (nothing: nihil) => nihil {
-    complex_iterator := (u_int64 => u_int64) return (input == 0) ? 1 else input * 2
-    while some_value : u_int64 = 0..4096 iterate complex_iterator(some_value)
-        println("Current value: {some_value}")
+proc exampleWhileInList(nothing: Nihil) -> Nihil {
+    let exampleList: List[4, String] = {"element_0", "element_1", "element_2", "element_3"};
+    for (element in exampleList) println(i"{element}");
 }
 
-example_while_in_list :: (nothing: nihil) => nihil {
-    example_list[4] : list[string] = ["element_0", "element_1", "element_2", "element_3"]
-    while element in example_list
-        println("{element}")
-}
-
-example_while_in_dict :: (nothing: nihil) => nihil {
-    example_dict[4] : dict[string: u_int64] = { "element_0": 0, "element_1": 1, "element_2": 2, "element_3": 3 }
-    while (value in example_dict)
-        println("{value}")
-    while (key, value in example_dict)
-        println("{key}: {value}")
+proc exampleWhileWithDict(nothing: Nihil) -> Nihil {
+    let exampleDict: Dict[4, String, U64] = {"element_0": 0, "element_1": 1, "element_2": 2, "element_3": 3};
+    for (value in exampleDict) println(i"{value}");
+    for (key, value in exampleDict) println(i"{value}");
 }
