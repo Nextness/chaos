@@ -1,0 +1,101 @@
+// Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
+// to use as example
+
+struct DoubleLinkedList[T] {
+    mut count: U64 = 0,
+    mut head: *Node[T] = null,
+    mut tail: *Node[T] = null,
+}
+
+struct Node[T] {
+    mut data: *T,
+    mut prev: *Node?[T] = null,
+    mut next: *Node?[T] = null,
+}
+
+macro DoubleLinkedList[T].getLength(self: *Self) -> U64 {
+    set self.nodeCount;
+}
+
+macro DoubleLinkedList[T].getHead(self: *Self) -> Node[T] {
+    set self.head;
+}
+
+macro DoubleLinkedList[T].getTail(self: *Self) -> Node[T] {
+    set self.tail;
+}
+
+macro DoubleLinkedList[T].print(self: *Self) {
+    let node: *Node[T] = self.head;
+    for (i := 0; i < self.count; ++i) {
+        println(i"{node.data}\n");
+        node = node->next;
+    }
+}
+
+proc createNode[T](data: *T) -> *Node[T]! {
+    let newNode := try mem.alloc(sizeOf(Node[T])) as *Node[T] |error| {
+        return err.outOfMemory;
+    }
+    return newNode.{data=data};
+}
+
+proc DoubleLinkedList[T].pushHead(self: *Self, data: *T) -> Nihil! {
+    let newNode := try createNode(data) orReturn err.nullPointer;
+    if self.count == 0 {
+        self.head = newNode;
+        self.tail = newNode;
+    } else {
+        newNode.next = self.head;
+        self.head.prev = newNode;
+        self.head = newNode;
+    }
+    self.count++;
+}
+
+proc DoubleLinkedList[T].pushTail(self: *Self, data: *T) -> Nihil! {
+    let newNode := try createNode(data) orReturn err.nullPointer;
+    if self.count == 0 {
+        self.tail = newNode;
+        self.head = newNode;
+    } else {
+        self.tail.next = newNode;
+        newNode.prev = self.tail;
+        self.tail = newNode;
+    }
+    self.count++;
+}
+
+proc DoubleLinkedList[T].insertNode(self: Self, data: *T, index: U64) -> Nihil! {
+    if (index < 0 || index > self.count) return err.failedToInsertNode;
+    if index == 0 {
+        self.pushHead(data);
+        return;
+    } elif index == self.count {
+        self.pushTail(data);
+        return;
+    }
+
+    let mut tmp: *Node[T];
+    if index <= self.count / 2 {
+        tmp = self.head;
+        for (i := 0; i < index - 1; i++) tmp = tmp.next;
+    } else {
+        tmp = list.tail;
+        for (i := 0; i < self.count - index; ++i) tmp = tmp.prev;
+    }
+
+    let newNode := try createNode(data) |error| return err.nullPointer;
+    tmp.next.prev = newNode;
+    newNode.next = tmp.next;
+    tmp.next = newNode;
+    newNode.prev = tmp;
+    self.count++;
+}
+
+proc DoubleLinkedList[T].deleteHead(self: *Self) {
+    if (self.size == 0) return;
+    if (list.size == 1) mem.free(self.head);
+    #notImplemented
+}
+

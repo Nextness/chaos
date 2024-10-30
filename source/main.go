@@ -1,43 +1,42 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 )
 
-var compilationConfig CompilationConfig
+type TokenType int
+
+const (
+	invalidToken TokenType = iota
+	semiColon
+	let
+	valueAssignment
+	typeAssignment
+	intLiteral
+)
+
+type ChaosToken struct {
+	Type         TokenType
+	Value        string
+	Line, Column int
+	FilePath     string
+}
 
 func main() {
+	filePath := "./../example/assignment.chaos"
 
-	if err := compilationConfig.RunCmdArguments(); err != nil {
-		fmt.Printf("ERROR: %s\n", err.Error())
-		return
-	}
-
-	chaosDataBuffer, err := ReadChaosFile(compilationConfig.filePath)
-	if err != nil {
-		fmt.Printf("ERROR: %s\n", err.Error())
-		return
-	}
-
-	tokens, err := chaosDataBuffer.Tokenizer()
+	buffer, err := os.ReadFile(filePath)
 	if err != nil {
 		return
 	}
-	generate := GenerateChaosParse(tokens)
-	parsed := ParseProgram(generate)
 
-	stackData := StackData{
-		size:      0,
-		variables: map[string]VariableDetails{},
-	}
-	result := GenerateProgram(&parsed, &stackData)
-	file, err := os.OpenFile("chaos_compiler.asm", os.O_WRONLY|os.O_CREATE, 0666)
-	if err != nil {
-		fmt.Printf("ERROR: %s\n", err.Error())
-		return
-	}
-	defer file.Close()
+	newBuffer := bytes.NewBuffer(buffer)
+	fileText := bytes.Runes(newBuffer.Bytes())
 
-	file.Write([]byte(result))
+	fmt.Println(newBuffer)
+	fmt.Println(fileText)
+
+	return
 }

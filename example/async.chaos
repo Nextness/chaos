@@ -11,7 +11,7 @@ struct FutureHeader {
     valueSize, inOffs, outOffs: U64,
 }
 
-proc newFuture(wholeSize, valueSize, inOffs, outOffs: U64) -> *FutureHeader | err.genericFutureError {
+proc newFuture(wholeSize, valueSize, inOffs, outOffs: U64) -> *FutureHeader! {
     let future := calloc(1, wholeSize) as *FutureHeader;
     try future.init(valueSize, inOffs, outOffs) |error| {
         println(i"Error initializing future: {error}");
@@ -20,9 +20,9 @@ proc newFuture(wholeSize, valueSize, inOffs, outOffs: U64) -> *FutureHeader | er
     return future;
 }
 
-proc FutureHeader.await(self: *Self, timeout: I32'Microseconds) -> Nihil | err.timeout | err.genericFutureError {
+proc FutureHeader.await(self: *Self, timeout: I32(Microseconds)) -> Nihil! {
     try with self.mutex() {
-        if (self.isSet) return null;
+        if (self.isSet) return;
         if (timeout < 0) return err.timeout;
 
         start, end: Timespec = ...;
@@ -32,23 +32,25 @@ proc FutureHeader.await(self: *Self, timeout: I32'Microseconds) -> Nihil | err.t
 
         try cndTimedWait(self.conditionalVariable, self.mutex, end) |error| {
             case (err.threadTimedout) return err.timeout;
-            case (default)            return err.genericFutureError;
+            case (default) return err.genericFutureError;
         };
     };
-    return null;
 }
 
-proc FutureHeader.get(self: *Self, timeout: I32'Microseconds, destination: *Nihil, destination, check: U64) -> (
-    Nihil | err.nullPointer | err.invalid | err.destinationSizeNotMatched | err.timeout | err.genericFutureError
-) {
-    self :? return err.nullPointer;
+dataArgs FHGet {
+    self: *Self,
+    timeoput: I32'Microseconds,
+    destination: *Nihil, destination, check: U64,
+}
+
+proc FutureHeader.get(using fhGet: FHGet) -> Nihil! {
+    if (self:?) return err.nullPointer;
     if (!self.isValid) return err.invalid;
     if (destinationSize != self.valueSize) return err.destinationSizeNotMatched;
     try self.await(timeout) |error| return error;
 
     let source: *Nihil = (self as *U8) + self.outOffs as *Nihil;
     memcpy(destination, source, self.valueSize);
-    return null;
 }
 
 struct FutureOf[T] {
@@ -58,7 +60,7 @@ struct FutureOf[T] {
 
 #scope(__File__);
 
-#let err: NameScope[Error] = {
+#let err: NamedScope[Error] = {
     from "cwd/error" import nullPointer;
     timeout: Error = { "timeout" };
     invalid: Error = { "invalid" };
@@ -67,24 +69,21 @@ struct FutureOf[T] {
     genericFutureError: Error = { "genericFutureError" };
 };
 
-proc FutureHeader.mutex(self: *Self) -> Nihil {
+proc FutureHeader.mutex(self: *Self) {
     #enterScope { mutexLock(self.mutex); }
-    defer #exitScope { mutexUnlock(self.mutex); }
-    return null;
+    #exitScope { mutexUnlock(self.mutex); } // exitScope is executed after defer <something>
 }
 
-proc FutureHeader.init(self: *Self, valueSize, inOffs, outOffs: U64) -> Nihil {
+proc FutureHeader.init(self: *Self, valueSize, inOffs, outOffs: U64) {
     cndInit(self.conditionalVariable);
     mutexInit(self.mutex, mutxPlain);
-    self.{isValid: true, isSet: false, valueSize: valueSize, inOffs: inOffs, outOffs: outOffs};
-    return null;
+    self.{isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs};
 }
 
-proc FutureHeader.destroy(self: *Self?) -> Nihil | err.nullPointer {
+proc FutureHeader.destroy(self: *Self?) Nihil! {
     self :? return err.nullPointer;
     self.isValid = false;
     cndDestroy(self.conditionalVariable);
     mutexDestroy(self.mutex);
-    return null;
 }
 

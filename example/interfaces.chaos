@@ -1,0 +1,22 @@
+interface proc someOperation[T](in1: F32, in2: List[String]): *String { ...; }
+
+proc someOperation::op1[T](in1: F32, in2: List[String]): *String {
+}
+
+interface struct SomeStructInterface {
+    field1: String,
+    field2: Bool,
+    field3: U64,
+}
+
+struct SomeStructInterface::Some {
+    field1: String,
+    field2: Bool,
+    field3: U64,
+}
+
+interface proc SomeStructInterface::impl.getInterface() { ...; }
+
+
+proc Some.getInterface::get() {}
+

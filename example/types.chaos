@@ -1,0 +1,36 @@
+module types;
+
+--- Numbers ---
+uniondef Ints   := I8  | I16 | I32 | I64 | I128;
+uniondef UInts  := U8  | U16 | U32 | U64 | U128;
+uniondef Floats := F16 | F32 | F64 | F128;
+
+uniondef Complex    := C64  | C128;
+uniondef Quaternion := Q128 | Q256;
+
+uniondef Natural := Ints | UInts;
+uniondef Real    := Ints | UInts | Floats;
+
+uniondef AnyNumber := Natural | Real | Complex | Quaternion;
+
+--- Time ---
+struct Time {
+    mut date: U64,
+    mut time: U64,
+    local $$specification = {
+        NanoSeconds, MicroSeconds, Seconds, Minutes, Hours, Days, Months, Years,
+    }
+}
+
+proc Time.now(self: *Self) -> String {
+    
+}
+
+
+--- List ---
+struct List[S: Literal[Natural | dynamic], T: Type] {
+    items: T,
+    count: U64 = 0,
+    capacity: U64 = 256 #if (S != dynamic) #else S,
+}
+

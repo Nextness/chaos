@@ -1,59 +1,72 @@
-proc createUser(username, firstName, lastName: String) -> Bool {
-    let newUser: User = asyncTask {
-        let globalSession := try getGlobalSession() orReturn <noSessionAvailable>;
-        set createNewUser(username, firstName, lastName) orReturn <failedToCreateUser>;
-    }
-    return try newUser.await() |error| return <error>;
+dataArgs CreateUser {
+    username, firstName, lastName: String,
+    logger: Logger? = null,
 }
 
-proc getUserByUsername(username: String, session: Session) -> Async[User] | err.userNotFound {
-    let const getUserQuery := sql"SELECT username FROM user_database WHERE username='{username}'";
+let tasks := {
+    proc asyncTask(callback: proc(Nihil) -> Nihil) {
+        
+    }
+    Async[default].await(self: *Self) -> T! {
+    }
+}
+
+proc createUser(using createUser: CreateUser) -> Nihil! {
+    let newUser: tasks.Async[User] = tasks.asyncTask(proc() {
+        let globalSession := try getGlobalSession() orReturn err.noSessionAvailable;
+        try createNewUser(username, firstName, lastName) orReturn err.failedToCreateUser;
+    });
+    try newUser.await() |error| {
+        logger?.info("Some fucking error...");
+        return error;
+    };
+}
+
+proc getUserByUsername(username: String, session: Session) -> tasks.Async[User]! {
+    let getUserQuery := sql"SELECT username FROM user_database WHERE username='{username}'";
     let user := try performQuery(session, getUserQuery) orReturn err.userNotFound;
     return user;
 }
 
-proc getUser(username: String) -> User | err.userNotFound | err.noSessionAvailable {
-    let currentUser: User = async (asyncConfiguration) {
+proc getUser(username: String) -> User! {
+    let currentUser: tasks.Async[User] = tasks.asyncTask(proc() {
         let globalSession := try getGlobalSession() orReturn err.noSessionAvailable;
-        set try getUserByUsername(username, globalSession) orReturn err.userNotFound;
-    }
-    return currentUser.await();
-}
-
-proc __MakeAsyncTask__[T](procedure: proc(...) -> T | <___>) -> Async[T] {
-    return Async[T].{ value = procedure };
-}
-
-proc asyncTask[T](procedure: proc(...) -> T) -> Async[T] | <___> {
-    let const aTask := __MakeAsyncTask__() {
-        set try procedure() |error| {
-            return <error>;
-        };
+        let asyncUser := try getUserByUsername(username, globalSession) orReturn err.userNotFound;
+        return asyncUser;
+    });
+    let user := try currentUser.await() |error| {
+        logger?.error("Failed to get user");
+        return error;
     };
-    return aTask;
+    return user;
 }
 
-proc getEmailByUsername(username: String, session: Session, logger: Logger? = null) -> String | err.emailNotFound {
-    let const getEmailQuery := sql"SELECT email FROM user_database WHERE username='{username}'";
-    let email: Async[String] = asyncTask() {
-        set try performQuery(session, getEmailQuery) |error| {
-            logger? logger.error("Failed to perform query to get user email");
+proc getEmailByUsername(username: String, session: Session, logger: Logger? = null) -> String! {
+    let getEmailQuery := sql"SELECT email FROM user_database WHERE username='{username}'";
+    let email: tasks.Async[String?] = tasks.asyncTask(proc() {
+        let query := try performQuery(session, getEmailQuery) |error| {
+            logger?.error("Failed to perform query to get user email");
             return err.emailNotFound;
         };
-    };
-    let const result: String = try email.await() |error| {
-        logger :? logger.error("Failed to get user email");
+        return query;
+    });
+    let result: String = try email.await() |error| {
+        logger?.error("Failed to get user email");
         return error;
     };
     return result;
 }
 
-proc getEmail(username: String) -> String | noSessionAvailable | emailNotFound {
-    let currentUser: Async[User] = asyncTask {
+proc getEmail(username: String, logger: Logger? = null) -> String! {
+    let currentUser: tasks.Async[User] = tasks.asyncTask(proc() {
         let globalSession := try getGlobalSession() orReturn err.noSessionAvailable;
-        set email := getEmailByUsername(username, globalSession) orReturn err.emailNotFound;
-    }
-    let result: String = try currentUser.await() |error| return error;
+        let email := try getEmailByUsername(username, globalSession) orReturn err.emailNotFound;
+        return email;
+    });
+    let result: String = try currentUser.await() |error| {
+        logger?.error("Failed to get email...");
+        return error;
+    };
     return result;
 }
 

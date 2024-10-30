@@ -4,7 +4,7 @@ struct SimpleStruct {
     field3: String,
 }
 
-proc SimpleStruct.__Addition__[T, U](self: T, other: U) -> Nihil {
+proc SimpleStruct.__Addition__[T, U](self: T, other: U) {
     #if typeOf(self), typeOf(other) == {
         #case *Self | Self, *Self | Self {
             self.field1 += other.field1;
@@ -23,7 +23,7 @@ proc SimpleStruct.__Addition__[T, U](self: T, other: U) -> Nihil {
     }
 }
 
-proc SimpleStruct.__Subtraction__[T, U](self: T, other: U) -> Nihil {
+proc SimpleStruct.__Subtraction__[T, U](self: T, other: U) {
     ...;
 }
 

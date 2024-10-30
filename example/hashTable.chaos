@@ -1,0 +1,130 @@
+// Copied from https://github.com/benhoyt/ht/blob/master/ht.c
+// Probably it doesn't work - used just to evaluate language. Most likely things will change...
+
+module hashTable;
+
+struct Entry[T] {
+    key: *String,
+    mut value: *T,
+}
+
+struct HashTable[T] {
+    mut entry: *Entry[T] = ...,
+    mut capacity: U64 = 256,
+    mut size: U64 = 0,
+}
+
+proc initHashTable[T]() -> *HashTable[T]! {
+    uniondef E := Entry[T];
+    uniondef HT := HashTable[T];
+    let table = try mem.malloc(sizeOf(HT)) as *HT |error| return err.nullPointer;
+    table.entry = try mem.calloc(table.capacity, sizeOf(E)) |error| {
+        mem.free(table);
+        return err.nullPointer;
+    };
+    return table;
+}
+
+proc HashTable[T].destroy(using self: *Self) {
+    for (i := 0; i < capacity; i++) mem.free(entry[i].key);
+    mem.free(entry);
+    mem.free(self)
+}
+
+proc HashTable[T].get(using self: *Self, key: *String) -> T! {
+    let hash := hashKey(key);
+    let mut i := hash & (capacity -1);
+
+    while try !entry.get(i).key:? {
+        if (key == entry.get(i).key) return entry.get(i).value;
+        i++; 
+        if (i >= capacity) i = 0;
+    } orReturn |error|;
+
+    return err.keyNotFound;
+}
+
+proc HashTable[T].expand(using self: *Self) -> Nihil! {
+    let newCapacity := capacity * 2;
+    if (newCapacity < capacity) return err.overflow;
+    let mut newEntry: *Entry = try mem.calloc(newCapacity, sizeOf(Entry)) |error| return err.nullPointer;
+
+    for i := 0; i < capacity; i++ {
+        let localEntry := entry[i];
+        if (!key:?) try setEntry(newEntry, newCapacity, key, value, null) |error| return error;
+    }
+    mem.free(localEntry);
+
+    entry = newEntry;
+    capacity = newCapacity;
+}
+
+proc HashTable[T].set(using self: *Self, key: *String, value: *T) -> *String! {
+    if (size  >= capacity / 2) try self.expand() |error| return error;
+    let key := try setEntry(entry, capacity, key, value, size) |error| orReturn error;
+    return key;
+}
+
+macro HashTabe[T].length(self: *Self) -> U64 {
+    set self.size;
+}
+
+proc HashTable[T].iterator(using self: *Self) -> HashTableIterator {
+    return HashTableIterator {
+        table=table,
+        index=0,
+    };
+}
+
+proc HashTable[T].next(using self: *Self, it: HashTableIterator) -> Nihil! {
+    let table: HashTable = it.table;
+    while it.index < capacity {
+        let i: U64 = it.index;
+        if !entry[i].key:? {
+            let entry: *T = entry[i];
+            it.key = entry.key;
+            it.value = entry.value;
+            return;
+        }
+    }
+    return err.noNextValue;
+}
+
+#scope(__File__);
+
+let FNV_OFFSET := 14695981039346656037UL;
+let FNV_PRIME := 1099511628211UL;
+
+proc hashKey(key: *String) -> U64 {
+    let mut hash: U64 = FNV_OFFSET;
+    for (p := key as Const[*String] *p; p++) {
+        hash ^= (*p as String) as U64;
+        hash *= FNV_PRIME;
+    }
+    return hash;
+}
+
+proc setEntry[T](entry: *Entry[T], capacity: U64, key: *String, value: *T size: *U64?) -> *String! {
+    let mut hash := hashKey(key);
+    let mut index := hash & (capacity - 1);
+
+    while !entry[index].key:? {
+        if key == entry[index].key {
+            entry[index].value = value;
+            return entry[index].key;
+        }
+        index++;
+        if (index >= capacity) index = 0;
+    }
+
+    if size:? {
+        key = try strdup(key) |error| return error;
+        (*size)++;
+    }
+    entry[index].key = key as *String;
+    entry[index].value = value;
+    return key;
+}
+
+import mem "core:allocators";
+

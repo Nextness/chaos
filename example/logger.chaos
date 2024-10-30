@@ -52,27 +52,27 @@ struct LoggerInterface::Loger {
     const dirPath: String'Path = "./",
 }
 
-proc Logger.trace(self: *Self, log: Variadic[String]) -> Nihil {
+proc Logger.trace(self: *Self, log: Variadic[String]) {
 
 }
 
-proc Logger.debug(self: *Self, log: Variadic[String]) -> Nihil {
+proc Logger.debug(self: *Self, log: Variadic[String]) {
 
 }
 
-proc Logger.info(self: *Self, log: Variadic[String]) -> Nihil {
+proc Logger.info(self: *Self, log: Variadic[String]) {
 
 }
 
-proc Logger.warning(self: *Self, log: Variadic[String]) -> Nihil {
+proc Logger.warning(self: *Self, log: Variadic[String]) {
 
 }
 
-proc Logger.error(self: *Self, log: Variadic[String]) -> Nihil {
+proc Logger.error(self: *Self, log: Variadic[String]) {
 
 }
 
-proc Logger.critical(self: *Self, log: Variadic[String]) -> {
+proc Logger.critical(self: *Self, log: Variadic[String]) {
 
 }
 

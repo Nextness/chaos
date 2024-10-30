@@ -3,23 +3,23 @@ struct Node[T] {
     next: Node? = null.
 }
 
-proc nodeInit(type: Type) -> *Node | err.outOfMemory {
-    let nodeHead := try mem.alloc(sizeOf(Node[type])) as *Node[T] |error| {
-        print(i"{error}");
+proc nodeInit[T]() -> *Node[T]! {
+    let nodeHead := try mem.alloc(sizeOf(Node[T])) as *Node[T] |error| {
+        println(i"{error}");
         return err.outOfMemory;
     };
     return nodeHead;
 }
 
-proc Node[T].insert(self: *Self, newValue: T) -> Nihil | err.outOfMemory {
-    for (currentNode := node; currentNode != null; currentNode = currentNode.next) nothing;
+proc Node[T].insert(self: *Self, value: T) -> Nihil! {
+    for currentNode := self; !currendNode:?; currentNode = currentNode.next) nothing;
     currentNode.next = try mem.alloc(sizeOf(Node[T])) as *Node[T] |error| {
-        print(i"{error}");
+        println(i"{error}");
         return err.outOfMemory;
     };
-    currentNode.next = newValue;
-    return null;
+    currentNode.next = value;
 }
 
 let err := from "{default}/errors.chaos" include OutOfMemory;
 let mem := from "{default}/allocator.chaos" include alloc;
+

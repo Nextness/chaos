@@ -1,4 +1,4 @@
-proc main(nothing: Nihil) -> Nihil {
+proc main() {
     exampleWhileDefault();
     exampleWhileWithExpression();
     exampleWhileWithRang();
@@ -6,7 +6,7 @@ proc main(nothing: Nihil) -> Nihil {
     exampleWhileWithDict();
 }
 
-proc exampleWhileDefault(nothing: Nihil) -> Nihil {
+proc exampleWhileDefault() {
     let someCondition, increment := true, 0;
     for someCondition {
         increment++;
@@ -18,9 +18,9 @@ proc exampleWhileDefault(nothing: Nihil) -> Nihil {
     }
 }
 
-proc exampleWhileWithExpression(nothing: Nihil) -> Nihil {
+proc exampleWhileWithExpression() {
     let someCondition, increment := true, 0;
-    for nothing; someCondition; increment++ {
+    for (nothing; someCondition; increment++) {
         println(i"Increment count: {increment}");
         if (increment == 3) {
             println("Breaking out of the loop");
@@ -29,20 +29,20 @@ proc exampleWhileWithExpression(nothing: Nihil) -> Nihil {
     }
 }
 
-proc exampleWhileWithRange(nothing: Nihil) -> Nihil {
+proc exampleWhileWithRange() {
     for (0..10) println(i"Current value: {it}");
 }
 
-proc exampleWhileWithNamedRange(nothing: Nihil) -> Nihil {
+proc exampleWhileWithNamedRange() {
     for (someValue in 0..10) println(i"Current value: {some_value}");
 }
 
-proc exampleWhileInList(nothing: Nihil) -> Nihil {
+proc exampleWhileInList() {
     let exampleList: List[4, String] = {"element_0", "element_1", "element_2", "element_3"};
     for (element in exampleList) println(i"{element}");
 }
 
-proc exampleWhileWithDict(nothing: Nihil) -> Nihil {
+proc exampleWhileWithDict() {
     let exampleDict: Dict[4, String, U64] = {"element_0": 0, "element_1": 1, "element_2": 2, "element_3": 3};
     for (value in exampleDict) println(i"{value}");
     for (key, value in exampleDict) println(i"{value}");

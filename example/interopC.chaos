@@ -1,3 +1,3 @@
-#extern("printf") proc printf() -> Nihil;
-#extern("windowShouldClose") proc windowShouldClose() -> CBool;
+#extern("c", "printf") proc printf() -> Nihil;
+#extern("c", "windowShouldClose") proc windowShouldClose() -> CBool;
 

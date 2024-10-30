@@ -1,208 +1,114 @@
-// interface with no input names
-interface proc someNameForProc1(U32, U64, F64 = 10) -> Bool | ___ { ... }
-
-// interface with input names
-interface proc someNameForProc2(in1: U32, in2: U64, in3: F64 = 100) -> Bool | ___ { ... }
-
-// Exact match interface
-#exact interface proc someNameForProc3(in1: U32, in2: U64, in3: F64 = 100) -> Bool | ___ { ... }
+module random;
 
 struct Version {
-    major, minor, fix: U32,
+    major: U32     = ...,
+    minor: U32     = ...,
+    fix:   U32     = ...,
     phase: String? = null,
 }
 
-proc Version.__String__(using self: *Self) -> String {
-    if !major || !minor || !fix {
-        exitWith 1, "Missing major, minor or fix field in the struct...";
-    }
+proc Version.string(using self: *Self) -> String {
     let versionString := i"{major}.{minor}.{fix}";
-    phase :? versionString = i"{versionString}-{phase}";
+    if (!phase:?) versionString = i"{versionString}-{phase}";
     return versionString;
 }
 
 {
-    proc somethingElseNow(#gainOwnership string: *String, #loseOwnership newValue: *String) -> error.nullPointer {
-        if (!string || !newValue) return error.nullPointer;
-        defer free(newValue);
+    proc somethingElseNow(string: *String, newValue: *String) -> err.nullPointer {
+        if (!string || !newValue) return err.nullPointer;
+        defer mem.free(newValue);
         string = i"{*string} {newValue}";
         println(*string);
     }
 
     let stillExists := "hello world";
     let noLongerExists := "how are you?";
-    somethingElseNow(stillExists, noLongerExists);
+    somethingElseNow(&stillExists, &noLongerExists);
 
     struct SomeStruct {
         username: String = ...,
-        password: #redacted String = ...,
+        password: #redacted String = ...
     }
-    let someStruct := SomeStruct {
+    let someStruct := &SomeStruct {
         username="username",
         password=getEnvVar("ENV_VAR_NAME")
     };
 }
 
-proc testingNullable(input1: Bool?) -> Bool | err.nullPointer {
-    input1 :? return err.nullPointer;
+proc testingNullable(input1: Bool?) -> Bool! {
+    if (!input1:?) return err.nullPointer;
     return true;
 }
 
-proc main(nothing: Nihil) -> U64 {
-    let window := try initializeWindow(100, 100, "Chaos Window!") |error| {
+proc main() -> U64 {
+    let window := try initializeWindow(100, 100, "Chaos Windows!") |error| {
         eprintln("Something went wrong in here...");
         return 1;
     };
-    defer destroyWindow(window=window);
 }
 
 struct #singleton Another[T] {
-    somethingElse: T? = null,
-    item: String = "",
-    number: U32 = 0,
+    somethingElse: T?     = null,
+    item:          String = "",
+    number:        U32    = 0,
 }
 
-struct Something {
-    valA: U32 = ..., `swizzling:"a"`
-    valB: U32 = ..., `swizzling:"b"`
-    valC: U32 = ..., `swizzling:"c"`
+swizzling struct Something {
+    a' valA: U32 = ..., 
+    b' valB: U32 = ..., 
+    c' valC: U32 = ..., 
 }
-something: Something = (1000, 2000, 3000);
-something.abc = something.abc * 10;
+something: Something = {1000, 2000, 3000};
+    something.abc *= 10;
 
-proc multipleReturns(toggle: Bool) -> String, U32 | err.nullPointer {
+proc multipleReturns(const toggle: Bool) -> (String, U32)! {
     if (toggle) return err.nullPointer;
     return "hi", 10;
 }
 
-proc noDiscardReturn() -> #noDiscard Bool, String {
+proc noDiscardReturn() -> #noDiscard (Bool, String) {
     return true, "hello world";
 }
 
+// Some logics starts here
+-----------------------------------------------------------------------------------------------------------------------
 noDiscardReturn(); --- This should result in a compile time error
 let someVariableName := noDiscardReturn(); --- This should result in a compile time error
 let someVariableName1, someVariableName2 := noDiscardReturn(); --- This should work just fine
 let nothing := noDiscardReturn(); --- This should work just fine
+-----------------------------------------------------------------------------------------------------------------------
 
 struct JsonResponse[T] {
-    statusCode: U32 = ...,
-    content: Dict[String, T] = ...,
+    statusCode: U32 `json:"status_code"` = ...,
+    content:    T   `json:"content"`     = ...,
 }
 
-let #inline Number := U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F16 | F32 | F64;
+macro Literal[T] $$Literal[T];
 
-struct Array[S: Literal[Number] | Literal[dynamic], T: Type] {
-    items: T = ...,
-    local count: U64 = #0,
-    local capacity: U64 = #id (S != dynamic) S #else 256,
+struct Array[S: LiteralValue[num.Natural | dynamic], T: Type, CT: num.Natural = U64, CP: num.Natural = U64] {
+    items: T,
+    count: U64 = #0,
+    capacity: U64 = 1 #if (S != dynamic) #else S,
 }
 
-proc Array.__RunTimeCheck__(self: *Self) -> Nihil {
-}
-
-struct Array[S: Literal[U64] | Literal[dynamic] = ..., T: Type = ...] {
+struct Array[S: Literal[num.Natural | dynamic], T: Type] {
     items: T = ...,
     count: U64 = #0,
-    capacity: U64 = #if (S != dynamic) S #else 256,
-
-    #if __RunTimeCheck__ {
-        --- do some run time check here using introspection...
-    }
-
-    #if S == dynamic {
-        #configuration __IncludeElement__ := (using * self: *Self, other: T) Nihil, error.outOfMemory {
-            if count >= capacity {
-                capacity = 2 * capacity;
-                items = try mem.realloc(items, capacity * sizeOf(items)) |error| {
-                    eprintln("{error}");
-                    return error.outOfMemory;
-                }
-            }
-            items[count++] = other;
-        },
-        #configuration __RemoveElement__ := {},
-        #configuration __ReplaceElement__ := {},
-    }
+    capacity: U64 = 256 #if (S != dynamic) #else S,
 }
 
-proc checkFirstElementExists(element: Array?[dynamic, ___]) -> Bool, err.nullPointer {
-    --- expands to the following:
-    --- if (element == null) { element = Array[dynamic, String]{}; }
-    element :? element = Array[dynamic, String]{};
-
+proc checkFirstElementExists(mut element: Array?[dynamic, ___]) -> Bool! {
+    if (element:?) element = Array[dynamic, String]{};
     --- Checks for the size of the array, if the accessing index is greater,
     --- raises and nullpointer error or something like this.
-    // try let some := element[0] orReturn <err.nullPointer>;
-    let some := try element[0] orSet "";
+    let some := try element.get(0) orSet "";
     return true;
 }
 
-let someList := Array[dynamic, String]{};
-try checkFirstElementExists(someList);
-
-proc SimpleStruct.__Addition__[T, U, V](self: T, other: U) -> V {
-    #if typeOf(self) == *Self && typeOf(other) == *Self {
-        self.field1 += other.field1;
-        self.field2 += other.field2;
-        return Nihil;
-    }
-}
-
-proc SimpleStruct.__Subtraction__() -> Nihil {
-}
-
-struct SimpleStruct {
-    field1: F64 = ...,
-    field2: U64 = ...,
-
-    #configuration private __Addition__ := {
-        #case (self: *Self, other: *Self) -> Nihil {
-            self.field1 += other.field1;
-            self.field2 += other.field2;
-        }
-    },
-    #configuration private __Subtraction__ := { }
-    #configuration private __Multiplication__ := { }
-    #configuration private __Division__ := { }
-    #configuration private __Modulo__ := { }
-    #configuration private __Exponentiation__ := { }
-    #configuration private __PreIncrement__ := { }
-    #configuration private __PostIncrement__ := { }
-    #configuration private __PreDecrement__ := { }
-    #configuration private __PostDecrement__ := { }
-    #configuration private __Equals__ := { }
-    #configuration private __NotEequals__ := { }
-    #configuration private __GreaterThan__ := { }
-    #configuration private __GreatThanOrEqual__ := { }
-    #configuration private __LessThan__ := { }
-    #configuration private __LessThanOrEqual__ := { }
-    #configuration private __LogicalNot__ := { }
-    #configuration private __LogicalAnd__ := { }
-    #configuration private __LogicalOr__ := { }
-    #configuration private __BitwiseNot__ := { }
-    #configuration private __BitwiseAnd__ := { }
-    #configuration private __BitwiseOr__ := { }
-    #configuration private __BitwiseXor__ := { }
-    #configuration private __BitwiseLeftShit__ := { }
-    #configuration private __BitwiseRightShit__ := { }
-    #configuration private __DirectAssignment__ := { } // to be confirmed
-    #configuration private __AdditionAssignment__ := { }
-    #configuration private __SubtractionAssignment__ := { }
-    #configuration private __MultiplicationAssignment__ := { }
-    #configuration private __DivisionAssigment__ := { }
-    #configuration private __ModuloAssignment__ := { }
-    #configuration private __ExponentiationAssignment__ := { } // **=
-    #configuration private __BitwiseAndAssignment__ := { }
-    #configuration private __BitwiseOrAssignment__ := { }
-    #configuration private __BitwiseXorAssignment__ := { }
-    #configuration private __BitwiseLeftShiftAssignment__ := { } // <<=
-    #configuration private __BitwiseRightShiftAssignment__ := { } // >>=
-}
-
 struct Time {
-    local currentDate: U64,
-    local currentTime: U64,
-    #configuration local const __Specification__ := {
+    mut currentDate: U64 = ...,
+    mut currentTime: U64 = ...,
+    local $$specification := {
         Seconds, Minutes, Hours, Days, Months, Years
     },
 }
@@ -211,14 +117,99 @@ proc Time.now(self: *Self) -> String {
     return "";
 }
 
-let const helloWorld: Const[String] = "Hello World";
+let time: Time(Seconds) = {#0};
+proc acceptsTime(time: Time(Seconds)) -> String {
+    return time.string();
+}
+
+macro List[default].get(self: *Self, position) -> T! {
+    if (self.length < position) set err.outOfBounds;
+    set #unsafe $$get(self, position);
+}
+
+macro List[default].insert(mut self: *Self, position: U64, value: T) -> Nihil! {
+    if (self.length < position) set err.outOfBounds;
+    #unsafe $$insert(self, position, value);
+}
+
+proc someProcExample() -> String! {
+    let someList := List[4, String]{"Hello", "World", "!"};
+    let result1  := try someList.get(0) |error| {
+        return err.outOfBounds;
+    };
+    // Code below should not compile becuase the variable
+    // someList is const and therefore cannot have a value inserted
+    let result2 := try someList.insert(3, "\n") |error| {
+        return err.someError;
+    };
+    return result;
+}
+
+let helloWorld: String = "Hello World";
+
+macro NamedContext[T] {
+    $$NamedContext[T]
+}
+
+let context: NamedContext[proc(...) -> (...) | macro(...) -> (...)] = {
+    macro drawUI(callback: *proc(Nihil) -> Nihil) {
+        rl.beginDrawing();
+        rl.clearBackground(rl.rayWhite);
+        callback();
+        rl.endDrawing();
+    }
+}
+
+
+macro gameNextSecond(timeFrame: *F64, callback: proc(Nihil) -> Nihil) {
+    if (*timeFrame += rl.getFrameTime()) >= 1.0f {
+        callback();
+        *timeFrame = 0.0f;
+    }
+}
+
+#let frameRate := 60;
+proc main() -> U64 {
+    let timeFrame: F64 = 0.0f;
+    let swordAxe: String = "10";
+    let axeValue: String = "10";
+    let swordExperience: String = "100";
+
+    rl.setTargetFPS(frameRate);
+    while !rl.windowShouldClose() {
+        rpg.gameNextSecond(&timeFrame, *proc() {
+            swordProgress += 2;
+            gmp.mpzAddUI(skills.swordFighting.currentLevel, skills.swordFighting.currentLevel, 1);
+            swordValue = gmp.mpzGetStr(null, 10, skills.swordFighting.currentLevel);
+            gmp.mpzAddUI(skills.axeFighting.currentLevel, skills.axeFighting.currentLevel, 1);
+            axeValue = gmp.mpzGetStr(null, 10, skills.axeFighting.currentLevel);
+        });
+
+        rpg.context.drawUI(*proc() {
+            let formattedText := rl.textFormat("%s %s", skills.swordFighting.name, swordValue);
+            rl.drawText(formattedText, 200, 80, 20, rl.black);
+            rl.drawRectangle(200, 120, 200, 20, rl.lightGray);
+            formattedText = rl.textFormat("%s %s", skills.axeFighting.name, axeValue);
+            rl.drawText(formattedText, 200, 160, 20, rl.black);
+            rl.drawRectangle(200, 120, swordProgress, 20, rl.darkGreen);
+        });
+    }
+    rl.closeWindow();
+}
 
 proc main() -> U32 {
-    try with openFile("/somepath", "r") using openedFile {
+    with openedFile: List[dynamic, String] = try openFile("./somepah", "r") {
+        for (line in openedFile.readline()) printf("%s\n", line);
+    } orReturn err.fileNotFound;
+
+    with openedFile := try openFile("./somepath", "r") {
         for line in openedFile.readline() {
             println("%s\n", line);
         }
     } |error| {
+        case err.invalidPath {
+            println(i"error while loading file: {error}");
+        }
         case default {
             println(i"error while loading file: {error}");
             return err.fileNotFound;
@@ -227,32 +218,44 @@ proc main() -> U32 {
     return 0;
 }
 
-proc testingLikelyUnlikely(field1, field2, field3: String) -> Bool {
-    if likely field1 != field2 && field2 != field3 {
-        doSomethingHere();
-    } else unlikely {
-        doSomethingElseHere();
+proc testingLikele(field1, field2, field3: String) -> Bool {
+    likely if field1 != field2 && field2 != field3 {
+        someSomething();
+        return true;
+    }
+    return false;
+}
+
+#entensive
+enum Enum: U64 {
+    A = 1,
+    B,
+    D,
+}
+
+struct EnumMap[E: enum, T: Type] {
+    mut map: Map[E, T],
+}
+
+proc attemptingSwitch(something: some.Enum) {
+    if something == {
+        case (A) fmt.print(i"{A}");
+        case (B) fmt.print(i"Something else {B}");
+        case (D) fmt.print(i"String {D}s nuutz");
     }
 }
 
-interface struct HelloWorldInterface {
-    field1: String,
-    field2: Bool,
-}
+let allocation: *Hello = try mem.alloc(sizeOf(Hello)) orReturn |error|;
 
-interface proc HelloWorldInterface::impl.loadField1Interface(self: *Self) -> Nihil { ... }
-
-struct HelloWorldInterface::Hello {
-    field1: String,
-    field2: Bool,
-    field3: U32,
-}
-
-proc Hello.loadField1Interface::loadField1(self: *Self) -> Nihil { ... }
-
-let logLevel := from "core" import loggingLevelEnum;
-let error := {
-    from "cwd/errors" import outOfMemory, stupidError;
-    from "cwd/anotherFile" import anotherError;
+try mem.alloc[*Hello](sizeOf(Hello)) |error| return error;
+try mem.alloc(sizeOf(Hello)) as *Hello |error| {
+    return err.nullPointer;
 };
+
+import "core:std";
+
+let log := import "core:logs";
+let num := import "core:numbers";
+let #overload err := import "core:errors";
+let #overload err := import "local:libs/errors";
 

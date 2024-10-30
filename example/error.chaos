@@ -1,39 +1,42 @@
-#interface #struct ErrorInterface {
-    name: String = ...,
-    description: String? = ...,
+interface Err {
+    name: String,
+    description: String?,
 }
 
-#struct ErrorInterface::Error {
+struct Err.Error {
     name: String = default,
     description: String? = default,
     libName: String? = null,
-    stack: *Error? = null,
+    mut stack: Error? = null,
+    mut context: String? = null,
 }
 
-proc Error.__String__(using self: *Self) -> String {
-    let errorFmt := "";
-    libName!? errorFmt = i"[{libName}] {errorFmt}";
-    description!? errorFmt = i"{errorFmt}: {description}";
-    stack!? errorFmt = i"{errorFmt}\n{stack}";
-    return errorFmt;
+macro Error.string(using self: *Self) -> String {
+    let mut errorFmt := "";
+    if (!libName?) errorFmt = i"[{libName}]";
+    if (!description?) errorFmt = i"{errorFmt}: {description}";
+    if (!context?) errorFmt = i"{errorFmt}\n{context}";
+    if (!stack?) errorFmt = i"{errorFmt}\n{stack}";
+    set errorFmt;
 }
 
-#let #const {
-    outOfMemory: Const[err.Error] = {
-        name="outOfMemory",
-        description="Your computer seems to be out of memory. Buy more RAM, lol!"
-    };
-    nullPointer: Const[err.Error] = {
-        name="nullPointer",
-        description="Null pointer, do better..."
-    };
-    zeroValue: Const[err.Error] = {
-        name="zeroValue",
-        description="Provided 0 valued parameters, but expected something else..."
-    };
-    overflowValue: Const[err.Error] = {
-        name="overflowValue",
-        description="The value overflow."
-    };
+let outOfMemory: Error = {
+    "outOfMemory",
+    "Your computer seems to be out of memory. Buy more RAM, lol!"
+};
+
+let nullPointer: Error = {
+    "nullPointer",
+    "Null pointer, do better..."
+};
+
+let zeroValue: Error = {
+    "zeroValue",
+    "Provided 0 valued parameters, but expected something else..."
+};
+
+let overflowValue: Error = {
+    "overflowValue",
+    "The value overflow."
 };
 
