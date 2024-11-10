@@ -1,55 +1,55 @@
 enum LoggerLevel {
-    TRACE := "trace",
-    DEBUG := "debug",
-    INFO := "info",
-    WARNING := "warning",
-    ERROR := "error",
-    CRITICAL := "critical",
-    DISASTER := "disaster",
-
-    #configuration(__Start__, 0),
-    #configuration(__Step__, 1),
+    Trace: U64 = 0;
+    Debug;
+    Info;
+    Warning;
+    Error;
+    Critical;
+    Disaster;
 }
 
 enum SaveLogLocation {
-    CLOUD := "cloud",
-    LOCALLY := "locally",
-
-    #configuration(__Start__, 0b1),
-    #configuration(__Step__, 0b1),
+    Cloud: U64 = 0;
+    Local;
 }
 
 enum DateLanguage {
-    ENGLISH,
-    PORTUGUESE,
+    English,
+    Portuguese,
 }
 
-interface struct LoggerInterface {
-    dateFormat: String = "%YEAR-%MONTH-%DAY %hour-%minutes-%seconds",
-    dateLanguage: DateLanguage = .ENGLISH,
-    output: Output = .STANDARD,
-    includeOSName: Bool = ...,
-    saveLocation: SaveLocation = ...,
-    #if self.saveLocation == {
-        #case .CLOUD {
-            logUrl: String = ...,
-            authenticationMethod: AuthenticationMethod = ...,
-            logCredential: String = ...,
-            #if (self.retryOnFailure) retryCount: U64 = ...,
-        }
-        #case .LOCAL {
-            dirPath: String'Path = ...,
-        }
+interface Logger {
+    dateFormat: String = <<%YEAR-%MONTH-%DAY %hour-%minute-%second>>;
+    dateLanguage: DateLanguage = English;
+    output: FileDescriptor = StdOut;
+    includeOSName: Bool = ...;
+    saveLogLocation: Literal[SaveLogLocation] = ...;
+    #if self.saveLogLocation == {
+        #case Cloud {
+            logUrl: String = ...;
+            authenticationMethod: AuthenticationMethod = ...;
+        } #break;
+        #case Local {
+            dirPath: Path = ...;
+        } #break;
     }
-};
 
-struct LoggerInterface::Loger {
-    const dateFormat: String = default,
-    const dateLanguage: DateLanguage = default,
-    const output: Output = default,
-    const includeOSName: Bool = false,
-    const saveLocation: LogLocation = .LOCAL,
-    const dirPath: String'Path = "./",
+    proc Self.trace(self: *Self, logMessage: Variadic[String]) -> Void;
+    proc Self.debug(self: *Self, logMessage: Variadic[String]) -> Void;
+    proc Self.info(self: *Self, logMessage: Variadic[String]) -> Void;
+    proc Self.warning(self: *Self, logMessage: Variadic[String]) -> Void;
+    proc Self.error(self: *Self, logMessage: Variadic[String]) -> Void;
+    proc Self.critical(self: *Self, logMessage: Variadic[String]) -> Void;
+    proc Self.disaster(self: *Self, logMessage: Variadic[String]) -> Void;
+}
+
+struct Logger.Logger {
+    dateFormat: String = default;
+    dateLanguage: DateLanguage = default;
+    output: Output = default;
+    includeOSName: Bool = false;
+    saveLocation: Literal[SaveLogLocation] = LOCAL;
+    dirPath: Path = <<./>>;
 }
 
 proc Logger.trace(self: *Self, log: Variadic[String]) {

@@ -1,42 +1,50 @@
-interface Err {
-    name: String,
-    description: String?,
+module errors;
+
+interface Err
+{
+    name: String;
+    description: String? = null;
+    proc Self.string(self: *Self) -> String;
 }
 
-struct Err.Error {
-    name: String = default,
-    description: String? = default,
-    libName: String? = null,
-    mut stack: Error? = null,
-    mut context: String? = null,
+struct Err.Error
+{
+    name: String = default;
+    description: String? = default;
+    libName: String? = null;
+    mut stack: Error? = null;
+    mut context: String? = null;
 }
 
-macro Error.string(using self: *Self) -> String {
-    let mut errorFmt := "";
-    if (!libName?) errorFmt = i"[{libName}]";
-    if (!description?) errorFmt = i"{errorFmt}: {description}";
-    if (!context?) errorFmt = i"{errorFmt}\n{context}";
-    if (!stack?) errorFmt = i"{errorFmt}\n{stack}";
-    set errorFmt;
+proc Error.string(using self: *Self) -> String
+{
+    let mut @free errorFmt: sb::StringBuilder = sb::allocStringBuilder();
+    defer sb::freeStringBuilder(errorFmt);
+
+    libName ?: errorFmt.sb::append(<<[{libName}]>>);
+    description ?: errorFmt.sb::append(<<: {description}>>);
+    context ?: errorFmt.sb::append(<<\n{context}>>);
+    stack ?: errorFmt.sb::append(<<\n{stack}>>);
+
+    return errorFmt.sb::string();
 }
 
-let outOfMemory: Error = {
-    "outOfMemory",
-    "Your computer seems to be out of memory. Buy more RAM, lol!"
-};
+enum CoreError {
+    OutOfMemory: Err = {
+        <<outOfMemory>>, <<Your computer seems to be out of memory. Buy more RAM, lol!>>
+    };
+    NullPointer := {
+        <<nullPointer>>, <<Null pointer, do better...>>
+    };
+    ZeroValue := {
+        <<zeroValue>>, <<Provided 0 valued parameters, but expected something else...>>
+    };
+    OverflowValue := {
+        <<overflowValue>>, <<The value overflow.>>
+    };
+}
 
-let nullPointer: Error = {
-    "nullPointer",
-    "Null pointer, do better..."
-};
+#scope(__file__);
 
-let zeroValue: Error = {
-    "zeroValue",
-    "Provided 0 valued parameters, but expected something else..."
-};
-
-let overflowValue: Error = {
-    "overflowValue",
-    "The value overflow."
-};
+let sb := import <<core:stringBuilder>>;
 

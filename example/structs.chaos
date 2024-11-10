@@ -1,0 +1,24 @@
+
+struct helloWorld {
+    hello: String = ...;
+    world: Bool = ...;
+}
+
+interface ToBeImplemented {
+    value1: String;
+    value2: U64 = 100;
+
+    proc Self.string(self: *Self) -> String;
+    proc Self.increment(self: *Self) -> Void;
+}
+
+struct ToBeImplemented.Implementation {
+    value1: String = "";
+    value2: U64 = default;
+    value3: Bool? = null;
+}
+
+proc Implementation.string(self: *Self) -> String {}
+
+proc Implementation.increment(self: *Self) -> Void {}
+

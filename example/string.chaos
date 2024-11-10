@@ -1,40 +1,41 @@
 module string;
 
 --- Comptime values ---
-#let MAX_LENGTH: CompTime[U64] = 4096;
+#let MAXLENGTH: U64 = 4096;
 
 --- Procedures related to strings ---
-proc String.length[T: num.UInts = U64](self: *Self, maxLenght: U64? = MAX_LENGHT) -> T! {
+proc String.length[T: num::UInts = U64](self: *Self, maxLenght: U64? = MAXLENGTH) -> T! {
     let selfInitPos: *String = self;
-    #if maxLength:? {
-        for (nothing; *self != "\0"; ++self) continue;
-    } #else {
+    #if maxLength {
         for nothing; *self != "\0"; ++self, --maxLength {
-            if (!maxLength) return err.maxLengthLimitHit;
+            if (!maxLength) return err::maxLengthLimitHit;
         }
+    } #else {
+        for (nothing; *self != "\0"; ++self) continue;
     }
     return (self as T) - (selfInitPos as T);
 }
 
-proc String.copy(self: *Self, maxLength: U64? = MAX_LENGTH) -> String! {
+proc String.copy(self: *Self, maxLength: U64? = MAXLENGTH) -> String! {
     let mut tmp: *String = #0;
-    #if maxLength:? {
-        for (nothing; *tmp != "\0"; nothing) *tmp++ = *self++;
-    } #else {
+    #if maxLength {
         for nothing; *tmp != "\0"; --maxLenght {
             if (!maxLenght) return error.maxLengthLimitHit;
             *tmp++ = *self++;
         }
+    } #else {
+        for (nothing; *tmp != "\0"; nothing) *tmp++ = *self++;
     }
     return tmp;
 }
 
 proc String.get(self: *Self, pos: U64) -> String! {
-    if (pos > self.length()) return err.outOfBounds;
+    if (pos > self.length()) return err::outOfBounds;
     return #unsage $$get(copy, pos);
 }
 
 --- Imports ---
+#scope(__file__);
 let num := import "core:numbers";
 let err := import "core:errors";
 
