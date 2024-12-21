@@ -1,178 +1,160 @@
-module random;
+module random
 
-struct Version {
-    major: U32     = ...,
-    minor: U32     = ...,
-    fix:   U32     = ...,
-    phase: String? = null,
+type Version[T: num::Ints = num::U8] struct
+{
+    major: U8      = ...
+    minor: U8      = ...
+    fix:   U8      = ...
+    phase: String? = null
 }
 
-proc heapAlloc[T: *Type = *Void](size: U64) -> T
+proc heapAlloc[T: *Type = *Void](size: U64) => @free T #if strictAllocation #else T
 {
-    ...;
+    ...
 }
 
 // if allocatedString is never destroyed, the compiler will fail
-let @free allocatedString := allocator::heapAlloc[*String](128);
+let @free allocatedString := allocator::heapAlloc[*String](128)
 
-proc @free heapFree[T: *Type](object: T) -> Void
+proc heapFree[T: *Type](@free object: T) => Void
 {
-    ...;
+    ...
 }
 
-proc Version.string(using self: *Self) -> String
+proc Version[default].string(using self: *Self) => String
 {
-    let versionString := <<{major}.{minor}.{fix}>>;
-    if (!phase.?) versionString = <<{versionString}-{phase}>>;
-    return versionString;
+    let versionString := <<{major}.{minor}.{fix}>>
+    if phase != null then versionString = <<{versionString}-{phase}>>
+    return versionString
 }
 
 {
-    proc somethingElseNow(string: *String, newValue: *String) -> err.nullPointer {
-        if (!string || !newValue) return err.nullPointer;
-        defer mem.free(newValue);
-        string = <<{*string} {newValue}>>;
-        println(*string);
+    proc somethingElseNow(string: *String, @destroyed newValue: *String) => err.nullPointer {
+        if (!string || !newValue) return err.nullPointer
+        defer allocator::heapFree(newValue)
+        string = <<{*string} {newValue}>>
+        println(*string)
     }
 
-    let stillExists := >>hello world>>;
-    let noLongerExists := >>how are you?>>;
-    somethingElseNow(&stillExists, &noLongerExists);
+    let stillExists := <<hello world>>
+    let mut @destroyed noLongerExists := allocator::heapAlloc[*String](20)
+    noLongerExists = <<how are you?>>
+    somethingElseNow(&stillExists, &noLongerExists)
 
-    struct SomeStruct {
+    type SomeStruct struct {
         username: String = ...,
         password: #redacted String = ...
     }
     let someStruct := &SomeStruct {
         username= <<username>>,
         password=getEnvVar(<<ENV_VAR_NAME>>)
-    };
+    }
 }
 
-proc testingNullable(input1: Bool?) -> Bool! {
-    if (!input1:?) return err.nullPointer;
-    return true;
-}
+proc testingNullable(input1: Bool?) => Bool! then return true if input != null else err.nullPointer
 
 proc main() -> U64 {
-    let window := try initializeWindow(100, 100, >>Chaos Windows!>>) |error| {
-        fmt.eprint(<<Something went wrong in here...>>);
-        return 1;
-    };
+    let window := try initializeWindow(100, 100, <<Chaos Windows!>>) |error| {
+        fmt.eprint(<<Something went wrong in here...>>)
+        return 1
+    }
 }
 
-struct #singleton Another[T] {
-    somethingElse: T?     = null,
-    item:          String = >>>>,
-    number:        U32    = 0,
+type Another[T] struct
+{
+    somethingElse: T?     = null
+    item:          String = <<>>
+    number:        U32    = 0
 }
 
-swizzling struct Something {
-    a' valA: U32 = ..., 
-    b' valB: U32 = ..., 
-    c' valC: U32 = ..., 
+type Something swizzling
+{
+    a' valA: U32 = ...
+    b' valB: U32 = ...
+    c' valC: U32 = ...
 }
-something: Something = {1000, 2000, 3000};
-    something.abc *= 10;
+something: Something = {1000, 2000, 3000}
+something.abc *= 10
 
 proc multipleReturns(const toggle: Bool) -> (String, U32)! {
-    if (toggle) return err.nullPointer;
-    return <<h>>, 10;
+    if (toggle) return err.nullPointer
+    return <<h>>, 10
 }
 
 proc noDiscardReturn() -> #noDiscard (Bool, String) {
-    return true, <<hello world>>;
+    return true, <<hello world>>
 }
 
 // Some logics starts here
 -----------------------------------------------------------------------------------------------------------------------
-noDiscardReturn(); --- This should result in a compile time error
-let someVariableName := noDiscardReturn(); --- This should result in a compile time error
-let someVariableName1, someVariableName2 := noDiscardReturn(); --- This should work just fine
-let nothing := noDiscardReturn(); --- This should work just fine
+noDiscardReturn() --- This should result in a compile time error
+let someVariableName := noDiscardReturn() --- This should result in a compile time error
+let someVariableName1, someVariableName2 := noDiscardReturn() --- This should work just fine
+let nothing := noDiscardReturn() --- This should work just fine
 -----------------------------------------------------------------------------------------------------------------------
 
-struct JsonResponse[T] {
-    statusCode: U32 `json:<<status_code>>` = ...,
-    content:    T   `json:<<content>>`     = ...,
+type JsonResponse[T: types::Primitive] struct
+{
+    `json:<<status_code>>` statusCode: U32 = ...
+    `json:<<content>>`     content:    T   = ...
 }
 
-macro Literal[T] => $$Literal[T];
+macro Literal[T] => $$Literal[T]
 
-struct Array[S: Literal[num::Natural | dynamic], T: Type]
+type Array[S: Literal[num::Natural | dynamic], T: Type] struct
 {
-    items: T = ...,
-    count: U64 = #0,
-    capacity: U64 = S #if (S != dynamic) #else 256,
+    items: T = ...
+    count: U64 = #0
+    capacity: U64 = S #if (S != dynamic) #else 256
 }
 
 proc checkFirstElementExists(mut element: Array?[dynamic, ___]) -> Bool!
 {
-    if (!element.?) elemennt = Array[dynamic, String]{#0};
+    if (!element.?) element = Array[dynamic, String]{#0}
     --- Checks for the size of the array, if the accessing index is greater,
     --- raises and nullpointer error or something like this.
-    let some := try element.get(0) orSet <<>>;
-    return true;
+    let some := try element.get(0) orSet <<>>
+    return true
 }
 
-enum TimeUnit [T: type::UInts = I64]
-{
-    Seconds: T = 0;
-    Minutes;
-    Hours;
-    Days;
-    Months;
-    Years;
-}
-
-struct Time [U: Literal[TimeUnit] = Seconds]
-{
-    mut currentDate: U64 = ...;
-    mut currentTime: U64 = ...;
-}
-
-proc Time.now(self: *Self) -> String
-{
-    return <<>>;
-}
-
-let something: String! = doSomeOpWithError();
+let something: String! = doSomeOpWithError()
 try something |error| {
     
-};
+}
 
-let time: Time[Minutes] = #0;
-proc acceptsTime(time: Time[Seconds]) -> String {
-    return time.string();
+let time: Time[Minutes] = #0
+proc acceptsTime(time: Time[Seconds]) -> String
+{
+    return time.string()
 }
 
 macro List[default].get(self: *Self, position) -> T!
 {
-    if (self.length < position) set err.outOfBounds;
-    set #unsafe $$get(self, position);
+    if (self.length < position) set err.outOfBounds
+    set #unsafe $$get(self, position)
 }
 
 macro List[default].insert(mut self: *Self, position: U64, value: T) -> Void!
 {
-    if (self.length < position) set err.outOfBounds;
-    #unsafe $$insert(self, position, value);
+    if (self.length < position) set err.outOfBounds
+    #unsafe $$insert(self, position, value)
 }
 
 proc someProcExample() -> String!
 {
-    let someList := List[4, String]{<<Hello>>, <<World>>, <<!>>};
+    let someList := List[4, String]{<<Hello>>, <<World>>, <<!>>}
     let result1  := try someList.get(0) |error| {
-        return err.outOfBounds;
-    };
+        return err.outOfBounds
+    }
     // Code below should not compile becuase the variable
     // someList is const and therefore cannot have a value inserted
     let result2 := try someList.insert(3, <<\n>>) |error| {
-        return err.someError;
-    };
-    return result;
+        return err.someError
+    }
+    return result
 }
 
-let helloWorld: String = <<Hello World>>;
+let helloWorld: String = <<Hello World>>
 
 macro NamedContext[T] {
     $$NamedContext[T]
@@ -180,87 +162,117 @@ macro NamedContext[T] {
 
 let context: NamedContext[proc(...) -> (...) | macro(...) -> (...)] = {
     macro drawUI(callback: *proc(Void) -> Void) {
-        rl.beginDrawing();
-        rl.clearBackground(rl.rayWhite);
-        callback();
-        rl.endDrawing();
+        rl.beginDrawing()
+        rl.clearBackground(rl.rayWhite)
+        callback()
+        rl.endDrawing()
     }
 }
 
 
 macro gameNextSecond(timeFrame: *F64, callback: proc(Void) -> Void) {
     if (*timeFrame += rl.getFrameTime()) >= 1.0f {
-        callback();
-        *timeFrame = 0.0f;
+        callback()
+        *timeFrame = 0.0f
     }
 }
 
-proc main() -> U32 {
-    with openedFile: List[dynamic, String] = try openFile(<<./somepah>>, <<r>>) {
-        for (line in openedFile.readline()) printf(<<%s\n>>, line);
-    } orReturn err.fileNotFound;
-
-    with openedFile := try openFile(<<./somepath>>, <<r>>) {
-        for line in openedFile.readline() {
-            println(<<%s\n>>, line);
-        }
-    } |error| {
-        case err.invalidPath {
-            println(<<error while loading file: {error}>>);
-        }
-        case default {
-            println(<<error while loading file: {error}>>);
-            return err.fileNotFound;
-        }
+proc main() -> U32
+{
+    let openedFile: List[dynamic, String] = try open(<<./somepath/file.ext>>, <<r>>) |err| {
+        logger.error(<<Error while loading file - reason: {err.string()}>>);
+        return 1;
     };
+    defer close(openedFile);
+
+    label handlingFileContent {
+        let lineContent := try openedFile.readline() |err| {
+            logger.error(<<Failed to parse line - reason: {err.string()}>>);
+            return 1;
+        }
+        if lineContent.hasEnded() then break handlingFileContent;
+        print(<<{lineContent}>>);
+        goto handlingFileContent;
+    }
+
     return 0;
 }
 
 proc testingLikele(field1, field2, field3: String) -> Bool
 {
     likely if field1 != field2 && field2 != field3 {
-        someSomething();
-        return true;
+        someSomething()
+        return true
     }
-    return false;
+    return false
 }
 
-#entensive
-enum Enum: U64 {
+type Enum enum U64 #extensive
+{
     A = 1,
     B,
-    D,
+    D
+}
+
+type EnumMape[E: enum, T: Type] struct
+{
+    mut map: Map[E, T]
 }
 
 struct EnumMap[E: enum, T: Type] {
     mut map: Map[E, T],
 }
 
-proc attemptingSwitch(something: some.Enum)
+proc attemptingSwitch(something: some::Enum)
 {
     #extensive if something == {
-        case (A) fmt.print(<<{A}>>);
-        case (B) fmt.print(<<Something else {B}>>);
-        case (D) fmt.print(<<String {D}s nuutz>>);
+        case A then fmt.print(<<{A}>>)
+        case B then fmt.print(<<Something else {B}>>)
+        case D then fmt.print(<<String {D}s nuutz>>)
     }
 }
 
-let allocation: *Hello = try mem.alloc(sizeOf(Hello)) orReturn |error|;
+let allocation: *Hello = try mem.alloc(sizeOf(Hello)) orReturn |error|
+let somethingNew := try someOperation() |excuseMe| {
+    
+}
 
-try mem.alloc[*Hello](sizeOf(Hello)) |error| return error;
+try mem.alloc[*Hello](sizeOf(Hello)) return error
 try mem.alloc(sizeOf(Hello)) as *Hello |error| {
-    return err.nullPointer;
-};
+    return err.nullPointer
+}
 
-#scope(__file__);
+type myError error
+{
+    errorName
+}
 
-import <<core:std>>;
-import <<core:fmt>>;
+proc tryingShitOut(input: StringBuilder) => Void!
+{
+    label loopString {
+        currentChar := try input.get() |err| {
+            logger.error(<<Failed to get character>>)
+            return err
+        }
+        if currentChar == <<\0>> then break loopString
+        try doSomeOperation(currentChar) |err| {
+            logger.error(<<Failed to do some operation>>)
+            return err
+        }
+        goto loopString
+    }
+}
 
-let allocator := import <<core:allocator>>;
-let log       := import <<core:logs>>;
-let num       := import <<core:numbers>>;
 
-let #overload err := import <<core:errors>>;
-let #overload err := import <<local:libs/errors>>;
+let bitShift := 0b1 <- 2
+let bitShift2 := 0b10 -> 2
+
+#scope(__file__)
+
+import core::std
+import core::fmt
+
+let alloc := import core::allocator<logger>
+let log   := import core::logging
+let num   := import core::numbers
 

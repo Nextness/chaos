@@ -1,41 +1,55 @@
-module string;
+module string
 
 --- Comptime values ---
-#let MAXLENGTH: U64 = 4096;
+#let maxLen: U64 = 4096
 
 --- Procedures related to strings ---
-proc String.length[T: num::UInts = U64](self: *Self, maxLenght: U64? = MAXLENGTH) -> T! {
-    let selfInitPos: *String = self;
+proc String.length[T: num::UInts = U64](&self, maxLength: U64? = maxLen) => T!
+{
+    let selfInitPos: *String = self
     #if maxLength {
-        for nothing; *self != "\0"; ++self, --maxLength {
-            if (!maxLength) return err::maxLengthLimitHit;
+        label stringPos {
+            if self != <<\0>> then break stringPos
+            if !maxLength then return err.maxLengthLimitHit
+            self++; maxLength--; goto stringPos
         }
     } #else {
-        for (nothing; *self != "\0"; ++self) continue;
+        label stringPos {
+            if self != <<\0>> then break stringPos
+            self++; goto stringPos
+        }
     }
-    return (self as T) - (selfInitPos as T);
+    return (self as T) - (selfInitPos as T)
 }
 
-proc String.copy(self: *Self, maxLength: U64? = MAXLENGTH) -> String! {
-    let mut tmp: *String = #0;
+proc String.copy(&self, maxLength: U64? = maxLen) => String!
+{
+    let mut tmp: *String = #0
     #if maxLength {
-        for nothing; *tmp != "\0"; --maxLenght {
-            if (!maxLenght) return error.maxLengthLimitHit;
-            *tmp++ = *self++;
+        label stringPos {
+            if tmp != <<\0>> then break stringPos
+            if !maxLength then return err.maxLengthLimitHit
+            tmp++ = self++
+            maxLength--; goto stringPos
         }
     } #else {
-        for (nothing; *tmp != "\0"; nothing) *tmp++ = *self++;
+        label stringPos {
+            if tmp != <<\0>> then break stringPos
+            tmp++ = self++
+            goto stringPos
+        }
     }
-    return tmp;
+    return tmp
 }
 
-proc String.get(self: *Self, pos: U64) -> String! {
-    if (pos > self.length()) return err::outOfBounds;
-    return #unsage $$get(copy, pos);
+proc String.get(&self, pos: U64) => String!
+{
+    if pos > self.length() return err.outOfBounds
+    return #unsafe $$get(self, pos)
 }
 
 --- Imports ---
-#scope(__file__);
-let num := import "core:numbers";
-let err := import "core:errors";
+#scope(__file__)
+let num := import core::numbers
+let err := import core::errors
 

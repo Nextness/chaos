@@ -13,17 +13,60 @@ uniondef Real    := Ints | UInts | Floats;
 
 uniondef AnyNumber := Natural | Real | Complex | Quaternion;
 
+uniondef Text := Char | String | Rune;
+
+--- Primitives ---
+uniondef Primitives := (
+    I8 | I16 | I32 | I64 | I128 |
+    U8 | U16 | U32 | U64 | U128 |
+
+    F16 | F32  | F64  | F128 |
+    C64 | C128 | Q128 | Q256 |
+
+    Char | String | Rune |
+    Byte | Bool   |
+
+    List  [dynamic | UInts, Self] |
+    Array [dynamic | UInts, Self] |
+    Dict  [dynamic | UInts, Text  | Real, Self]
+);
+
 --- Time ---
-struct Time {
-    mut date: U64,
-    mut time: U64,
-    local $$specification = {
-        NanoSeconds, MicroSeconds, Seconds, Minutes, Hours, Days, Months, Years,
+enum TimeUnit {
+    NanoSeconds := 1_000_000_000.0;
+    MicroSeconds := 1_000_000.0;
+    MiliSeconds := 1_000.0;
+    Seconds := 60.0;
+    Minutes := 60.0;
+    Hours := 24.0;
+}
+
+#assert(
+    TimeUnit.NanoSeconds.value == TimeUnit[0].value
+);
+
+struct Time [Unit: Literal[TimeUnit] = Seconds]
+{
+    mut date: U64 = ...;
+    mut time: F64 = ...;
+}
+
+proc Time[default].to(self: *Self, timeUnit: Literal[TimeUnit]) -> Time {
+    #assert(Unit != timeUnit, <<Cannot convert time to the same unit>>);
+    let tmp := self.time;
+    let newTimeUnit: Time = #0;
+
+    #if Unit < timeUnit {
+        for (element in TimeUnit[Unit+1:timeUnit]) tmp /= element;
+    } #else {
+        for (element in TimeUnit[timeUnit:Unit+1]) tmp *= element;
     }
+
+    return newTimeUnit.{date=self.date, time=tmp};
 }
 
 proc Time.now(self: *Self) -> String {
-    
+    return <<>>;
 }
 
 

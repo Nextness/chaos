@@ -1,25 +1,35 @@
-struct Node[T] {
-    value: T,
-    next: Node? = null.
+module linkedList<logger: *Logger? = null>
+
+type Node[T] struct
+{
+    value: T
+    next: Node? = null
 }
 
-proc nodeInit[T]() -> *Node[T]! {
-    let nodeHead := try mem.alloc(sizeOf(Node[T])) as *Node[T] |error| {
-        println(i"{error}");
-        return err.outOfMemory;
-    };
-    return nodeHead;
+proc nodeInit[T](Void) => #free *Node[T]!
+{
+    let nodeHead := try mem::alloc(sizeOf(Node[T])) |excuseMe| {
+        #if logger != null #then logger.error(<<Failed to allocate memory for linkedList>>)
+        return err.outOfMemory
+    }
+    return nodeHead
 }
 
-proc Node[T].insert(self: *Self, value: T) -> Nihil! {
-    for currentNode := self; !currendNode:?; currentNode = currentNode.next) nothing;
-    currentNode.next = try mem.alloc(sizeOf(Node[T])) as *Node[T] |error| {
-        println(i"{error}");
-        return err.outOfMemory;
-    };
-    currentNode.next = value;
+proc Node[default].insert(&self, value: T) => Void!
+{
+    currentNode := self
+    label looping {
+        if currentNode != null then break looping
+        currentNode = currentNode.next; goto looping
+    }
+
+    currentNode.next = try mem::alloc(sizeOf(Node[T])) |excuseMe| {
+        #if logger != null #then logger.error(<<Failed to allocate next element in linkedList>>)
+        return err.outOfMemory
+    }
+    curentNode.next = value
 }
 
-let err := from "{default}/errors.chaos" include OutOfMemory;
-let mem := from "{default}/allocator.chaos" include alloc;
+let err := import core::error
+let mem := import core::allocator
 

@@ -1,74 +1,73 @@
-dataArgs CreateUser {
-    username, firstName, lastName: String,
-    logger: Logger? = null,
+module asyncTasks<logger: Literal[Logger]? = null, strictAllocation: Literal[Bool] = False>
+
+macro strictAllocation[T]
+{
+    set @free T #if strictAllocation #else T
 }
 
-let tasks := {
-    proc asyncTask(callback: proc(Nihil) -> Nihil) {
-        
+proc createUser(username, firstName, lastName: String) => Void!
+{
+    let newUser: tasks::Async[User] = tasks::asyncTask({
+        let globalSession := try getGlobalSession orReturn err.noSessionAvailable
+        try createNewUser(username, firstName, lastName) orReturn err.failedtoCreateUser
+    })
+    try newUser.await() |excuseMe| {
+        #if logger != null #then logger.info(<<Some fucking error {excuseMe.string()}>>)
+        return excuseMe
     }
-    Async[default].await(self: *Self) -> T! {
+}
+
+proc getUserByUsername(username: String, session: Session) => tasks::Async[strictAllocation[User]]!
+{
+    let getUserQuery := <<SELECT username FROM user_database WHERE username={username}>>
+    let user := try perforQuery(session, getUserQuery) orReturn err.userNotFound
+    return user
+}
+
+proc getUser(username: String) => strictAllocation[User!]
+{
+    let currentUser: tasks::Async[User] = tasks::asyncTask({
+        let globalSession := try getGlobalSession() orReturn err.noSessionAvailable
+        let asyncUser := try getUserByUsername(username, globalSession) orReturn err.userNotFound
+        return asyncUser
+    })
+    let user := try currentUser.await() |excuseMe| {
+        #if logger != null #then logger.error(<<Failed to get user>>)
+        return excuseMe
     }
+    return user
 }
 
-proc createUser(using createUser: CreateUser) -> Nihil! {
-    let newUser: tasks.Async[User] = tasks.asyncTask(proc() {
-        let globalSession := try getGlobalSession() orReturn err.noSessionAvailable;
-        try createNewUser(username, firstName, lastName) orReturn err.failedToCreateUser;
-    });
-    try newUser.await() |error| {
-        logger?.info("Some fucking error...");
-        return error;
-    };
+proc getEmailByUsername(username: String, session: Session) => strictAllocation[String!]
+{
+    let getEmailQuery := <<SELECT email FROM user_database WHERE username={username}>>
+    let email : tasks::Async[String?] = tasks::asyncTask({
+        let query := try performQuery(session, getEmailQquery) |excuseMe| {
+            #if logger != null #then logger.error(<<Failed to perform query to get user email>>)
+            return err.emailNotFound
+        }
+        return query
+    })
+    let result: String = try email.await() |excuseMe| {
+        #if logger != null #then logger.error(<<Failed to get user email>>)
+        return excuseMe
+    }
+    return result
 }
 
-proc getUserByUsername(username: String, session: Session) -> tasks.Async[User]! {
-    let getUserQuery := sql"SELECT username FROM user_database WHERE username='{username}'";
-    let user := try performQuery(session, getUserQuery) orReturn err.userNotFound;
-    return user;
+proc getEmail(username: String) => strictAllocation[String!]
+{
+    let currentUser: tasks::Async[User] = tasks::asyncTask({
+        let globalSession := try getGlobalSession() orReturn err.noSessionAvailable
+        let email := try getEmailByUsername(username, globalSession) orReturn err.emailNotFound
+        return email
+    })
+    let result: String = try currentUser.await() |excuseMe| {
+        #if logger != null #then logger.error(<<Failed to get email...>>)
+        return excuseMe
+    }
+    return result
 }
 
-proc getUser(username: String) -> User! {
-    let currentUser: tasks.Async[User] = tasks.asyncTask(proc() {
-        let globalSession := try getGlobalSession() orReturn err.noSessionAvailable;
-        let asyncUser := try getUserByUsername(username, globalSession) orReturn err.userNotFound;
-        return asyncUser;
-    });
-    let user := try currentUser.await() |error| {
-        logger?.error("Failed to get user");
-        return error;
-    };
-    return user;
-}
-
-proc getEmailByUsername(username: String, session: Session, logger: Logger? = null) -> String! {
-    let getEmailQuery := sql"SELECT email FROM user_database WHERE username='{username}'";
-    let email: tasks.Async[String?] = tasks.asyncTask(proc() {
-        let query := try performQuery(session, getEmailQuery) |error| {
-            logger?.error("Failed to perform query to get user email");
-            return err.emailNotFound;
-        };
-        return query;
-    });
-    let result: String = try email.await() |error| {
-        logger?.error("Failed to get user email");
-        return error;
-    };
-    return result;
-}
-
-proc getEmail(username: String, logger: Logger? = null) -> String! {
-    let currentUser: tasks.Async[User] = tasks.asyncTask(proc() {
-        let globalSession := try getGlobalSession() orReturn err.noSessionAvailable;
-        let email := try getEmailByUsername(username, globalSession) orReturn err.emailNotFound;
-        return email;
-    });
-    let result: String = try currentUser.await() |error| {
-        logger?.error("Failed to get email...");
-        return error;
-    };
-    return result;
-}
-
-let tasks := import "core/tasks/default";
+let tasks := import core::tasks::default
 

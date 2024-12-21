@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 type TokenType int
@@ -24,19 +25,66 @@ type ChaosToken struct {
 	FilePath     string
 }
 
-func main() {
-	filePath := "./../example/assignment.chaos"
+func isAlphaNumeric(char byte) bool {
+	return ((char >= 'a' && char <= 'z') ||
+		(char >= 'A' && char <= 'Z') ||
+		(char >= '0' && char <= '9'))
+}
 
-	buffer, err := os.ReadFile(filePath)
+func main() {
+	filePath, _ := filepath.Abs("./../example/assingment.chaos")
+
+	fileContent, err := os.ReadFile(filePath)
 	if err != nil {
+		fmt.Printf("Failed to open file - reason: %v", err.Error())
 		return
 	}
 
-	newBuffer := bytes.NewBuffer(buffer)
-	fileText := bytes.Runes(newBuffer.Bytes())
+	index := 0
+	var currentBuffer bytes.Buffer
 
-	fmt.Println(newBuffer)
-	fmt.Println(fileText)
+	newBuffer := bytes.Runes(bytes.NewBuffer(fileContent).Bytes())
+	bufferSize := len(newBuffer)
+	for {
+		if bufferSize <= index {
+			break
+		}
 
+		char := newBuffer[index]
+		currentBuffer.WriteRune(char)
+		if currentBuffer.String() == " " || currentBuffer.String() == "\n" {
+			currentBuffer.Reset()
+			index++
+			continue
+		}
+
+		if curByte := currentBuffer.Bytes(); isAlphaNumeric(curByte[0]) {
+			for curByte = currentBuffer.Bytes(); isAlphaNumeric(curByte[0]); {
+				char = newBuffer[index]
+				currentBuffer.WriteRune(char)
+				index++
+			}
+			currentBuffer.Reset()
+			fmt.Printf("Found '%s'\n", string(char))
+			continue
+		}
+
+		// if currentBuffer.String() == "let" {
+		// 	fmt.Printf("Found 'let'\n")
+		// 	currentBuffer.Reset()
+		// 	index++
+		// 	continue
+		// }
+
+		// if isAlphaNumeric(currentBuffer.Bytes()[0]) {
+		// 	for isAlphaNumeric(currentBuffer.Bytes()[0]) {
+		// 		fmt.Printf("Found '%s'", currentBuffer.String())
+		// 		index++
+		// 	}
+		// 	currentBuffer.Reset()
+		// 	continue
+		// }
+		index++
+	}
 	return
 }

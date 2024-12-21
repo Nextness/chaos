@@ -1,50 +1,44 @@
-module errors;
+module errors
 
 interface Err
 {
-    name: String;
-    description: String? = null;
-    proc Self.string(self: *Self) -> String;
+    name: String
+    description: String? = null
+    proc Self.string(&self) => String
 }
 
 struct Err.Error
 {
-    name: String = default;
-    description: String? = default;
-    libName: String? = null;
-    mut stack: Error? = null;
-    mut context: String? = null;
+    name: String = default
+    description: String? = default
+    mut context: String? = null
 }
 
-proc Error.string(using self: *Self) -> String
+proc Error.string(using &self) => String
 {
-    let mut @free errorFmt: sb::StringBuilder = sb::allocStringBuilder();
-    defer sb::freeStringBuilder(errorFmt);
+    let mut errorFmt: sb::StringBuilder = sb::AllocStringBuilder()
+    defer sb::freeStringBuilder(errorFmt)
 
-    libName ?: errorFmt.sb::append(<<[{libName}]>>);
-    description ?: errorFmt.sb::append(<<: {description}>>);
-    context ?: errorFmt.sb::append(<<\n{context}>>);
-    stack ?: errorFmt.sb::append(<<\n{stack}>>);
+    if libName != null then errorFmt.sb::append(<<[{libname}]>>)
+    if description != null then errorFmt.sb::append(<<: {description}>>)
+    if context != null then errorFmt.sb::append(<<\n{context}>>)
 
-    return errorFmt.sb::string();
+    return errorFmt.sb::string()
 }
 
-enum CoreError {
-    OutOfMemory: Err = {
-        <<outOfMemory>>, <<Your computer seems to be out of memory. Buy more RAM, lol!>>
-    };
-    NullPointer := {
-        <<nullPointer>>, <<Null pointer, do better...>>
-    };
-    ZeroValue := {
-        <<zeroValue>>, <<Provided 0 valued parameters, but expected something else...>>
-    };
-    OverflowValue := {
-        <<overflowValue>>, <<The value overflow.>>
-    };
+error CoreError
+{
+    outOfMemory = {
+        name = <<outOfMemory>>,
+        description = <<Your computer seems to be out of memory. Buy more RAM, lol!>>
+    }
+    nullPointer = {
+        name = <<nullPointer>>,
+        description = <<Null pointer, do better...>>
+    }
 }
 
 #scope(__file__);
 
-let sb := import <<core:stringBuilder>>;
+let sb := import core::stringBuilder
 
