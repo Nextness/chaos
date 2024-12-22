@@ -1,22 +1,35 @@
-interface proc someOperation[T](in1: F32, in2: List[String]): *String { ...; }
+module exampleInterface
 
-proc someOperation::op1[T](in1: F32, in2: List[String]): *String {
+type SomeInterface interface
+{
+    mandatoryField: String
+    proc doSomeOperation(&self) => Void
 }
 
-interface struct SomeStructInterface {
-    field1: String,
-    field2: Bool,
-    field3: U64,
+type Example impl SomeInterface struct
+{
+    mandatoryField: String
+    anotherField: Bool
 }
 
-struct SomeStructInterface::Some {
-    field1: String,
-    field2: Bool,
-    field3: U64,
+proc Interface.doSomeOperation(&self) => Void #override
+{
+    self.anotherField = true
 }
 
-interface proc SomeStructInterface::impl.getInterface() { ...; }
+proc main(nothing) => Void
+{
+    let newExample: *impl.SomeInterface = &Example {
+        mandatoryField = <<Hello, world!>>,
+        anotherField = false
+    }
 
+    io::printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>)
+    newExample.doSomeOperation()
+    io::printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>)
 
-proc Some.getInterface::get() {}
+    return
+}
+
+let io := import core::fmt::io
 

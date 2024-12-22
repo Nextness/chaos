@@ -3,7 +3,7 @@
 
 module future
 
-type asyncError error
+type AsyncError error
 {
     nullPointer
     timeout
@@ -27,35 +27,35 @@ proc newFuture(wholeSize, valueSize, inOffs, outOffs: U64) => *FutureHeader!
     let future: *FutureHeader = try calloc(wholeSize) orReturn |excuseMe|
     try future.init(valueSize, inOffs, outOffs) |whaat| {
         fmt.print(i<<Error initializing future: {whaat}>>)
-        return err::genericErrorFuture
+        return AsyncError.genericErrorFuture
     }
     return future
 }
 
 proc FutureHeader.await(&self, timeout: I32[Microseconds]) => Void!
 {
-    try self.mutex() orReturn asyncError.genericFutureError
+    try self.mutex() orReturn AsyncError.genericFutureError
     defer self.mutexUnlock()
 
-    if self.isSet return null
-    if timeout < 0 return asyncError.timeout
+    if self.isSet then return null
+    if timeout < 0 then return AsyncError.timeout
 
-    start, end: Timespec = ...
+    start, end: Timespec
     timespecGet(&start, timeUtc)
     end.tvSec = start.tvSEC + (timeout / 1_000)
     end.nSec = (timeout % 1_000) * 1_000_000
 
     try cndTimedWait(self.conditionalVariable, end) |whaat| {
-        case asyncError.threadTimedout return asyncError.timeout
-        case default return asyncError.genericFutureError
+        case AsyncError.threadTimedout then return AsyncError.timeout
+        case default then return AsyncError.genericFutureError
     }
 }
 
 proc FutureHeader.get(&self, timeout: I32[Microseconds], destination: *Void,
                       destinationSize, check: U64) => Void!
 {
-    if !self.isValid return asyncError.nullPointer
-    if destinationSize != self.valueSize return asyncError.destinationSizeNotMatched
+    if !self.isValid return AsyncError.nullPointer
+    if destinationSize != self.valueSize then return AsyncError.destinationSizeNotMatched
     try self.await(timeout) orReturn |whaat|
 
     let source: *Void = (self as *U8) + self.outOffs as *Void

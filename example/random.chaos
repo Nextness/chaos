@@ -1,24 +1,27 @@
 module random
 
+macro strictAllocation[T: Type](Void) then @free T #if strictAllocation #else T
+
+proc allocHeap[T: *Type = *Void](size: U64) => mut strictAllocation[T]
+{
+    ...
+}
+
+proc freeHeap[T: *Type](mut @free object: T) => Void
+{
+    ...
+}
+
+// if allocatedString is never destroyed, the compiler will fail
+let allocatedString: *String = try mem::allocHeap(128) orReturn Err.nullPointer
+defer mem::freeHeap(allocatedString)
+
 type Version[T: num::Ints = num::U8] struct
 {
     major: U8      = ...
     minor: U8      = ...
     fix:   U8      = ...
     phase: String? = null
-}
-
-proc heapAlloc[T: *Type = *Void](size: U64) => @free T #if strictAllocation #else T
-{
-    ...
-}
-
-// if allocatedString is never destroyed, the compiler will fail
-let @free allocatedString := allocator::heapAlloc[*String](128)
-
-proc heapFree[T: *Type](@free object: T) => Void
-{
-    ...
 }
 
 proc Version[default].string(using self: *Self) => String
@@ -40,20 +43,20 @@ proc Version[default].string(using self: *Self) => String
     let mut @destroyed noLongerExists := allocator::heapAlloc[*String](20)
     noLongerExists = <<how are you?>>
     somethingElseNow(&stillExists, &noLongerExists)
+}
 
-    type SomeStruct struct {
-        username: String = ...,
-        password: #redacted String = ...
-    }
-    let someStruct := &SomeStruct {
-        username= <<username>>,
-        password=getEnvVar(<<ENV_VAR_NAME>>)
-    }
+type SomeStruct struct {
+    username: String = ...,
+    password: #redacted String = ...
+}
+let someStruct := &SomeStruct {
+    username= <<username>>,
+    password=getEnvVar(<<ENV_VAR_NAME>>)
 }
 
 proc testingNullable(input1: Bool?) => Bool! then return true if input != null else err.nullPointer
 
-proc main() -> U64 {
+proc main(nothing) => U64 {
     let window := try initializeWindow(100, 100, <<Chaos Windows!>>) |error| {
         fmt.eprint(<<Something went wrong in here...>>)
         return 1
@@ -67,23 +70,12 @@ type Another[T] struct
     number:        U32    = 0
 }
 
-type Something swizzling
-{
-    a' valA: U32 = ...
-    b' valB: U32 = ...
-    c' valC: U32 = ...
-}
+type Something swizzling U32 { a = 0; b = 0; c = 0 }
 something: Something = {1000, 2000, 3000}
 something.abc *= 10
 
-proc multipleReturns(const toggle: Bool) -> (String, U32)! {
-    if (toggle) return err.nullPointer
-    return <<h>>, 10
-}
-
-proc noDiscardReturn() -> #noDiscard (Bool, String) {
-    return true, <<hello world>>
-}
+proc multipleReturns(const toggle: Bool) => (String, U32)! then return Err.nullPointer if toggle else <<h>>, 10
+proc noDiscardReturn(nothing) => #noDiscard (Bool, String) then return true, <<hello world>>
 
 // Some logics starts here
 -----------------------------------------------------------------------------------------------------------------------
@@ -108,7 +100,7 @@ type Array[S: Literal[num::Natural | dynamic], T: Type] struct
     capacity: U64 = S #if (S != dynamic) #else 256
 }
 
-proc checkFirstElementExists(mut element: Array?[dynamic, ___]) -> Bool!
+proc checkFirstElementExists(mut element: Array[dynamic, ___]?) -> Bool!
 {
     if (!element.?) element = Array[dynamic, String]{#0}
     --- Checks for the size of the array, if the accessing index is greater,
@@ -117,10 +109,43 @@ proc checkFirstElementExists(mut element: Array?[dynamic, ___]) -> Bool!
     return true
 }
 
-let something: String! = doSomeOpWithError()
-try something |error| {
-    
+let errorForLater: AnyError
+let something: String = try doSomeOpWithError() |excuseMe| {
+    errorForLater = excuseMe
+    ...
 }
+
+/** DOCUMENTATION *********************************************************************************
+   The idea here is that the exampleString variable is constant, meaning that after assignment,
+ no assignment or change can be made to it. However, if we get the address of the variable and
+ assign it to a mutable variable, we can change the value of the address using the mutable
+ variable.
+   At the end of the operation, both variables have the same value, even though the variable
+ exampleString is constant.
+**************************************************************************************************/
+
+proc main(nothing) => Void
+{
+    let exampleString := <<Testing something with strings>>
+    let mut changeableVar := &exampleString
+    changeableVar.set(0, <<t>>)
+    assert exampleString == changeableVar && <<Strings should match>>
+    return
+}
+
+type Time[Unit: TimeUnit] struct {...}
+
+proc Time[default].to[Unit: TimeUnit](&self) => Time[Unit]
+{
+    ...
+    return Time[Unit]{self}
+}
+
+let testing: Time[Minutes]
+testing.now()
+let testingSecs := testing.to(Seconds)
+
+
 
 let time: Time[Minutes] = #0
 proc acceptsTime(time: Time[Seconds]) -> String

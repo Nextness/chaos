@@ -1,35 +1,53 @@
 module types;
 
 --- Numbers ---
-uniondef Ints   := I8  | I16 | I32 | I64 | I128;
-uniondef UInts  := U8  | U16 | U32 | U64 | U128;
-uniondef Floats := F16 | F32 | F64 | F128;
+type Ints union { I8 | I16 | I32 | I64 | I128 }
+type UInts union { U8 | U16 | U32 | U64 | U128 }
+type Floats union { F16 | F32 | F64 | F128 }
 
-uniondef Complex    := C64  | C128;
-uniondef Quaternion := Q128 | Q256;
+type Complex union { C64 | C128 }
+type Quaternion union { Q128 | Q256 }
 
-uniondef Natural := Ints | UInts;
-uniondef Real    := Ints | UInts | Floats;
+type Natural union { Ints | UInts }
+type Real union { Ints | UInts | Floats }
 
-uniondef AnyNumber := Natural | Real | Complex | Quaternion;
+type AnyNumber union { Natural | Real | Complex | Quaternion }
 
-uniondef Text := Char | String | Rune;
+type Text union { Char | String | Rune }
+
+--- Vector ---
+type Vector2[T: AnyNumber] struct then x, y: T
 
 --- Primitives ---
-uniondef Primitives := (
-    I8 | I16 | I32 | I64 | I128 |
-    U8 | U16 | U32 | U64 | U128 |
-
-    F16 | F32  | F64  | F128 |
-    C64 | C128 | Q128 | Q256 |
-
-    Char | String | Rune |
-    Byte | Bool   |
-
-    List  [dynamic | UInts, Self] |
-    Array [dynamic | UInts, Self] |
-    Dict  [dynamic | UInts, Text  | Real, Self]
-);
+type Primitives union
+{
+    I8
+    | I16
+    | I32
+    | I64
+    | I128
+    | U8
+    | U16
+    | U32
+    | U64
+    | U128
+    | F16
+    | F32
+    | F64
+    | F128
+    | C64
+    | C128
+    | Q128
+    | Q256
+    | Char
+    | String
+    | Rune
+    | Byte
+    | Bool
+    | List[dynamic | Natural, Self]
+    | Array[dynamic | Natural, Self]
+    | Dict[dynamic | Natural, Text  | Real, Self]
+}
 
 --- Time ---
 enum TimeUnit {

@@ -1,44 +1,21 @@
 module errors
 
-interface Err
+macro AnyError.string(&self) => String then set #literalName(self)
+macro AnyError.reason(&self) => String then set self.reason
+
+type Error error
 {
-    name: String
-    description: String? = null
-    proc Self.string(&self) => String
+    nullPointer
+    outOfMemory
+    outOfBounds
 }
 
-struct Err.Error
+proc main(nothing) => Void
 {
-    name: String = default
-    description: String? = default
-    mut context: String? = null
+    let someError: AnyError = nullPointer{<<You suck and need more RAM, lol!>>}
+    io::printfn(<<The error is "{someError.string()} - reason: {someError.reason()}">>)
+    return
 }
 
-proc Error.string(using &self) => String
-{
-    let mut errorFmt: sb::StringBuilder = sb::AllocStringBuilder()
-    defer sb::freeStringBuilder(errorFmt)
-
-    if libName != null then errorFmt.sb::append(<<[{libname}]>>)
-    if description != null then errorFmt.sb::append(<<: {description}>>)
-    if context != null then errorFmt.sb::append(<<\n{context}>>)
-
-    return errorFmt.sb::string()
-}
-
-error CoreError
-{
-    outOfMemory = {
-        name = <<outOfMemory>>,
-        description = <<Your computer seems to be out of memory. Buy more RAM, lol!>>
-    }
-    nullPointer = {
-        name = <<nullPointer>>,
-        description = <<Null pointer, do better...>>
-    }
-}
-
-#scope(__file__);
-
-let sb := import core::stringBuilder
+import core::fmt::io
 

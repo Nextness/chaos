@@ -1,4 +1,6 @@
-enum LoggerLevel as U64
+module logger<logLevel: Literal[LoggerLevel] = Trace>
+
+type LoggerLevel enum U64
 {
     Trace
     Debug
@@ -9,69 +11,65 @@ enum LoggerLevel as U64
     Disaster
 }
 
-enum SaveLogLocation as U64
-{
-    Cloud
-    Local
-}
-
-enum DateLanguage as U64
-{
-    English
-    Portuguese
-}
-
-interface Logger
+type Logger interface #exact
 {
     dateFormat: String = <<%YEAR-%MONTH-%DAY %hour-%minute-%second>>
-    dateLanguage: DateLanguage = English
-    output: FileDescriptor = StdOut
-    incldueOSName: Bool = ...
-    saveLogLocation: Literal[SaveLogLocation] = ...
-    #if self.saveLogLocation == Cloud #then logUrl: String = ...
-    #if self.saveLogLocation == Cloud #then authenticationMethod: AuthenticationMethod = ...
-    #if self.saveLogLocation == Local #then dirPath: Path = ...
+    output: List[dynamic, Stream] = {StdOut}
+    incldueOSName: Bool = false
 
-    proc Self.trace(&self, logMessage: Variadic[String]) => Void
-    proc Self.debug(&self, logMessage: Variadic[String]) => Void
-    proc Self.info(&self, logMessage: Variadic[String]) => Void
-    proc Self.warning(&self, logMessage: Variadic[String]) => Void
-    proc Self.error(&self, logMessage: Variadic[String]) => Void
-    proc Self.critical(&self, logMessage: Variadic[String]) => Void
-    proc Self.disaster(&self, logMessage: Variadic[String]) => Void
+    proc trace(&self, message: Variadic[String]) => Void
+    proc debug(&self, message: Variadic[String]) => Void
+    proc info(&self, message: Variadic[String]) => Void
+    proc warning(&self, message: Variadic[String]) => Void
+    proc error(&self, message: Variadic[String]) => Void
+    proc critical(&self, message: Variadic[String]) => Void
+    proc disaster(&self, message: Variadic[String]) => Void
 }
 
-struct Logger.Logger {
-    dateFormat: String = default;
-    dateLanguage: DateLanguage = default;
-    output: Output = default;
-    includeOSName: Bool = false;
-    saveLocation: Literal[SaveLogLocation] = LOCAL;
-    dirPath: Path = <<./>>;
+type Logger impl Logger struct
+{
+    dateFormat := default;
+    output := default;
+    includeOSName := false;
 }
 
-proc Logger.trace(self: *Self, log: Variadic[String]) {
-
+proc Logger.trace(&self, message: Variadic[String]) => Void #override
+{
+    #if logLevel == Trace {
+        // Implementation here
+    } #else {
+        #compilerOptiomization(__REMOVE__)
+    }
 }
 
-proc Logger.debug(self: *Self, log: Variadic[String]) {
-
+proc Logger.debug(&self, message: Variadic[String]) => Void #override
+{
+    #if logLevel == Debug {
+        // Implementation here
+    } #else {
+        #compilerOptiomization(__REMOVE__)
+    }
 }
 
-proc Logger.info(self: *Self, log: Variadic[String]) {
-
-}
-
-proc Logger.warning(self: *Self, log: Variadic[String]) {
-
-}
-
-proc Logger.error(self: *Self, log: Variadic[String]) {
+proc Logger.info(&self, message: Variadic[String]) => Void #override
+{
 
 }
 
-proc Logger.critical(self: *Self, log: Variadic[String]) {
+proc Logger.warning(&self, message: Variadic[String]) => Void #override
+{
 
 }
 
+proc Logger.error(&self, message: Variadic[String]) => Void #override
+{
+
+}
+
+proc Logger.critical(&self, message: Variadic[String]) => Void #override
+{
+
+}
+
+let io := import core::fmt::io
 

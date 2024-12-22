@@ -1,24 +1,17 @@
+module exampleStructs
 
-struct helloWorld {
-    hello: String = ...;
-    world: Bool = ...;
+type HelloWorld struct
+{
+    hello: String
+    world: String = <<world!>>
 }
 
-interface ToBeImplemented {
-    value1: String;
-    value2: U64 = 100;
-
-    proc Self.string(self: *Self) -> String;
-    proc Self.increment(self: *Self) -> Void;
+proc main(nothing) => Void
+{
+    let value := HelloWorld { <<Hello,>> }
+    io::printfn(<<{value.hello} {value.world}>>)
+    return
 }
 
-struct ToBeImplemented.Implementation {
-    value1: String = "";
-    value2: U64 = default;
-    value3: Bool? = null;
-}
-
-proc Implementation.string(self: *Self) -> String {}
-
-proc Implementation.increment(self: *Self) -> Void {}
+let io := import core::fmt:io
 

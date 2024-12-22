@@ -1,9 +1,6 @@
 module asyncTasks<logger: Literal[Logger]? = null, strictAllocation: Literal[Bool] = False>
 
-macro strictAllocation[T]
-{
-    set @free T #if strictAllocation #else T
-}
+macro strictAllocation[T] then set @free T #if strictAllocation #else T
 
 proc createUser(username, firstName, lastName: String) => Void!
 {
