@@ -1,89 +1,80 @@
 // Stole from https://github.com/glhrmfrts/future.c to have as an example. Most likely this code
 // doesn't work properly. Later needs to be recreated...
 
-module future
+module future;
 
-type AsyncError error
-{
-    nullPointer
-    timeout
-    noMemory
-    threadTimedout
-    destinationSizeNotMatched
-    genericFutureError
+type AsyncError error {
+    nullPointer;
+    timeout;
+    noMemory;
+    threadTimedout;
+    destinationSizeNotMatched;
+    genericFutureError;
 }
 
-type FutureHeader struct
-{
-    conditionalVariable: CndT
-    mutex: Mutex
-    isValid: AtomicBool
-    isSet: Bool
-    valueSize, inOffs, outOffs: U64
+type FutureHeader struct {
+    conditionalVariable: CndT;
+    mutex: Mutex;
+    isValid: AtomicBool;
+    isSet: Bool;
+    valueSize, inOffs, outOffs: U64;
 }
 
-proc newFuture(wholeSize, valueSize, inOffs, outOffs: U64) => *FutureHeader!
-{
-    let future: *FutureHeader = try calloc(wholeSize) orReturn |excuseMe|
-    try future.init(valueSize, inOffs, outOffs) |whaat| {
-        fmt.print(i<<Error initializing future: {whaat}>>)
-        return AsyncError.genericErrorFuture
+proc newFuture(wholeSize, valueSize, inOffs, outOffs: U64) => *FutureHeader! {
+    let future: *FutureHeader = try calloc(wholeSize) orReturn |excuseMe|;
+    if catch future.init(valueSize, inOffs, outOffs) |nani| {
+        fmt.print(i<<Error initializing future - reason: {nani.string()}>>)
+        return AsyncError.genericErrorFuture;
     }
-    return future
+    return future;
 }
 
-proc FutureHeader.await(&self, timeout: I32[Microseconds]) => Void!
-{
-    try self.mutex() orReturn AsyncError.genericFutureError
-    defer self.mutexUnlock()
+proc FutureHeader.await(&self, timeout: I32[Microseconds]) => Void! {
+    try self.mutex() orReturn AsyncError.genericFutureError;
+    defer self.mutexUnlock();
 
-    if self.isSet then return null
-    if timeout < 0 then return AsyncError.timeout
+    if self.isSet then return null;
+    if timeout < 0 then return AsyncError.timeout;
 
-    start, end: Timespec
-    timespecGet(&start, timeUtc)
-    end.tvSec = start.tvSEC + (timeout / 1_000)
-    end.nSec = (timeout % 1_000) * 1_000_000
+    start, end: Timespec;
+    timespecGet(&start, timeUtc);
+    end.tvSec = start.tvSEC + (timeout / 1_000);
+    end.nSec = (timeout % 1_000) * 1_000_000;
 
-    try cndTimedWait(self.conditionalVariable, end) |whaat| {
-        case AsyncError.threadTimedout then return AsyncError.timeout
-        case default then return AsyncError.genericFutureError
+    if catch cndTimedWait(self.conditionalVariable, end) {
+        case AsyncError.threadTimedout then return AsyncError.timeout;
+        case default then return AsyncError.genericFutureError;
     }
 }
 
-proc FutureHeader.get(&self, timeout: I32[Microseconds], destination: *Void,
-                      destinationSize, check: U64) => Void!
-{
-    if !self.isValid return AsyncError.nullPointer
-    if destinationSize != self.valueSize then return AsyncError.destinationSizeNotMatched
-    try self.await(timeout) orReturn |whaat|
+proc FutureHeader.get(&self, timeout: I32[Microseconds], destination: *Void, destinationSize, check: U64) => Void! {
+    if !self.isValid return AsyncError.nullPointer;
+    if destinationSize != self.valueSize then return AsyncError.destinationSizeNotMatched;
+    try self.await(timeout) orReturn |nani|;
 
-    let source: *Void = (self as *U8) + self.outOffs as *Void
-    memcpy(destination, source, self.valueSize)
+    let source: *Void = (self as *U8) + self.outOffs as *Void;
+    memcpy(destination, source, self.valueSize);
 }
 
-struct FutureOf[T]
-{
-    header: FutureHeader,
-    inValue, outValue: T,
+struct FutureOf[T] {
+    header: FutureHeader;
+    inValue, outValue: T;
 }
 
 --- Private scope ---
-#scope(__FILE__)
+#scope(__FILE__);
 
-proc FutureHeader.init(&self, valueSize, inOffs, outOffs: U64) => Void
-{
-    cndInit(self.conditionalVariable)
-    mutexInit(self.mutex, mutxPlain)
-    self.{isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs}
+proc FutureHeader.init(&self, valueSize, inOffs, outOffs: U64) => Void {
+    cndInit(self.conditionalVariable);
+    mutexInit(self.mutex, mutxPlain);
+    self.(isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs);
 }
 
-proc FutureHeader.destroy(&self) => Void!
-{
-    self.isValid = false
-    cndDestroy(self.conditionalVariable)
-    mutexDestroy(self.mutex)
+proc FutureHeader.destroy(&self) => Void! {
+    self.isValid = false;
+    cndDestroy(self.conditionalVariable);
+    mutexDestroy(self.mutex);
 }
 
-import core::fmt
+import core::fmt;
 

@@ -1,35 +1,33 @@
-module linkedList<logger: *Logger? = null>
+module linkedList<logger: *Logger? = null>;
 
-type Node[T] struct
-{
-    value: T
-    next: Node? = null
+type Node[T] struct {
+    value: T;
+    next: Node? = null;
 }
 
-proc nodeInit[T](Void) => #free *Node[T]!
-{
-    let nodeHead := try mem::alloc(sizeOf(Node[T])) |excuseMe| {
-        #if logger != null #then logger.error(<<Failed to allocate memory for linkedList>>)
-        return err.outOfMemory
+proc nodeInit[T](Void) => #free *Node[T]! {
+    let nodeHead := if catch mem::alloc(sizeOf(Node[T])) |nani| {
+        #if logger != null #then logger.error(<<Failed to allocate memory for linkedList - reason: {nani.string()}>>);
+        return Err.outOfMemory;
     }
-    return nodeHead
+    return nodeHead;
 }
 
-proc Node[default].insert(&self, value: T) => Void!
-{
-    currentNode := self
+proc Node[default].insert(&self, value: T) => Void! {
+    let currentNode := self;
     label looping {
-        if currentNode != null then break looping
-        currentNode = currentNode.next; goto looping
+        if currentNode != null then break looping;
+        currentNode = currentNode.next;
+        goto looping;
     }
 
-    currentNode.next = try mem::alloc(sizeOf(Node[T])) |excuseMe| {
-        #if logger != null #then logger.error(<<Failed to allocate next element in linkedList>>)
-        return err.outOfMemory
+    currentNode.next = if catch mem::alloc(sizeOf(Node[T])) |nani| {
+        #if logger != null #then logger.error(<<Failed to allocate next element in linkedList - reason: {nani.string()}>>);
+        return err.outOfMemory;
     }
-    curentNode.next = value
+    curentNode.next = value;
 }
 
-let err := import core::error
-let mem := import core::allocator
+let err := import core::error;
+let mem := import core::allocaor;
 

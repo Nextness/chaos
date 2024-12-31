@@ -1,35 +1,31 @@
-module exampleInterface
+module exampleInterface;
 
-type SomeInterface interface
-{
-    mandatoryField: String
-    proc doSomeOperation(&self) => Void
+type SomeInterface interface {
+    mandatoryField: String;
+    proc doSomeOperation(&self) => Void;
 }
 
-type Example impl SomeInterface struct
-{
-    mandatoryField: String
-    anotherField: Bool
+type Example impl SomeInterface struct {
+    mandatoryField: String;
+    anotherField: Bool;
 }
 
-proc Interface.doSomeOperation(&self) => Void #override
-{
-    self.anotherField = true
+proc Interface.doSomeOperation(&self) => Void #override {
+    self.anotherField = true;
 }
 
-proc main(nothing) => Void
-{
-    let newExample: *impl.SomeInterface = &Example {
+proc main(nothing) => Void {
+    let newExample: *impl.SomeInterface = &Example(
         mandatoryField = <<Hello, world!>>,
         anotherField = false
-    }
+    );
 
-    io::printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>)
-    newExample.doSomeOperation()
-    io::printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>)
+    io::printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>);
+    newExample.doSomeOperation();
+    io::printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>);
 
-    return
+    return;
 }
 
-let io := import core::fmt::io
+let io := import core::fmt::io;
 

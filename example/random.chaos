@@ -1,118 +1,132 @@
-module random
+module random;
 
-macro strictAllocation[T: Type](Void) then @free T #if strictAllocation #else T
+macro strictAllocation[T: Type](Void) then @free T #if strictAllocation #else T;
 
-proc allocHeap[T: *Type = *Void](size: U64) => mut strictAllocation[T]
-{
-    ...
+proc allocHeap[T: *Type = *Void](size: U64) => mut strictAllocation[T] {
+    ...;
 }
 
-proc freeHeap[T: *Type](mut @free object: T) => Void
-{
-    ...
+proc freeHeap[T: *Type](mut @free object: T) => Void {
+    ...;
+}
+/** DOCUMENTATION **** 
+ For those soy devs who want to have a easier way to loop...
+**/
+loop::do {
+    ...;
+} loop::while();
+
+loop::for (x loop::in xs) {
+    ...;
+}
+
+loop::for (x := 0; condition; ++x) {
+    ...;
+}
+
+loop::while (condition) {
+    ...;
 }
 
 // if allocatedString is never destroyed, the compiler will fail
-let allocatedString: *String = try mem::allocHeap(128) orReturn Err.nullPointer
-defer mem::freeHeap(allocatedString)
+let allocatedString: *String = try mem::allocHeap(128) orReturn Err.nullPointer;
+defer mem::freeHeap(allocatedString);
 
-type Version[T: num::Ints = num::U8] struct
-{
-    major: U8      = ...
-    minor: U8      = ...
-    fix:   U8      = ...
-    phase: String? = null
+type Version[T: num::Ints = U8] struct {
+    major: U8 = ...;
+    minor: U8 = ...;
+    fix: U8 = ...;
+    phase: String? = null;
 }
 
-proc Version[default].string(using self: *Self) => String
-{
-    let versionString := <<{major}.{minor}.{fix}>>
-    if phase != null then versionString = <<{versionString}-{phase}>>
-    return versionString
+let testVersion0: Version[U16] = (major=10, minor=0, fix=0, phase=<<development>>);
+let testVersion1: Version = [U16](major=10, minor=0, fix=0, phase=<<development>>);
+let testVersion2 := Version[U16](major=10, minor=0, fix=0, phase=<<development>>);
+
+proc Version[default].string(using &self) => String {
+    let versionString := <<{major}.{minor}.{fix}>>;
+    if phase != null then versionString = <<{versionString}-{phase}>>;
+    return versionString;
 }
 
 {
     proc somethingElseNow(string: *String, @destroyed newValue: *String) => err.nullPointer {
-        if (!string || !newValue) return err.nullPointer
-        defer allocator::heapFree(newValue)
-        string = <<{*string} {newValue}>>
-        println(*string)
+        if (!string || !newValue) return err.nullPointer;
+        defer allocator::heapFree(newValue);
+        string = <<{*string} {newValue}>>;
+        println(*string);
     }
 
-    let stillExists := <<hello world>>
-    let mut @destroyed noLongerExists := allocator::heapAlloc[*String](20)
-    noLongerExists = <<how are you?>>
-    somethingElseNow(&stillExists, &noLongerExists)
+    let stillExists := <<hello world>>;
+    let mut @destroyed noLongerExists := allocator::heapAlloc[*String](20);
+    noLongerExists = <<how are you?>>;
+    somethingElseNow(&stillExists, &noLongerExists);
 }
 
 type SomeStruct struct {
-    username: String = ...,
-    password: #redacted String = ...
+    username: String = ...;
+    password: #redacted String = ...;
 }
-let someStruct := &SomeStruct {
-    username= <<username>>,
-    password=getEnvVar(<<ENV_VAR_NAME>>)
-}
+let someStruct := &SomeStruct(username=<<username>>, password=getEnvVar(<<ENV_VAR_NAME>>));
 
-proc testingNullable(input1: Bool?) => Bool! then return true if input != null else err.nullPointer
+proc testingNullable(input1: Bool?) => Bool! then return true if input != null else err.nullPointer;
 
 proc main(nothing) => U64 {
-    let window := try initializeWindow(100, 100, <<Chaos Windows!>>) |error| {
-        fmt.eprint(<<Something went wrong in here...>>)
-        return 1
+    let testAnotherWindow := if catch initializeWindow(100, 100, <<Chaos Window>>) |excuseMe| {
+        fmt::eprint(<<Something went wrong in here...>>);
+        return 1;
     }
+    let window := try initializeWindow(100, 100, <<Chaos Windows!>>) orReturn 1;
+
+type Another[T] struct {
+    somethingElse: T? = null;
+    item: String = <<>>;
+    number: U32 = 0;
 }
 
-type Another[T] struct
-{
-    somethingElse: T?     = null
-    item:          String = <<>>
-    number:        U32    = 0
-}
+type Something swizzling U32 { a = 0; b = 0; c = 0; }
+something: Something = (1000, 2000, 3000);
+something.abc *= 10;
 
-type Something swizzling U32 { a = 0; b = 0; c = 0 }
-something: Something = {1000, 2000, 3000}
-something.abc *= 10
-
-proc multipleReturns(const toggle: Bool) => (String, U32)! then return Err.nullPointer if toggle else <<h>>, 10
-proc noDiscardReturn(nothing) => #noDiscard (Bool, String) then return true, <<hello world>>
+proc multipleReturns(const toggle: Bool) => (String, U32)! then return Err.nullPointer if toggle else <<h>>, 10;
+proc noDiscardReturn(nothing) => #noDiscard (Bool, String) then return true, <<hello world>>;
 
 // Some logics starts here
 -----------------------------------------------------------------------------------------------------------------------
-noDiscardReturn() --- This should result in a compile time error
-let someVariableName := noDiscardReturn() --- This should result in a compile time error
-let someVariableName1, someVariableName2 := noDiscardReturn() --- This should work just fine
-let nothing := noDiscardReturn() --- This should work just fine
+noDiscardReturn(); --- This should result in a compile time error
+let someVariableName := noDiscardReturn(); --- This should result in a compile time error
+let someVariableName1, someVariableName2 := noDiscardReturn(); --- This should work just fine
+let nothing := noDiscardReturn(); --- This should work just fine
 -----------------------------------------------------------------------------------------------------------------------
 
-type JsonResponse[T: types::Primitive] struct
-{
-    `json:<<status_code>>` statusCode: U32 = ...
-    `json:<<content>>`     content:    T   = ...
+type JsonResponse[T: types::Primitive] struct {
+    `json:<<status_code>>` statusCode: U32 = ...;
+    `json:<<content>>` content: T = ...;
 }
 
-macro Literal[T] => $$Literal[T]
+macro Literal[T] then return $$Literal[T];
 
-type Array[S: Literal[num::Natural | dynamic], T: Type] struct
-{
-    items: T = ...
-    count: U64 = #0
-    capacity: U64 = S #if (S != dynamic) #else 256
+type Array[S: Literal[num::Natural | dynamic], T: Type] struct {
+    items: T = ...;
+    count: U64 = #0;
+    capacity: U64 = S #if (S != dynamic) #else 256;
 }
 
-proc checkFirstElementExists(mut element: Array[dynamic, ___]?) -> Bool!
-{
-    if (!element.?) element = Array[dynamic, String]{#0}
+proc checkFirstElementExists(mut element: Array[dynamic, ___]?) -> Bool! {
+    if element != null then element = Array[dynamic, String](#0);
     --- Checks for the size of the array, if the accessing index is greater,
     --- raises and nullpointer error or something like this.
-    let some := try element.get(0) orSet <<>>
-    return true
+    let some := if catch element.get(0) |excuseMe| {
+        fmt::eprintf(<<Failed to get first element - reason: {excuseMe.string()}>>);
+        return false;
+    }
+    return true;
 }
 
-let errorForLater: AnyError
-let something: String = try doSomeOpWithError() |excuseMe| {
-    errorForLater = excuseMe
-    ...
+let errorForLater: AnyError;
+let something: String = if catch doSomeOpWithError() |excuseMe| {
+    errorForLater = excuseMe;
+    ...;
 }
 
 /** DOCUMENTATION *********************************************************************************
@@ -124,98 +138,62 @@ let something: String = try doSomeOpWithError() |excuseMe| {
  exampleString is constant.
 **************************************************************************************************/
 
-proc main(nothing) => Void
-{
-    let exampleString := <<Testing something with strings>>
-    let mut changeableVar := &exampleString
-    changeableVar.set(0, <<t>>)
-    assert exampleString == changeableVar && <<Strings should match>>
-    return
+proc main() => Void {
+    let exampleString := <<Testing something with strings>>;
+    let mut changeableVar := &exampleString;
+    changeableVar.set(0, <<t>>);
+    assert exampleString == changeableVar && <<Strings should match>>;
+    return;
 }
 
-type Time[Unit: TimeUnit] struct {...}
-
-proc Time[default].to[Unit: TimeUnit](&self) => Time[Unit]
-{
-    ...
-    return Time[Unit]{self}
+macro List[default].get(&self, position) => T! {
+    if self.length < position then return err.outOfBounds;
+    return #unsafe $$get(self, position);
 }
 
-let testing: Time[Minutes]
-testing.now()
-let testingSecs := testing.to(Seconds)
-
-
-
-let time: Time[Minutes] = #0
-proc acceptsTime(time: Time[Seconds]) -> String
-{
-    return time.string()
-}
-
-macro List[default].get(self: *Self, position) -> T!
-{
-    if (self.length < position) set err.outOfBounds
-    set #unsafe $$get(self, position)
-}
-
-macro List[default].insert(mut self: *Self, position: U64, value: T) -> Void!
-{
-    if (self.length < position) set err.outOfBounds
+macro List[default].insert(&self, position: U64, value: T) -> Void! {
+    if self.length < position then return err.outOfBounds
     #unsafe $$insert(self, position, value)
 }
 
-proc someProcExample() -> String!
-{
-    let someList := List[4, String]{<<Hello>>, <<World>>, <<!>>}
-    let result1  := try someList.get(0) |error| {
-        return err.outOfBounds
-    }
+proc someProcExample() -> String! {
+    let someList := List[4, String](<<Hello>>, <<World>>, <<!>>);
+    let result1  := if catch someList.get(0) |excuseMe| then return Err.outOfBounnds;
     // Code below should not compile becuase the variable
     // someList is const and therefore cannot have a value inserted
-    let result2 := try someList.insert(3, <<\n>>) |error| {
-        return err.someError
-    }
-    return result
+    let result2 := if catch someList.insert(3, <<\n>>) |nani| then return Err.someError;
+    return someList.string();
 }
 
-let helloWorld: String = <<Hello World>>
-
-macro NamedContext[T] {
-    $$NamedContext[T]
-}
-
-let context: NamedContext[proc(...) -> (...) | macro(...) -> (...)] = {
-    macro drawUI(callback: *proc(Void) -> Void) {
-        rl.beginDrawing()
-        rl.clearBackground(rl.rayWhite)
-        callback()
-        rl.endDrawing()
+let someContext: NameScope = {
+    macro drawUI(callback: *proc(nothing) => Void) {
+        rl::beginDrawing();
+        rl::clearBackgroud(rl::rayWhite);
+        callback();
+        rl::endDrawing();
     }
 }
 
-
-macro gameNextSecond(timeFrame: *F64, callback: proc(Void) -> Void) {
-    if (*timeFrame += rl.getFrameTime()) >= 1.0f {
-        callback()
-        *timeFrame = 0.0f
+macro gameNextSecond(timeFrame: *F64, callback: proc() => Void) => Void {
+    if *timeFrame += rl::getFrameTime() >= 1.0 {
+        callback();
+        timeFrame = 0.0;
     }
 }
 
-proc main() -> U32
-{
-    let openedFile: List[dynamic, String] = try open(<<./somepath/file.ext>>, <<r>>) |err| {
+proc main() => U32 {
+    let openedFile: List[dynamic, String] = if catch open(<<./somepath/file.ext>>, <<r>>) |nani| {
         logger.error(<<Error while loading file - reason: {err.string()}>>);
         return 1;
-    };
+    }
     defer close(openedFile);
 
     label handlingFileContent {
-        let lineContent := try openedFile.readline() |err| {
+        let lineContent := if catch openedFile.readline() |nani| {
             logger.error(<<Failed to parse line - reason: {err.string()}>>);
             return 1;
         }
-        if lineContent.hasEnded() then break handlingFileContent;
+        if openedFile.hasEnded() then break handlingFileContent;
         print(<<{lineContent}>>);
         goto handlingFileContent;
     }
@@ -223,81 +201,73 @@ proc main() -> U32
     return 0;
 }
 
-proc testingLikele(field1, field2, field3: String) -> Bool
-{
-    likely if field1 != field2 && field2 != field3 {
-        someSomething()
-        return true
+proc likelyIf(field1, field2: *String) => Bool {
+    likely if field1 != field2 {
+        doSomething();
+        return true;
     }
-    return false
+    return false;
 }
 
-type Enum enum U64 #extensive
-{
-    A = 1,
-    B,
-    D
+type SomethingIsWrong enumArray #extensive {
+    ValA; // 0
+    ValB; // 1
+    ValC; // 2
 }
 
-type EnumMape[E: enum, T: Type] struct
-{
-    mut map: Map[E, T]
+type Enum enum U64 #extensive {
+    A = 1;
+    B;
+    D;
 }
 
-struct EnumMap[E: enum, T: Type] {
-    mut map: Map[E, T],
-}
-
-proc attemptingSwitch(something: some::Enum)
-{
+proc attemptingSwitch(something: some::Enum) => Void {
     #extensive if something == {
-        case A then fmt.print(<<{A}>>)
-        case B then fmt.print(<<Something else {B}>>)
-        case D then fmt.print(<<String {D}s nuutz>>)
+        case A then fmt.print(<<{A}>>);
+        case B then fmt.print(<<Something else {B}>>);
+        case D then fmt.print(<<String {D}s nuutz>>);
     }
 }
 
-let allocation: *Hello = try mem.alloc(sizeOf(Hello)) orReturn |error|
+let allocation: *Hello = try mem.alloc(sizeOf(Hello)) |nani| orReturn nani;
 let somethingNew := try someOperation() |excuseMe| {
     
 }
 
-try mem.alloc[*Hello](sizeOf(Hello)) return error
+try mem.alloc[*Hello](sizeOf(Hello)) orReturn |nani|;
 try mem.alloc(sizeOf(Hello)) as *Hello |error| {
-    return err.nullPointer
+    return err.nullPointer;
 }
 
-type myError error
-{
-    errorName
+type myError error {
+    errorName;
 }
 
-proc tryingShitOut(input: StringBuilder) => Void!
-{
+proc tryingShitOut(input: StringBuilder) => Void! {
     label loopString {
-        currentChar := try input.get() |err| {
-            logger.error(<<Failed to get character>>)
-            return err
+        currentChar := if catch input.get() |nani| {
+            logger.error(<<Failed to get character>>);
+            return nani;
         }
-        if currentChar == <<\0>> then break loopString
-        try doSomeOperation(currentChar) |err| {
-            logger.error(<<Failed to do some operation>>)
-            return err
+        if currentChar == <<\0>> then break loopString;
+        if catch doSomeOperation(currentChar) |nani| {
+            logger.error(<<Failed to do some operation>>);
+            return nani;
         }
-        goto loopString
+        goto loopString;
     }
 }
 
 
-let bitShift := 0b1 <- 2
-let bitShift2 := 0b10 -> 2
+let bitShift := 0b1 <- 2;
+let bitShift2 := 0b10 -> 2;
 
-#scope(__file__)
+#scope(__file__);
 
-import core::std
-import core::fmt
+import core::std;
+import core::fmt;
 
-let alloc := import core::allocator<logger>
-let log   := import core::logging
-let num   := import core::numbers
+let alloc := import core::allocator<logger>;
+let log   := import core::logging;
+let num   := import core::numbers;
 

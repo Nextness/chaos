@@ -1,75 +1,62 @@
 module logger<logLevel: Literal[LoggerLevel] = Trace>
 
-type LoggerLevel enum U64
-{
-    Trace
-    Debug
-    Info
-    Warning
-    Error
-    Critical
-    Disaster
+type LoggerLevel enum U64 {
+    Trace;
+    Debug;
+    Info;
+    Warning;
+    Error;
+    Critical;
+    Disaster;
 }
 
-type Logger interface #exact
-{
-    dateFormat: String = <<%YEAR-%MONTH-%DAY %hour-%minute-%second>>
-    output: List[dynamic, Stream] = {StdOut}
-    incldueOSName: Bool = false
+type Logger interface #exact {
+    dateFormat: String = <<%YEAR-%MONTH-%DAY %hour-%minute-%second>>;
+    output: List[dynamic, Stream] = (StdOut);
+    incldueOSName: Bool = false;
 
-    proc trace(&self, message: Variadic[String]) => Void
-    proc debug(&self, message: Variadic[String]) => Void
-    proc info(&self, message: Variadic[String]) => Void
-    proc warning(&self, message: Variadic[String]) => Void
-    proc error(&self, message: Variadic[String]) => Void
-    proc critical(&self, message: Variadic[String]) => Void
-    proc disaster(&self, message: Variadic[String]) => Void
+    proc trace(&self, message: Variadic[String]) => Void;
+    proc debug(&self, message: Variadic[String]) => Void;
+    proc info(&self, message: Variadic[String]) => Void;
+    proc warning(&self, message: Variadic[String]) => Void;
+    proc error(&self, message: Variadic[String]) => Void;
+    proc critical(&self, message: Variadic[String]) => Void;
+    proc disaster(&self, message: Variadic[String]) => Void;
 }
 
-type Logger impl Logger struct
-{
+type Logger impl Logger struct {
     dateFormat := default;
     output := default;
     includeOSName := false;
 }
 
-proc Logger.trace(&self, message: Variadic[String]) => Void #override
-{
-    #if logLevel == Trace {
-        // Implementation here
-    } #else {
-        #compilerOptiomization(__REMOVE__)
+#if logLevel <= Trace {
+    proc Logger.trace(&self, message: Variadic[String]) => Void #override {
+        #notImplemented(<<Default trace log needs to be implemented>>);
     }
 }
 
-proc Logger.debug(&self, message: Variadic[String]) => Void #override
-{
-    #if logLevel == Debug {
-        // Implementation here
-    } #else {
-        #compilerOptiomization(__REMOVE__)
+#if logLevel <= Debug {
+    proc Logger.debug(&self, message: Variadic[String]) => Void #override {
+        #notImplemented(<<Default debug log needs to be implemented>>);
     }
 }
 
-proc Logger.info(&self, message: Variadic[String]) => Void #override
-{
+proc Logger.info(&self, message: Variadic[String]) => Void #override {
 
 }
 
-proc Logger.warning(&self, message: Variadic[String]) => Void #override
-{
+proc Logger.warning(&self, message: Variadic[String]) => Void #override {
 
 }
 
-proc Logger.error(&self, message: Variadic[String]) => Void #override
-{
+proc Logger.error(&self, message: Variadic[String]) => Void #override {
 
 }
 
-proc Logger.critical(&self, message: Variadic[String]) => Void #override
-{
+proc Logger.critical(&self, message: Variadic[String]) => Void #override {
 
 }
 
-let io := import core::fmt::io
+let io := import core::fmt::io;
 

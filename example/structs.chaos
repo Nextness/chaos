@@ -1,17 +1,15 @@
-module exampleStructs
+module exampleStructs;
 
-type HelloWorld struct
-{
-    hello: String
-    world: String = <<world!>>
+type HelloWorld struct {
+    hello: String;
+    world: String = <<world!>>;
 }
 
-proc main(nothing) => Void
-{
-    let value := HelloWorld { <<Hello,>> }
-    io::printfn(<<{value.hello} {value.world}>>)
-    return
+proc main(nothing) => Void {
+    let value := HelloWorld(<<Hello,>>);
+    io::printfn(<<{value.hello} {value.world}>>);
+    return;
 }
 
-let io := import core::fmt:io
+let io := import core::fmt:io;
 

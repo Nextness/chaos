@@ -1,21 +1,22 @@
-module errors
 
-macro AnyError.string(&self) => String then set #literalName(self)
-macro AnyError.reason(&self) => String then set self.reason
+module errors;
+
+macro AnyError.string(&self) => String then set #literalName(self);
+macro AnyError.reason(&self) => String then set self.reason;
 
 type Error error
 {
-    nullPointer
-    outOfMemory
-    outOfBounds
+    nullPointer;
+    outOfMemory;
+    outOfBounds;
 }
 
-proc main(nothing) => Void
+proc main() => Void
 {
-    let someError: AnyError = nullPointer{<<You suck and need more RAM, lol!>>}
-    io::printfn(<<The error is "{someError.string()} - reason: {someError.reason()}">>)
-    return
+    let someError: AnyError = Error.nullPoinnter.(<<You suck and need more RAM, lol!>>);
+    io::printfn(<<The error is "{someError.string()} - reason: {someError.reason()}">>);
+    return;
 }
 
-import core::fmt::io
+import core::fmt::io;
 
