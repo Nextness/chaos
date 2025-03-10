@@ -1,0 +1,23 @@
+// Using https://github.com/tsoding/c3ws/tree/main as example...
+
+proc init() {
+    ...;
+}
+
+inline proc yield(#noArgument) {
+    #if compTime.os == <<arch>> {
+        assembly {
+            pushq %rdi;
+            pushq %rbp;
+            pushq %rbx;
+            pushq %r12;
+            pushq %r13;
+            pushq %r14;
+            pushq %r15;
+            movq %rsp, %rdi; // rsp
+            movq $0, %rsi;   // sm = SM_NONE
+            jmp coroutine_switch_context;
+        }
+    }
+}
+

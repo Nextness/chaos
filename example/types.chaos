@@ -1,72 +1,72 @@
 module types;
 
 --- Numbers ---
-type Ints union { I8 | I16 | I32 | I64 | I128 }
-type UInts union { U8 | U16 | U32 | U64 | U128 }
-type Floats union { F16 | F32 | F64 | F128 }
+type Ints union {
+    I8; I16; I32; I64; I128;
+}
 
-type Complex union { C64 | C128 }
-type Quaternion union { Q128 | Q256 }
+type UInts union {
+    U8; U16; U32; U64; U128;
+}
 
-type Natural union { Ints | UInts }
-type Real union { Ints | UInts | Floats }
+type Floats union {
+    F16; F32; F64; F128;
+}
 
-type AnyNumber union { Natural | Real | Complex | Quaternion }
+type Complex union {
+    C64; C128;
+}
 
-type Text union { Char | String | Rune }
+type Quaternion union {
+    Q128; Q256;
+}
+
+type Natural union {
+    Ints; UInts;
+}
+
+type Real union {
+    Ints; UInts; Floats;
+}
+
+type AnyNumber union {
+    Natural; Real; Complex; Quaternion;
+}
+
+type Text union {
+    Char; String; Rune;
+}
 
 --- Vector ---
-type Vector2[T: AnyNumber] struct then x, y: T
+type Vector2[T: AnyNumber] struct {
+    x, y: T;
+}
 
 --- Primitives ---
-type Primitives union
-{
-    I8
-    | I16
-    | I32
-    | I64
-    | I128
-    | U8
-    | U16
-    | U32
-    | U64
-    | U128
-    | F16
-    | F32
-    | F64
-    | F128
-    | C64
-    | C128
-    | Q128
-    | Q256
-    | Char
-    | String
-    | Rune
-    | Byte
-    | Bool
-    | List[dynamic | Natural, Self]
-    | Array[dynamic | Natural, Self]
-    | Dict[dynamic | Natural, Text  | Real, Self]
+type Primitives union {
+    I8; I16; I32; I64; I128;
+    U8; U16; U32; U64; U128;
+    F16; F32; F64; F128;
+    C64; C128;
+    Q128; Q256;
+    Char; String; Rune;
 }
 
 --- Time ---
-enum TimeUnit {
-    NanoSeconds := 1_000_000_000.0;
-    MicroSeconds := 1_000_000.0;
-    MiliSeconds := 1_000.0;
-    Seconds := 60.0;
-    Minutes := 60.0;
-    Hours := 24.0;
+type TimeUnit enum U64 {
+    NanoSeconds = 1_000_000_000.0;
+    MicroSeconds = 1_000_000.0;
+    MiliSeconds = 1_000.0;
+    Seconds = 60.0;
+    Minutes = 60.0;
+    Hours = 24.0;
 }
 
-#assert(
-    TimeUnit.NanoSeconds.value == TimeUnit[0].value
-);
+#assert(TimeUnit.NanoSeconds.value == TimeUnit[0].value);
 
-struct Time [Unit: Literal[TimeUnit] = Seconds]
-{
-    mut date: U64 = ...;
-    mut time: F64 = ...;
+type Time [Unit: Literal[TimeUnit] = Seconds] struct {
+    date U64 = ...;
+    time F64 = ...;
 }
 
 proc Time[default].to(self: *Self, timeUnit: Literal[TimeUnit]) -> Time {
@@ -80,7 +80,7 @@ proc Time[default].to(self: *Self, timeUnit: Literal[TimeUnit]) -> Time {
         for (element in TimeUnit[timeUnit:Unit+1]) tmp *= element;
     }
 
-    return newTimeUnit.{date=self.date, time=tmp};
+    return newTimeUnit.(date=self.date, time=tmp);
 }
 
 proc Time.now(self: *Self) -> String {
@@ -89,9 +89,9 @@ proc Time.now(self: *Self) -> String {
 
 
 --- List ---
-struct List[S: Literal[Natural | dynamic], T: Type] {
-    items: T,
-    count: U64 = 0,
-    capacity: U64 = 256 #if (S != dynamic) #else S,
+type List[S: Literal[Natural | dynamic], T: Type] struct {
+    items T;
+    count U64 = 0;
+    capacity U64 = 256 #if S != dynamic #else S;
 }
 

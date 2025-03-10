@@ -1,118 +1,189 @@
 module random;
 
-macro strictAllocation[T: Type](Void) then @free T #if strictAllocation #else T;
+inline proc strict_allocation [T: Type] :: #no_argument () => Void {
+    @free T #if STRICT_ALLOCATION #else T;
+}
 
-proc allocHeap[T: *Type = *Void](size: U64) => mut strictAllocation[T] {
+proc alloc_heap[T: *Type = *Void] :: (size: U64) => strict_allocation[T] {
     ...;
 }
 
-proc freeHeap[T: *Type](mut @free object: T) => Void {
-    ...;
-}
-/** DOCUMENTATION **** 
- For those soy devs who want to have a easier way to loop...
-**/
-loop::do {
-    ...;
-} loop::while();
-
-loop::for (x loop::in xs) {
+proc free_heap[T: *Type] :: (@free object: T) => Void {
     ...;
 }
 
-loop::for (x := 0; condition; ++x) {
+macro strictAllocation[T: Type] :: #noArgument () {
+    set @free T #if strictAllocation #else T;
+}
+
+proc allocHeap[T: *Type = *Void] :: (size: U64) =>  strictAllocation[T] {
     ...;
 }
 
-loop::while (condition) {
+proc freeHeap[T: *Type] :: (@free object: T) => Void {
     ...;
+}
+
+#for #let symbol #in Literal[String](helloWorld, welcome, somethingElse) {
+    #if #checkSymbolInList(symbol, [helloWorld, somethingElse, byebye]) {
+        type symbol :: struct {
+            some: String;
+            another: Bool;
+        }
+    }
+}
+
+/*********************************************************************************************
+ *   Documentation
+ *   The result of the compile time operation is the following:
+ *
+ *     type helloWorld :: struct {
+ *         some: String;
+ *         another: Bool;
+ *     }
+ *
+ *     type somethingElse :: struct {
+ *         some: String;
+ *         another: Bool;
+ *     }
+*********************************************************************************************/
+
+for label looping: let x := 0; catch something() |nani| != AnyFlaw; ++x {
+    while cond {
+        let something := aOperation();
+        if something then break looping;
+    }
+}
+
+for let x := 0; try something() orSet false; ++x {
+
 }
 
 // if allocatedString is never destroyed, the compiler will fail
+let allocated_string: *String = try mem::alloc_heap(128) or_return Err.null_pointer;
 let allocatedString: *String = try mem::allocHeap(128) orReturn Err.nullPointer;
 defer mem::freeHeap(allocatedString);
 
-type Version[T: num::Ints = U8] struct {
-    major: U8 = ...;
-    minor: U8 = ...;
-    fix: U8 = ...;
-    phase: String? = null;
+type Version[T: num::Ints = U8] :: struct {
+    major, minor, fix: U8;
+    phase:             String? = null;
 }
 
-let testVersion0: Version[U16] = (major=10, minor=0, fix=0, phase=<<development>>);
-let testVersion1: Version = [U16](major=10, minor=0, fix=0, phase=<<development>>);
-let testVersion2 := Version[U16](major=10, minor=0, fix=0, phase=<<development>>);
+let testVersion0 : Version[U16] = .(major=10, minor=0, fix=0, phase=<<development>>);
+let testVersion1 := Version[U16].(major=10, minor=0, fix=0, phase=<<development>>);
 
-proc Version[default].string(using &self) => String {
+proc Version[default].string :: (using &self) => String {
     let versionString := <<{major}.{minor}.{fix}>>;
     if phase != null then versionString = <<{versionString}-{phase}>>;
     return versionString;
 }
 
 {
-    proc somethingElseNow(string: *String, @destroyed newValue: *String) => err.nullPointer {
-        if (!string || !newValue) return err.nullPointer;
+    proc somethingElseNow :: (string: *String, @destroyed newValue: *String) => Void! {
+        if !string || !newValue then return Err.nullPointer;
         defer allocator::heapFree(newValue);
         string = <<{*string} {newValue}>>;
         println(*string);
     }
 
     let stillExists := <<hello world>>;
-    let mut @destroyed noLongerExists := allocator::heapAlloc[*String](20);
+    let  @destroyed noLongerExists := allocator::heapAlloc[*String](20);
     noLongerExists = <<how are you?>>;
     somethingElseNow(&stillExists, &noLongerExists);
 }
 
 type SomeStruct struct {
-    username: String = ...;
-    password: #redacted String = ...;
+    username String;
+    password String; #redacted
 }
-let someStruct := &SomeStruct(username=<<username>>, password=getEnvVar(<<ENV_VAR_NAME>>));
 
-proc testingNullable(input1: Bool?) => Bool! then return true if input != null else err.nullPointer;
+SomeStruct.(username: <<username>>, password: getEnvVar(<<ENV_VAR_NAME>>));
 
-proc main(nothing) => U64 {
-    let testAnotherWindow := if catch initializeWindow(100, 100, <<Chaos Window>>) |excuseMe| {
-        fmt::eprint(<<Something went wrong in here...>>);
+let someStruct: *SomeStruct = &.(<<username>>, getEnvVar(<<ENV_VAR_NAME>>));
+let someStruct := &SomeStruct.(<<username>>, getEnvVar(<<ENV_VAR_NAME>>));
+
+
+type Some_Struct :: struct {
+    username: String = ...;
+    password: String = ...; #redacted
+}
+let some_struct : *Some_Struct = &.(username=<<username>>, password=getEnvVar(<<ENV_VAR_NAME>>));
+let some_struct := &Some_Struct(username=<<username>>, password=getEnvVar(<<ENV_VAR_NAME>>));
+
+proc testing_nullable :: (input1: Bool?) => Bool! {
+    return true if input != null else Err.null_pointer!;
+}
+
+proc testingNullable :: (input1: Bool?) => Bool! {
+    return true if input != null else Err.nullPointer!;
+}
+
+proc main :: () => U64 {
+    let testAnotherWindow := if catch initializeWindow(100, 100, <<Chaos Window>>) nani? {
+        io::printfn(<<Something went wrong in here - reason: {nani.reason()}>>);
         return 1;
     }
-    let window := try initializeWindow(100, 100, <<Chaos Windows!>>) orReturn 1;
-
-type Another[T] struct {
-    somethingElse: T? = null;
-    item: String = <<>>;
-    number: U32 = 0;
 }
 
-type Something swizzling U32 { a = 0; b = 0; c = 0; }
+proc main :: () => U64 {
+    let test_another_window := if catch initialize_window(100, 100, <<Chaos Window>>) |error| {
+        io::printf(<<Something went wrong in here - reason: {error.reason()}>>);
+        return 1;
+    }
+}
+
+type Another[T] :: struct {
+    somethingElse: T?     = null;
+    item:          String = <<>>;
+    number:        U32    = 0;
+}
+
+type Something :: swizzling U32 {
+    a = 0;
+    b = 0;
+    c = 0;
+}
 something: Something = (1000, 2000, 3000);
 something.abc *= 10;
 
-proc multipleReturns(const toggle: Bool) => (String, U32)! then return Err.nullPointer if toggle else <<h>>, 10;
-proc noDiscardReturn(nothing) => #noDiscard (Bool, String) then return true, <<hello world>>;
+proc multiple_returns :: (toggle: Bool) => (String, U32)! {
+    inline let result := if toggle then Err.null_pointer! else (<<h>>, 10);
+    return result;
+}
 
-// Some logics starts here
------------------------------------------------------------------------------------------------------------------------
+proc multipleReturns :: (toggle: Bool) => (String, U32)! {
+    return Err.nullPointer if toggle else <<h>>, 10;
+}
+
+proc no_discard_return :: () => #no_discard (Bool, String)! {
+    return true, <<hello world>>;
+}
+
+proc noDiscardReturn :: () => #noDiscard (Bool, String)! {
+    return true, <<hello world>>;
+}
+
 noDiscardReturn(); --- This should result in a compile time error
 let someVariableName := noDiscardReturn(); --- This should result in a compile time error
 let someVariableName1, someVariableName2 := noDiscardReturn(); --- This should work just fine
 let nothing := noDiscardReturn(); --- This should work just fine
------------------------------------------------------------------------------------------------------------------------
 
-type JsonResponse[T: types::Primitive] struct {
-    `json:<<status_code>>` statusCode: U32 = ...;
-    `json:<<content>>` content: T = ...;
+type JsonResponse [T: types::Primitive] :: struct {
+    statusCode: U32 = ...; #tag(<<json:status_code>>)
+    content:    T   = ...; #tag(<<json:content>>)
 }
 
-macro Literal[T] then return $$Literal[T];
+macro Literal[T] :: #noArgument () {
+    set $$Literal[T];
+}
 
-type Array[S: Literal[num::Natural | dynamic], T: Type] struct {
-    items: T = ...;
-    count: U64 = #0;
+type Array[S: Literal[num::Natural | dynamic], T: Type] :: struct {
+    items:    T   = ...;
+    count:    U64 = #0;
     capacity: U64 = S #if (S != dynamic) #else 256;
 }
 
-proc checkFirstElementExists(mut element: Array[dynamic, ___]?) -> Bool! {
+proc checkFirstElementExists :: (element: Array[dynamic, ___]?) -> Bool! {
     if element != null then element = Array[dynamic, String](#0);
     --- Checks for the size of the array, if the accessing index is greater,
     --- raises and nullpointer error or something like this.
@@ -123,7 +194,11 @@ proc checkFirstElementExists(mut element: Array[dynamic, ___]?) -> Bool! {
     return true;
 }
 
-let errorForLater: AnyError;
+let something: String = if catch doSomeOperationWithError() |let errForLater| {
+    ...;
+}
+
+let errorForLater: AnyFlaw;
 let something: String = if catch doSomeOpWithError() |excuseMe| {
     errorForLater = excuseMe;
     ...;
@@ -132,7 +207,7 @@ let something: String = if catch doSomeOpWithError() |excuseMe| {
 /** DOCUMENTATION *********************************************************************************
    The idea here is that the exampleString variable is constant, meaning that after assignment,
  no assignment or change can be made to it. However, if we get the address of the variable and
- assign it to a mutable variable, we can change the value of the address using the mutable
+ assign it to a able variable, we can change the value of the address using the mutable
  variable.
    At the end of the operation, both variables have the same value, even though the variable
  exampleString is constant.
@@ -140,7 +215,7 @@ let something: String = if catch doSomeOpWithError() |excuseMe| {
 
 proc main() => Void {
     let exampleString := <<Testing something with strings>>;
-    let mut changeableVar := &exampleString;
+    let changeableVar := &exampleString;
     changeableVar.set(0, <<t>>);
     assert exampleString == changeableVar && <<Strings should match>>;
     return;
@@ -151,19 +226,20 @@ macro List[default].get(&self, position) => T! {
     return #unsafe $$get(self, position);
 }
 
-macro List[default].insert(&self, position: U64, value: T) -> Void! {
+macro List[default].insert(&self, position: U64, value: T) => Void! {
     if self.length < position then return err.outOfBounds
     #unsafe $$insert(self, position, value)
 }
 
-proc someProcExample() -> String! {
+proc someProcExample() => String! {
     let someList := List[4, String](<<Hello>>, <<World>>, <<!>>);
-    let result1  := if catch someList.get(0) |excuseMe| then return Err.outOfBounnds;
-    // Code below should not compile becuase the variable
-    // someList is const and therefore cannot have a value inserted
-    let result2 := if catch someList.insert(3, <<\n>>) |nani| then return Err.someError;
+    let result1 := if catch someList[0] |error| then return Err.outOfBounds;
+    // #unsafe somelist[10] = <<>>;
+    if catch someList[3] = <<\n>> |error| then return Err.someError;
     return someList.string();
 }
+
+
 
 let someContext: NameScope = {
     macro drawUI(callback: *proc(nothing) => Void) {
@@ -174,34 +250,33 @@ let someContext: NameScope = {
     }
 }
 
-macro gameNextSecond(timeFrame: *F64, callback: proc() => Void) => Void {
+macro gameNextSecond :: (timeFrame: *F64, callback: proc :: () => Void) => Void {
     if *timeFrame += rl::getFrameTime() >= 1.0 {
         callback();
         timeFrame = 0.0;
     }
 }
 
-proc main() => U32 {
+proc main :: () => U32 {
     let openedFile: List[dynamic, String] = if catch open(<<./somepath/file.ext>>, <<r>>) |nani| {
         logger.error(<<Error while loading file - reason: {err.string()}>>);
         return 1;
     }
     defer close(openedFile);
 
-    label handlingFileContent {
-        let lineContent := if catch openedFile.readline() |nani| {
-            logger.error(<<Failed to parse line - reason: {err.string()}>>);
+    while let lineContent := catch openedFile.readline() |error| {
+        if error == AnyFlaw {
+            logger.error(<<Failed to parse line - reason: {error.reason()} >>);
             return 1;
         }
-        if openedFile.hasEnded() then break handlingFileContent;
-        print(<<{lineContent}>>);
-        goto handlingFileContent;
+        if openedFile.hasEnded() then break;
+        io::println(lineContent);
     }
 
     return 0;
 }
 
-proc likelyIf(field1, field2: *String) => Bool {
+proc likelyIf :: (field1, field2: *String) => Bool {
     likely if field1 != field2 {
         doSomething();
         return true;
@@ -209,20 +284,27 @@ proc likelyIf(field1, field2: *String) => Bool {
     return false;
 }
 
-type SomethingIsWrong enumArray #extensive {
+type SomethingIsWrong enumArray :: #extensive {
     ValA; // 0
     ValB; // 1
     ValC; // 2
 }
 
-type Enum enum U64 #extensive {
+type SomethingIsWrong :: enumArray #extensive {
+    ValA; // 0
+    ValB; // 1
+    ValC; // 2
+}
+
+type Enum :: enum U64 {
     A = 1;
     B;
     D;
+    E;
 }
 
-proc attemptingSwitch(something: some::Enum) => Void {
-    #extensive if something == {
+proc attemptingSwitch :: (something: some::Enum) => Void {
+    #partial if something == {
         case A then fmt.print(<<{A}>>);
         case B then fmt.print(<<Something else {B}>>);
         case D then fmt.print(<<String {D}s nuutz>>);
@@ -239,35 +321,134 @@ try mem.alloc(sizeOf(Hello)) as *Hello |error| {
     return err.nullPointer;
 }
 
-type myError error {
+type AnotherInt alias      :: I32;
+type SomethingNew distinct :: I32;
+
+type AnotherInt   :: alias I32;
+type SomethingNew :: distinct I32;
+
+type MyError flaw :: {
     errorName;
 }
 
-proc tryingShitOut(input: StringBuilder) => Void! {
-    label loopString {
-        currentChar := if catch input.get() |nani| {
-            logger.error(<<Failed to get character>>);
-            return nani;
-        }
-        if currentChar == <<\0>> then break loopString;
-        if catch doSomeOperation(currentChar) |nani| {
+type myError :: flaw {
+    errorName;
+}
+
+proc tryingShitOut :: (inout: StringBuilder) => Void! {
+    for let currentChar := catch input.get() |error| {
+        if error then return error;
+        if currentChar == <<\0>> then return;
+        if catch doSomeOperation(currentChar) |error| {
             logger.error(<<Failed to do some operation>>);
-            return nani;
+            return error;
         }
-        goto loopString;
     }
 }
 
+type Iterable :: interface #composable {
+    
+}
 
-let bitShift := 0b1 <- 2;
-let bitShift2 := 0b10 -> 2;
+let bitShift := (0b1 <- 2) == 2;
+let bitShift2 := (0b10 -> 2) == 1;
+
+type Comparable[T: Primitive] :: interface #composable {
+    proc operator <  :: (this, that: T) => Bool;
+    proc operator >  :: (this, that: T) => Bool;
+    proc operator >= :: (this, that: T) => Bool;
+    proc operator <= :: (this, that: T) => Bool;
+    proc operator == :: (this, that: T) => Bool;
+    proc operator != :: (this, that: T) => Bool;
+}
+
+type Something[T: I64] impl Comparable[T] & Iterable :: struct {
+    
+}
+
+proc Something[default].< :: (this, that: T) => Bool {
+
+}
+
+proc Something[default].operator > :: (this, that: T) => Bool {
+}
+
+
+type Incrementable :: interface #composable {
+
+}
+
+type Invertable :: interface #composable {
+
+}
+
+/** DOCUMENTATION ****************************************************************************************
+      The following will be the result. Because we have a iterable type, the return value of the function
+  is a boolean. On the otherhand, if the implementation uses something incrementable, the return will be a
+  I64. Any other value will be considered unrecheable and will be a compile time error.
+      Also this is considered a macro, because it has a inline keyword.
+
+  let result: Bool = another_test[SomeIterableImplementation](someValue, <<another name>>);
+********************************************************************************************************/
+inline proc another_test [T: impl.Iterable | impl.Incrementable] :: (input: T, value: String) => (
+    result: #if #containsImplOf(T, impl.Iterable) #then Bool = false
+            #elif #containsImplOf(T, impl.Incrementable) #then I64 = 0
+            #else #unreacheable
+) {
+    
+}
+
+proc anotherTest[T: impl.Iterable | impl.Incrementable] :: (input: T, value: String) => (
+    #if typeOf(T) == { #case Iterable #then Bool; #case Incrementable # then I64; }
+) {
+    
+}
+
+proc tryingSomethingWithAllocators :: (age: I64, name: String; ctx: #Context) => String! {
+    ctx.logger.trace();
+    ctx.allocator();
+}
+
+if catch tryingSomethingWithAllocators(10, <<Whatever>>; .(curLogger, temporaryAllocator)) |error| {
+}
+
+let something: List[10, String] = .(<<Something>>);
+if catch let value := something[0] |error| {
+    
+}
+let value := try something[0] orSet <<>>;
+
+proc updateCounter :: () => (proc :: () => I64!) {
+    let someVariable: U64 = 0;
+    return proc :: () => I64 {
+        if someVariable > 0 && 0 < someVariable - MAXU64 then return Err.overFlow;
+        return ++someVariable;
+    }
+}
+
+type AnoFunc[T] :: alias proc [T] :: (...) => T!;
+inline proc inputs :: #noArgument () then (someProc: AnoFunc[T], <args>; context := #Context.());
+proc anonymousFunc [T] :: (inputs) => T! {
+    ...; // Some operations
+    if catch someProc.*[T](<args>) |error| {
+        return error;
+    }
+    ...; // Other operations
+}
+
+try anonymousFunc[Bool](&anonymousFuncWithInput, <10, <<somethingNew>>, false>) orSet true;
+let counter := updateCounter();
+try counter() orSet 0;
+
+#overload proc something :: () => Void {
+}
 
 #scope(__file__);
 
 import core::std;
 import core::fmt;
 
-let alloc := import core::allocator<logger>;
+let alloc := import core::allocator[logger, Info];
 let log   := import core::logging;
 let num   := import core::numbers;
 

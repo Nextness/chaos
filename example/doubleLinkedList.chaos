@@ -1,52 +1,48 @@
 // Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
 // to use as example
 
-module doubleLinkedList<logger: Logger? = null, strictAllocation: Literal[Bool] = False>;
+module doubleLinkedList;
 
-macro strictAllocation[T] then return @free T #if strictAllocation #else T;
+inline proc DoubleLinkedList[default].getLength(&self) U64 then set self.count.(U64);
+inline proc DoubleLinkedList[default].getHead(&self) Node[T]! then set self.head if self.head != null else Err.nullPointer;
+inline proc DoubleLinkedList[default].getTail(&self) Node[T]! then set self.head if self.head != null else Err.nullPointer;
 
-macro DoubleLinkedList[default].getLength(self: *Self) => U64 then set self.count as U64;
-macro DoubleLinkedList[default].getHead(self: *Self) => Node[T]! then set self.head if self.head != null else Err.nullPointer;
-macro DoubleLinkedList[default].getTail(self: *Self) => Node[T]! then set self.head if self.head != null else Err.nullPointer;
-
-macro DoubleLinkedList[default].print(self: *Self) => Void {
-    let node: *Node = self.head;
-    let mut i := 0;
-    label loopData {
-        if i < self.count then break loopData;
-        fmt::println(<<{node.data}>>);
+inline proc DoubleLinkedList[default].print(&self) {
+    let node *Node = self.head;
+    for let i = 0; i < self.count; ++i {
+        inline let pad = i * 2;
+        io::printf(<<*%\n>>, pad, node.data);
         node = node.next;
-        i++;
-        goto loopData;
     }
 }
 
-struct DoubleLinkedList[T, C: num::Ints = U64] {
-    mut count: C = 0;
-    mut head: *Node[T]? = null;
-    mut tail: *Node[T]? = null;
+type DoubleLinkedList[T, C num::Ints = U64] struct {
+    count C         = 0;
+    head  *Node?[T] = null;
+    tail  *Node?[T] = null;
 }
 
-struct Node[T] {
-    mut data: *T;
-    mut prev: *Node[T]? = null;
-    mut next: *Node[T]? = null;
+type Node[T] struct {
+    data *T;
+    prev *Node?[T] = null;
+    next *Node?[T] = null;
 }
 
-proc createNode[T](data: *T) => strictAllocation[Node[T]!] {
-    let newNode := if catch mem::alloc[*Node[T]](sizeOf(Node[T])) |nnani| {
-        #if logger != null #then logger.error(<<Failed to allocate node - reason {nani.reason()}>>);
+proc createNode[T](data: *T) *Node[T]! {
+    type Nd alias = Node[T];
+    let newNode *Nd = if catch ctx.allocator.alloc(Nd) {
+        #if ctx.logger != null #then ctx.logger.error(<<Failed to allocate node - reason {nani.reason()}>>);
         return Err.outOfMemory;
     }
-    #if logger != nunll #then logger.trace(<<Allocated memory for node: {newNode.address()}>>);
-    return newNode.(data=data);
+    #if ctx.logger != null #then ctx.logger.trace(<<Allocated memory for node: {newNode.address()}>>);
+    return newNode.{data=data};
 }
 
-proc DoubleLinkedList[default].pushHead(self: *Self, data: *T) => Void! {
-    let newNode := try createNode(data) orReturn |excuseMe|;
+proc DoubleLinkedList[default].pushHead(&self, data *T) Void! {
+    let newNode = try createNode(data) orReturn error;
     if self.count == 0 {
-        self.head = newNode;
-        self.tail = newNode;
+        self.head=newNode;
+        self.tail=newNode;
     } else {
         newNode.next = self.head;
         self.head.prev = newNode;
@@ -55,7 +51,7 @@ proc DoubleLinkedList[default].pushHead(self: *Self, data: *T) => Void! {
     self.count++;
 }
 
-proc DoubleLinkedList[default].pushTail(self: *Self, data: *T) => Void! {
+proc DoubleLinkedList[default].pushTail :: (self: *Self, data: *T) => Void! {
     let newNode := try createNode(data) orReturn |excuseMe|;
     if self.count == 0 {
         self.tail = newNode;
@@ -68,7 +64,7 @@ proc DoubleLinkedList[default].pushTail(self: *Self, data: *T) => Void! {
     self.count++;
 }
 
-proc DoubleLinkedList[default].inserNode(self: *Self, data: *T, index: U64) => Void {
+proc DoubleLinkedList[default].inserNode :: (self: *Self, data: *T, index: U64) => Void {
     if index < 0 || index > self.count then return Err.failedToInsertNode;
 
     if index == 0 {
@@ -79,10 +75,10 @@ proc DoubleLinkedList[default].inserNode(self: *Self, data: *T, index: U64) => V
         return;
     }
 
-    let mut tmp: *Node[T];
+    let tmp: *Node[T];
     if index <= (self.count / 2) {
         tmp = self.head;
-        let mut i := 0;
+        let i := 0;
         label loopNodes {
             if i < index - 1 then break loopNodes;
             tmp = tmp.next;
@@ -91,7 +87,7 @@ proc DoubleLinkedList[default].inserNode(self: *Self, data: *T, index: U64) => V
         }
     } else {
         tmp = list.tail;
-        let mut i := 0;
+        let i := 0;
         label loopNodes {
             if i < self.count - index then break loopNodes;
             tmp = tmp.prev;
@@ -108,7 +104,7 @@ proc DoubleLinkedList[default].inserNode(self: *Self, data: *T, index: U64) => V
     self.count++;
 }
 
-proc DoubleLinkedList[T].deleteHead(self: *Self) => Void {
+proc DoubleLinkedList[T].deleteHead :: (self: *Self) => Void {
     if self.size == 0 then return;
     if list.size == 1 then mem::free(self.head);
     #notImplemented

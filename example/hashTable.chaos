@@ -3,40 +3,67 @@
 
 module hashTable;
 
-macro HashTable[default].length(&self) => U64 then return self.size;
-macro HashTable[default].iterator(using &self) => HashTableIterator then return HashTableIterator(table, 0);
+inline proc HashTable[default].length(&self) U64 { set self.size; }
+inline proc HashTable[default].iterator(using &self) HashTableIterator { set HashTableIterator{table, 0}; }
 
-type Entry[T] struct {
-    key:       *String;
-    mut value: *T;
+type Entry[Key, Value] struct
+{
+    key   *Key;
+    value *Value;
 }
 
-type HashTable[T] struct {
-    mut entry:    *Entry[T] = ...;
-    mut capacity: U64       = 256;
-    mut size:     U64       = 0;
+type HashTable[Key, Value] struct
+{
+    entry    *Entry[Key, Value] = ...;
+    capacity U64                = 256;
+    size     U64                = 0;
 }
 
-proc initHashTable[T](Void) => @free *HasTable[T] {
-    let table: *HashTable[T] = try mem::alloc(sizeOf(HashTable[T])) orReturn err.nullPointer;
-    table.entry = if catch mem::calloc(table.capacity, sizeOf(Entry[T])) {
-        mem::free(table);
+proc initHashTable[Key, Value]() *HashTable[Key, Value]!
+{
+    type HT alias := HashTable[Key, Value];
+    type E alias := Entry[Key, Value];
+
+    let table *HT = try ctx.mem.alloc(HT) orReturn Err.nullPointer;
+    if table.entry = ctx.mem.calloc[E](table.capacity); catch error {
+        ctx.logger.?error(<<Failed to allocate memory, buy more RAM>>);
+        ctx.mem.free(table);
         return Err.nullPointer;
     }
     return table;
 }
 
-proc HashTable[default].destroy(using &self) => Void {
-    let mut i := 0;
-    label clearHashTable {
-        if i < capacity then break clearHashTable;
-        let curEntry := try entry.get(i) orReturn err.outOfBounds;
-        mem::free(curEntry.key);
-        i++;
-        goto clearHashTable;
+proc HashTable[default].destroy(using &self) Void!
+{
+    for local let i = 0; i < capacity; ++i {
+        if let curEntry, error = entry[i]; catch error {
+            return Err.outOfBounds;
+        }
+        ctx.mem.free(curEntry.key);
     }
-    mem::free(entry);
-    mem::free(self);
+    ctx.mem.free(entry);
+    ctx.mem.free(self);
+}
+
+proc HashTable[default].get(using &self, key *String) T! {
+    let hash = hashKey(key);
+    let i = hash && (capacity - 1);
+}
+
+proc HashTable[default].get :: (using &self, key: *String) => T! {
+    let hash := hashKey(key);
+    let i := hash && (capacity - 1);
+
+    for nothing; try entry.get(i) orSet false; ++i {
+        
+    }
+}
+
+proc HashTable[default].get(using &self, key Key) Value
+{
+    let hash := hashKey[Key](key);
+    let i = hash & (capacity - 1);
+    
 }
 
 proc HashTable[default].get(using &self, key: *String) => T! {
@@ -57,16 +84,16 @@ proc HashTable[default].get(using &self, key: *String) => T! {
 
 proc HasTable[default].expand(using &self) => Void! {
     let newCapacity := capacity * 2;
-    if newCapacity < capacity then return Err.overflow;
+    if newCapacity < capacity then return Err.overflow?;
 
-    let mut newEntry := try mem::calloc(newCapacity, sizeOf(Entry[T])) orReturn err.nullPointer;
+    let mut newEntry := try mem::calloc(newCapacity, sizeOf(Entry[T])) orReturn Err.nullPointer?;
     defer mem::free(newEntry);
 
     let mut i := 0;
     label expanding {
         if i < capacity then break expanding;
-        let localEntry := try entry.get(i) orReturn Err.notFound;
-        if key != null then try setEntry(newEntry, newCapacity, key, value, null) orReturn |excuseMe|;
+        let localEntry := try entry.get(i) orReturn Err.notFound?;
+        if key != null then try setEntry(newEntry, newCapacity, key, value, null) orReturn nani?;
         i++;
         goto expanding;
     }
@@ -75,9 +102,9 @@ proc HasTable[default].expand(using &self) => Void! {
     capacity = newCapacity;
 }
 
-proc HashTable[default].set(using &self, key: *String, value: *T) => *String! {
-    if size >= (capacity / 2) then try self.expand() orReturn |excuseMe|;
-    let key := try setEntry(entry, capacity, key, value, size) orReturn |excuseMe|;
+proc HashTable[default].set :: (using &self, key: *String, value: *T) => *String! {
+    if size >= (capacity / 2) then try self.expand() orReturn |nani|;
+    let key := try setEntry(entry, capacity, key, value, size) orReturn |nani|;
     return key;
 }
 
@@ -98,24 +125,24 @@ proc HashTable[default].next(using &self, it: HashTableIterator) => Void! {
 
 #scope(__File__);
 
-#let const FNV_OFFSET := 14695981039346656037;
-#let const FNV_PRIME := 1099511628211;
+#let fnvOffset :: 14695981039346656037;
+#let fntPrime  :: 1099511628211;
 
-proc hashKey(key: *String) => U64! {
-    let mut hash := FNV_OFFSET;
-    let tmp := key as String;
-
-    let mut i := 0;
-    label hashing {
-        let curChar := try tmp.get(i) orReturn err.outOfBounds;
-        if curChar == <<\0>> then break hashing;
-        hash ^= curChar as U64;
-        hash *= FNV_PRIME;
-        i++;
-        goto hashing;
+proc hasKey :: (key: *String) => U64! {
+    let hash := fnvOffset;
+    let tmp := key as *String;
+    for let i := 0; try tmp.get(i) orSet false; ++i {
+        let currentChar := try tmp.get(i) orReturn Err.outOfBounds;
+        if currentChar == <<\0>> then break;
+        hash ^= currentChar as U64;
+        hash *= fnvPrime;
     }
-
     return hash;
+}
+
+proc setEntry[T] :: (entry: *Entry[T], capacity: U64, key: *String, value: *T, size: *U64?) => String! {
+    let hash := try hashKey(key) orReturn |nani|;
+    let index := hash & (capacity - 1);
 }
 
 proc setEntry[T](entry: *Entry[T], capacity: U64, key: *String, value: *T, size: *U64?) => String! {

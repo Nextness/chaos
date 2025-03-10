@@ -1,0 +1,191 @@
+module random;
+
+type Context struct {
+    allocator Memory := .{
+        calloc Calloc = calloc;
+        alloc Alloc = alloc;
+        free Free = free;
+        realloc Realloc = realloc;
+        memset Memset = memset;
+    };
+    logger Logger? = null;
+}
+
+global let context Context;
+
+type AnotherInt alias := I32;
+type SomethingNew distinct := I32;
+
+type SomeEnum enum U64 {
+    A := 1;
+    B;
+    D;
+    E;
+}
+
+proc attemptingSwitch(something SomeEnum) {
+    #partial if something == {
+    case A then print(<<{A}>>); break;
+    case B then print(<<Something else {B}>>); break;
+    case D then print(<<String {D}s nuutz>>); break;
+    }
+}
+
+type MyError flaw {
+    errorName {reason := <<Expected a name with 10 characters>>};
+    anotherError;
+    justError;
+    yetAnotherError;
+}
+
+type Version[T num::Ints = U8] struct {
+    major, minor, fix T;
+    phase             String? = null;
+}
+
+proc Version[default].string(using &self) String {
+    let versionString = <<{major}.{minor}.{fix}>>;
+    if phase != null then versionString = <<{versionString}-{phase}>>;
+    return versionString;
+}
+
+type JsonResponse[T Primitive] struct {
+    statusCode U32; #tag(<<json:status_code>>)
+    content    T;   #tag(<<json:content>>)
+}
+
+type SomeStruct struct {
+    username String;
+    password String; #redacted
+}
+
+let someStruct *SomeStruct = {
+    username := <<username>>,
+    password := getEnvVar(<<ENV_VAR_NAME>>),
+};
+
+// The value "error" is implicit for convenience, but can be changed
+// whenever we want to.
+proc main() U64 {
+    if let window Window |anotherVarName| = initializeWindow(100, 100, <<Window>>); catch anotherVarName {
+        printfn(<<Something went wrong in here - reason: {error.reason()}>>);
+        return 1;
+    }
+}
+
+proc testListCreateAccess() {
+    let someList List[4, String] = [<<Hello>>, <<World>>];
+    if let firstString String = someList[5]; catch error {
+        exitWith Err.outOfBounds, <<Accessing element out of bounds>>;
+    }
+}
+
+proc testMapCreateAccess() {
+    let someMap Map[4, String, String] = {
+        [<<someKey>>] = <<some value>>,
+        [<<anotherKey>>] = <<another value>>,
+    };
+    if let firstKey = someMap[<<unavailableKey>>]; catch error {
+        exitWith Err.noKeyFound;
+    }
+}
+
+proc newCounter() #noDiscard (*U64, proc() U64)! {
+    let someVariable = try ctx.mem.allocAndAssign(U64, 0) orReturn Err.nullPointer;
+    return someVariable, proc() U64 {
+        return ++someVariable.*;
+    }
+}
+
+proc freeCounter(value *Void) {
+    ctx.mem.free(value);
+    ctx.mem.memset(value, 0);
+}
+
+type SomeFunc[T] alias = proc[T](...) T!;
+
+proc someFunc[T](someProc SomeFunc[T], <args>) T! {
+    if let result T = someProc[T](<args>); catch error {
+        return error;
+    }
+}
+let result Bool = try someFunc[Bool](funcWithInput, <10, <<somethingNew>>, false>) orSet true;
+
+inline proc resultReturns(#noArguments) {
+    #if T #impl {
+    #case Iterable #then Bool = false #break
+    #case Incrementable #then I64 = 0 #break
+    }
+}
+
+proc anotherTest[T impl Iterable | Incrementable](input T, value String) resultReturns {
+    ...;
+}
+
+proc initHashTable[T]() *HashTable[T]! {
+    let table *HashTable[T] = try ctx.mem.alloc(HashTable[T]) orReturn Err.noMemory;
+    if table.entry = ctx.mem.calloc[Entry[T]](table.capacity); catch error {
+        ctx.logger.?error(<<Failed to allocate memory, buy more RAM>>);
+        ctx.mem.free(table);
+        return Err.nullPointer;
+    }
+    return table;
+}
+
+let someCastingShit *Something = {...};
+let stringVersion String = someCastingShit*.someField.(*Void).(*String).append(<<aiousdiouasdj>>);
+printf(stringVersion);
+
+proc HashTable[default].destroy(using &self) {
+    for local let i = 0; i < capacity; ++i {
+        if local let curEntry |error| = entry[i]; catch error {
+            return Err.outOfBounds;
+        }
+        ctx.mem.free(curEntry.key);
+    }
+    ctx.mem.free(entry);
+    ctx.mem.free(self);
+}
+
+type Array[S Literal[num::Natural | dynamic], T Type] struct (RunTimeCheck Literal[true|false] = false) {
+    items    T   = ...;
+    count    U64 = #0;
+    capacity U64 = S #if S != dynamic #else 256;
+}
+
+proc Array[default].something() {
+    #if RunTimeCheck #then ...;
+}
+
+inline proc List[default].get(&self, position) T {
+    if self.length < position then exitWith Err.outOfBounds;
+    set self[position];
+}
+
+proc testingShadowing(someInput String, anotherString U64) Bool {
+    local let someInput *String = *someInput;
+    if ++someInput == null {
+        printfn(<<Should be null...>>);
+        return false;
+    }
+    *someInput = <<{someInput}-{anotherString}>>;
+    return true;
+}
+
+proc loopWithLabel() Bool! {
+    for label loop: local let x = 0; x > 10; ++x {
+        if let something = operation(); catch error {
+            ctx.logger.?error(<<The operation failed - reason: {error.reson()}>>);
+            break loop;
+        }
+        return something;
+    }
+    return Err.failedOperation;
+}
+
+#scope(__file__);
+
+import core::allocator;
+import core::logger;
+let num := import core::numbers;
+

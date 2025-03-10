@@ -1,1 +1,2 @@
-let someAtomicValue: Atomic[U32] = 1;
+let someAtomicValue Atomic[U32] = 1;
+

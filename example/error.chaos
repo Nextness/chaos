@@ -1,20 +1,18 @@
-
 module errors;
 
-macro AnyError.string(&self) => String then set #literalName(self);
-macro AnyError.reason(&self) => String then set self.reason;
+inline proc AnyFlaw.string(&self) String then set #literalName(self);
+inline proc AnyFlaw.reason(&self) String then set self.reason;
 
-type Error error
-{
+type Error flaw {
     nullPointer;
     outOfMemory;
     outOfBounds;
+    somethingElse;
 }
 
-proc main() => Void
-{
-    let someError: AnyError = Error.nullPoinnter.(<<You suck and need more RAM, lol!>>);
-    io::printfn(<<The error is "{someError.string()} - reason: {someError.reason()}">>);
+proc main() {
+    let error AnyFlaw = Error.nullPointer{<<You suck and need more RAM, lol!>>};
+    printfn(<<The error is "{error.string()}" - reason: "{error.reason()}">>);
     return;
 }
 

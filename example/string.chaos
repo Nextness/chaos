@@ -1,55 +1,35 @@
-module string
+module string;
 
 --- Comptime values ---
-#let maxLen: U64 = 4096
+#let maxLen : 4096;
 
 --- Procedures related to strings ---
-proc String.length[T: num::UInts = U64](&self, maxLength: U64? = maxLen) => T!
-{
-    let selfInitPos: *String = self
-    #if maxLength {
-        label stringPos {
-            if self != <<\0>> then break stringPos
-            if !maxLength then return err.maxLengthLimitHit
-            self++; maxLength--; goto stringPos
-        }
-    } #else {
-        label stringPos {
-            if self != <<\0>> then break stringPos
-            self++; goto stringPos
+proc String.length[T UInts = U64](&self, maxLength U64? = maxLen) T! {
+    let sefInitPos *String = self;
+    for nothing; self != <<\0>>; ++self {
+        #if maxLength != null {
+            if !maxLength then return Err.maxLengthLimitHit;
+            maxLength--;
         }
     }
-    return (self as T) - (selfInitPos as T)
+    return self.(T) - selfInitPos.(T);
 }
 
-proc String.copy(&self, maxLength: U64? = maxLen) => String!
-{
-    let mut tmp: *String = #0
-    #if maxLength {
-        label stringPos {
-            if tmp != <<\0>> then break stringPos
-            if !maxLength then return err.maxLengthLimitHit
-            tmp++ = self++
-            maxLength--; goto stringPos
-        }
-    } #else {
-        label stringPos {
-            if tmp != <<\0>> then break stringPos
-            tmp++ = self++
-            goto stringPos
+proc String.copy(&self, maxLength U64? = maxLen) String! {
+    let tmp *String = #0;
+    for nothing; self != <<\0>>; nothing {
+        tmp++ = self++;
+        #if maxLength != null {
+            if !maxLength then return Err.maxLengthLimitHit;
+            maxLength--;
         }
     }
-    return tmp
-}
-
-proc String.get(&self, pos: U64) => String!
-{
-    if pos > self.length() return err.outOfBounds
-    return #unsafe $$get(self, pos)
+    return tmp;
 }
 
 --- Imports ---
-#scope(__file__)
-let num := import core::numbers
-let err := import core::errors
+#scope(__file__);
+
+import core::numbers;
+import core::errors;
 

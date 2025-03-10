@@ -1,33 +1,32 @@
-module linkedList<logger: *Logger? = null>;
+module linkedList[logger: Literal?[Logger] = null];
 
-type Node[T] struct {
-    value: T;
-    next: Node? = null;
+type Node[T] struct
+{
+    value T     = ...;
+    next *Node? = null;
 }
 
-proc nodeInit[T](Void) => #free *Node[T]! {
-    let nodeHead := if catch mem::alloc(sizeOf(Node[T])) |nani| {
+proc nodeInit[T](Void) strictAllocator[*Node[T]]!
+{
+    if let nodeHead = ctx.mem.alloc(Node[T]); catch error {
         #if logger != null #then logger.error(<<Failed to allocate memory for linkedList - reason: {nani.string()}>>);
-        return Err.outOfMemory;
+       return Err.outOfMemory;
     }
     return nodeHead;
 }
 
-proc Node[default].insert(&self, value: T) => Void! {
-    let currentNode := self;
-    label looping {
-        if currentNode != null then break looping;
-        currentNode = currentNode.next;
-        goto looping;
-    }
+proc Node[default].insert(&self, value: T) Void!
+{
+    let currentNode = self;
+    for let currentNode = self; currentNode != null; currentNode = currentNode.next;
 
-    currentNode.next = if catch mem::alloc(sizeOf(Node[T])) |nani| {
+    if currentNode.next = ctx.mem.alloc(Node[T]); catch error {
         #if logger != null #then logger.error(<<Failed to allocate next element in linkedList - reason: {nani.string()}>>);
         return err.outOfMemory;
     }
-    curentNode.next = value;
+    currentNode.next = value;
 }
 
-let err := import core::error;
-let mem := import core::allocaor;
+import core::error;
+import core::allocator;
 
