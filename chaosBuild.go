@@ -66,7 +66,6 @@ func goRebuildYourSelfTek() {
 }
 
 func main() {
-
 	goRebuildYourSelfTek()
 	build_dir := "./build"
 	if _, err := os.Stat(build_dir); err != nil {
@@ -81,3 +80,4 @@ func main() {
 		os.Exit(1)
 	}
 }
+
