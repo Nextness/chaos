@@ -173,7 +173,7 @@ proc testingShadowing(someInput String, anotherString U64) Bool {
 }
 
 proc loopWithLabel() Bool! {
-    for label loop: local let x = 0; x > 10; ++x {
+    for local let x = 0; x > 10; ++x; label loop {
         if let something = operation(); catch error {
             ctx.logger.?error(<<The operation failed - reason: {error.reson()}>>);
             break loop;

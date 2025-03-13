@@ -11,6 +11,16 @@ import (
 
 var cmd bytes.Buffer
 
+func runCommand(command string) error {
+	cmd.WriteString(command)
+	defer cmd.Reset()
+	if _, err := exec.Command("bash", "-c", cmd.String()).Output(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to execute '%s' - error %s\n", command, err.Error())
+		return err
+	}
+	return nil
+}
+
 func touchFile(name string) (*time.Time, error) {
 	file, err := os.Stat(name)
 	if err != nil {
@@ -18,7 +28,7 @@ func touchFile(name string) (*time.Time, error) {
 		return nil, err
 	}
 	stat := file.Sys().(*syscall.Stat_t)
-	var ctime time.Time = time.Unix(int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec))
+	ctime := time.Unix(int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec))
 	return &ctime, nil
 }
 
@@ -48,10 +58,7 @@ func goRebuildYourSelfTek() {
 			os.Remove(oldFile)
 		}
 		
-		cmd.WriteString(fmt.Sprintf("go build %s", buildSourcePath))
-		defer cmd.Reset()
-		if _, err := exec.Command("bash", "-c", cmd.String()).Output(); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to recompile %s because of %s\n", buildSourcePath, err.Error())
+		if err := runCommand(fmt.Sprintf("go build %s", buildSourcePath)); err != nil {
 			os.Exit(1)
 		}
 		goRebuildYourSelfTek()
@@ -70,11 +77,7 @@ func main() {
 	}
 
 	main := "./src/main.go"
-	cmd.WriteString(fmt.Sprintf("go build -o ./build/main %s ", main))
-	defer cmd.Reset()
-	if _, err := exec.Command("bash", "-c", cmd.String()).Output(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to compile %s because of %s\n", main, err.Error())
+	if err := runCommand(fmt.Sprintf("go build -o ./build/main %s ", main)); err != nil {
 		os.Exit(1)
 	}
 }
-

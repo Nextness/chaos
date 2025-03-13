@@ -6,21 +6,18 @@ module hashTable;
 inline proc HashTable[default].length(&self) U64 { set self.size; }
 inline proc HashTable[default].iterator(using &self) HashTableIterator { set HashTableIterator{table, 0}; }
 
-type Entry[Key, Value] struct
-{
+type Entry[Key, Value] struct {
     key   *Key;
     value *Value;
 }
 
-type HashTable[Key, Value] struct
-{
+type HashTable[Key, Value] struct {
     entry    *Entry[Key, Value] = ...;
     capacity U64                = 256;
     size     U64                = 0;
 }
 
-proc initHashTable[Key, Value]() *HashTable[Key, Value]!
-{
+proc initHashTable[Key, Value]() *HashTable[Key, Value]! {
     type HT alias := HashTable[Key, Value];
     type E alias := Entry[Key, Value];
 
@@ -59,8 +56,7 @@ proc HashTable[default].get :: (using &self, key: *String) => T! {
     }
 }
 
-proc HashTable[default].get(using &self, key Key) Value
-{
+proc HashTable[default].get(using &self, key Key) Value {
     let hash := hashKey[Key](key);
     let i = hash & (capacity - 1);
     
