@@ -9,15 +9,24 @@ import (
 	"time"
 )
 
-var cmd bytes.Buffer
-
 func runCommand(command string) error {
-	cmd.WriteString(command)
-	defer cmd.Reset()
-	if _, err := exec.Command("bash", "-c", cmd.String()).Output(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to execute '%s' - error %s\n", command, err.Error())
+	cmdBuffer := bytes.Buffer{}
+	cmdBuffer.WriteString(command)
+	defer cmdBuffer.Reset()
+
+	cmd := exec.Command("bash", "-c", cmdBuffer.String())
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"Failed to execute '%s' - error %s:\n\n%s\n",
+			command,
+			err.Error(),
+			string(out),
+		)
 		return err
 	}
+	fmt.Printf("%s\n", string(out))
 	return nil
 }
 
@@ -57,7 +66,7 @@ func goRebuildYourSelfTek() {
 			os.Rename(buildBinPath, oldFile)
 			os.Remove(oldFile)
 		}
-		
+
 		if err := runCommand(fmt.Sprintf("go build %s", buildSourcePath)); err != nil {
 			os.Exit(1)
 		}
@@ -75,9 +84,28 @@ func main() {
 		}
 	}
 
+	programName := os.Args[0]
+	otherArgs := os.Args[1:]
 	main := "./src/main.go"
-	if err := runCommand(fmt.Sprintf("go build -o ./build/main %s ", main)); err != nil {
-		os.Exit(1)
-	}
-}
 
+	if 0 >= len(otherArgs) {
+		if err := runCommand(fmt.Sprintf("go build -o ./build/main %s", main)); err != nil {
+			os.Exit(1)
+		}
+	} else {
+		for _, arg := range otherArgs {
+			if arg == "build-and-run-default" {
+				defaultFileChaos := "./example/assingment.chaos"
+				if err := runCommand(fmt.Sprintf("go build -o ./build/main %s && ./build/main %s", main, defaultFileChaos)); err != nil {
+					os.Exit(1)
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "[ERROR] Unknown command '%s'\n", arg)
+				fmt.Printf("Usage: %s [build-and-run-default]\n", programName)
+				os.Exit(1)
+			}
+		}
+	}
+
+	os.Exit(0)
+}
