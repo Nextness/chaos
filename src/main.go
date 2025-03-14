@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 	"unicode"
 )
 
@@ -39,22 +40,12 @@ func isInside(b byte, listChar []byte) bool {
 	return result
 }
 
-func parseFile(filePath string) error {
-	if _, err := os.Stat(filePath); err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] The provided file path '%s' doesn't exist\n", filePath)
-		return err
-	}
-	file, err := os.ReadFile(filePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[ERROR] Failed to open the file for whatever reason\n")
-		return err
-	}
-
+func chaosTokenizer(file *[]byte) error {
 	tokens := bytes.Buffer{}
-	content := string(file)
 	listTok := []Token{}
 	pos := 0
 
+	content := string(*file)
 	singleTokens := []byte{'=', '+', ';'}
 
 	for pos < len(content) {
@@ -112,9 +103,24 @@ func main() {
 	}
 
 	otherArgs := os.Args[1:]
-	for _, args := range otherArgs {
-		parseFile(args)
+	for _, arg := range otherArgs {
+		if strings.HasSuffix(arg, ".chaos") {
+			if _, err := os.Stat(arg); err != nil {
+				fmt.Fprintf(os.Stderr, "[ERROR] The provided file path '%s' doesn't exist\n", arg)
+				os.Exit(1)
+			}
+			file, err := os.ReadFile(arg)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[ERROR] Failed to open the file for whatever reason\n")
+				os.Exit(1)
+			}
+			chaosTokenizer(&file)
+		} else {
+			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
+			fmt.Printf("Usage: %s <file.chaos>\n", programName)
+			os.Exit(1)
+		}
 	}
 
-	return
+	os.Exit(0)
 }
