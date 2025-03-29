@@ -55,16 +55,37 @@ func tokTypeToString(tokType2 TokenType) string {
 	case tokEndOfFile:
 		return "tokEndOfFile"
 	}
-	fmt.Fprintf(os.Stderr, "[ERROR] We did not expect this tokType '%d' - please include a new case or fix you shitty code :)\n", tokType2)
+	fmt.Fprintf(os.Stderr, "[ERROR] We did not expect this tokType '%d' - please include a new case or fix your shitty code :)\n", tokType2)
 	os.Exit(1)
 	return "unrecheable"
 }
 
 func printTokens(listTok []Token) {
 
-	fmt.Printf("Token List:\n")
+	fmt.Print("Token List:\n")
 	for _, theToken := range listTok {
 		fmt.Printf("  -> Token { value: '%s', type: '%s' }\n", theToken.value, tokTypeToString(theToken.tokType))
+	}
+}
+
+func printStatements(program []Statements) {
+	// TODO: make this shit better. This looks awful...
+	fmt.Print("Statements:\n")
+	for _, statement := range program {
+		if nodeLet := statement.nodeLet; nodeLet != nil {
+			fmt.Printf("  - let (node)\n")
+			fmt.Printf("    '- %s (%s)\n", nodeLet.identifier.value, tokTypeToString(nodeLet.identifier.tokType))
+			fmt.Printf("    '- %s (%s)\n", nodeLet.identifierType.value, tokTypeToString(nodeLet.identifierType.tokType))
+			if nodeLet.expression != nil {
+				if nodeLet.expression.binaryExpression != nil {
+					fmt.Printf("    '- %s (node)\n", nodeLet.expression.binaryExpression.operation)
+					fmt.Printf("      '- %s (%s) [lhs]\n", nodeLet.expression.binaryExpression.lhs.value, tokTypeToString(nodeLet.expression.binaryExpression.lhs.tokType))
+					fmt.Printf("      '- %s (%s) [rhs]\n", nodeLet.expression.binaryExpression.rhs.value, tokTypeToString(nodeLet.expression.binaryExpression.rhs.tokType))
+				} else {
+					fmt.Printf("    '- %s (%s)\n", nodeLet.expression.literal.value, tokTypeToString(nodeLet.expression.literal.tokType))
+				}
+			}
+		}
 	}
 }
 
@@ -200,17 +221,17 @@ type NodeBinOp struct {
 type NodeExpression struct {
 	nodeExpressionType string
 	literal            Token
-	binaryExpression   NodeBinOp
+	binaryExpression   *NodeBinOp
 }
 
 type NodeLet struct {
 	identifier     Token
 	identifierType Token
-	expression     NodeExpression
+	expression     *NodeExpression
 }
 
 type Statements struct {
-	nodeLet NodeLet
+	nodeLet *NodeLet
 }
 
 type NodeStatements struct {
@@ -237,12 +258,14 @@ func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*NodeExpr
 	if lt[pos].tokType == tokNumber &&
 		peekToken(&lt, length, pos, 1) != nil && peekToken(&lt, length, pos, 1).tokType == tokPlus &&
 		peekToken(&lt, length, pos, 2) != nil && peekToken(&lt, length, pos, 2).tokType == tokNumber {
-		nodeExpression.binaryExpression.lhs = lt[pos]
+		nodeBinOp := &NodeBinOp{}
+		nodeBinOp.lhs = lt[pos]
 		increment(&pos)
-		nodeExpression.binaryExpression.operation = "sum"
+		nodeBinOp.operation = "sum"
 		increment(&pos)
-		nodeExpression.binaryExpression.rhs = lt[pos]
+		nodeBinOp.rhs = lt[pos]
 		increment(&pos)
+		nodeExpression.binaryExpression = nodeBinOp
 
 		if lt[pos].tokType == tokSemiColon {
 			increment(&pos)
@@ -268,9 +291,7 @@ func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*NodeExpr
 }
 
 func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error) {
-	var nodeExpression *NodeExpression
-	var err error
-	lt := (*listTok)
+	lt := *listTok
 	pos := *currentPos
 	nodeLet := NodeLet{}
 	lexError := errors.New("failed to lex let node")
@@ -293,7 +314,7 @@ func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error)
 
 	if lt[pos].tokType == tokSemiColon {
 		increment(&pos)
-		goto end
+		return &nodeLet, nil
 	} else if lt[pos].tokType == tokAssignment {
 		increment(&pos)
 	} else {
@@ -301,37 +322,39 @@ func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error)
 		return nil, lexError
 	}
 
-	nodeExpression, err = lexNodeExpression(&lt, length, &pos)
+	nodeExpression, err := lexNodeExpression(&lt, length, &pos)
 	if err != nil {
 		return nil, lexError
 	}
-	nodeLet.expression = *nodeExpression
+	nodeLet.expression = nodeExpression
 
-end:
 	return &nodeLet, nil
 }
 
-func chaosLexer(listTok []Token) NodeLet {
-	var nodeLet *NodeLet
-	var err error
+func chaosLexer(listTok []Token) (*NodeStatements, error) {
+	listStatements := []Statements{}
 
 	pos := 0
 	listTokSize := len(listTok)
 
+	statements := Statements{}
 	if listTok[pos].tokType == tokLet {
 		increment(&pos)
-		nodeLet, err = lexNodeLet(&listTok, listTokSize, &pos)
+		nodeLet, err := lexNodeLet(&listTok, listTokSize, &pos)
 		if err != nil {
 			fmt.Print("Failed to parse node let\n")
-			os.Exit(1)
+			return nil, errors.New("failed to parse statements")
 		}
+		statements.nodeLet = nodeLet
+		listStatements = append(listStatements, statements)
 	}
 
 	if peekToken(&listTok, listTokSize, pos, 1) == nil && listTok[pos].tokType == tokEndOfFile {
 		fmt.Printf("Finished lexing\n")
 	}
 
-	return *nodeLet
+	return &NodeStatements{listStatements}, nil
+
 }
 
 func main() {
@@ -355,15 +378,9 @@ func main() {
 				os.Exit(1)
 			}
 			listTok := chaosTokenizer(&file)
-			result := chaosLexer(listTok)
-
-			statements := Statements{nodeLet: result}
-			listStatements := append([]Statements{}, statements)
-			nodeStatements := NodeStatements{
-				statements: listStatements,
-			}
-
-			fmt.Printf("%+v\n", nodeStatements)
+			printTokens(listTok)
+			program, err := chaosLexer(listTok)
+			printStatements(program.statements)
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)
