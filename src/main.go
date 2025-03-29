@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"unicode"
+	"errors"
 )
 
 type TokenType int
@@ -20,6 +21,7 @@ const (
 	tokNumber
 	tokSemiColon
 	tokCount
+	tokEndOfFile
 )
 
 type TokenKind struct {
@@ -50,6 +52,8 @@ func tokTypeToString(tokType2 TokenType) string {
 		return "tokNumber"
 	case tokSemiColon:
 		return "tokSemiColon"
+	case tokEndOfFile:
+		return "tokEndOfFile"
 	}
 	fmt.Fprintf(os.Stderr, "[ERROR] We did not expect this tokType '%d' - please include a new case or fix you shitty code :)\n", tokType2)
 	os.Exit(1)
@@ -121,9 +125,6 @@ func chaosTokenizer(file *[]byte) []Token {
 			} else if val == ";" {
 				token.value = val
 				token.tokType = tokSemiColon
-			} else {
-				fmt.Fprintf(os.Stderr, "[ERROR] Reached unrecheable location with '%s'\n", val)
-				os.Exit(1)
 			}
 
 			listTok = append(listTok, token)
@@ -135,8 +136,10 @@ func chaosTokenizer(file *[]byte) []Token {
 				pos++
 			}
 
+			// TODO: Improve details about numbers with tokenKind,
+			// defining what type of number it is - int32, int64, etc...
 			token := Token{
-				value: tokens.String(),
+				value:   tokens.String(),
 				tokType: tokNumber,
 			}
 
@@ -150,7 +153,7 @@ func chaosTokenizer(file *[]byte) []Token {
 			}
 
 			token := Token{
-				value: tokens.String(),
+				value:   tokens.String(),
 				tokType: tokPrimitiveType,
 			}
 
@@ -183,7 +186,108 @@ func chaosTokenizer(file *[]byte) []Token {
 			os.Exit(1)
 		}
 	}
+	listTok = append(listTok, Token{value: "eof", tokType: tokEndOfFile})
 	return listTok
+}
+
+type NodeExpression struct {
+	literal Token
+}
+
+type NodeLet struct {
+	identifier     Token
+	identifierType Token
+	expression     NodeExpression
+}
+
+type Statements struct {
+	nodeLet NodeLet
+}
+
+type NodeStatements struct {
+	statements []Statements
+}
+
+func increment(value *int) {
+	(*value)++
+}
+
+func peekToken(listTok *[]Token, length int, pos int, offset int) *Token {
+	if pos+offset < length {
+		return &(*listTok)[pos+offset]
+	}
+	return nil
+}
+
+func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error) {
+	lt := (*listTok)
+	pos := *currentPos
+	nodeLet := NodeLet{}
+	lexError := errors.New("failed to lex let node")
+
+	increment(&pos)
+	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokIdentifier {
+		nodeLet.identifier = lt[pos]
+		increment(&pos)
+	} else {
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected identifier but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		return nil, lexError
+	}
+
+	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokPrimitiveType {
+		nodeLet.identifierType = lt[pos]
+		increment(&pos)
+	} else {
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected type but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		return nil, lexError
+	}
+
+	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokAssignment {
+		increment(&pos)
+	} else {
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		return nil, lexError
+	}
+
+	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokNumber {
+		nodeExpression := NodeExpression{}
+		nodeExpression.literal = lt[pos]
+		nodeLet.expression = nodeExpression
+		increment(&pos)
+	} else {
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected expression but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		return nil, lexError
+	}
+
+	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokSemiColon {
+		increment(&pos)
+	} else {
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		return nil, lexError
+	}
+
+	return &nodeLet, nil
+}
+
+func chaosLexer(listTok []Token) NodeLet {
+	var nodeLet *NodeLet
+	var err error
+
+	pos := 0
+	listTokSize := len(listTok)
+
+	if listTok[pos].tokType == tokLet {
+		nodeLet, err = lexNodeLet(&listTok, listTokSize, &pos)
+		if err != nil {
+			os.Exit(1)
+		}
+	}
+
+	if peekToken(&listTok, listTokSize, pos, 1) == nil && listTok[pos].tokType == tokEndOfFile {
+		fmt.Printf("Finished lexing\n")
+	}
+
+	return *nodeLet
 }
 
 func main() {
@@ -207,7 +311,15 @@ func main() {
 				os.Exit(1)
 			}
 			listTok := chaosTokenizer(&file)
-			printTokens(listTok)
+			result := chaosLexer(listTok)
+
+			statements := Statements{nodeLet: result}
+			listStatements := append([]Statements{}, statements)
+			nodeStatements := NodeStatements{
+				statements: listStatements,
+			}
+
+			fmt.Printf("%v\n", nodeStatements)
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)
@@ -217,4 +329,3 @@ func main() {
 
 	os.Exit(0)
 }
-

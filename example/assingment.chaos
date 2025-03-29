@@ -1,2 +1,2 @@
-global let newVariable U64 = 2 + 2;
+let newVariable U64 = 2;
 
