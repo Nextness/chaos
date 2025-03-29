@@ -18,11 +18,11 @@ type HashTable[Key, Value] struct {
 }
 
 proc initHashTable[Key, Value]() *HashTable[Key, Value]! {
-    type HT alias := HashTable[Key, Value];
-    type E alias := Entry[Key, Value];
+    type HT alias HashTable[Key, Value];
+    type E  alias Entry[Key, Value];
 
     let table *HT = try ctx.mem.alloc(HT) orReturn Err.nullPointer;
-    if table.entry = ctx.mem.calloc[E](table.capacity); catch error {
+    if table.entry |err| = ctx.mem.calloc[E](table.capacity); catch err {
         ctx.logger.?error(<<Failed to allocate memory, buy more RAM>>);
         ctx.mem.free(table);
         return Err.nullPointer;
@@ -32,7 +32,7 @@ proc initHashTable[Key, Value]() *HashTable[Key, Value]! {
 
 proc HashTable[default].destroy(using &self) Void!
 {
-    for local let i = 0; i < capacity; ++i {
+    for let i = 0; i < capacity; ++i {
         if let curEntry, error = entry[i]; catch error {
             return Err.outOfBounds;
         }

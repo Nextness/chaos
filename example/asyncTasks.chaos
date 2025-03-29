@@ -1,68 +1,31 @@
 // Copyright
 
-module asyncTasks[STRICTALLOCATION: Literal[Bool] = false];
+module asyncTasks;
 
-inline proc strictAllocation[T](#noArgument) {
-    set @free T #if STRICTALLOCATION #else T
+proc asyncTask(p proc) AsyncTask {
+    
 }
 
-proc createUser(username, fistName, lastName String) Void! {
-    let newUser Async[User] = asyncTask(proc() Void {
-        let globalSession = try getGlobalSession() orReturn Err.noSessionAvailable;
-        try createNewUser(username, firstName, lastName) orReturn Err.failedToCreateUser;
-    });
-    if newUser.await(); catch error {
-        #if logger != null #then logger.info(<<Some fucking error {error.reason()}>>);
-        return error;
-    }
-}
-
-proc getUserByUsername(username String, session Session) Async[strinctAllocation[User]]! {
+proc getUserByUsername(username String, session Session) Async[User]! {
+    if username.len >= 4096 then return Err.largeText;
     let getUserQuery := <<SELECT username FROM user_database WHERE username={username}>>;
     let user := try performQuery(session, getUserQuery) orReturn Err.userNotFound;
     return user;
 }
 
-proc getUser(username String) strictAllocation[User!] {
-    let currentUser Async[User] = asyncTask(proc() {
-        let globalSession = try getGlobalSession orReturn Err.noSessionAvailable;
-        let asyncUser = getUserByUsername(username, globalSession) orReturn Err.userNotFound;
-        return asyncUser;
+proc getUser(username String) User! {
+    let currentUser AsyncTask := asyncTask(proc() User {
+        let globalSession := try getGlobalSession() orReturn Err.noSessionAvailable;
+        let user := getUserByUsername(globalSession, username, globalSession) orReturn Err.userNotFound;
+        return user;
     });
-    if let user = currentUser.await(); catch error {
-        #if logger != null #then logger.error(<<Failed to get user - reason: {nani.reason()}>>);
-        return error;
+    if let user |err| := currentUser.await(); catch err {
+        case Err.largeText:          ctx.logger.?error(<<The provided username is larger than 4096 characters>>); break
+        case Err.noSessionAvailable: ctx.logger.?error(<<Failed to get session>>); break;
+        case Err.failedToCreateUser: ctx.logger.?error(<<Failed to get user {username}>>); break;
+        return err;
     }
     return user;
-}
-
-proc getEmailByUsername(username String, session Session) strictAllocation[String!] {
-    let getEmailQuery := <<SELECT email FROM user_database WHERE username={username}>>;
-    let email Async[String?] = asyncTask(proc() {
-        if let query = performQuery(session, getEmailQuery); catch error {
-            #if logger != null #then logger.error(<<Failed to perform query to get user email - reason: {error.reason()}>>);
-            return Err.emailNotFound;
-        }
-        return query;
-    });
-    if let result = email.await(); catch error {
-        #if logger != null #then logger.error(<<Failed to get user email - reason: {error.reason()}>>);
-        return nani;
-    }
-    return result;
-}
-
-proc getEmail(username String) strictAllocation[String!] {
-    let currentUser Async[User] = asyncTask(proc() {
-        let globalSession = try getGlobalSession orReturn Err.noSessionAvailable;
-        let email = try getEmailByUsername(username, globalSession) orReturn Err.emailNotFound;
-        return email;
-    });
-    is let result String = currentUser.await(); catch error {
-        #if logger != null #then logger.error(<<Failed to get email - reason: {error.reason()}>>);
-        return nani;
-    }
-    return result;
 }
 
 import core::tasks::default;

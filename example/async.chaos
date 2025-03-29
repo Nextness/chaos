@@ -13,15 +13,15 @@ type AsyncError flaw {
 }
 
 type FutureHeader struct {
-    conditionalVariable: CndT;
-    mutex: Mutex;
-    isValid: AtomicBool;
-    isSet: Bool;
-    valueSize, inOffs, outOffs: U64;
+    conditionalVariable CndT;
+    mutex Mutex;
+    isValid AtomicBool;
+    isSet Bool;
+    valueSize, inOffs, outOffs U64;
 }
 
-proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) *FutureHeader! {
-    let future *FutureHeader = try calloc(wholeSize) orReturn error;
+proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) &FutureHeader! {
+    let future &FutureHeader = try calloc(wholeSize) orReturn error;
     if catch future.init(valueSize, inOffs, outOffs) {
         print(<<Error initializing future - reason: {error.reason()}>>);
         return AsyncError.genericErrorFuture;
@@ -39,7 +39,7 @@ proc FutureHeader.await(&self, timeout I32[Microseconds]) Void! {
     start, end Timespec = ...;
     timespecGet(&start, timeUtc);
     end.tvSec = start.tvSEC + (timeout / 1_000);
-    end.nSec = (timeout % 1_000) * 1_000_000;
+    end.nSec = (timeout % 1_000) & 1_000_000;
 
     if catch cndTimedWait(self.conditionalVariable, end) {
     case AsyncError.threadTimedout then return AsyncError.timeout;
@@ -47,12 +47,12 @@ proc FutureHeader.await(&self, timeout I32[Microseconds]) Void! {
     }
 }
 
-proc FutureHeader.get(&self, timeout I32[Microseconds], destination *Void, destinationSize, check U64) Void! {
+proc FutureHeader.get(&self, timeout I32[Microseconds], destination &Void, destinationSize, check U64) Void! {
     if !self.isValid return AsyncError.nullPointer;
     if destinationSize != self.valueSize then return AsyncError.destinationSizeNotMatched;
     try self.await(timeout) orReturn error;
 
-    let source *Void = self.(*U8) + self.outOffs.(*Void);
+    let source &Void = self.(&U8) + self.outOffs.(&Void);
     memcpy(destination, source, self.valueSize);
 }
 
@@ -67,7 +67,7 @@ type FutureOf[T] struct {
 proc Future.init(&self, valueSize, inOffs, outOffs U64) {
     cndInit(self.conditionalVariable);
     mutexInit(self.mutex, mutexPlain);
-    *self.{isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs};
+    &self.{isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs};
 }
 
 proc FutureHeader.destroy(&self) Void! {

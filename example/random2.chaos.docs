@@ -1,0 +1,52 @@
+// Copyright shit
+
+// In ./docs/
+// documentState (use to track documentation changes -> .docsState)
+//   always keep old state when applying the changes .docsState.old
+// actualDocument (.md or .html)
+
+// The method #hasChanged should only run when we 'chaosc docs plan'.
+// If we 'chaos docs generate' skip these checks and show the 
+// diff - which requires a yes to generate.
+
+#scope(<<file>>);
+#compileTimeOnly();
+
+header(<<Documentation for Random2>>);
+lastUpdated(today());
+moduleName(<<random2>>);
+track(<<everything>>);
+
+--- Above is metadata about the program
+
+proc main() {
+    includeIndex(true);
+
+    section(<<Context Description>>);
+
+    paragraph(<<Some information about context, and shit...>>, bold(<<more information and details, but using bold text>>));
+
+    paragraph(codeBlock(Context.definition));
+
+    paragraph(<<More information about the context and the fields + how to use>>);
+
+    if hasChanged(Context.definition) {
+        print(<<[WARNING] Context has changed and requires documentation updates>>);
+        doShouldFail();
+    }
+
+    subSection(<<Example on Context>>);
+
+    if let linkExamples |err| := linkTo(<<./random2.chaos.example>>, <<random2 examples>>); catch err {
+        print(<<[ERROR] The path for the link doesn't exist>>);
+        doShouldFail();
+    }
+    paragraph(<<More information about example can be found in {linkExamples}>>);
+
+    section(<<Another section about switch statements>>);
+}
+
+import <<random.chaos>>;
+import <<core::date.chaos>>;
+import <<core::docs.chaos>>;
+

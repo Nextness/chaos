@@ -1,32 +1,44 @@
 module exampleInterface;
 
-type SomeInterface interface {
-    mandatoryField String;
-    proc doSomeOperation(&self);
+type SomeInterface scaffold {
+    mandatoryFieldOne String;
+    mandatoryFieldTwo Bool;
+    proc doSomeOperation(*Self impl);
 }
 
-type Example impl SomeInterface struct {
-    mandatoryField String;
+type SomeInterface impl Example struct {
+    mandatoryFieldOne String;
+    mandatoryFieldTwo Bool = false;
     anotherField Bool;
 }
 
-#overload proc Example.doSomeOperation(&self) {
-    self.annotherField = true;
+#overload proc doSomeOperation(example *Example) {
+    self.anotherFieldOne = true;
     return;
+}
+
+type SomeInterface impl AnotherExample struct {
+    mandatoryFieldOne String = <<>>;
+    mandatoryFieldTwo Bool = false;
+}
+
+#overload proc doSomeOperation(anotherExample *AnotherExample) {
+    mandatoryFieldOne String = <<>>;
+    mandatoryFieldTwo Bool = false;
 }
 
 proc main() {
-    let newExample *impl SomeInterface = &Example {
-        mandatoryField = <<Hello, world>>,
+    let newExample *SomeInterface impl = &Example {
+        mandatoryFieldOne = <<Hello, world>>,
         anotherField = false
     };
 
-    printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>);
-    newExample.doSomeOperation();
-    printfn(<<{newExample.mandatoryField} is {newExample.anotherField}>>);
+    printfn(<<{newExample.mandatoryFieldOne} is {newExample.anotherField}>>);
+    doSomeOperation(&newExample);
+    printfn(<<{newExample.mandatoryFieldOne} is {newExample.anotherField}>>);
 
     return;
 }
 
-import core::fmt::io;
+import <<core::fmt::io>>;
 

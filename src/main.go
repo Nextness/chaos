@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 	"unicode"
-	"strconv"
 )
 
 type TokenType int
@@ -16,8 +15,8 @@ const (
 	tokLet
 	tokAssignment
 	tokPlus
-	tokType
-	tokVariable
+	tokPrimitiveType
+	tokIdentifier
 	tokNumber
 	tokSemiColon
 	tokCount
@@ -43,10 +42,10 @@ func tokTypeToString(tokType2 TokenType) string {
 		return "tokAssingment"
 	case tokPlus:
 		return "tokPlus"
-	case tokType:
-		return "tokType"
-	case tokVariable:
-		return "tokVariable"
+	case tokPrimitiveType:
+		return "tokPrimitiveType"
+	case tokIdentifier:
+		return "tokIdentifier"
 	case tokNumber:
 		return "tokNumber"
 	case tokSemiColon:
@@ -104,15 +103,29 @@ func chaosTokenizer(file *[]byte) []Token {
 	singleTokens := []byte{'=', '+', ';'}
 
 	for pos < len(content) {
+		token := Token{}
 		if unicode.IsSpace(rune(content[pos])) {
 			pos++
 			continue
 		} else if isInside(content[pos], singleTokens) {
 			tokens.WriteByte(content[pos])
 			pos++
-			token := Token{
-				value: tokens.String(),
+			val := tokens.String()
+
+			if val == "=" {
+				token.value = val
+				token.tokType = tokAssignment
+			} else if val == "+" {
+				token.value = val
+				token.tokType = tokPlus
+			} else if val == ";" {
+				token.value = val
+				token.tokType = tokSemiColon
+			} else {
+				fmt.Fprintf(os.Stderr, "[ERROR] Reached unrecheable location with '%s'\n", val)
+				os.Exit(1)
 			}
+
 			listTok = append(listTok, token)
 			tokens.Reset()
 			continue
@@ -121,9 +134,26 @@ func chaosTokenizer(file *[]byte) []Token {
 				tokens.WriteByte(content[pos])
 				pos++
 			}
+
 			token := Token{
 				value: tokens.String(),
+				tokType: tokNumber,
 			}
+
+			listTok = append(listTok, token)
+			tokens.Reset()
+			continue
+		} else if isAlpha(content[pos]) && isUppercase(content[pos]) {
+			for isAlphanum(content[pos]) {
+				tokens.WriteByte(content[pos])
+				pos++
+			}
+
+			token := Token{
+				value: tokens.String(),
+				tokType: tokPrimitiveType,
+			}
+
 			listTok = append(listTok, token)
 			tokens.Reset()
 			continue
@@ -132,48 +162,25 @@ func chaosTokenizer(file *[]byte) []Token {
 				tokens.WriteByte(content[pos])
 				pos++
 			}
-			token := Token{
-				value: tokens.String(),
+			val := tokens.String()
+
+			if val == "global" {
+				token.value = val
+				token.tokType = tokGlobal
+			} else if val == "let" {
+				token.value = val
+				token.tokType = tokLet
+			} else {
+				token.value = val
+				token.tokType = tokIdentifier
 			}
+
 			listTok = append(listTok, token)
 			tokens.Reset()
 			continue
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(content[pos]))
 			os.Exit(1)
-		}
-	}
-	return listTok
-}
-
-func chaosParser(listTok []Token) []Token {
-	for id := range listTok {
-		_, err := strconv.Atoi(listTok[id].value)
-		if err == nil {
-			listTok[id].tokType = tokNumber
-			continue
-		}
-		if listTok[id].value == "global" {
-			listTok[id].tokType = tokGlobal
-			continue
-		} else if listTok[id].value == "let" {
-			listTok[id].tokType = tokLet
-			continue
-		} else if isUppercase(listTok[id].value[0]) {
-			listTok[id].tokType = tokType
-			continue
-		} else if listTok[id].value == "+" {
-			listTok[id].tokType = tokPlus
-			continue
-		} else if listTok[id].value == ";" {
-			listTok[id].tokType = tokSemiColon
-			continue
-		} else if listTok[id].value == "=" {
-			listTok[id].tokType = tokAssignment
-			continue
-		} else {
-			listTok[id].tokType = tokVariable
-			continue
 		}
 	}
 	return listTok
@@ -200,7 +207,6 @@ func main() {
 				os.Exit(1)
 			}
 			listTok := chaosTokenizer(&file)
-			listTok = chaosParser(listTok)
 			printTokens(listTok)
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
@@ -211,3 +217,4 @@ func main() {
 
 	os.Exit(0)
 }
+
