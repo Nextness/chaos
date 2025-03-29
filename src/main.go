@@ -2,11 +2,11 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 	"unicode"
-	"errors"
 )
 
 type TokenType int
@@ -31,7 +31,7 @@ type TokenKind struct {
 type Token struct {
 	value   string
 	tokType TokenType
-	tokKind TokenKind
+	// tokKind TokenKind
 }
 
 func tokTypeToString(tokType2 TokenType) string {
@@ -190,8 +190,17 @@ func chaosTokenizer(file *[]byte) []Token {
 	return listTok
 }
 
+type Operation string
+
+type NodeBinOp struct {
+	lhs, rhs  Token
+	operation Operation
+}
+
 type NodeExpression struct {
-	literal Token
+	nodeExpressionType string
+	literal            Token
+	binaryExpression   NodeBinOp
 }
 
 type NodeLet struct {
@@ -219,53 +228,86 @@ func peekToken(listTok *[]Token, length int, pos int, offset int) *Token {
 	return nil
 }
 
+func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*NodeExpression, error) {
+	lt := *listTok
+	pos := *currentPos
+	nodeExpression := NodeExpression{}
+	lexError := errors.New("failed to lex expression node")
+
+	if lt[pos].tokType == tokNumber &&
+		peekToken(&lt, length, pos, 1) != nil && peekToken(&lt, length, pos, 1).tokType == tokPlus &&
+		peekToken(&lt, length, pos, 2) != nil && peekToken(&lt, length, pos, 2).tokType == tokNumber {
+		nodeExpression.binaryExpression.lhs = lt[pos]
+		increment(&pos)
+		nodeExpression.binaryExpression.operation = "sum"
+		increment(&pos)
+		nodeExpression.binaryExpression.rhs = lt[pos]
+		increment(&pos)
+
+		if lt[pos].tokType == tokSemiColon {
+			increment(&pos)
+		} else {
+			fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(lt[pos].tokType), lt[pos].value)
+			return nil, lexError
+		}
+
+	} else if lt[pos].tokType == tokNumber {
+		nodeExpression.literal = lt[pos]
+		increment(&pos)
+
+		if lt[pos].tokType == tokSemiColon {
+			increment(&pos)
+		} else {
+			fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(lt[pos].tokType), lt[pos].value)
+			return nil, lexError
+		}
+	} else {
+		return nil, lexError
+	}
+	return &nodeExpression, nil
+}
+
 func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error) {
+	var nodeExpression *NodeExpression
+	var err error
 	lt := (*listTok)
 	pos := *currentPos
 	nodeLet := NodeLet{}
 	lexError := errors.New("failed to lex let node")
 
-	increment(&pos)
-	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokIdentifier {
+	if lt[pos].tokType == tokIdentifier {
 		nodeLet.identifier = lt[pos]
 		increment(&pos)
 	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected identifier but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected identifier but found %s with value %s\n", tokTypeToString(lt[pos].tokType), lt[pos].value)
 		return nil, lexError
 	}
 
-	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokPrimitiveType {
+	if lt[pos].tokType == tokPrimitiveType {
 		nodeLet.identifierType = lt[pos]
 		increment(&pos)
 	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected type but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected type but found %s with value %s\n", tokTypeToString(lt[pos].tokType), lt[pos].value)
 		return nil, lexError
 	}
 
-	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokAssignment {
+	if lt[pos].tokType == tokSemiColon {
+		increment(&pos)
+		goto end
+	} else if lt[pos].tokType == tokAssignment {
 		increment(&pos)
 	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s\n", tokTypeToString(lt[pos].tokType), lt[pos].value)
 		return nil, lexError
 	}
 
-	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokNumber {
-		nodeExpression := NodeExpression{}
-		nodeExpression.literal = lt[pos]
-		nodeLet.expression = nodeExpression
-		increment(&pos)
-	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected expression but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
+	nodeExpression, err = lexNodeExpression(&lt, length, &pos)
+	if err != nil {
 		return nil, lexError
 	}
+	nodeLet.expression = *nodeExpression
 
-	if peekToken(&lt, length, pos, 1) != nil && lt[pos].tokType == tokSemiColon {
-		increment(&pos)
-	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s", tokTypeToString(lt[pos].tokType), lt[pos].value)
-		return nil, lexError
-	}
-
+end:
 	return &nodeLet, nil
 }
 
@@ -277,8 +319,10 @@ func chaosLexer(listTok []Token) NodeLet {
 	listTokSize := len(listTok)
 
 	if listTok[pos].tokType == tokLet {
+		increment(&pos)
 		nodeLet, err = lexNodeLet(&listTok, listTokSize, &pos)
 		if err != nil {
+			fmt.Print("Failed to parse node let\n")
 			os.Exit(1)
 		}
 	}
@@ -319,7 +363,7 @@ func main() {
 				statements: listStatements,
 			}
 
-			fmt.Printf("%v\n", nodeStatements)
+			fmt.Printf("%+v\n", nodeStatements)
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)

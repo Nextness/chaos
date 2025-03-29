@@ -1,2 +1,2 @@
-let newVariable U64 = 2;
+let newVariable U64;
 
