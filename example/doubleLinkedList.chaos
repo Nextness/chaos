@@ -3,110 +3,110 @@
 
 module doubleLinkedList;
 
-inline proc DoubleLinkedList[default].getLength(&self) U64 then set self.count.(U64);
-inline proc DoubleLinkedList[default].getHead(&self) Node[T]! then set self.head if self.head != null else Err.nullPointer;
-inline proc DoubleLinkedList[default].getTail(&self) Node[T]! then set self.head if self.head != null else Err.nullPointer;
+#overload def U64 length(&DoubleLinkedList[C, T] dll) macro {
+    set @cast(*dll.count, U64);
+}
 
-inline proc DoubleLinkedList[default].print(&self) {
-    let node *Node = self.head;
-    for let i = 0; i < self.count; ++i {
-        inline let pad = i * 2;
-        io::printf(<<*%\n>>, pad, node.data);
+#overload def Node[T]! head(&DoubleLinkedList[C, T] dll) macro {
+    set *dll.head if dll.head != null else Err.nullPointer;
+}
+
+#overload def Node[T]! tail(&DoubleLinkedList[C, T] dll) macro {
+    set *dll.tail if dll.tail != null else Err.nullPointer;
+}
+
+#overload def Void print(&DoubleLinkedList dll) method {
+    let &Node node = *dll.head;
+    for let i = 0; i < *dll.count; ++i {
+        let pad = i * 2;
+        printf(<<*%\n>>, pad, node.data);
         node = node.next;
     }
 }
 
-type DoubleLinkedList[T, C num::Ints = U64] struct {
-    count C         = 0;
-    head  *Node?[T] = null;
-    tail  *Node?[T] = null;
+type DoubleLinkedList[num::Ints C = U64, T] struct {
+    C         count = 0;
+    &Node?[T] head  = null;
+    &Node?[T] tail  = null;
 }
 
 type Node[T] struct {
-    data *T;
-    prev *Node?[T] = null;
-    next *Node?[T] = null;
+    &T        data;
+    &Node?[T] prev = null;
+    &Node?[T] next = null;
 }
 
-proc createNode[T](data: *T) *Node[T]! {
-    type Nd alias = Node[T];
-    let newNode *Nd = if catch ctx.allocator.alloc(Nd) {
-        #if ctx.logger != null #then ctx.logger.error(<<Failed to allocate node - reason {nani.reason()}>>);
+def &Node[T]! createNode[T](data: &T) func {
+    type ND alias Node[T];
+    if let &ND newNode |err| = alloc(ND); catch err {
+        ctx.?logger(Error, <<Failed to allocate node - reason {nani.reason()}>>);
         return Err.outOfMemory;
     }
-    #if ctx.logger != null #then ctx.logger.trace(<<Allocated memory for node: {newNode.address()}>>);
-    return newNode.{data=data};
+    ctx.?logger(Trace, <<Allocated memory for node: {newNode.address()}>>);
+    return &(*newNode.{data=data});
 }
 
-proc DoubleLinkedList[default].pushHead(&self, data *T) Void! {
-    let newNode = try createNode(data) orReturn error;
-    if self.count == 0 {
-        self.head=newNode;
-        self.tail=newNode;
+def Void! pushHead[T](&DoubleLinkedList dll, &T data) method {
+    let newNode = try createNode(data) orReturn Err.nullPointer;
+    if *dll.count == 0 {
+        *dll.head=newNode;
+        *dll.tail=newNode;
     } else {
-        newNode.next = self.head;
-        self.head.prev = newNode;
-        self.head = newNode;
+        newNode.next = *dll.head;
+        *dll.head.prev = newNode;
+        *dll.head = newNode;
     }
     self.count++;
 }
 
-proc DoubleLinkedList[default].pushTail :: (self: *Self, data: *T) => Void! {
-    let newNode := try createNode(data) orReturn |excuseMe|;
-    if self.count == 0 {
-        self.tail = newNode;
-        self.head = newNode;
+def Void! pushTail[T](&DoubleLinkedList dll, &T data) method {
+    let newNode = try createNode(data) orReturn Err.nullPointer;
+    if *dll.count == 0 {
+        *dll.tail = newNode;
+        *dll.head = newNode;
     } else {
-        self.tail.next = newNode;
-        newNode.prev = self.tail;
-        self.tail = newNode;
+        *dll.tail.next = newNode;
+        newNode.prev = *dll.tail;
+        *dll.tail = newNode;
     }
-    self.count++;
+    *dll.count++;
 }
 
-proc DoubleLinkedList[default].inserNode :: (self: *Self, data: *T, index: U64) => Void {
-    if index < 0 || index > self.count then return Err.failedToInsertNode;
+def Void insertNode[T](&DoubleLinkedList dll, &T data, U64 index) method {
+    if index < 0 || index > *dll.count do return Err.failedToInsertNode;
 
     if index == 0 {
-        self.pushHead(data);
+        *dll.pushHead(data);
         return;
-    } elif index == self.count {
-        self.pushTail(data);
+    } elif index == *dll.count {
+        *dll.pushTail(data);
         return;
     }
 
-    let tmp: *Node[T];
-    if index <= (self.count / 2) {
-        tmp = self.head;
-        let i := 0;
-        label loopNodes {
-            if i < index - 1 then break loopNodes;
+    let &Node[T] tmp;
+    if index <= (*dll.count / 2) {
+        tmp = *dll.head;
+        for let i = 0; i < index - 1; ++i {
             tmp = tmp.next;
-            i++;
-            goto loopNodes;
         }
     } else {
-        tmp = list.tail;
-        let i := 0;
-        label loopNodes {
-            if i < self.count - index then break loopNodes;
+        tmp = *dll.tail;
+        for let i = 0; i < *dll.count; ++i {
             tmp = tmp.prev;
-            i++;
-            goto loopNodes;
         }
     }
 
-    let newNode := try createNode(data) orReturn |excuseMe|;
-    tmp.next.prev = newNode;
-    newNode.next = tmp.next;
-    tmp.next = newNode;
-    newNode.prev = tmp;
-    self.count++;
+    let newNode = try createNode(data) orReturn Err.nullPointer;
+    *tmp.next.prev = newNode;
+    newNode.next = *tmp.next;
+    *tmp.next = newNode;
+    newNode.prev = *tmp;
+    *dll.count++;
 }
 
-proc DoubleLinkedList[T].deleteHead :: (self: *Self) => Void {
-    if self.size == 0 then return;
-    if list.size == 1 then mem::free(self.head);
+def Void deleteHead(&DoubleLinkedList dll) method {
+    if *dll.size == 0 then return;
+    if *dll.size == 1 then free(dll.head);
     #notImplemented
 }
 

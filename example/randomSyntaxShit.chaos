@@ -1,6 +1,6 @@
 module random;
 
-// Void values are 'notANumber | undefined | null';
+// Void values are 'notNumber | undefined | null';
 
 type Context scaffold {
     calloc proc[T]  (num::Ints) &T;
@@ -22,17 +22,23 @@ type AnotherInt alias I32;
 type SomethingNew distinct I32;
 
 type SomeEnum enum U64 {
-    A := 1 <- iota;
+    A := 0 <- iota;
     B;
     D;
     E;
 }
 
-proc attemptingSwitch(something SomeEnum) {
+def attemptingSwitch(SomeEnum something) func {
     #partial if something == {
-    case A do print(<<{A}>>); break;
-    case B do print(<<Something else {B}>>); break;
-    case D do print(<<String {D}s nuutz>>); break;
+    case A:
+        print(<<{A}>>);
+        break;
+    case B:
+        print(<<Something else {B}>>);
+        break;
+    case D:
+        print(<<String {D}s nuutz>>);
+        break;
     }
 }
 
@@ -43,12 +49,12 @@ type MyError flaw {
     yetAnotherError;
 }
 
-type Version[T num::Ints = U8] struct {
-    major, minor, fix T;
-    phase             String? = null;
+type Version[num::Ints T = U8] struct {
+    T       major, minor, fix;
+    String? phase = null;
 }
 
-proc toString[T](using version Version[T]) String {
+def String toString[T](using &Version[T] version) method {
     let versionString = <<{major}.{minor}.{fix}>>;
     if phase != null do versionString = <<{versionString}-{phase}>>;
     return versionString;
@@ -60,8 +66,8 @@ type JsonResponse[T Primitive] struct {
 }
 
 type SomeStruct struct {
-    username String;
-    password String; #redacted
+    String username;
+    String password; #redacted
 }
 
 let someStruct = &SomeStruct {
@@ -71,29 +77,29 @@ let someStruct = &SomeStruct {
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
-proc main() U64 {
-    if let window Window |err| = initializeWindow(100, 100, <<Window>>); catch err {
+def U64 main() func {
+    if let Window window |err| = initializeWindow(100, 100, <<Window>>); catch err {
         printfn(<<Something went wrong in here - reason: {error.reason()}>>);
         return 1;
     }
 
-    let window Window |err| = initializeWindow(100, 100, <<AnotherWindow>>);
+    let Window window |err| = initializeWindow(100, 100, <<AnotherWindow>>);
     if catch err {
         printfn(<<Something went wrong in here - reason: {error.reason()}>>);
         return 1;
     }
 }
 
-proc testListCreateAccess() {
-    let someList List[4, String] = [<<Hello>>, <<World>>];
-    if let firstString String |err| = someList[5]; catch err {
+def testListCreateAccess() func {
+    let List[4, String] someList = [<<Hello>>, <<World>>];
+    if let String firstString |err| = someList[5]; catch err {
         exitWith Err.outOfBounds, <<Accessing element out of bounds>>;
     }
 }
 
-proc testMapCreateAccess() {
-    let someMap Map[4, String, String; false] = {
-        [<<someKey>>] = <<some value>>, // If runtime is set to false, maps cannot have cont assignments
+def testMapCreateAccess() func {
+    let Map[4, String, String; false] someMap = {
+        [<<someKey>>] = <<some value>>, // If runtime is set to false, maps cannot have const assignments
         [<<anotherKey>>] = <<another value>>,
     };
     let secondKey := someMap[<<anotherKey>>]; #noRuntime
@@ -102,40 +108,40 @@ proc testMapCreateAccess() {
     }
 }
 
-proc newCounter() (&U64, proc() U64)! #noDiscard {
-    let someVariable = try ctx.mem.allocAndAssign(U64, 0) orReturn Err.nullPointer;
-    return someVariable, proc() U64 {
+def (&U64, proc() U64)! newCounter() #noDiscard func {
+    let &U64 someVariable = try ctx.mem.allocAndAssign(U64, 0) orReturn Err.nullPointer;
+    return someVariable, def U64 () func {
         return ++(someVariable.*);
     }
 }
 
-proc freeCounter(value *Void) {
+def freeCounter(&Void value) func {
     ctx.free(value);
     ctx.memset(value, 0);
 }
 
-type SomeFunc[T] alias proc[T](...) T!;
+type SomeFunc[T] alias def T! [T](...) func;
 
-proc someFunc[T](someProc SomeFunc[T], <args>) T! {
-    if let result T |err| = someProc[T](<args>); catch err {
+def T! someFunc[T](SomeFunc[T] someProc, <args>) func {
+    if let T result |err| = someProc[T](<args>); catch err {
         return error;
     }
 }
-let result Bool = try someFunc[Bool](funcWithInput, <10, <<somethingNew>>, false>) orSet true;
+let Bool result = try someFunc[Bool](funcWithInput, <10, <<somethingNew>>, false>) orSet true;
 
-inline proc ResultReturns(#noArguments) {
+def ResultReturns(#noArguments) macro {
     #if T #impl {
     #case Iterable #do Bool = false #break
     #case Incrementable #do I64 = 0 #break
     }
 }
 
-proc anotherTest[T impl Iterable | Incrementable](input T, value String) (result ResultReturns) {
+def (result ResultReturns) anotherTest[(Iterable | Incrementable) impl T](T input, String value) func {
     ...;
     return result;
 }
 
-proc initHashTable[T]() &HashTable[T]! {
+def &HashTable[T]! initHashTable[T]() func {
     let table &HashTable[T] = try ctx.mem.alloc(HashTable[T]) orReturn Err.noMemory;
     if table.entry |err| = ctx.mem.calloc[Entry[T]](table.capacity); catch err {
         ctx.logger(Error, <<Failed to allocate memory, buy more RAM>>);
@@ -145,7 +151,7 @@ proc initHashTable[T]() &HashTable[T]! {
     return table;
 }
 
-proc destroy[T](using ht HashTable[T]) {
+def destroy[T](using ht HashTable[T]) func {
     for let i = 0; i < capacity; ++i {
         if let curEntry |err| = entry[i]; catch err {
             return Err.outOfBounds;
@@ -156,17 +162,17 @@ proc destroy[T](using ht HashTable[T]) {
     free(ht);
 }
 
-type Array[S Literal[num::Natural | dynamic], T Type] struct {
-    items    T   = ...;
-    count    U64 = #0;
-    capacity U64 = S #if S != dynamic #else 256;
+type Array[Litera[num::Natural | dynamic] S, Type T] struct {
+    T   items    = ...;
+    U64 count    = #0;
+    U64 capacity = S #if S != dynamic #else 256;
 }
 
-proc Array[default].something() {
+def something(Array[T] something) func {
     #if RunTimeCheck #do ...;
 }
 
-proc loopWithLabel() Bool! {
+def Bool! loopWithLabel() func {
     for let x = 0; x > 10; ++x; label someLoop {
         for let y = 0; y > 10; ++y {
             if let something |err| = operation(); catch err {

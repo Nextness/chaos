@@ -1,26 +1,26 @@
 module string;
 
 --- Comptime values ---
-#let maxLen : 4096;
+#let maxLen := 4096;
 
 --- Procedures related to strings ---
-proc String.length[T UInts = U64](&self, maxLength U64? = maxLen) T! {
-    let sefInitPos *String = self;
-    for nothing; self != <<\0>>; ++self {
+def T! length[UInts T = U64](&String str, U64? maxLength = maxLen) method {
+    let &String initPos = str;
+    for _; str != <<\0>>; ++str {
         #if maxLength != null {
-            if !maxLength then return Err.maxLengthLimitHit;
+            if !maxLength do return Err.maxLengthHit;
             maxLength--;
         }
     }
-    return self.(T) - selfInitPos.(T);
+    return str.(T) - initPos.(T);
 }
 
-proc String.copy(&self, maxLength U64? = maxLen) String! {
-    let tmp *String = #0;
-    for nothing; self != <<\0>>; nothing {
-        tmp++ = self++;
+def &String! copy(&String str, U64? maxLength = maxLen) func {
+    let &String tmp = #0;
+    for str != <<\0>> {
+        tmp++ = str++;
         #if maxLength != null {
-            if !maxLength then return Err.maxLengthLimitHit;
+            if !maxLength do return Err.maxLengthHit;
             maxLength--;
         }
     }
@@ -30,6 +30,6 @@ proc String.copy(&self, maxLength U64? = maxLen) String! {
 --- Imports ---
 #scope(__file__);
 
-import core::numbers;
-import core::errors;
+import <<core::numbers.chaos>>;
+import <<core::errors.chaos>>;
 

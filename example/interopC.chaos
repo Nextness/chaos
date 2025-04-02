@@ -1,3 +1,7 @@
-#cExtern(<<printf>>)            proc print(Csrtring, ...) Cvoid;
-#cExtern(<<windowShouldClose>>) proc windowShouldClose(Cvoid) Cbool
+
+#extern(<<printf>>)
+def Cvoid print(Cstr fmt, ...Cstr args) func;
+
+#extern(<<windowShouldClose>>)
+def Cbool windowShouldClose(Cvoid) func;
 

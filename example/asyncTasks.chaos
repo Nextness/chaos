@@ -2,31 +2,31 @@
 
 module asyncTasks;
 
-proc asyncTask(p proc) AsyncTask {
+proc asyncTask(def p) AsyncTask {
     
 }
 
-proc getUserByUsername(username String, session Session) Async[User]! {
-    if username.len >= 4096 then return Err.largeText;
+def Async[User]! getUserByUsername(String username, Session session) func {
+    if username.len >= 4096 do return Err.largeText;
     let getUserQuery := <<SELECT username FROM user_database WHERE username={username}>>;
     let user := try performQuery(session, getUserQuery) orReturn Err.userNotFound;
     return user;
 }
 
-proc getUser(username String) User! {
-    let currentUser AsyncTask := asyncTask(proc() User {
+def User! getUser(String username) func {
+    let AsyncTask currentUser := asyncTask(def User () func {
         let globalSession := try getGlobalSession() orReturn Err.noSessionAvailable;
         let user := getUserByUsername(globalSession, username, globalSession) orReturn Err.userNotFound;
         return user;
     });
     if let user |err| := currentUser.await(); catch err {
-        case Err.largeText:          ctx.logger.?error(<<The provided username is larger than 4096 characters>>); break
-        case Err.noSessionAvailable: ctx.logger.?error(<<Failed to get session>>); break;
-        case Err.failedToCreateUser: ctx.logger.?error(<<Failed to get user {username}>>); break;
+        case Err.largeText:          ctx.?logger(Error, <<The provided username is larger than 4096 characters>>); break;
+        case Err.noSessionAvailable: ctx.?logger(Error, <<Failed to get session>>); break;
+        case Err.failedToCreateUser: ctx.?logger(Error, <<Failed to get user {username}>>); break;
         return err;
     }
     return user;
 }
 
-import core::tasks::default;
+import <<core::tasks.chaos>>;
 

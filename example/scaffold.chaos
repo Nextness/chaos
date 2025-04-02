@@ -1,0 +1,47 @@
+module exampleScaffold;
+
+type SomeInterface scaffold {
+    String mandatoryFieldOne;
+    Bool mandatoryFieldTwo;
+    def T doSomeOperation[T](&Self impl) method;
+}
+
+type SomeInterface impl Example struct {
+    String mandatoryFieldOne;
+    Bool mandatoryFieldTwo = false;
+    Bool anotherField;
+}
+
+#overload
+def T doSomeOperation[T](&Example example) method {
+    self.anotherFieldOne = true;
+    return;
+}
+
+type SomeInterface impl AnotherExample struct {
+    String mandatoryFieldOne = <<>>;
+    Bool mandatoryFieldTwo = false;
+}
+
+#overload
+def T doSomeOperation[T](&AnotherExample anotherExample) method {
+    String mandatoryFieldOne = <<>>;
+    Bool mandatoryFieldTwo = false;
+}
+
+def main() func {
+    // TODO: reconsider how to handle scaffolds - specifically the '<type> impl <identifier>'
+    let &SomeInterface impl newExample = &Example {
+        mandatoryFieldOne = <<Hello, world>>,
+        anotherField = false
+    };
+
+    printfn(<<{newExample.mandatoryFieldOne} is {newExample.anotherField}>>);
+    &newExample.doSomeOperation();
+    printfn(<<{newExample.mandatoryFieldOne} is {newExample.anotherField}>>);
+
+    return;
+}
+
+import <<core::fmt::io>>;
+

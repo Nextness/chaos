@@ -1,13 +1,13 @@
 module exampleStructs;
 
 type HelloWorld struct {
-    hello String;
-    world String = <<world!>>;
+    String hello;
+    String world = <<world!>>;
 }
 
 type AnotherHello[T] struct {
-    another T;
-    hello String = <<world!>>;
+    T another;
+    String hello = <<world!>>;
 }
 
 proc main() {
@@ -16,5 +16,5 @@ proc main() {
     return;
 }
 
-import core::fmt:io;
+import <<core::fmt:io.chaos>>;
 

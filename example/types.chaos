@@ -1,41 +1,17 @@
 module types;
 
 --- Numbers ---
-type Ints union {
-    I8; I16; I32; I64; I128;
-}
+type Ints       alias I8   | I16 | I32 | I64 | I128;
+type UInts      alias U8   | U16 | U32 | U64 | U128;
+type Floats     alias F16  | F32 | F64 | F128;
+type Complex    alias C64  | C128;
+type Quaternion alias Q128 | Q256;
 
-type UInts union {
-    U8; U16; U32; U64; U128;
-}
+type Natural   alias Ints    | UInts;
+type Real      alias Ints    | UInts | Floats;
+type AnyNumber alias Natural | Real  | Complex | Quaternion;
 
-type Floats union {
-    F16; F32; F64; F128;
-}
-
-type Complex union {
-    C64; C128;
-}
-
-type Quaternion union {
-    Q128; Q256;
-}
-
-type Natural union {
-    Ints; UInts;
-}
-
-type Real union {
-    Ints; UInts; Floats;
-}
-
-type AnyNumber union {
-    Natural; Real; Complex; Quaternion;
-}
-
-type Text union {
-    Char; String; Rune;
-}
+type Text alias Char | String | Rune;
 
 --- Vector ---
 type Vector2[T: AnyNumber] struct {
@@ -43,14 +19,14 @@ type Vector2[T: AnyNumber] struct {
 }
 
 --- Primitives ---
-type Primitives union {
-    I8; I16; I32; I64; I128;
-    U8; U16; U32; U64; U128;
-    F16; F32; F64; F128;
-    C64; C128;
-    Q128; Q256;
-    Char; String; Rune;
-}
+type Primitives alias (
+    I8   | I16    | I32 | I64  | I128 |
+    U8   | U16    | U32 | U64  | U128 |
+    F16  | F32    | F64 | F128 |
+    C64  | C128   |
+    Q128 | Q256   |
+    Char | String | Rune
+);
 
 --- Time ---
 type TimeUnit enum U64 {
@@ -64,34 +40,15 @@ type TimeUnit enum U64 {
 
 #assert(TimeUnit.NanoSeconds.value == TimeUnit[0].value);
 
-type Time [Unit: Literal[TimeUnit] = Seconds] struct {
-    date U64 = ...;
-    time F64 = ...;
+type Time[Litera[TimeUnit] Unit = Seconds] struct {
+    U64 date;
+    F64 time;
 }
-
-proc Time[default].to(self: *Self, timeUnit: Literal[TimeUnit]) -> Time {
-    #assert(Unit != timeUnit, <<Cannot convert time to the same unit>>);
-    let tmp := self.time;
-    let newTimeUnit: Time = #0;
-
-    #if Unit < timeUnit {
-        for (element in TimeUnit[Unit+1:timeUnit]) tmp /= element;
-    } #else {
-        for (element in TimeUnit[timeUnit:Unit+1]) tmp *= element;
-    }
-
-    return newTimeUnit.(date=self.date, time=tmp);
-}
-
-proc Time.now(self: *Self) -> String {
-    return <<>>;
-}
-
 
 --- List ---
-type List[S: Literal[Natural | dynamic], T: Type] struct {
-    items T;
-    count U64 = 0;
-    capacity U64 = 256 #if S != dynamic #else S;
+type List[Literal[Natural | dynamic] S, Type T] struct {
+    T   items    = ...;
+    U64 count    = 0;
+    U64 capacity = 256 #if S == dynamic #else S;
 }
 

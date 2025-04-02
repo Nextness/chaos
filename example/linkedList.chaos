@@ -1,32 +1,33 @@
-module linkedList[logger: Literal?[Logger] = null];
+module linkedList;
 
-type Node[T] struct
-{
-    value T     = ...;
-    next *Node? = null;
+type Node[T] struct {
+    T      value = ...;
+    &Node? next  = null;
 }
 
-proc nodeInit[T](Void) strictAllocator[*Node[T]]!
-{
-    if let nodeHead = ctx.mem.alloc(Node[T]); catch error {
-        #if logger != null #then logger.error(<<Failed to allocate memory for linkedList - reason: {nani.string()}>>);
+def &Node[T]! nodeInit[T]() func {
+    if let nodeHead = ctx.?alloc(Node[T]); catch error {
+       ctx.?logger(Error, <<Failed to allocate memory for linkedList - reason: {error.string}>>);
        return Err.outOfMemory;
     }
     return nodeHead;
 }
 
-proc Node[default].insert(&self, value: T) Void!
-{
-    let currentNode = self;
-    for let currentNode = self; currentNode != null; currentNode = currentNode.next;
-
-    if currentNode.next = ctx.mem.alloc(Node[T]); catch error {
-        #if logger != null #then logger.error(<<Failed to allocate next element in linkedList - reason: {nani.string()}>>);
-        return err.outOfMemory;
+def Void! insert[T](Node[T] node, T value) method {
+    let &Node?[T] currentNode = &node;
+    for currenNode != null {
+        currentNode = currentNode.next;
     }
+
+    currentNode.next |error| = ctx.?alloc(Node[T]);
+    if catch error {
+        ctx.?logger(Error, <<Failed to allocate next element in linkedList - reason: {error.string}>>)
+        return Err.outOfMemory;
+    }
+
     currentNode.next = value;
 }
 
-import core::error;
-import core::allocator;
+import <<core::error.chaos>>;
+import <<core::allocator.chaos>>;
 

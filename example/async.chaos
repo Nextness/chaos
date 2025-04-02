@@ -13,15 +13,15 @@ type AsyncError flaw {
 }
 
 type FutureHeader struct {
-    conditionalVariable CndT;
-    mutex Mutex;
-    isValid AtomicBool;
-    isSet Bool;
-    valueSize, inOffs, outOffs U64;
+    CndT       conditionalVariable;
+    Mutex      mutex;
+    AtomicBool isValid;
+    Bool       isSet;
+    U64        valueSize, inOffs, outOffs;
 }
 
-proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) &FutureHeader! {
-    let future &FutureHeader = try calloc(wholeSize) orReturn error;
+def &FutureHeader! newFuture(U64 wholeSize, valueSize, inOffs, outOffs) func {
+    let &FutureHeader future = try calloc(wholeSize) orReturn error;
     if catch future.init(valueSize, inOffs, outOffs) {
         print(<<Error initializing future - reason: {error.reason()}>>);
         return AsyncError.genericErrorFuture;
@@ -29,11 +29,11 @@ proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) &FutureHeader! {
     return future;
 }
 
-proc FutureHeader.await(&self, timeout I32[Microseconds]) Void! {
-    try self.mutex() orReturn AsyncError.genericFutureError;
-    defer self.mutexUnlock();
+def Void! await(&FutureHeader fh, I32[Microsends] timeout) func {
+    try mutex(fh) orReturn AsyncError.genericFutureError;
+    defer mutexUnlock(fh);
 
-    if self.isSet then return null;
+    if fh.isSet then return null;
     if timeout < 0 then return AsyncError.timeout;
 
     start, end Timespec = ...;
@@ -41,19 +41,19 @@ proc FutureHeader.await(&self, timeout I32[Microseconds]) Void! {
     end.tvSec = start.tvSEC + (timeout / 1_000);
     end.nSec = (timeout % 1_000) & 1_000_000;
 
-    if catch cndTimedWait(self.conditionalVariable, end) {
+    if let result |err| = cndTimedWait(fh.conditionalVariable, end); catch err {
     case AsyncError.threadTimedout then return AsyncError.timeout;
     case default then return AsyncError.genericFutureError;
     }
 }
 
-proc FutureHeader.get(&self, timeout I32[Microseconds], destination &Void, destinationSize, check U64) Void! {
+def Void! get(&FutureHeader fh, I32[Microseconds] timeout, &Void destination, U64 destinationSize, check) func {
     if !self.isValid return AsyncError.nullPointer;
     if destinationSize != self.valueSize then return AsyncError.destinationSizeNotMatched;
-    try self.await(timeout) orReturn error;
+    try await(fh, timeout) orReturn error;
 
-    let source &Void = self.(&U8) + self.outOffs.(&Void);
-    memcpy(destination, source, self.valueSize);
+    let &Void source = fh.(&U8) + fh*.&outOffs.(&Void);
+    memcpy(destination, source, fh*.valueSize);
 }
 
 type FutureOf[T] struct {
@@ -64,17 +64,17 @@ type FutureOf[T] struct {
 --- Private scope ---
 #scope(__file__);
 
-proc Future.init(&self, valueSize, inOffs, outOffs U64) {
-    cndInit(self.conditionalVariable);
-    mutexInit(self.mutex, mutexPlain);
-    &self.{isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs};
+def init(&FutureHeader fh, U64 valueSize, inOffs, outOffs) method {
+    cndInit(fh*.conditionalVariable);
+    mutexInit(fh*.mutex, mutexPlain);
+    ft*.{isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs};
 }
 
-proc FutureHeader.destroy(&self) Void! {
-    self.isValid = false;
-    cndDestroy(self.conditionalVariable);
-    mutexDestroy(self.mutex);
+def Void! destroy() method {
+    fh*.isValid = false;
+    cndDestroy(fh*.conditionalVariable);
+    mutexDestroy(fh*.mutex);
 }
 
-import core::fmt::io;
+import <<core::fmt::io>>;
 
