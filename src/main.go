@@ -56,8 +56,7 @@ func tokTypeToString(tokType2 TokenType) string {
 		return "tokEndOfFile"
 	}
 	fmt.Fprintf(os.Stderr, "[ERROR] We did not expect this tokType '%d' - please include a new case or fix your shitty code :)\n", tokType2)
-	os.Exit(1)
-	return "unrecheable"
+	panic("unrecheable")
 }
 
 func printTokens(listTok []Token) {
@@ -390,3 +389,4 @@ func main() {
 
 	os.Exit(0)
 }
+
