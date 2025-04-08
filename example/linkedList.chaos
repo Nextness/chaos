@@ -1,11 +1,11 @@
 module linkedList;
 
 type Node[T] struct {
-    T      value = ...;
-    &Node? next  = null;
+    value T = ...;
+    next  &Node? = null;
 }
 
-def &Node[T]! nodeInit[T]() func {
+func def nodeInit[T]() &Node[T]! {
     if let nodeHead = ctx.?alloc(Node[T]); catch error {
        ctx.?logger(Error, <<Failed to allocate memory for linkedList - reason: {error.string}>>);
        return Err.outOfMemory;
@@ -13,15 +13,12 @@ def &Node[T]! nodeInit[T]() func {
     return nodeHead;
 }
 
-def Void! insert[T](Node[T] node, T value) method {
-    let &Node?[T] currentNode = &node;
-    for currenNode != null {
-        currentNode = currentNode.next;
-    }
+method def insert[T](node &Node[T], value T) Void! {
+    let currentNode &Node?[T] = &node;
+    for currenNode != null do currentNode = currentNode.next;
 
-    currentNode.next |error| = ctx.?alloc(Node[T]);
-    if catch error {
-        ctx.?logger(Error, <<Failed to allocate next element in linkedList - reason: {error.string}>>)
+    if currentNode.next |error| = ctx.?alloc(Node[T]); catch error {
+        ctx.?logger(Error, <<Failed to allocate next element in linkedList - reason: {error.string}>>);
         return Err.outOfMemory;
     }
 

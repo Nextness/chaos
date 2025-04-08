@@ -1,13 +1,14 @@
-module string;
-
 --- Comptime values ---
 #let maxLen := 4096;
 
 --- Procedures related to strings ---
-def T! length[UInts T = U64](&String str, U64? maxLength = maxLen) method {
-    let &String initPos = str;
-    for _; str != <<\0>>; ++str {
-        #if maxLength != null {
+method def length[T UInts = U64](str &Str, maxLength U64? = maxLen) T!
+{
+    let initPos &String = str;
+    for _; str != <<\0>>; ++str
+    {
+        #if maxLength != null
+        {
             if !maxLength do return Err.maxLengthHit;
             maxLength--;
         }
@@ -15,11 +16,14 @@ def T! length[UInts T = U64](&String str, U64? maxLength = maxLen) method {
     return str.(T) - initPos.(T);
 }
 
-def &String! copy(&String str, U64? maxLength = maxLen) func {
-    let &String tmp = #0;
-    for str != <<\0>> {
+method def copy(str &String, maxLength U64? = maxLen) &String!
+{
+    let tmp &String;
+    for str != <<\0>>
+    {
         tmp++ = str++;
-        #if maxLength != null {
+        #if maxLength != null
+        {
             if !maxLength do return Err.maxLengthHit;
             maxLength--;
         }
@@ -27,9 +31,7 @@ def &String! copy(&String str, U64? maxLength = maxLen) func {
     return tmp;
 }
 
---- Imports ---
-#scope(__file__);
-
+module string;
 import <<core::numbers.chaos>>;
 import <<core::errors.chaos>>;
 

@@ -3,8 +3,9 @@
 
 module doubleLinkedList;
 
-#overload def U64 length(&DoubleLinkedList[C, T] dll) macro {
-    set @cast(*dll.count, U64);
+#overload macro def length(dll &DoubleLinkedList[C, T]) U64
+{
+    set dll.count.(&U64)*;
 }
 
 #overload def Node[T]! head(&DoubleLinkedList[C, T] dll) macro {

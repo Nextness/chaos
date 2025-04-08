@@ -1,47 +1,51 @@
-module exampleScaffold;
-
-type SomeInterface scaffold {
-    String mandatoryFieldOne;
-    Bool mandatoryFieldTwo;
-    def T doSomeOperation[T](&Self impl) method;
+type SomeInterface scaffold
+{
+    mandatoryFieldOne String ;
+    mandatoryFieldTwo Bool;
+    method def soSomeOperation[T](&Self);
 }
 
-type SomeInterface impl Example struct {
-    String mandatoryFieldOne;
-    Bool mandatoryFieldTwo = false;
-    Bool anotherField;
+type SomeInterface build Example struct
+{
+    mandatoryFieldOne String;
+    mandatoryFieldTwo Bool = false;
+    anotherField Bool;
 }
 
-#overload
-def T doSomeOperation[T](&Example example) method {
-    self.anotherFieldOne = true;
+#overload method def doSomeOperation[T](example &Example) T
+{
+    let example*.anotherFieldOne = true;
     return;
 }
 
-type SomeInterface impl AnotherExample struct {
-    String mandatoryFieldOne = <<>>;
-    Bool mandatoryFieldTwo = false;
+type SomeInterface build AnotherExample struct
+{
+    mandatoryFieldOne String = <<>>;
+    mandatoryFieldTwo Bool = false;
 }
 
-#overload
-def T doSomeOperation[T](&AnotherExample anotherExample) method {
-    String mandatoryFieldOne = <<>>;
-    Bool mandatoryFieldTwo = false;
+#overload method def doSomeOperation[T](anotherExample &AnotherExample) T
+{
+    let String anotherExample*.mandatoryFieldOne = <<>>;
+    let Bool anotherExample*.mandatoryFieldTwo = false;
 }
 
-def main() func {
-    // TODO: reconsider how to handle scaffolds - specifically the '<type> impl <identifier>'
-    let &SomeInterface impl newExample = &Example {
+func def main()
+{
+    // TODO: reconsider how to handle scaffolds - specifically the '<type> build <identifier>'
+    let newExample &SomeInterface.scaffold = &Example
+    {
         mandatoryFieldOne = <<Hello, world>>,
         anotherField = false
     };
 
-    printfn(<<{newExample.mandatoryFieldOne} is {newExample.anotherField}>>);
-    &newExample.doSomeOperation();
-    printfn(<<{newExample.mandatoryFieldOne} is {newExample.anotherField}>>);
+    printfn(<<{newExample*.mandatoryFieldOne} is {newExample*.anotherField}>>);
+    newExample*.doSomeOperation();
+    printfn(<<{newExample*.mandatoryFieldOne} is {newExample*.anotherField}>>);
 
     return;
 }
 
-import <<core::fmt::io>>;
+module exampleScaffold;
+import <<core::fmt::io.chaos>>;
 

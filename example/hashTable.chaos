@@ -1,65 +1,62 @@
 // Copied from https://github.com/benhoyt/ht/blob/master/ht.c
 // Probably it doesn't work - used just to evaluate language. Most likely things will change...
 
-module hashTable;
 
-inline proc HashTable[default].length(&self) U64 { set self.size; }
-inline proc HashTable[default].iterator(using &self) HashTableIterator { set HashTableIterator{table, 0}; }
-
-type Entry[Key, Value] struct {
-    key   *Key;
-    value *Value;
+macro def length[Key, Value](ht &HashTable[Key, Value]) U64
+{
+    set ht*.size;
 }
 
-type HashTable[Key, Value] struct {
-    entry    *Entry[Key, Value] = ...;
-    capacity U64                = 256;
-    size     U64                = 0;
+macro def iterator[Key, Value](ht &HashTable[Key, Value]) HashTableIterator
+{
+    set HashTableIterator{ht*, 0};
 }
 
-proc initHashTable[Key, Value]() *HashTable[Key, Value]! {
+type Entry[Key, Value] struct
+{
+    key   &Key;
+    value &Value;
+}
+
+type HashTable[Key, Value] struct
+{
+    entry    &Entry[Key, Value];
+    capacity U64 = 256;
+    size     U64 = 0;
+}
+
+func def initHashTable[Key, Value]() &HashTable[Key, Value]!
+{
     type HT alias HashTable[Key, Value];
-    type E  alias Entry[Key, Value];
+    type E alias Entry[Key, Value];
 
-    let table *HT = try ctx.mem.alloc(HT) orReturn Err.nullPointer;
-    if table.entry |err| = ctx.mem.calloc[E](table.capacity); catch err {
-        ctx.logger.?error(<<Failed to allocate memory, buy more RAM>>);
-        ctx.mem.free(table);
+    let table &HT = try alloc(HT) orReturn Err.nullPointer;
+    if table.entry |error| = calloc[E](table.capacity); catch err
+    {
+        logger(Error, <<Failed to allocate memory, buy more RAM>>);
+        free(table);
         return Err.nullPointer;
     }
+
     return table;
 }
 
-proc HashTable[default].destroy(using &self) Void!
+method def destroy[Key, Value](using ht &HashTable[Key, Value]) Void!
 {
-    for let i = 0; i < capacity; ++i {
-        if let curEntry, error = entry[i]; catch error {
-            return Err.outOfBounds;
-        }
-        ctx.mem.free(curEntry.key);
+    for let i = 0; i < capacity; ++i
+    {
+        if let curEntry |error| = entry[i]; catch error do return Err.outOfBounds;
+        free(curEntry.key);
     }
-    ctx.mem.free(entry);
-    ctx.mem.free(self);
+    free(entry);
+    free(ht);
 }
 
-proc HashTable[default].get(using &self, key *String) T! {
-    let hash = hashKey(key);
-    let i = hash && (capacity - 1);
-}
-
-proc HashTable[default].get :: (using &self, key: *String) => T! {
+method def get[Key, Value](using ht &HashTable[Key, Value], key &Key) T!
+{
     let hash := hashKey(key);
-    let i := hash && (capacity - 1);
-
-    for nothing; try entry.get(i) orSet false; ++i {
-        
-    }
-}
-
-proc HashTable[default].get(using &self, key Key) Value {
-    let hash := hashKey[Key](key);
     let i = hash & (capacity - 1);
-    
+
 }
 
 proc HashTable[default].get(using &self, key: *String) => T! {
@@ -121,16 +118,15 @@ proc HashTable[default].next(using &self, it: HashTableIterator) => Void! {
 
 #scope(__File__);
 
-#let fnvOffset :: 14695981039346656037;
-#let fntPrime  :: 1099511628211;
+#let fnvOffset := 14695981039346656037;
+#let fnvPrime  := 1099511628211;
 
-proc hasKey :: (key: *String) => U64! {
-    let hash := fnvOffset;
-    let tmp := key as *String;
-    for let i := 0; try tmp.get(i) orSet false; ++i {
-        let currentChar := try tmp.get(i) orReturn Err.outOfBounds;
-        if currentChar == <<\0>> then break;
-        hash ^= currentChar as U64;
+def Value! hasKey[Key, Value](&Key key) func {
+    let hash = fnvOffset;
+    let tmp = key.(String);
+    for let i = 0; i <= tmp.length; ++i {
+        let currentChar _ = tmp[i];
+        hash ^= currentChar.(U64);
         hash *= fnvPrime;
     }
     return hash;
@@ -168,5 +164,6 @@ proc setEntry[T](entry: *Entry[T], capacity: U64, key: *String, value: *T, size:
     return key;
 }
 
-let mem := import core::allocators;
+module hashTable;
+let mem := import <<core::allocators.chaos>>;
 

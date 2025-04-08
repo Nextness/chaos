@@ -3,15 +3,14 @@ module random;
 // Void values are 'notNumber | undefined | null';
 
 type Context scaffold {
-    calloc proc[T]  (num::Ints) &T;
-    alloc  proc[T]  (num::Ints) &T;
-    free   proc[T] (&T) Void;
     logger Logger?;
-    ...;
+    calloc (func def [T](num::Ints) &T);
+    alloc  (func def [T](num::Ints) &T);
+    free   (func def [T](&T) Void);
 }
 
-type Ctx impl Context struct {
-    alloc default = proc[T](U64) &T {
+type Contex build Ctx struct {
+    alloc = def &T[T](U64 size) func {
         
     };
 }
@@ -28,17 +27,13 @@ type SomeEnum enum U64 {
     E;
 }
 
-def attemptingSwitch(SomeEnum something) func {
+let someChar Char := "a;
+
+func def attemptingSwitch(something SomeEnum) Void {
     #partial if something == {
-    case A:
-        print(<<{A}>>);
-        break;
-    case B:
-        print(<<Something else {B}>>);
-        break;
-    case D:
-        print(<<String {D}s nuutz>>);
-        break;
+        case A: print(<<{A}>>); break;
+        case B: print(<<Something else {B}>>); break;
+        case D: print(<<String {D}s nuutz>>); break;
     }
 }
 
@@ -54,7 +49,7 @@ type Version[num::Ints T = U8] struct {
     String? phase = null;
 }
 
-def String toString[T](using &Version[T] version) method {
+method def toString[T](using version &Version[T]) String {
     let versionString = <<{major}.{minor}.{fix}>>;
     if phase != null do versionString = <<{versionString}-{phase}>>;
     return versionString;
@@ -77,13 +72,13 @@ let someStruct = &SomeStruct {
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
-def U64 main() func {
-    if let Window window |err| = initializeWindow(100, 100, <<Window>>); catch err {
+func def main() U64 {
+    if let window Window |err| = initializeWindow(100, 100, <<Window>>); catch err {
         printfn(<<Something went wrong in here - reason: {error.reason()}>>);
         return 1;
     }
 
-    let Window window |err| = initializeWindow(100, 100, <<AnotherWindow>>);
+    let window Window |err| = initializeWindow(100, 100, <<AnotherWindow>>);
     if catch err {
         printfn(<<Something went wrong in here - reason: {error.reason()}>>);
         return 1;
@@ -91,14 +86,14 @@ def U64 main() func {
 }
 
 def testListCreateAccess() func {
-    let List[4, String] someList = [<<Hello>>, <<World>>];
-    if let String firstString |err| = someList[5]; catch err {
+    let someListList[4, String] = [<<Hello>>, <<World>>];
+    if let firstString String |err| = someList[5]; catch err {
         exitWith Err.outOfBounds, <<Accessing element out of bounds>>;
     }
 }
 
 def testMapCreateAccess() func {
-    let Map[4, String, String; false] someMap = {
+    let someMap Map[4, String, String; false] = {
         [<<someKey>>] = <<some value>>, // If runtime is set to false, maps cannot have const assignments
         [<<anotherKey>>] = <<another value>>,
     };
@@ -108,10 +103,10 @@ def testMapCreateAccess() func {
     }
 }
 
-def (&U64, proc() U64)! newCounter() #noDiscard func {
-    let &U64 someVariable = try ctx.mem.allocAndAssign(U64, 0) orReturn Err.nullPointer;
-    return someVariable, def U64 () func {
-        return ++(someVariable.*);
+func def newCounter() (&U64, func def() U64)! {
+    let someVariable &U64 = try mem.allocAndAssign(U64, 0) orReturn Err.nullPointer;
+    return someVariable, func def() U64 {
+        return ++(someVariable*);
     }
 }
 
@@ -120,23 +115,23 @@ def freeCounter(&Void value) func {
     ctx.memset(value, 0);
 }
 
-type SomeFunc[T] alias def T! [T](...) func;
+type SomeFunc[T] alias (func def[T](...) T!);
 
-def T! someFunc[T](SomeFunc[T] someProc, <args>) func {
-    if let T result |err| = someProc[T](<args>); catch err {
+func def someFunc[T](someProc SomeFunc[T], <args>) T! {
+    if let result T |err| = someProc[T](<args>); catch err {
         return error;
     }
 }
-let Bool result = try someFunc[Bool](funcWithInput, <10, <<somethingNew>>, false>) orSet true;
+let result Bool = try someFunc[Bool](funcWithInput, <10, <<somethingNew>>, false>) orSet true;
 
-def ResultReturns(#noArguments) macro {
-    #if T #impl {
-    #case Iterable #do Bool = false #break
-    #case Incrementable #do I64 = 0 #break
+macro def ResultReturns(#noArguments) {
+    #if T #build {
+    #case Iterable #do Bool result = false #break
+    #case Incrementable #do I64 result = 0 #break
     }
 }
 
-def (result ResultReturns) anotherTest[(Iterable | Incrementable) impl T](T input, String value) func {
+def ResultReturns anotherTest[(Iterable | Incrementable) build T](T input, String value) func {
     ...;
     return result;
 }
@@ -151,7 +146,7 @@ def &HashTable[T]! initHashTable[T]() func {
     return table;
 }
 
-def destroy[T](using ht HashTable[T]) func {
+def destroy[T](using HashTable[T] ht) func {
     for let i = 0; i < capacity; ++i {
         if let curEntry |err| = entry[i]; catch err {
             return Err.outOfBounds;

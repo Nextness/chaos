@@ -14,7 +14,8 @@ type AnyNumber alias Natural | Real  | Complex | Quaternion;
 type Text alias Char | String | Rune;
 
 --- Vector ---
-type Vector2[T: AnyNumber] struct {
+type Vector2[T: AnyNumber] struct
+{
     x, y: T;
 }
 
@@ -29,7 +30,8 @@ type Primitives alias (
 );
 
 --- Time ---
-type TimeUnit enum U64 {
+type TimeUnit enum U64
+{
     NanoSeconds = 1_000_000_000.0;
     MicroSeconds = 1_000_000.0;
     MiliSeconds = 1_000.0;
