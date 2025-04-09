@@ -31,14 +31,14 @@ let someChar Char := "a;
 
 func def attemptingSwitch(something SomeEnum) Void {
     #partial if something == {
-        case A: print(<<{A}>>); break;
-        case B: print(<<Something else {B}>>); break;
-        case D: print(<<String {D}s nuutz>>); break;
+        case A: print(«{A}»); break;
+        case B: print(«Something else {B}»); break;
+        case D: print(«String {D}s nuutz»); break;
     }
 }
 
 type MyError flaw {
-    errorName {reason := <<Expected a name with 10 characters>>};
+    errorName {reason := «Expected a name with 10 characters»};
     anotherError;
     justError;
     yetAnotherError;
@@ -50,14 +50,14 @@ type Version[num::Ints T = U8] struct {
 }
 
 method def toString[T](using version &Version[T]) String {
-    let versionString = <<{major}.{minor}.{fix}>>;
-    if phase != null do versionString = <<{versionString}-{phase}>>;
+    let versionString = «{major}.{minor}.{fix}»;
+    if phase != null do versionString = «{versionString}-{phase}»;
     return versionString;
 }
 
 type JsonResponse[T Primitive] struct {
-    statusCode U32; #tag(<<json:status_code>>)
-    content    T;   #tag(<<json:content>>)
+    statusCode U32; #tag(«json:status_code»)
+    content    T;   #tag(«json:content»)
 }
 
 type SomeStruct struct {
@@ -66,39 +66,39 @@ type SomeStruct struct {
 }
 
 let someStruct = &SomeStruct {
-    username := <<username>>,
-    password := try getEnvVar(<<ENV_VAR_NAME>>) orSet <<none>>,
+    username := «username»,
+    password := try getEnvVar(«ENV_VAR_NAME») orSet «none»,
 };
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
 func def main() U64 {
-    if let window Window |err| = initializeWindow(100, 100, <<Window>>); catch err {
-        printfn(<<Something went wrong in here - reason: {error.reason()}>>);
+    if let window Window |err| = initializeWindow(100, 100, «Window»); catch err {
+        printfn(«Something went wrong in here - reason: {error.reason()}»);
         return 1;
     }
 
-    let window Window |err| = initializeWindow(100, 100, <<AnotherWindow>>);
+    let window Window |err| = initializeWindow(100, 100, «AnotherWindow»);
     if catch err {
-        printfn(<<Something went wrong in here - reason: {error.reason()}>>);
+        printfn(«Something went wrong in here - reason: {error.reason()}»);
         return 1;
     }
 }
 
 def testListCreateAccess() func {
-    let someListList[4, String] = [<<Hello>>, <<World>>];
+    let someListList[4, String] = [«Hello», «World»];
     if let firstString String |err| = someList[5]; catch err {
-        exitWith Err.outOfBounds, <<Accessing element out of bounds>>;
+        exitWith Err.outOfBounds, «Accessing element out of bounds»;
     }
 }
 
 def testMapCreateAccess() func {
     let someMap Map[4, String, String; false] = {
-        [<<someKey>>] = <<some value>>, // If runtime is set to false, maps cannot have const assignments
-        [<<anotherKey>>] = <<another value>>,
+        [«someKey»] = «some value», // If runtime is set to false, maps cannot have const assignments
+        [«anotherKey»] = «another value»,
     };
-    let secondKey := someMap[<<anotherKey>>]; #noRuntime
-    if let firstKey |err| = someMap[<<unavailableKey>>]; catch err {
+    let secondKey := someMap[«anotherKey»]; #noRuntime
+    if let firstKey |err| = someMap[«unavailableKey»]; catch err {
         exitWith Err.noKeyFound;
     }
 }
@@ -122,7 +122,7 @@ func def someFunc[T](someProc SomeFunc[T], <args>) T! {
         return error;
     }
 }
-let result Bool = try someFunc[Bool](funcWithInput, <10, <<somethingNew>>, false>) orSet true;
+let result Bool = try someFunc[Bool](funcWithInput, <10, «somethingNew», false>) orSet true;
 
 macro def ResultReturns(#noArguments) {
     #if T #build {
@@ -139,7 +139,7 @@ def ResultReturns anotherTest[(Iterable | Incrementable) build T](T input, Strin
 def &HashTable[T]! initHashTable[T]() func {
     let table &HashTable[T] = try ctx.mem.alloc(HashTable[T]) orReturn Err.noMemory;
     if table.entry |err| = ctx.mem.calloc[Entry[T]](table.capacity); catch err {
-        ctx.logger(Error, <<Failed to allocate memory, buy more RAM>>);
+        ctx.logger(Error, «Failed to allocate memory, buy more RAM»);
         ctx.free(table);
         return Err.nullPointer;
     }
@@ -171,7 +171,7 @@ def Bool! loopWithLabel() func {
     for let x = 0; x > 10; ++x; label someLoop {
         for let y = 0; y > 10; ++y {
             if let something |err| = operation(); catch err {
-                ctx.logger(Error, <<The operation failed - reason: {error.reson()}>>);
+                ctx.logger(Error, «The operation failed - reason: {error.reson()}»);
                 break someLoop;
             }
         }
@@ -182,9 +182,9 @@ def Bool! loopWithLabel() func {
 
 let new = &NewStruct{};
 
-#scope(<<file>>);
+#scope(«file»);
 
-import <<core::allocator.chaos>>;
-import <<core::logger.chaos>>;
-let num := import <<core::numbers.chaos>>;
+import «core::allocator.chaos»;
+import «core::logger.chaos»;
+let num := import «core::numbers.chaos»;
 

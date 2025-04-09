@@ -2,7 +2,7 @@
 type Log scaffold
 {
     // Expected Fields for logging
-    dateFormat String = <<%YEAR-%MONTH-%DAY %hour-%minute-%second>>;
+    dateFormat String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
     output List[dynamic, Stream] = list(StdOut);
     incldueOSName Bool = false;
 
@@ -37,34 +37,34 @@ type Logger build Log struct
 
 #overload method def trace(using self &Logger, message ...String)
 {
-    #notImplemented(<<Default trace log needs to be implemented>>) #if logLevel <= .trace #else #compiler(__optimize_out__);
+    #notImplemented(«Default trace log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
 }
 
 #overload method def debug(using self &Logger, message ...String)
 {
-    #notImplemented(<<Default debug log needs to be implemented>>) #if logLevel <= .trace #else #compiler(__optimize_out__);
+    #notImplemented(«Default debug log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
 }
 
 #overload method def info(using self &Logger, message: ...String)
 {
-    #notImplemented(<<Default info log needs to be implemented>>) #if logLevel <= .trace #else #compiler(__optimize_out__);
+    #notImplemented(«Default info log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
 }
 
 #overload method def warning(using self &Logger, message ...String)
 {
-    #notImplemented(<<Default warning log needs to be implemented>>) #if logLevel <= .trace #else #compiler(__optimize_out__);
+    #notImplemented(«Default warning log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
 }
 
 #overload method def error(using self &Logger, message ...String)
 {
-    #notImplemented(<<Default error log needs to be implemented>>) #if logLevel <= .trace #else #compiler(__optimize_out__);
+    #notImplemented(«Default error log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
 }
 
 #overload method def critical(using self &Logger, message ...String)
 {
-    #notImplemented(<<Default critical log needs to be implemented>>) #if logLevel <= .trace #else #compiler(__optimize_out__);
+    #notImplemented(«Default critical log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
 }
 
 module logger;
-let io := import <<core::fmt::io.chaos>>;
+let io := import «core::fmt::io.chaos»;
 

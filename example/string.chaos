@@ -5,7 +5,7 @@
 method def length[T UInts = U64](str &Str, maxLength U64? = maxLen) T!
 {
     let initPos &String = str;
-    for _; str != <<\0>>; ++str
+    for _; str != «\0»; ++str
     {
         #if maxLength != null
         {
@@ -19,7 +19,7 @@ method def length[T UInts = U64](str &Str, maxLength U64? = maxLen) T!
 method def copy(str &String, maxLength U64? = maxLen) &String!
 {
     let tmp &String;
-    for str != <<\0>>
+    for str != «\0»
     {
         tmp++ = str++;
         #if maxLength != null
@@ -32,6 +32,6 @@ method def copy(str &String, maxLength U64? = maxLen) &String!
 }
 
 module string;
-import <<core::numbers.chaos>>;
-import <<core::errors.chaos>>;
+import «core::numbers.chaos»;
+import «core::errors.chaos»;
 

@@ -33,7 +33,7 @@ func def initHashTable[Key, Value]() &HashTable[Key, Value]!
     let table &HT = try alloc(HT) orReturn Err.nullPointer;
     if table.entry |error| = calloc[E](table.capacity); catch err
     {
-        logger(Error, <<Failed to allocate memory, buy more RAM>>);
+        logger(Error, «Failed to allocate memory, buy more RAM»);
         free(table);
         return Err.nullPointer;
     }
@@ -165,5 +165,5 @@ proc setEntry[T](entry: *Entry[T], capacity: U64, key: *String, value: *T, size:
 }
 
 module hashTable;
-let mem := import <<core::allocators.chaos>>;
+let mem := import «core::allocators.chaos»;
 

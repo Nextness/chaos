@@ -1,13 +1,13 @@
 
 test firstTestSuite(tearUp TearUp, tearDown TearDown) {
-    proc firstTestName(t *UnitTest) {
-        let something := someConditionMustHappen(<<abc>>);
-        assert something && <<Expected something to have a value, but it doesn't...>>;
+    proc firstTestName(t &UnitTest) {
+        let something := someConditionMustHappen(«abc»);
+        assert something && «Expected something to have a value, but it doesn't...»;
     }
 
-    proc secondTestName(t *UnitTest) {
-        if somethingElse := someConditionMustHappen(<<ab>>); catch error {
-            assert error && <<Expected an error, but found nothing>>;
+    proc secondTestName(t &UnitTest) {
+        if let somethingElse |error| := someConditionMustHappen(«ab»); catch error {
+            assert error && «Expected an error, but found nothing»;
         }
     }
 }

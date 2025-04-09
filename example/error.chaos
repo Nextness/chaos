@@ -1,6 +1,6 @@
 type Error flaw
 {
-    nullPointer{<<You suck and need more RAM, lol!>>};
+    nullPointer{«You suck and need more RAM, lol!»};
     outOfMemory;
     outOfBounds;
     somethingElse;
@@ -9,10 +9,10 @@ type Error flaw
 func def main()
 {
     let AnyFlaw error = Error.nullPointer;
-    printfn(<<The error is "{error.string}" - reason: "{error.reason}">>);
+    printfn(«The error is "{error.string}" - reason: "{error.reason}"»);
     return;
 }
 
 module errors;
-import <<core::fmt::io.chaos>>;
+import «core::fmt::io.chaos»;
 

@@ -1,7 +1,7 @@
 
-#extern(<<printf>>)
-def Cvoid print(Cstr fmt, ...Cstr args) func;
+#extern(«printf»)
+func def print(fmt Cstr, args ...Cstr) Cvoid;
 
-#extern(<<windowShouldClose>>)
-def Cbool windowShouldClose(Cvoid) func;
+#extern(«windowShouldClose»)
+func def windowShouldClose(Cvoid) Cbool;
 

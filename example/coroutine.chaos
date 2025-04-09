@@ -1,11 +1,11 @@
 // Using https://github.com/tsoding/c3ws/tree/main as example...
 
-proc init() {
+func def init() {
     ...;
 }
 
-inline proc yield(#noArgument) {
-    #if compTime.os == <<arch>> {
+macro def yield(#noArgument) {
+    #if compTime.os == «arch» {
         assembly {
             pushq %rdi;
             pushq %rbp;

@@ -20,7 +20,7 @@ module doubleLinkedList;
     let &Node node = *dll.head;
     for let i = 0; i < *dll.count; ++i {
         let pad = i * 2;
-        printf(<<*%\n>>, pad, node.data);
+        printf(«*%\n», pad, node.data);
         node = node.next;
     }
 }
@@ -40,10 +40,10 @@ type Node[T] struct {
 def &Node[T]! createNode[T](data: &T) func {
     type ND alias Node[T];
     if let &ND newNode |err| = alloc(ND); catch err {
-        ctx.?logger(Error, <<Failed to allocate node - reason {nani.reason()}>>);
+        ctx.?logger(Error, «Failed to allocate node - reason {nani.reason()}»);
         return Err.outOfMemory;
     }
-    ctx.?logger(Trace, <<Allocated memory for node: {newNode.address()}>>);
+    ctx.?logger(Trace, «Allocated memory for node: {newNode.address()}»);
     return &(*newNode.{data=data});
 }
 

@@ -20,13 +20,13 @@ type SomeInterface build Example struct
 
 type SomeInterface build AnotherExample struct
 {
-    mandatoryFieldOne String = <<>>;
+    mandatoryFieldOne String = «»;
     mandatoryFieldTwo Bool = false;
 }
 
 #overload method def doSomeOperation[T](anotherExample &AnotherExample) T
 {
-    let String anotherExample*.mandatoryFieldOne = <<>>;
+    let String anotherExample*.mandatoryFieldOne = «»;
     let Bool anotherExample*.mandatoryFieldTwo = false;
 }
 
@@ -35,17 +35,17 @@ func def main()
     // TODO: reconsider how to handle scaffolds - specifically the '<type> build <identifier>'
     let newExample &SomeInterface.scaffold = &Example
     {
-        mandatoryFieldOne = <<Hello, world>>,
+        mandatoryFieldOne = «Hello, world»,
         anotherField = false
     };
 
-    printfn(<<{newExample*.mandatoryFieldOne} is {newExample*.anotherField}>>);
+    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»);
     newExample*.doSomeOperation();
-    printfn(<<{newExample*.mandatoryFieldOne} is {newExample*.anotherField}>>);
+    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»);
 
     return;
 }
 
 module exampleScaffold;
-import <<core::fmt::io.chaos>>;
+import «core::fmt::io.chaos»;
 

@@ -1,2 +1,3 @@
-let U64 newVariable = 1 + 1;
+let newVariable U64 = 1 + 1;
+let newVariable U64;
 

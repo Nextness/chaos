@@ -25,7 +25,7 @@ func def loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version
 
     let data StringView = sbToSv(tmpSb);
     let magicCount U64 := 4;
-    let magicPrefix StringView := svFromCstr(<<BPE>>);
+    let magicPrefix StringView := svFromCstr(«BPE»);
     if svStartsWith(data, magicPrefix)
     {
         if data.count < magicCount do return Err.generic;
@@ -42,7 +42,7 @@ func def loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version
         default: return Err.generic;
     }
 
-    let magicPrefixV0 StringView = svFromParts(<<\0\0\0\0>>, 4);
+    let magicPrefixV0 StringView = svFromParts(«\0\0\0\0», 4);
     if svStartsWith(data, magicPrefixV0)
     {
         version* = 0;

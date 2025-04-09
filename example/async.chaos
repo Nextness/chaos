@@ -1,8 +1,6 @@
 // Stole from https://github.com/glhrmfrts/future.c to have as an example. Most likely this code
 // doesn't work properly. Later needs to be recreated...
 
-module future;
-
 type AsyncError flaw {
     nullPointer;
     timeout;
@@ -23,7 +21,7 @@ type FutureHeader struct {
 def &FutureHeader! newFuture(U64 wholeSize, valueSize, inOffs, outOffs) func {
     let &FutureHeader future = try calloc(wholeSize) orReturn error;
     if catch future.init(valueSize, inOffs, outOffs) {
-        print(<<Error initializing future - reason: {error.reason()}>>);
+        print(«Error initializing future - reason: {error.reason()}»);
         return AsyncError.genericErrorFuture;
     }
     return future;
@@ -76,5 +74,6 @@ def Void! destroy() method {
     mutexDestroy(fh*.mutex);
 }
 
-import <<core::fmt::io>>;
+module future;
+import «core::fmt::io»;
 
