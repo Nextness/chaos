@@ -71,16 +71,14 @@ func printStatements(program []Statements) {
 	// TODO: make this shit better. This looks awful...
 	fmt.Print("Statements:\n")
 	for _, statement := range program {
-		if nodeLet := statement.nodeLet; nodeLet != nil {
+		if node := statement.node; node != nil {
 			fmt.Printf("  - let (node)\n")
-			fmt.Printf("    '- %s (%s)\n", nodeLet.identifier.value, tokTypeToString(nodeLet.identifier.tokType))
-			fmt.Printf("    '- %s (%s)\n", nodeLet.identifierType.value, tokTypeToString(nodeLet.identifierType.tokType))
-			if nodeLet.binaryExpression != nil {
-				fmt.Printf("    '- %s (node)\n", nodeLet.binaryExpression.operation)
-				fmt.Printf("      '- %s (%s) [lhs]\n", nodeLet.binaryExpression.lhs.value, tokTypeToString(nodeLet.binaryExpression.lhs.tokType))
-				fmt.Printf("      '- %s (%s) [rhs]\n", nodeLet.binaryExpression.rhs.value, tokTypeToString(nodeLet.binaryExpression.rhs.tokType))
-			} else {
-				fmt.Printf("    '- %s (%s)\n", nodeLet.identifier.value, tokTypeToString(nodeLet.identifier.tokType))
+			fmt.Printf("    '- %s (%s)\n", node.identifier.value, tokTypeToString(node.identifier.tokType))
+			fmt.Printf("    '- %s (%s)\n", node.identifierType.value, tokTypeToString(node.identifierType.tokType))
+			if node.binaryExpression != nil {
+				fmt.Printf("    '- %s (node)\n", node.binaryExpression.operation)
+				fmt.Printf("      '- %s (%s) [lhs]\n", node.binaryExpression.lhs.value, tokTypeToString(node.binaryExpression.lhs.tokType))
+				fmt.Printf("      '- %s (%s) [rhs]\n", node.binaryExpression.rhs.value, tokTypeToString(node.binaryExpression.rhs.tokType))
 			}
 		}
 	}
@@ -116,15 +114,15 @@ func isInside(b byte, listChar []byte) bool {
 	return result
 }
 
-func chaosTokenizer(file *[]byte) []Token {
+func chaosTokenizer(fileContent *bytes.Buffer) []Token {
 	tokens := bytes.Buffer{}
 	listTok := []Token{}
 	pos := 0
 
-	content := string(*file)
+	content := fileContent.String()
 	singleTokens := []byte{'=', '+', ';'}
 
-	for pos < len(content) {
+	for pos < fileContent.Len() {
 		token := Token{}
 		if unicode.IsSpace(rune(content[pos])) {
 			pos++
@@ -208,12 +206,14 @@ func chaosTokenizer(file *[]byte) []Token {
 	return listTok
 }
 
+type Operation string
+
 type NodeBinOp struct {
 	lhs, rhs  Token
 	operation Operation
 }
 
-type Node struct {
+type AtomNode struct {
 	// Global fields
 	identifier Token
 	nodeType   string
@@ -226,10 +226,8 @@ type Node struct {
 	binaryExpression   *NodeBinOp
 }
 
-type Operation string
-
 type Statements struct {
-	nodeLet *Node
+	node *AtomNode
 }
 
 type NodeStatements struct {
@@ -247,10 +245,10 @@ func peekToken(listTok *[]Token, length int, pos int, offset int) *Token {
 	return nil
 }
 
-func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*Node, error) {
+func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*AtomNode, error) {
 	lt := *listTok
 	pos := *currentPos
-	nodeExpression := Node{}
+	nodeExpression := AtomNode{}
 	lexError := errors.New("failed to lex expression node")
 
 	if lt[pos].tokType == tokNumber &&
@@ -288,10 +286,10 @@ func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*Node, er
 	return &nodeExpression, nil
 }
 
-func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*Node, error) {
+func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*AtomNode, error) {
 	lt := *listTok
 	pos := *currentPos
-	nodeLet := Node{}
+	nodeLet := AtomNode{}
 	lexError := errors.New("failed to lex let node")
 
 	if lt[pos].tokType == tokIdentifier {
@@ -344,7 +342,7 @@ func chaosLexer(listTok []Token) (*NodeStatements, error) {
 			fmt.Print("Failed to parse node let\n")
 			return nil, errors.New("failed to parse statements")
 		}
-		statements.nodeLet = nodeLet
+		statements.node = nodeLet
 		listStatements = append(listStatements, statements)
 	}
 
@@ -376,8 +374,11 @@ func main() {
 				fmt.Fprintf(os.Stderr, "[ERROR] Failed to open the file for whatever reason\n")
 				os.Exit(1)
 			}
-			listTok := chaosTokenizer(&file)
+
+			fileContent := bytes.NewBuffer(file)
+			listTok := chaosTokenizer(fileContent)
 			printTokens(listTok)
+
 			program, err := chaosLexer(listTok)
 			printStatements(program.statements)
 		} else {
