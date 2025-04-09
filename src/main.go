@@ -43,7 +43,7 @@ type Token struct {
 type Tokens struct {
 	list   []Token
 	count  int
-	cursor int
+	curPos int
 }
 
 type NodeBinOp struct {
@@ -152,15 +152,15 @@ func isInside(b byte, listChar []byte) bool {
 }
 
 func (tk *Tokens) consume() {
-	if tk.cursor < tk.count {
-		tk.cursor++
+	if tk.curPos < tk.count {
+		tk.curPos++
 	}
 }
 
 func (tk *Tokens) current() (result *Token) {
 	result = nil
-	if tk.cursor < tk.count {
-		result = &tk.list[tk.cursor]
+	if tk.curPos < tk.count {
+		result = &tk.list[tk.curPos]
 	}
 	return
 }
@@ -177,10 +177,14 @@ func (tk *Tokens) peak(offset ...int) (result *Token) {
 		off = offset[0]
 	}
 
-	if tk.cursor+off < tk.count {
-		result = &tk.list[tk.cursor+off]
+	if tk.curPos+off < tk.count {
+		result = &tk.list[tk.curPos+off]
 	}
 	return
+}
+
+func (tk *Tokens) expect(tokType TokenType, offset ...int) bool {
+	return tk.peak(offset...).tokType == tokType
 }
 
 func chaosTokenizer(fileContent *bytes.Buffer) []Token {
@@ -279,7 +283,10 @@ func lexNodeExpression(tokens *Tokens) (*AtomNode, error) {
 	nodeExpression := AtomNode{}
 	lexError := errors.New("failed to lex expression node")
 
-	if tokens.peak().tokType == tokNumber && tokens.peak(1) != nil && tokens.peak(1).tokType == tokPlus && tokens.peak(2) != nil && tokens.peak(2).tokType == tokNumber {
+	hasBinOp := (tokens.expect(tokNumber) &&
+		tokens.peak(1) != nil && tokens.expect(tokPlus, 1) &&
+		tokens.peak(2) != nil && tokens.expect(tokNumber, 2))
+	if hasBinOp {
 		nodeBinOp := &NodeBinOp{}
 		nodeBinOp.lhs = *tokens.current()
 		tokens.consume()
@@ -289,18 +296,18 @@ func lexNodeExpression(tokens *Tokens) (*AtomNode, error) {
 		tokens.consume()
 		nodeExpression.binaryExpression = nodeBinOp
 
-		if tokens.current().tokType == tokSemiColon {
+		if tokens.expect(tokSemiColon) {
 			tokens.consume()
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
 			return nil, lexError
 		}
 
-	} else if tokens.current().tokType == tokNumber {
+	} else if tokens.expect(tokNumber) {
 		nodeExpression.identifier = *tokens.current()
 		tokens.consume()
 
-		if tokens.current().tokType == tokSemiColon {
+		if tokens.expect(tokSemiColon) {
 			tokens.consume()
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
@@ -316,7 +323,7 @@ func lexNodeLet(tokens *Tokens) (*AtomNode, error) {
 	nodeLet := AtomNode{}
 	lexError := errors.New("failed to lex let node")
 
-	if tokens.peak().tokType == tokIdentifier {
+	if tokens.expect(tokIdentifier) {
 		nodeLet.identifier = *tokens.current()
 		tokens.consume()
 	} else {
@@ -324,7 +331,7 @@ func lexNodeLet(tokens *Tokens) (*AtomNode, error) {
 		return nil, lexError
 	}
 
-	if tokens.peak().tokType == tokPrimitiveType {
+	if tokens.expect(tokPrimitiveType) {
 		nodeLet.identifierType = tokens.current()
 		tokens.consume()
 	} else {
@@ -332,10 +339,10 @@ func lexNodeLet(tokens *Tokens) (*AtomNode, error) {
 		return nil, lexError
 	}
 
-	if tokens.peak().tokType == tokSemiColon {
+	if tokens.expect(tokSemiColon) {
 		tokens.consume()
 		return &nodeLet, nil
-	} else if tokens.peak().tokType == tokAssignment {
+	} else if tokens.expect(tokAssignment) {
 		tokens.consume()
 	} else {
 		fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
@@ -356,18 +363,19 @@ func chaosLexer(tokens *Tokens) (*NodeStatements, error) {
 	listStatements := []Statements{}
 
 	statements := Statements{}
-	if tokens.current().tokType == tokLet {
-		tokens.consume()
-		nodeLet, err := lexNodeLet(tokens)
-		if err != nil {
-			fmt.Print("Failed to parse node let\n")
-			return nil, errors.New("failed to parse statements")
+	for !tokens.expect(tokEndOfFile) {
+		if tokens.expect(tokLet) {
+			tokens.consume()
+			nodeLet, err := lexNodeLet(tokens)
+			if err != nil {
+				fmt.Print("Failed to parse node let\n")
+				return nil, errors.New("failed to parse statements")
+			}
+			statements.node = nodeLet
+			listStatements = append(listStatements, statements)
 		}
-		statements.node = nodeLet
-		listStatements = append(listStatements, statements)
 	}
-
-	if tokens.peak() != nil && tokens.current().tokType == tokEndOfFile {
+	if tokens.expect(tokEndOfFile) {
 		fmt.Printf("Finished lexing\n")
 	}
 
@@ -398,7 +406,7 @@ func main() {
 
 			fileContent := bytes.NewBuffer(file)
 			tokensList := chaosTokenizer(fileContent)
-			tokens := Tokens{list: tokensList, count: len(tokensList)}
+			tokens := Tokens{list: tokensList, count: len(tokensList), curPos: 0}
 
 			program, err := chaosLexer(&tokens)
 			printStatements(program.statements)
