@@ -75,14 +75,12 @@ func printStatements(program []Statements) {
 			fmt.Printf("  - let (node)\n")
 			fmt.Printf("    '- %s (%s)\n", nodeLet.identifier.value, tokTypeToString(nodeLet.identifier.tokType))
 			fmt.Printf("    '- %s (%s)\n", nodeLet.identifierType.value, tokTypeToString(nodeLet.identifierType.tokType))
-			if nodeLet.expression != nil {
-				if nodeLet.expression.binaryExpression != nil {
-					fmt.Printf("    '- %s (node)\n", nodeLet.expression.binaryExpression.operation)
-					fmt.Printf("      '- %s (%s) [lhs]\n", nodeLet.expression.binaryExpression.lhs.value, tokTypeToString(nodeLet.expression.binaryExpression.lhs.tokType))
-					fmt.Printf("      '- %s (%s) [rhs]\n", nodeLet.expression.binaryExpression.rhs.value, tokTypeToString(nodeLet.expression.binaryExpression.rhs.tokType))
-				} else {
-					fmt.Printf("    '- %s (%s)\n", nodeLet.expression.literal.value, tokTypeToString(nodeLet.expression.literal.tokType))
-				}
+			if nodeLet.binaryExpression != nil {
+				fmt.Printf("    '- %s (node)\n", nodeLet.binaryExpression.operation)
+				fmt.Printf("      '- %s (%s) [lhs]\n", nodeLet.binaryExpression.lhs.value, tokTypeToString(nodeLet.binaryExpression.lhs.tokType))
+				fmt.Printf("      '- %s (%s) [rhs]\n", nodeLet.binaryExpression.rhs.value, tokTypeToString(nodeLet.binaryExpression.rhs.tokType))
+			} else {
+				fmt.Printf("    '- %s (%s)\n", nodeLet.identifier.value, tokTypeToString(nodeLet.identifier.tokType))
 			}
 		}
 	}
@@ -210,27 +208,28 @@ func chaosTokenizer(file *[]byte) []Token {
 	return listTok
 }
 
-type Operation string
-
 type NodeBinOp struct {
 	lhs, rhs  Token
 	operation Operation
 }
 
-type NodeExpression struct {
-	nodeExpressionType string
-	literal            Token
+type Node struct {
+	// Global fields
+	identifier Token
+	nodeType   string
+
+	// Let field
+	identifierType *Token
+
+	// Expression field
+	nodeExpressionType *string
 	binaryExpression   *NodeBinOp
 }
 
-type NodeLet struct {
-	identifier     Token
-	identifierType Token
-	expression     *NodeExpression
-}
+type Operation string
 
 type Statements struct {
-	nodeLet *NodeLet
+	nodeLet *Node
 }
 
 type NodeStatements struct {
@@ -248,10 +247,10 @@ func peekToken(listTok *[]Token, length int, pos int, offset int) *Token {
 	return nil
 }
 
-func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*NodeExpression, error) {
+func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*Node, error) {
 	lt := *listTok
 	pos := *currentPos
-	nodeExpression := NodeExpression{}
+	nodeExpression := Node{}
 	lexError := errors.New("failed to lex expression node")
 
 	if lt[pos].tokType == tokNumber &&
@@ -274,7 +273,7 @@ func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*NodeExpr
 		}
 
 	} else if lt[pos].tokType == tokNumber {
-		nodeExpression.literal = lt[pos]
+		nodeExpression.identifier = lt[pos]
 		increment(&pos)
 
 		if lt[pos].tokType == tokSemiColon {
@@ -289,10 +288,10 @@ func lexNodeExpression(listTok *[]Token, length int, currentPos *int) (*NodeExpr
 	return &nodeExpression, nil
 }
 
-func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error) {
+func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*Node, error) {
 	lt := *listTok
 	pos := *currentPos
-	nodeLet := NodeLet{}
+	nodeLet := Node{}
 	lexError := errors.New("failed to lex let node")
 
 	if lt[pos].tokType == tokIdentifier {
@@ -304,7 +303,7 @@ func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error)
 	}
 
 	if lt[pos].tokType == tokPrimitiveType {
-		nodeLet.identifierType = lt[pos]
+		nodeLet.identifierType = &lt[pos]
 		increment(&pos)
 	} else {
 		fmt.Fprintf(os.Stderr, "[ERROR] Expected type but found %s with value %s\n", tokTypeToString(lt[pos].tokType), lt[pos].value)
@@ -325,7 +324,8 @@ func lexNodeLet(listTok *[]Token, length int, currentPos *int) (*NodeLet, error)
 	if err != nil {
 		return nil, lexError
 	}
-	nodeLet.expression = nodeExpression
+	nodeLet.nodeExpressionType = nodeExpression.nodeExpressionType
+	nodeLet.binaryExpression = nodeExpression.binaryExpression
 
 	return &nodeLet, nil
 }
@@ -389,4 +389,3 @@ func main() {
 
 	os.Exit(0)
 }
-
