@@ -10,6 +10,7 @@ import (
 )
 
 type TokenType int
+type TokenKind int
 type Operation string
 type NodeType int
 
@@ -27,17 +28,42 @@ const (
 )
 
 const (
-	nodeLet NodeType = iota
+	rtNumIntU8 TokenKind = iota
+	rtNumIntU16
+	rtNumIntU32
+	rtNumIntU64
+	rtNumIntU128
+	rtNumIntI8
+	rtNumIntI16
+	rtNumIntI32
+	rtNumIntI64
+	rtNumIntI128
+	rtNumFloat16
+	rtNumFloat32
+	rtNumFloat64
+	rtNumFloat128
+	rtNumComplex64
+	rtNumComplex128
+	rtNumQuaternion128
+	rtNumQuaternion256
+	rtString
+	rtChar
+	rtBool
+	rtVoid
+	rtArray
+	rtMap
+	rtAnyError
+	rtAnyType
 )
 
-type TokenKind struct {
-	unsignedInt64 bool
-}
+const (
+	nodeLet NodeType = iota
+)
 
 type Token struct {
 	value   string
 	tokType TokenType
-	// tokKind TokenKind
+	tokKind *TokenKind
 }
 
 type Tokens struct {
@@ -49,6 +75,10 @@ type Tokens struct {
 type NodeBinOp struct {
 	lhs, rhs  Token
 	operation Operation
+}
+
+type AtomNodeDetails struct {
+	
 }
 
 type AtomNode struct {
@@ -100,7 +130,7 @@ func tokTypeToString(tokType2 TokenType) string {
 func printTokens(tokens Tokens) {
 	fmt.Print("Token List:\n")
 	for _, theToken := range tokens.list {
-		fmt.Printf("  -> Token { value: '%s', type: '%s' }\n", theToken.value, tokTypeToString(theToken.tokType))
+		fmt.Printf("  Token { value: '%s', type: '%s', kind: '%v' }\n", theToken.value, tokTypeToString(theToken.tokType), theToken.tokKind)
 	}
 }
 
@@ -407,6 +437,7 @@ func main() {
 			fileContent := bytes.NewBuffer(file)
 			tokensList := chaosTokenizer(fileContent)
 			tokens := Tokens{list: tokensList, count: len(tokensList), curPos: 0}
+			printTokens(tokens)
 
 			program, err := chaosLexer(&tokens)
 			printStatements(program.statements)

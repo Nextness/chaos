@@ -1,54 +1,48 @@
 // Trying real life code to validate syntax
 // from Tsoding: https://github.com/tsodin/bpe/blob/main/src/bpe.cg
 
-func def dumpTokens(filePath &String, tokens &Tokens) Void!
-{
-    try writeEntireFile(filePath, tokens.items, tokens.count*sizeOf(tokens.items)) orReturn;
-}
+proc dumpTokens(filePath &String, tokens &Tokens) Void! do
+    try writeEntireFile(filePath, tokens.items, tokens.count*sizeOf(tokens.items)) orReturn
+endproc
 
-func def loadTokens(filePath &String, tokens &Tokens, tmpSb &StringBuilder) Void!
-{
+proc loadTokens(filePath &String, tokens &Tokens, tmpSb &StringBuilder) Void! do
     tmpSb.count = 0;
-    try readEntireFile(filePath, tmpSb) orReturn;
-    if tmpSb.count % sizeOf(tokens.items) != 0 do return Err.generic;
-    let itemsCount &U32 = tmpSb.items.(&Void);
-    for let i U64 = 0; i < itemsCount; ++i
-    {
-        daAppend(tokens, items[i]);
-    }
-}
+    try readEntireFile(filePath, tmpSb) orReturn
+    if tmpSb.count % sizeOf(tokens.items) != 0 do return generic!
 
-func def loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U64) Void!
-{
-    tmpSb.count = 0;
-    try readEntireFile(filePath, tmpSb) orReturn;
+    let itemsCount &U32 = tmpSb.items.(&Void)
+    while i < itemsCount : ++i do
+        daAppend(tokens, items[i])
+    endwhile
+endproc
 
-    let data StringView = sbToSv(tmpSb);
-    let magicCount U64 := 4;
-    let magicPrefix StringView := svFromCstr(«BPE»);
-    if svStartsWith(data, magicPrefix)
-    {
-        if data.count < magicCount do return Err.generic;
-    }
+proc loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U64) Void! do
+    tmpSb.count = 0
+    try readEntireFile(filePath, tmpSb) orReturn
 
-    assert version* = data.data[3];
-    data.data += magicCount;
-    data.count -= magicCount;
+    let data StringView = sbToSv(tmpSb)
+    let magicCount U64 := 4
+    let magicPrefix StringView := svFromCstr(«BPE»)
+    if svStartsWith(data, magicPrefix) do
+        if data.count < magicCount do return generic! endif
+    endif
 
-    if version* ==
-    {
-        case 0:  try parsePairsV0(filePath, pairs, data) orReturn;
-        case 1:  try parsePairsV1(filePath, pairs, data) orReturn;
-        default: return Err.generic;
-    }
+    version = assert data.data[3]
+    data.data += magicCount
+    data.count -= magicCount
 
-    let magicPrefixV0 StringView = svFromParts(«\0\0\0\0», 4);
-    if svStartsWith(data, magicPrefixV0)
-    {
-        version* = 0;
-        try parsePairsV0(filePath, pairs, data) orReturn;
-    }
+    if version == do
+        case 0:  try parsePairsV0(filePath, pairs, data) orReturn
+        case 1:  try parsePairsV1(filePath, pairs, data) orReturn
+        default: return generic!
+    endif
 
-    return Err.generic;
-}
+    let magicPrefixV0 StringView = svFromParts(«\0\0\0\0», 4)
+    if svStartsWith(data, magicPrefixV0) do
+        version = 0
+        try parsePairsV0(filePath, pairs, data) orReturn
+    endif
+
+    return generic!
+endproc
 

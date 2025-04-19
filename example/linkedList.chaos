@@ -1,29 +1,21 @@
-type Node[T] struct {
-    value T = ...;
-    next  &Node? = null;
-}
+type Node[T] struct
+    value T      = ...
+    next  *?Node = null
+endtype
 
-func def nodeInit[T]() &Node[T]! {
-    if let nodeHead = ctx.?alloc(Node[T]); catch error {
-       ctx.?logger(Error, «Failed to allocate memory for linkedList - reason: {error.string}»);
-       return Err.outOfMemory;
-    }
-    return nodeHead;
-}
+proc initNode[T]() *Node[T]! do
+    let nodeHead = try ctx.?alloc(Node[T]) orReturn outOfMemory!
+    return nodeHead
+endproc
 
-method def insert[T](node &Node[T], value T) Void! {
-    let currentNode &Node?[T] = &node;
-    for currenNode != null do currentNode = currentNode.next;
+with (n *Node[T]) proc insert(value T) Void! do
+    let currentNode *Node[T] = n
+    while currenNode != null do currentNode = currentNode.next endwhile
+    currentNode.next = try ctx.?alloc(Node[T]) orReturn outOfMemory!
+    currentNode.next = value
+endproc
 
-    if currentNode.next |error| = ctx.?alloc(Node[T]); catch error {
-        ctx.?logger(Error, «Failed to allocate next element in linkedList - reason: {error.string}»);
-        return Err.outOfMemory;
-    }
-
-    currentNode.next = value;
-}
-
-module linkedList;
-import «core::error.chaos»;
-import «core::allocator.chaos»;
+module linkedList
+import «core::error.chaos»
+import «core::allocator.chaos»
 

@@ -1,20 +1,19 @@
+type HelloWorld struct
+    hello String
+    world String = «world!»
+endtype
 
-type HelloWorld struct {
-    String hello;
-    String world = «world!»;
-}
+type AnotherHello[T] struct
+    another T
+    hello   String = «world!»
+endtype
 
-type AnotherHello[T] struct {
-    T another;
-    String hello = «world!»;
-}
+proc main() do
+    let value = HelloWorld{«Hello,»}
+    printfn(«{value.hello} {value.world}»)
+    return
+endproc
 
-proc main() {
-    let value = HelloWorld{«Hello,»};
-    printfn(«{value.hello} {value.world}»);
-    return;
-}
-
-module exampleStructs;
-import «core::fmt:io.chaos»;
+module exampleStructs
+import «core::fmt:io.chaos»
 

@@ -1,39 +1,36 @@
 // Copyright
 
-func def asyncTask(p func def) AsyncTask
-{
+proc asyncTask(p proc) AsyncTask
     
-}
+endproc
 
-func def getUserByUsername(username String, session Session) Async[User]!
-{
-    if username.len >= 4096 do return Err.largeText;
-    let getUserQuery := «SELECT username FROM user_database WHERE username={username}»;
-    let user := try performQuery(session, getUserQuery) orReturn Err.userNotFound;
-    return user;
-}
+proc getUserByUsername(username String, session Session) Async[User]!
+    if username.len >= 4096 do return largeText! endif
+    let getUserQuery := «SELECT username FROM user_database WHERE username={username}»
+    let user := try performQuery(session, getUserQuery) orReturn userNotFound!
+    return user
+endproc
 
-func def getUser(username String) User!
-{
-    func def task() User!
-    {
-        let globalSession := try getGlobalSession() orReturn Err.noSessionAvailable;
-        let user := getUserByUsername(globalSession, username, globalSession) orReturn Err.userNotFound;
-        return user;
-    }
-    let currentuser AsyncTask := asyncTask(task);
+proc getUser(username String) User!
+    let currentuser AsyncTask := asyncTask(
+        proc() User! do
+            let globalSession := try getGlobalSession() orReturn noSessionAvailable!
+            let user := getUserByUsername(globalSession, username,
+                                          globalSession) orReturn userNotFound!
+            return user
+        endproc
+    )
 
-    if let user |err| := currentUser.await(); catch err
-    {
-        case Err.largeText:          ctx.?logger(Error, «The provided username is larger than 4096 characters»); break;
-        case Err.noSessionAvailable: ctx.?logger(Error, «Failed to get session»); break;
-        case Err.failedToCreateUser: ctx.?logger(Error, «Failed to get user {username}»); break;
-        return err;
-    }
+    if let user := currentUser.await() catch err do
+        case largeText!:          ctx.?logger(Error, «The provided username is larger than 4096 characters»); break
+        case noSessionAvailable!: ctx.?logger(Error, «Failed to get session»); break
+        case failedToCreateUser!: ctx.?logger(Error, «Failed to get user {username}»); break
+        return err
+    endif
 
-    return user;
-}
+    return user
+endproc
 
-module asyncTasks;
-import «core::tasks.chaos»;
+module asyncTasks
+import «core::tasks.chaos»
 

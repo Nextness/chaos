@@ -1,37 +1,29 @@
---- Comptime values ---
-#let maxLen := 4096;
+#let maxLen := 4096
 
---- Procedures related to strings ---
-method def length[T UInts = U64](str &Str, maxLength U64? = maxLen) T!
-{
-    let initPos &String = str;
-    for _; str != «\0»; ++str
-    {
-        #if maxLength != null
-        {
-            if !maxLength do return Err.maxLengthHit;
-            maxLength--;
-        }
-    }
-    return str.(T) - initPos.(T);
+proc length[T UInts = U64](str *Str, maxLength *?U64 = maxLen) T! do
+    let initPos *String = str
+    while str != «\0» : ++str do
+        #if maxLength != null do
+            if !maxLength do return Err.maxLengthHit endif
+            maxLength--
+        endif
+    endwhile
+    return str.(T) - initPos.(T)
+endproc
+
+proc copy(str *String, maxLength *?U64 = maxLen) *String! do
+    let tmp *String
+    while str != «\0» do
+        tmp++ = str++
+        #if maxLength != null do
+            if !maxLength do return Err.maxLengthHit endif
+            maxLength--
+        endif
+    endwhile
+    return tmp
 }
 
-method def copy(str &String, maxLength U64? = maxLen) &String!
-{
-    let tmp &String;
-    for str != «\0»
-    {
-        tmp++ = str++;
-        #if maxLength != null
-        {
-            if !maxLength do return Err.maxLengthHit;
-            maxLength--;
-        }
-    }
-    return tmp;
-}
-
-module string;
-import «core::numbers.chaos»;
-import «core::errors.chaos»;
+module string
+import «core::numbers.chaos»
+import «core::errors.chaos»
 

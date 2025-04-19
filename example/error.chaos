@@ -1,18 +1,9 @@
-type Error flaw
-{
-    nullPointer{«You suck and need more RAM, lol!»};
-    outOfMemory;
-    outOfBounds;
-    somethingElse;
-}
+proc main() do
+    let error AnyError := nullPointer!
+    printfn(«The error is "{error}"»)
+    return
+endproc
 
-func def main()
-{
-    let AnyFlaw error = Error.nullPointer;
-    printfn(«The error is "{error.string}" - reason: "{error.reason}"»);
-    return;
-}
-
-module errors;
-import «core::fmt::io.chaos»;
+module errors
+import «core::fmt::io.chaos»
 

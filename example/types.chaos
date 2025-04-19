@@ -1,56 +1,42 @@
-module types;
+module types
 
---- Numbers ---
-type Ints       alias I8   | I16 | I32 | I64 | I128;
-type UInts      alias U8   | U16 | U32 | U64 | U128;
-type Floats     alias F16  | F32 | F64 | F128;
-type Complex    alias C64  | C128;
-type Quaternion alias Q128 | Q256;
+// Numbers
+type Ints alias I8 | I16 | I32 | I64 | I128 endtype
+type UInts alias U8 | U16 | U32 | U64 | U128 endtype
+type Floats alias F16 | F32 | F64 | F128 endtype
+type Complex alias C64 | C128 endtype
+type Quaternion alias Q128 | Q256 endtype
+type Natural alias Ints | UInts endtype
+type Real alias Ints | UInts | Floats endtype
+type AnyNumber alias Natural | Real | Complex | Quaternion endtype
+type Text alias Char | String endtype
 
-type Natural   alias Ints    | UInts;
-type Real      alias Ints    | UInts | Floats;
-type AnyNumber alias Natural | Real  | Complex | Quaternion;
+type Vector2[T AnyNumber] struct
+    x, y T
+endtype
 
-type Text alias Char | String | Rune;
+type Primitives alias
+    I8   | I16   | I32 | I64  | I128 |
+    U8   | U16   | U32 | U64  | U128 |
+    F16  | F32   | F64 | F128 |
+    C64  | C128  |
+    Q128 | Q256  |
+    Char | String
+endtype
 
---- Vector ---
-type Vector2[T: AnyNumber] struct
-{
-    x, y: T;
-}
-
---- Primitives ---
-type Primitives alias (
-    I8   | I16    | I32 | I64  | I128 |
-    U8   | U16    | U32 | U64  | U128 |
-    F16  | F32    | F64 | F128 |
-    C64  | C128   |
-    Q128 | Q256   |
-    Char | String | Rune
-);
-
---- Time ---
 type TimeUnit enum U64
-{
-    NanoSeconds = 1_000_000_000.0;
-    MicroSeconds = 1_000_000.0;
-    MiliSeconds = 1_000.0;
-    Seconds = 60.0;
-    Minutes = 60.0;
-    Hours = 24.0;
-}
+    NanoSeconds = 1_000_000_000.0
+    MicroSeconds = 1_000_000.0
+    MiliSeconds = 1_000.0
+    Seconds = 60.0
+    Minutes = 60.0
+    Hours = 24.0
+endtype
 
-#assert(TimeUnit.NanoSeconds.value == TimeUnit[0].value);
+#assert(TimeUnit.NanoSeconds.value == TimeUnit[0].value)
 
-type Time[Litera[TimeUnit] Unit = Seconds] struct {
-    U64 date;
-    F64 time;
-}
-
---- List ---
-type List[Literal[Natural | dynamic] S, Type T] struct {
-    T   items    = ...;
-    U64 count    = 0;
-    U64 capacity = 256 #if S == dynamic #else S;
-}
+type Time[Litera[TimeUnit] Unit = Seconds] struct
+    date U64
+    time F64
+endtype
 

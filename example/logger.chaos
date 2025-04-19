@@ -1,70 +1,91 @@
 
 type Log scaffold
-{
     // Expected Fields for logging
-    dateFormat String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
-    output List[dynamic, Stream] = list(StdOut);
-    incldueOSName Bool = false;
+    dateFormat String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»
+    output List[dynamic, Stream] = list(StdOut)
+    incldueOSName Bool = false
 
     // Expected Methods for logging
-    method def trace(self &Self, message ...String);
-    method def debug(self &Self, message ...String);
-    method def info(self &Self, message ...String);
-    method def warning(self &Self, message ...String);
-    method def error(self &Self, message ...String);
-    method def critical(self &Self, message ...String);
-    method def disaster(self &Self, message ...String);
-}
+    proc trace(self &Self, message ...String)
+    proc debug(self &Self, message ...String)
+    proc info(self &Self, message ...String)
+    proc warning(self &Self, message ...String)
+    proc error(self &Self, message ...String)
+    proc critical(self &Self, message ...String)
+    proc disaster(self &Self, message ...String)
+endtype
 
 type LoggerLevel enumArray U64
-{
-    trace;
-    debug;
-    info;
-    warning;
-    error;
-    critical;
-    disabled;
-}
+    trace
+    debug
+    info
+    warning
+    error
+    critical
+    disabled
+endtype
 
-type Logger build Log struct
-{
-    dateFormat = default;
-    output = default;
-    includeOSName = default;
-    logLevel LoggerLevel = .info;
-}
+type Log builds Logger struct
+    dateFormat = default
+    output = default
+    includeOSName = default
+    logLevel LoggerLevel = .info
+endtype
 
-#overload method def trace(using self &Logger, message ...String)
-{
-    #notImplemented(«Default trace log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
-}
+#overload
+proc trace(using self *Logger, message ...String) do
+    #if loglevel <= .trace do
+        #notImplemented(«Default trace log needs to be implemented»)
+    else do
+        #compiler(__optimize_out__)
+    endif
+endproc
 
-#overload method def debug(using self &Logger, message ...String)
-{
-    #notImplemented(«Default debug log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
-}
+#overload
+proc debug(using self *Logger, message ...String) do
+    #if loglevel <= .debug do
+        #notImplemented(«Default debug log needs to be implemented»)
+    else do
+        #compiler(__optimize_out__)
+    endif
+endproc
 
-#overload method def info(using self &Logger, message: ...String)
-{
-    #notImplemented(«Default info log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
-}
+#overload
+proc info(using self *Logger, message: ...String) do
+    #if loglevel <= .info do
+        #notImplemented(«Default info log needs to be implemented») 
+    else do
+        #compiler(__optimize_out__)
+    endif
+endproc
 
-#overload method def warning(using self &Logger, message ...String)
-{
-    #notImplemented(«Default warning log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
-}
+#overload
+proc warning(using self *Logger, message ...String)
+    #if loglevel <= .warning do
+        #notImplemented(«Default warning log needs to be implemented»)
+    else do
+        #compiler(__optimize_out__)
+    endif
+endproc
 
-#overload method def error(using self &Logger, message ...String)
-{
-    #notImplemented(«Default error log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
-}
+#overload
+proc error(using self *Logger, message ...String)
+    #if loglevel <= .error do
+        #notImplemented(«Default error log needs to be implemented»)
+    else do
+        #compiler(__optimize_out__)
+    endif
+endproc
 
-#overload method def critical(using self &Logger, message ...String)
-{
-    #notImplemented(«Default critical log needs to be implemented») #if logLevel <= .trace #else #compiler(__optimize_out__);
-}
+#overload
+proc critical(using self *Logger, message ...String)
+    #if loglevel <= .critical do
+        #notImplemented(«Default critical log needs to be implemented»)
+    else do
+        #compiler(__optimize_out__)
+    endif
+endproc
 
-module logger;
-let io := import «core::fmt::io.chaos»;
+module logger
+let io := import «core::fmt::io.chaos»
 

@@ -1,23 +1,23 @@
 // Using https://github.com/tsoding/c3ws/tree/main as example...
 
-func def init() {
-    ...;
-}
+proc init() do
+    ...
+endproc
 
-macro def yield(#noArgument) {
-    #if compTime.os == «arch» {
-        assembly {
-            pushq %rdi;
-            pushq %rbp;
-            pushq %rbx;
-            pushq %r12;
-            pushq %r13;
-            pushq %r14;
-            pushq %r15;
-            movq %rsp, %rdi; // rsp
-            movq $0, %rsi;   // sm = SM_NONE
-            jmp coroutine_switch_context;
-        }
-    }
-}
+inline proc yield(#noArguments) do
+    #if compTime.os == «arch» do
+        assembly do
+            pushq %rdi
+            pushq %rbp
+            pushq %rbx
+            pushq %r12
+            pushq %r13
+            pushq %r14
+            pushq %r15
+            movq %rsp, %rdi // rsp
+            movq $0, %rsi   // sm = SM_NONE
+            jmp coroutine_switch_context
+        endassembly
+    endif
+endproc
 

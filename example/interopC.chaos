@@ -1,7 +1,7 @@
 
-#extern(«printf»)
-func def print(fmt Cstr, args ...Cstr) Cvoid;
+#extern(«libc.o», «printf»)
+proc print(fmt Cstr, args ...Cstr) Cvoid do ... endproc
 
-#extern(«windowShouldClose»)
-func def windowShouldClose(Cvoid) Cbool;
+#extern(«raylib.o», «windowShouldClose»)
+proc windowShouldClose(Cvoid) Cbool do ... endproc
 

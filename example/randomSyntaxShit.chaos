@@ -1,190 +1,157 @@
-module random;
+module random
 
 // Void values are 'notNumber | undefined | null';
 
-type Context scaffold {
-    logger Logger?;
-    calloc (func def [T](num::Ints) &T);
-    alloc  (func def [T](num::Ints) &T);
-    free   (func def [T](&T) Void);
-}
+type Context scaffold
+    logger Logger?
+    calloc proc[T](num::Ints) &T
+    alloc  proc[T](num::Ints) &T
+    free   proc[T](&T) Void
+endtype
 
-type Contex build Ctx struct {
-    alloc = def &T[T](U64 size) func {
+type Contex builds Ctx struct
+    alloc = proc[T](U64 size) &T {
         
-    };
-}
-
-global let ctx Ctx;
-
-type AnotherInt alias I32;
-type SomethingNew distinct I32;
-
-type SomeEnum enum U64 {
-    A := 0 <- iota;
-    B;
-    D;
-    E;
-}
-
-let someChar Char := "a;
-
-func def attemptingSwitch(something SomeEnum) Void {
-    #partial if something == {
-        case A: print(«{A}»); break;
-        case B: print(«Something else {B}»); break;
-        case D: print(«String {D}s nuutz»); break;
     }
-}
+endtype
 
-type MyError flaw {
-    errorName {reason := «Expected a name with 10 characters»};
-    anotherError;
-    justError;
-    yetAnotherError;
-}
+global let ctx Ctx
 
-type Version[num::Ints T = U8] struct {
-    T       major, minor, fix;
-    String? phase = null;
-}
+type AnotherInt alias I32 endtype
+type SomethingNew distinct I32 endtype
 
-method def toString[T](using version &Version[T]) String {
-    let versionString = «{major}.{minor}.{fix}»;
-    if phase != null do versionString = «{versionString}-{phase}»;
-    return versionString;
-}
+type SomeEnum enum U64
+    a := (0 << iota)
+    b
+    d
+    e
+endtype
 
-type JsonResponse[T Primitive] struct {
-    statusCode U32; #tag(«json:status_code»)
-    content    T;   #tag(«json:content»)
-}
+let someChar Char := "a
 
-type SomeStruct struct {
-    String username;
-    String password; #redacted
-}
+proc attemptingSwitch(something SomeEnum) Void do
+    #partial if something == do
+        case a: print(«{A}»); break
+        case b: print(«Something else {B}»); break
+        case d: print(«String {D}s nuutz»); break
+    endif
+endproc
+
+type Version[T num::Ints = U8] struct
+    major, minor, fix T
+    phase             ?String = null
+endtype
+
+proc toString[T](using version &Version[T]) String do
+    let versionString = «{major}.{minor}.{fix}»
+    if phase != null do versionString = «{versionString}-{phase}» endif
+    return versionString
+endproc
+
+type JsonResponse[T Primitive] struct
+    statusCode U32 #tag(«json:status_code»)
+    content    T   #tag(«json:content»)
+endtype
+
+type SomeStruct struct
+    username String 
+    password String #redacted
+endtype
 
 let someStruct = &SomeStruct {
     username := «username»,
     password := try getEnvVar(«ENV_VAR_NAME») orSet «none»,
-};
+}
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
-func def main() U64 {
-    if let window Window |err| = initializeWindow(100, 100, «Window»); catch err {
-        printfn(«Something went wrong in here - reason: {error.reason()}»);
-        return 1;
-    }
+proc main() U64 do
+    if let window Window = initializeWindow(100, 100, «Window») catch err do
+        printfn(«Something went wrong in here - reason: {error.reason()}»)
+        return 1
+    endif
 
-    let window Window |err| = initializeWindow(100, 100, «AnotherWindow»);
-    if catch err {
-        printfn(«Something went wrong in here - reason: {error.reason()}»);
-        return 1;
-    }
-}
+    let window Window = try initializeWindow(100, 100, «AnotherWindow») orExitWith 1
+endproc
 
-def testListCreateAccess() func {
-    let someListList[4, String] = [«Hello», «World»];
-    if let firstString String |err| = someList[5]; catch err {
-        exitWith Err.outOfBounds, «Accessing element out of bounds»;
-    }
-}
+proc testListCreateAccess() Void! do
+    let someList List[4, String] = {«Hello», «World»}
+    if let firstString String |err| = someList[5]; catch err do
+        exitWith outOfBounds!, «Accessing element out of bounds»
+    endif
+endproc
 
-def testMapCreateAccess() func {
-    let someMap Map[4, String, String; false] = {
-        [«someKey»] = «some value», // If runtime is set to false, maps cannot have const assignments
+proc testMapCreateAccess() do
+    let someMap Map[4, String, String] = {
+        [«someKey»] = «some value»,
         [«anotherKey»] = «another value»,
-    };
-    let secondKey := someMap[«anotherKey»]; #noRuntime
-    if let firstKey |err| = someMap[«unavailableKey»]; catch err {
-        exitWith Err.noKeyFound;
     }
-}
 
-func def newCounter() (&U64, func def() U64)! {
-    let someVariable &U64 = try mem.allocAndAssign(U64, 0) orReturn Err.nullPointer;
-    return someVariable, func def() U64 {
-        return ++(someVariable*);
-    }
-}
+    let secondKey := assert someMap[«anotherKey»]
+    if let firstKey = someMap[«unavailableKey»] catch err do
+        exitWith noKeyFound!
+    endif
+endproc
 
-def freeCounter(&Void value) func {
-    ctx.free(value);
-    ctx.memset(value, 0);
-}
+proc newCounter() (*U64, proc U64)! do
+    let someVariable *U64 = try mem::allocAndAssign(U64, 0) orReturn nullPointer!
+    proc counter() U64 do
+        return ++(someVariable*)
+    endproc
+    return someVariable, counter
+endproc
 
-type SomeFunc[T] alias (func def[T](...) T!);
+proc freeCounter(value *Void) do
+    ctx.free(value)
+    ctx.memset(value, 0)
+endproc
 
-func def someFunc[T](someProc SomeFunc[T], <args>) T! {
-    if let result T |err| = someProc[T](<args>); catch err {
-        return error;
-    }
-}
-let result Bool = try someFunc[Bool](funcWithInput, <10, «somethingNew», false>) orSet true;
+type SomeFunc[T] alias (proc[T](...) T! do ... endproc) endtype
 
-macro def ResultReturns(#noArguments) {
-    #if T #build {
-    #case Iterable #do Bool result = false #break
-    #case Incrementable #do I64 result = 0 #break
-    }
-}
+proc someFunc[T](someProc SomeFunc[T], <args>) T! do
+    if let result T = someProc[T](<args>) catch err do
+        return err
+    endif
+endproc
+let result Bool = try someFunc[Bool](funcWithInput, <10, «somethingNew», false>) orSet true
 
-def ResultReturns anotherTest[(Iterable | Incrementable) build T](T input, String value) func {
-    ...;
-    return result;
-}
+inline proc ResultReturns(#noArguments)
+    if T builds
+        case Iterable: result Bool = false break
+        case Incrementable: result I64 = 0 break
+    endif
+endproc
 
-def &HashTable[T]! initHashTable[T]() func {
-    let table &HashTable[T] = try ctx.mem.alloc(HashTable[T]) orReturn Err.noMemory;
-    if table.entry |err| = ctx.mem.calloc[Entry[T]](table.capacity); catch err {
-        ctx.logger(Error, «Failed to allocate memory, buy more RAM»);
-        ctx.free(table);
-        return Err.nullPointer;
-    }
-    return table;
-}
+proc ResultReturns anotherTest[(Iterable | Incrementable) builds T](T input, String value) do
+    ...
+    return result
+endproc
 
-def destroy[T](using HashTable[T] ht) func {
-    for let i = 0; i < capacity; ++i {
-        if let curEntry |err| = entry[i]; catch err {
-            return Err.outOfBounds;
-        }
-        free(curEntry.key);
-    }
-    free(entry);
-    free(ht);
-}
+let someMap *Map[-, String, U32] := newMap()
+let someArray *Array[-, String] := newArray()
 
-type Array[Litera[num::Natural | dynamic] S, Type T] struct {
-    T   items    = ...;
-    U64 count    = #0;
-    U64 capacity = S #if S != dynamic #else 256;
-}
-
-def something(Array[T] something) func {
+proc something(Array[T] something) do
     #if RunTimeCheck #do ...;
-}
+endproc
 
-def Bool! loopWithLabel() func {
-    for let x = 0; x > 10; ++x; label someLoop {
-        for let y = 0; y > 10; ++y {
-            if let something |err| = operation(); catch err {
-                ctx.logger(Error, «The operation failed - reason: {error.reson()}»);
-                break someLoop;
-            }
-        }
-        return something;
-    }
-    return Err.failedOperation;
-}
+proc loopWithLabel() Bool! do
+    while x > 10 : ++x label someLoop do
+        while y > 10 : ++y do
+            if let something = operation() catch err do
+                ctx.logger(Error, «The operation failed - reason: {err}»)
+                break someLoop
+            endif
+        endwhile
+        return something
+    endwhile
+    return failedOperation!
+endproc
 
-let new = &NewStruct{};
+let new = &NewStruct{}
 
-#scope(«file»);
+#scope(«file»)
 
-import «core::allocator.chaos»;
-import «core::logger.chaos»;
-let num := import «core::numbers.chaos»;
+import «core::allocator.chaos»
+import «core::logger.chaos»
+let num := import «core::numbers.chaos»
 

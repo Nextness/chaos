@@ -1,51 +1,43 @@
 type SomeInterface scaffold
-{
-    mandatoryFieldOne String ;
-    mandatoryFieldTwo Bool;
-    method def soSomeOperation[T](&Self);
-}
+    mandatoryFieldOne String
+    mandatoryFieldTwo Bool
+    proc doSomeOperation[T](&Self)
+endtype
 
-type SomeInterface build Example struct
-{
-    mandatoryFieldOne String;
-    mandatoryFieldTwo Bool = false;
-    anotherField Bool;
-}
+type Example builds SomeInterface struct
+    mandatoryFieldOne String
+    mandatoryFieldTwo Bool = false
+    anotherField Bool
+endtype
 
-#overload method def doSomeOperation[T](example &Example) T
-{
-    let example*.anotherFieldOne = true;
-    return;
-}
+with (self *Example) proc doSomeOperation()
+    example.anotherFieldOne = true
+endproc
 
-type SomeInterface build AnotherExample struct
-{
-    mandatoryFieldOne String = «»;
-    mandatoryFieldTwo Bool = false;
-}
+type SomeInterface builds AnotherExample struct
+    mandatoryFieldOne String = «»
+    mandatoryFieldTwo Bool = false
+endtype
 
-#overload method def doSomeOperation[T](anotherExample &AnotherExample) T
-{
-    let String anotherExample*.mandatoryFieldOne = «»;
-    let Bool anotherExample*.mandatoryFieldTwo = false;
-}
+with (self *AnotherExample) proc doSomeOperation()
+    anotherExample.mandatoryFieldOne = «»
+    anotherExample.mandatoryFieldTwo = false
+endproc
 
-func def main()
-{
+proc main()
     // TODO: reconsider how to handle scaffolds - specifically the '<type> build <identifier>'
-    let newExample &SomeInterface.scaffold = &Example
-    {
+    let newExample *SomeInterface.scaffold = *Example {
         mandatoryFieldOne = «Hello, world»,
         anotherField = false
-    };
+    }
 
-    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»);
-    newExample*.doSomeOperation();
-    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»);
+    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»)
+    newExample*.doSomeOperation()
+    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»)
 
-    return;
-}
+    return
+endproc
 
-module exampleScaffold;
-import «core::fmt::io.chaos»;
+module exampleScaffold
+import «core::fmt::io.chaos»
 
