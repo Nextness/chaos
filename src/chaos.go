@@ -29,8 +29,8 @@ func main() {
 			}
 
 			fileContent := bytes.NewBuffer(file)
-			tokens:= chaosTokenizer(fileContent)
-			tokens.print()
+			tokenState:= tokenizeChaos(fileContent)
+			tokenState.print()
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)

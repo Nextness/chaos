@@ -43,8 +43,6 @@ func (tok TokenType) asString() string {
 	panic(errorMsg)
 }
 
-type TokenKind int
-
 type Token struct {
 	value   string
 	tokType TokenType
@@ -64,23 +62,7 @@ func (cs *ContentState) currentChar() byte {
 	return cs.data[cs.cursor]
 }
 
-type TokenizerState struct {
-	list   []Token
-	count  int
-	cursor int
-}
-
-func (tokens TokenizerState) print() {
-	fmt.Print("Token List:\n")
-	for idx, tok := range tokens.list {
-		fmt.Printf(
-			"  [%03d:%03d] token %05d: '%s' (%s)\n",
-			tok.row, tok.column, idx, tok.value, tok.tokType.asString(),
-		)
-	}
-}
-
-func chaosTokenizer(fileContent *bytes.Buffer) TokenizerState {
+func tokenizeChaos(fileContent *bytes.Buffer) *TokenizerState {
 	contentState := ContentState{
 		token:  bytes.Buffer{},
 		data:   fileContent.String(),
@@ -91,7 +73,7 @@ func chaosTokenizer(fileContent *bytes.Buffer) TokenizerState {
 	}
 
 	tokenizerState := TokenizerState{
-		list:   []Token{},
+		data:   []Token{},
 		count:  0,
 		cursor: 0,
 	}
@@ -132,7 +114,7 @@ func chaosTokenizer(fileContent *bytes.Buffer) TokenizerState {
 			}
 			contentState.column++
 			contentState.cursor++
-			tokenizerState.list = append(tokenizerState.list, token)
+			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
 			continue
 		}
@@ -149,7 +131,7 @@ func chaosTokenizer(fileContent *bytes.Buffer) TokenizerState {
 				column:  contentState.column,
 				row:     contentState.row,
 			}
-			tokenizerState.list = append(tokenizerState.list, token)
+			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
 			continue
 		}
@@ -166,7 +148,7 @@ func chaosTokenizer(fileContent *bytes.Buffer) TokenizerState {
 				column:  contentState.column,
 				row:     contentState.row,
 			}
-			tokenizerState.list = append(tokenizerState.list, token)
+			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
 			continue
 		}
@@ -194,7 +176,7 @@ func chaosTokenizer(fileContent *bytes.Buffer) TokenizerState {
 				token.row = contentState.row
 				token.column = contentState.column
 			}
-			tokenizerState.list = append(tokenizerState.list, token)
+			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
 			continue
 		}
@@ -203,57 +185,52 @@ func chaosTokenizer(fileContent *bytes.Buffer) TokenizerState {
 	}
 
 	eof := Token{value: "eof", tokType: tokEndOfFile, column: contentState.column, row: contentState.row}
-	tokenizerState.list = append(tokenizerState.list, eof)
-	tokenizerState.count = len(tokenizerState.list)
-	return tokenizerState
+	tokenizerState.data = append(tokenizerState.data, eof)
+	tokenizerState.count = len(tokenizerState.data)
+	return &tokenizerState
 }
 
-// func (tk *Tokens) current() (result *Token) {
-// 	result = nil
-// 	if tk.curPos < tk.count {
-// 		result = &tk.list[tk.curPos]
-// 	}
-// 	return
-// }
-//
-// func (tk *Tokens) consumeOne() {
-// 	if tk.curPos < tk.count {
-// 		tk.curPos++
-// 	}
-// }
-//
-// func (tk *Tokens) consumeMany(count int) {
-// 	for range count {
-// 		if tk.curPos < tk.count {
-// 			tk.curPos++
-// 		}
-// 	}
-// }
-//
-// func (tk *Tokens) peakOne() (result *Token) {
-// 	result = nil
-// 	if tk.curPos+1 < tk.count {
-// 		result = &tk.list[tk.curPos+1]
-// 	}
-// 	return
-// }
-//
-// func (tk *Tokens) peakMany(offset int) (result *Token) {
-// 	result = nil
-// 	if tk.curPos+offset < tk.count {
-// 		result = &tk.list[tk.curPos+offset]
-// 	}
-// 	return
-// }
-//
-// func (tk *Tokens) expectOne(offset int, tokType TokenType) bool {
-// 	return tk.peakMany(offset).tokType == tokType
-// }
-//
-// func (tk *Tokens) expectMany(offset int, tokTypes ...TokenType) (result bool) {
-// 	result = false
-// 	for _, tType := range tokTypes {
-// 		result = tk.peakMany(offset).tokType == tType
-// 	}
-// 	return
-// }
+
+type TokenizerState struct {
+	data   []Token
+	count  int
+	cursor int
+}
+
+func (tokens TokenizerState) print() {
+	fmt.Print("Token List:\n")
+	for idx, tok := range tokens.data {
+		fmt.Printf(
+			"  [%03d:%03d] token %05d: '%s' (%s)\n",
+			tok.row, tok.column, idx, tok.value, tok.tokType.asString(),
+		)
+	}
+}
+
+func (ts *TokenizerState) current() Token {
+	return ts.data[ts.cursor]
+}
+
+func (ts *TokenizerState) peak(offset int) (result Token) {
+	if offset == 0 {
+		panic("cannot peak with 0")
+	}
+	result = Token{}
+	if ts.cursor+offset < ts.count {
+		result = ts.data[ts.cursor+offset]
+	}
+	return
+}
+
+func (ts *TokenizerState) consume(offset int) (result Token) {
+	if offset == 0 {
+		panic("cannot peak with 0")
+	}
+	result = Token{}
+	if ts.cursor+offset < ts.count {
+		result = ts.current()
+		ts.count++
+	}
+	return
+}
+
