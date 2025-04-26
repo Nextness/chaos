@@ -78,7 +78,6 @@ type NodeBinOp struct {
 }
 
 type AtomNodeDetails struct {
-	
 }
 
 type AtomNode struct {
@@ -326,24 +325,14 @@ func lexNodeExpression(tokens *Tokens) (*AtomNode, error) {
 		tokens.consume()
 		nodeExpression.binaryExpression = nodeBinOp
 
-		if tokens.expect(tokSemiColon) {
-			tokens.consume()
-		} else {
-			fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
-			return nil, lexError
-		}
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
+		return nil, lexError
 
 	} else if tokens.expect(tokNumber) {
 		nodeExpression.identifier = *tokens.current()
 		tokens.consume()
 
-		if tokens.expect(tokSemiColon) {
-			tokens.consume()
-		} else {
-			fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
-			return nil, lexError
-		}
-	} else {
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
 		return nil, lexError
 	}
 	return &nodeExpression, nil
@@ -369,16 +358,14 @@ func lexNodeLet(tokens *Tokens) (*AtomNode, error) {
 		return nil, lexError
 	}
 
-	if tokens.expect(tokSemiColon) {
-		tokens.consume()
-		return &nodeLet, nil
-	} else if tokens.expect(tokAssignment) {
-		tokens.consume()
-	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
-		return nil, lexError
+	if tokens.peak().tokType == tokAssignment {
+		if tokens.expect(tokAssignment) {
+			tokens.consume()
+		} else {
+			fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
+			return nil, lexError
+		}
 	}
-
 	nodeExpression, err := lexNodeExpression(tokens)
 	if err != nil {
 		return nil, lexError
