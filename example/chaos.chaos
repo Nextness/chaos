@@ -85,8 +85,8 @@ endproc
 
 #scope(«file»)
 
-module main
+#module main
 
-import «core::fmt.chaos»
-let os := import «core::os.chaos»
+#import «core::fmt.chaos»
+#let os := #import «core::os.chaos»
 

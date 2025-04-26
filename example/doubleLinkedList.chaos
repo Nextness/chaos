@@ -1,27 +1,21 @@
 // Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
 // to use as example
 
-module doubleLinkedList
-
-with (dll &DoubleLinkedList) inline proc length() U64 do
+receiver dll &DoubleLinkedList inline proc length() U64 do
     set dll.count.(U64*)
 endproc
 
 inline proc head(dll &DoubleLinkedList) Node! do
-    if dll.head != null do
-        set dll.head
-    endif
+    if dll.head != null do set dll.head endif
     set nullPointer!
 endproc
 
 inline proc tail(dll &DoubleLinkedList) Node! do
-    if dll.tail != null do
-        set dll.tail
-    endif
+    if dll.tail != null do set dll.tail endif
     set nullPointer!
 endproc
 
-with dll &DoubleLinkedList proc print() do
+receiver dll &DoubleLinkedList proc print() do
     let node &Node = dll.head
     while i < dll.count : ++i do
         let pad = i * 2
@@ -32,8 +26,8 @@ endproc
 
 type DoubleLinkedList[C num::Ints = U64, T] struct
     count C        = 0
-    head *?Node[T] = null
-    tail *?Node[T] = null
+    head  *?Node[T] = null
+    tail  *?Node[T] = null
 endtype
 
 type Node[T] struct
@@ -44,16 +38,19 @@ endtype
 
 proc initNode[T](data *T) *Node[T]! do
     type ND alias Node[T] endtype
+
     if let newNode *ND = alloc(ND) catch err do
         ctx.?logger(Error, «Failed to allocate node - {err}»)
         return outOfMemory!
     endif
+
     ctx.?logger(Trace, «Allocated memory for node: {newNode.address()}»)
     return *newNode.{data=data}
 endproc
 
-with (dll *DoubleLinkedList) proc pushHead[T](data *T) Void! do
+receiver dll *DoubleLinkedList proc pushHead[T](data *T) Void! do
     let newNode = try initNode(data) orReturn nullPointer!
+
     if dll.count == 0 do
         dll.head = newNode
         dll.tail = newNode
@@ -62,31 +59,27 @@ with (dll *DoubleLinkedList) proc pushHead[T](data *T) Void! do
         dll.head.prev = newNode
         dll.head = newNode
     endif
+
     dll.count++
 endproc
 
-with (dll *DoubleLinkedList) proc pushTail[T](data *T) Void! do
+receiver dll *DoubleLinkedList proc pushTail[T](data *T) Void! do
     let newNode = try initNode(data) orReturn nullPointer!
     if dll.count == 0 do
-        dll.tail = newNode
-        dll.head = newNode
+        dll.tail = newNode and  dll.head = newNode
     else do
-        dll.tail.next = newNode
-        newNode.prev = dll.tail
-        dll.tail = newNode
+        dll.tail.next = newNode and newNode.prev = dll.tail and dll.tail = newNode
     endif
     dll.count++
 endproc
 
-with (dll *DoubleLinkedList) proc insertNode[T](data *T, index U64) Void! do
+receiver dll *DoubleLinkedList proc insertNode[T](data *T, index U64) Void! do
     if index < 0 || index > dll.count do return outOfBounds! endif
 
     if index == 0 do
-        dll.pushHead(data)
-        return
+        dll.pushHead(data) and return
     elif index == dll.count do
-        dll.pushTail(data)
-        return
+        dll.pushTail(data) and return
     endif
 
     let tmp *Node[T]
@@ -105,7 +98,9 @@ with (dll *DoubleLinkedList) proc insertNode[T](data *T, index U64) Void! do
     dll.count++
 endproc
 
-with (dll *DoubleLinkedList) proc deleteHead() do
+receiver dll *DoubleLinkedList proc deleteHead() do
     #notImplemented
 endproc
+
+#module doubleLinkedList
 

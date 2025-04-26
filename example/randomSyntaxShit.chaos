@@ -1,21 +1,24 @@
-module random
+#module random
 
 // Void values are 'notNumber | undefined | null';
 
 type Context scaffold
-    logger Logger?
+    logger ?Logger
     calloc proc[T](num::Ints) &T
     alloc  proc[T](num::Ints) &T
     free   proc[T](&T) Void
 endtype
 
 type Contex builds Ctx struct
-    alloc = proc[T](U64 size) &T {
+    logger = default
+    alloc = proc[T](U64 size) &T do
         
-    }
+    endproc
+    calloc = default
+    free = default
 endtype
 
-global let ctx Ctx
+let ctx Ctx
 
 type AnotherInt alias I32 endtype
 type SomethingNew distinct I32 endtype
@@ -27,19 +30,30 @@ type SomeEnum enum U64
     e
 endtype
 
+/** -- Explanation --
+ *  Perform Sha3 using '<nameOfEnum>.<value>' and get the first 64 bits starting fromthe begining.
+ *  At comp time sha3(AnotherEnum.somethingInHere) is 1cc2a66e347661378dde3fc074c46e...
+ *  When we call AnotherEnum.somethingInHere we will have 482518638 [1cc2a66e3]
+**/
+type AnotherEnum enumUnique
+    somethingInHere
+    anotherThingInHere
+    yetAnotherThingIsHere
+endtype
+
 let someChar Char := "a
 
 proc attemptingSwitch(something SomeEnum) Void do
     #partial if something == do
-        case a: print(«{A}»); break
-        case b: print(«Something else {B}»); break
-        case d: print(«String {D}s nuutz»); break
+        case a do print(«{A}»)                endcase
+        case b do print(«Something else {B}») endcase
+        case d do print(«String {D}s nuutz»)  endcase
     endif
 endproc
 
 type Version[T num::Ints = U8] struct
     major, minor, fix T
-    phase             ?String = null
+    phase             *?String = null
 endtype
 
 proc toString[T](using version &Version[T]) String do
@@ -49,19 +63,19 @@ proc toString[T](using version &Version[T]) String do
 endproc
 
 type JsonResponse[T Primitive] struct
-    statusCode U32 #tag(«json:status_code»)
-    content    T   #tag(«json:content»)
+    statusCode U32 #tag(«json:status_code») = ...
+    content    T   #tag(«json:content»)     = ...
 endtype
 
 type SomeStruct struct
-    username String 
+    username String
     password String #redacted
 endtype
 
-let someStruct = &SomeStruct {
+let someStruct = make &SomeStruct with
     username := «username»,
     password := try getEnvVar(«ENV_VAR_NAME») orSet «none»,
-}
+endmake
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
@@ -75,17 +89,18 @@ proc main() U64 do
 endproc
 
 proc testListCreateAccess() Void! do
-    let someList List[4, String] = {«Hello», «World»}
-    if let firstString String |err| = someList[5]; catch err do
+    let someList = make List[4, String] with «Hello», «World» endmake
+    if let firstString String = someList[5] catch err do
         exitWith outOfBounds!, «Accessing element out of bounds»
     endif
 endproc
 
-proc testMapCreateAccess() do
-    let someMap Map[4, String, String] = {
-        [«someKey»] = «some value»,
-        [«anotherKey»] = «another value»,
-    }
+proc testMapCreateAccess() Void! do
+    let someMap =
+        make Map[4, String, String] with
+            [«someKey»] = «some value»,
+            [«anotherKey»] = «another value»,
+        endmake
 
     let secondKey := assert someMap[«anotherKey»]
     if let firstKey = someMap[«unavailableKey»] catch err do
@@ -106,7 +121,9 @@ proc freeCounter(value *Void) do
     ctx.memset(value, 0)
 endproc
 
-type SomeFunc[T] alias (proc[T](...) T! do ... endproc) endtype
+type SomeFunc[T] alias
+    (proc[T](...) T! do ... endproc)
+endtype
 
 proc someFunc[T](someProc SomeFunc[T], <args>) T! do
     if let result T = someProc[T](<args>) catch err do
@@ -115,10 +132,10 @@ proc someFunc[T](someProc SomeFunc[T], <args>) T! do
 endproc
 let result Bool = try someFunc[Bool](funcWithInput, <10, «somethingNew», false>) orSet true
 
-inline proc ResultReturns(#noArguments)
-    if T builds
-        case Iterable: result Bool = false break
-        case Incrementable: result I64 = 0 break
+inline proc ResultReturns(#noArguments) do
+    if T builds do
+        case Iterable do result Bool = false endcase
+        case Incrementable do result I64 = 0 endcase
     endif
 endproc
 
@@ -131,7 +148,7 @@ let someMap *Map[-, String, U32] := newMap()
 let someArray *Array[-, String] := newArray()
 
 proc something(Array[T] something) do
-    #if RunTimeCheck #do ...;
+    #if RunTimeCheck do ... endif
 endproc
 
 proc loopWithLabel() Bool! do
@@ -147,11 +164,9 @@ proc loopWithLabel() Bool! do
     return failedOperation!
 endproc
 
-let new = &NewStruct{}
-
 #scope(«file»)
 
-import «core::allocator.chaos»
-import «core::logger.chaos»
-let num := import «core::numbers.chaos»
+#import «core::allocator.chaos»
+#import «core::logger.chaos»
+#let num := #import «core::numbers.chaos»
 

@@ -4,6 +4,7 @@ type Log scaffold
     dateFormat String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»
     output List[dynamic, Stream] = list(StdOut)
     incldueOSName Bool = false
+    logLevel enumArray U64 = ...
 
     // Expected Methods for logging
     proc trace(self &Self, message ...String)
@@ -33,7 +34,7 @@ type Log builds Logger struct
 endtype
 
 #overload
-proc trace(using self *Logger, message ...String) do
+with (using self *Logger) proc trace(message ...String) do
     #if loglevel <= .trace do
         #notImplemented(«Default trace log needs to be implemented»)
     else do
@@ -42,7 +43,7 @@ proc trace(using self *Logger, message ...String) do
 endproc
 
 #overload
-proc debug(using self *Logger, message ...String) do
+with (using self *Logger) proc debug(message ...String) do
     #if loglevel <= .debug do
         #notImplemented(«Default debug log needs to be implemented»)
     else do
@@ -51,7 +52,7 @@ proc debug(using self *Logger, message ...String) do
 endproc
 
 #overload
-proc info(using self *Logger, message: ...String) do
+with (using self *Logger) proc info(uessage: ...String) do
     #if loglevel <= .info do
         #notImplemented(«Default info log needs to be implemented») 
     else do
@@ -60,7 +61,7 @@ proc info(using self *Logger, message: ...String) do
 endproc
 
 #overload
-proc warning(using self *Logger, message ...String)
+with (using self *Logger) proc warnin, message ...String) do
     #if loglevel <= .warning do
         #notImplemented(«Default warning log needs to be implemented»)
     else do
@@ -69,7 +70,7 @@ proc warning(using self *Logger, message ...String)
 endproc
 
 #overload
-proc error(using self *Logger, message ...String)
+with (using self *Logger) proc error(message ...String) do
     #if loglevel <= .error do
         #notImplemented(«Default error log needs to be implemented»)
     else do
@@ -78,7 +79,7 @@ proc error(using self *Logger, message ...String)
 endproc
 
 #overload
-proc critical(using self *Logger, message ...String)
+with (using self *Logger) proc criticr, message ...String) do
     #if loglevel <= .critical do
         #notImplemented(«Default critical log needs to be implemented»)
     else do
@@ -86,6 +87,6 @@ proc critical(using self *Logger, message ...String)
     endif
 endproc
 
-module logger
-let io := import «core::fmt::io.chaos»
+#module logger
+#let io := #import «core::fmt::io.chaos»
 

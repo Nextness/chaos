@@ -2,28 +2,28 @@
 // doesn't work properly. Later needs to be recreated...
 
 type FutureHeader struct
-    conditionalVariable        CndT       = ...
-    mutex                      Mutex      = ...
-    isValid                    AtomicBool = ...
-    isSet                      Bool       = ...
-    valueSize, inOffs, outOffs U64        = ...
+    conditionalVariable        CndT
+    mutex                      Mutex
+    isValid                    AtomicBool
+    isSet                      Bool
+    valueSize, inOffs, outOffs U64
 endtype
 
 proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) *FutureHeader! do
-    let future *FutureHeader = try calloc(wholeSize) orReturn
-    if future.init(valueSize, inOffs, outOffs) catch err
+    let future *FutureHeader = try calloc(wholeSize) orReturn nullPointer!
+    if future.init(valueSize, inOffs, outOffs) catch err do
         print(«Error initializing future - reason: {err}»)
         return genericErrorFuture!
     endif
     return future
 endproc
 
-with (fh *FutureHeader) proc await(timeout I32[Microseconds]) Void! do
+receiver fh *FutureHeader proc await(timeout I32[Microseconds]) Void! do
     try mutex(fh) orReturn genericFutureError!
     defer mutexUnlock(fh)
 
-    if fh.isSet do return null
-    if timeout < 0 do return timeout!
+    if fh.isSet do return null endif
+    if timeout < 0 do return timeout! endif
 
     start, end Timespec = ...
     timespecGet(*start, timeUtc)
@@ -31,16 +31,16 @@ with (fh *FutureHeader) proc await(timeout I32[Microseconds]) Void! do
     end.nSec = (timeout % 1_000) & 1_000_000
 
     if let result = cndTimedWait(fh.conditionalVariable, end) catch err do
-        case threadTimedout!: return timeout!
-        return genericFutureError!
+        case threadTimedout! do return timeout! endcase
+        case default do return genericFutureError! endcase
     endif
 endproc
 
-with (fh *FutureHeader) proc
+receiver fh *FutureHeader proc
     get(timeout I32[Microseconds], destioation &Void, destinationSize, check U64) Void!
 do
-    if !fh.isValid return nullPointer!
-    if destinationSize != fh.valueSize do return destinationSizeNotMatched!
+    if !fh.isValid return nullPointer! endif
+    if destinationSize != fh.valueSize do return destinationSizeNotMatched! endif
     try await(fh, timeout) orReturn
 
     let &Void source = fh.(&U8) + fh.outOffs.(&Void)
@@ -48,26 +48,28 @@ do
 endproc
 
 type FutureOf[T] struct
-    header            FutureHeader;
-    inValue, outValue T;
+    header            FutureHeader
+    inValue, outValue T
 endtype
 
 #scope(«file»);
 
-with (fh *FutureHeader)
-proc init(valueSize, inOffs, outOffs U64)
-    cndInit(fh.conditionalVariable*);
-    mutexInit(fh.mutex*, mutexPlain);
-    ft*.{isValid=true, isSet=false, valueSize=valueSize, inOffs=inOffs, outOffs=outOffs};
+receiver (fh *FutureHeader) proc init(valueSize, inOffs, outOffs U64) do
+    cndInit(fh.conditionalVariable*)
+    mutexInit(fh.mutex*, mutexPlain)
+    fh.isValid = true
+    fh.isSet = false
+    fh.valueSize = valueSize
+    fh.inOffs = inOffs
+    fh.outOffs = outOffs
 endproc
 
-with (fh *FutureHeader)
-proc destroy() Void
-    fh.isValid* = false;
-    cndDestroy(fh.conditionalVariable*);
-    mutexDestroy(fh.mutex*);
+receiver (fh *FutureHeader) proc destroy() do
+    fh.isValid* = false
+    cndDestroy(fh.conditionalVariable*)
+    mutexDestroy(fh.mutex*)
 endproc
 
-module future;
-import «core::fmt::io»;
+#module future;
+#import «core::fmt::io»;
 

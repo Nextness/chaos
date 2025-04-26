@@ -4,26 +4,26 @@ proc length[T UInts = U64](str *Str, maxLength *?U64 = maxLen) T! do
     let initPos *String = str
     while str != «\0» : ++str do
         #if maxLength != null do
-            if !maxLength do return Err.maxLengthHit endif
+            if !maxLength do return maxLengthHit! endif
             maxLength--
         endif
     endwhile
     return str.(T) - initPos.(T)
 endproc
 
-proc copy(str *String, maxLength *?U64 = maxLen) *String! do
+proc copy(str &String, maxLength *?U64 = maxLen) *String! do
     let tmp *String
     while str != «\0» do
         tmp++ = str++
         #if maxLength != null do
-            if !maxLength do return Err.maxLengthHit endif
+            if !maxLength do return maxLengthHit! endif
             maxLength--
         endif
     endwhile
     return tmp
-}
+endproc
 
-module string
-import «core::numbers.chaos»
-import «core::errors.chaos»
+#module string
+#import «core::numbers.chaos»
+#import «core::errors.chaos»
 

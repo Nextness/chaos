@@ -8,12 +8,10 @@ endproc
 proc loadTokens(filePath &String, tokens &Tokens, tmpSb &StringBuilder) Void! do
     tmpSb.count = 0;
     try readEntireFile(filePath, tmpSb) orReturn
-    if tmpSb.count % sizeOf(tokens.items) != 0 do return generic!
+    if tmpSb.count % sizeOf(tokens.items) != 0 do return generic! endif
 
     let itemsCount &U32 = tmpSb.items.(&Void)
-    while i < itemsCount : ++i do
-        daAppend(tokens, items[i])
-    endwhile
+    while i < itemsCount : ++i do daAppend(tokens, items[i]) endwhile
 endproc
 
 proc loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U64) Void! do
@@ -32,9 +30,15 @@ proc loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U6
     data.count -= magicCount
 
     if version == do
-        case 0:  try parsePairsV0(filePath, pairs, data) orReturn
-        case 1:  try parsePairsV1(filePath, pairs, data) orReturn
-        default: return generic!
+        case 0 do try
+            parsePairsV0(filePath, pairs, data) orReturn
+        endcase
+        case 1 do try
+            parsePairsV1(filePath, pairs, data) orReturn
+        endcase
+        case default do
+            return generic!
+        endcase
     endif
 
     let magicPrefixV0 StringView = svFromParts(«\0\0\0\0», 4)

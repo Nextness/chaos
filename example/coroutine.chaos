@@ -5,7 +5,7 @@ proc init() do
 endproc
 
 inline proc yield(#noArguments) do
-    #if compTime.os == «arch» do
+    if compTime.os == «arch» do
         assembly do
             pushq %rdi
             pushq %rbp

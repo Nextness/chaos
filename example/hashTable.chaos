@@ -6,13 +6,13 @@ inline proc length(ht *HashTable) U64 do set ht.size endproc
 inline proc iterator(ht *HashTable) HashTableIterator do set HashTableIterator{ht, 0} endproc
 
 type Entry[Key, Value] struct
-    key   *Key
+    key   *Key,
     value *Value
 endtype
 
 type HashTable[Key, Value] struct
-    entry    *Entry[Key, Value]
-    capacity U64 = 256
+    entry    *Entry[Key, Value],
+    capacity U64 = 256,
     size     U64 = 0
 endtype
 
@@ -30,7 +30,7 @@ proc initHashTable[Key, Value]() *HashTable[Key, Value]! do
     return table
 endproc
 
-with (using ht *HashTable) proc destroy() Void! do
+receiver (using ht *HashTable) proc destroy() Void! do
     while i < capacity : ++i do
         let curEntry = try entry[i] orReturn outOfBounds!
         free(curEntry.key)
@@ -39,7 +39,7 @@ with (using ht *HashTable) proc destroy() Void! do
     free(ht)
 endproc
 
-with (using ht *HashTable[Key, Value]) proc get(key *Key) Value! do
+receiver (using ht *HashTable[Key, Value]) proc get(key *Key) Value! do
     let hash := hashKey(key)
     let i = hash & (capacity - 1)
 
@@ -51,7 +51,7 @@ with (using ht *HashTable[Key, Value]) proc get(key *Key) Value! do
     return notFound!
 endproc
 
-with (using ht *HashTable[Key, Value]) proc expand() Void! do
+receiver (using ht *HashTable[Key, Value]) proc expand() Void! do
     let newCapacity := capacity * 2
     if newCapacity < capacity do return overflow! endif
 
@@ -68,13 +68,13 @@ with (using ht *HashTable[Key, Value]) proc expand() Void! do
 endproc
 
 
-with (using ht *HashTable[Key, Value]) proc set(key *Key, value *Value) *Key! do
+receiver (using ht *HashTable[Key, Value]) proc set(key *Key, value *Value) *Key! do
     if size >= capacity / 2 do try ht.expand() orReturn endif
     let key := try setEntry(entry, capacity, key, value, size) orReturn
     return key
 endproc
 
-with (using ht *HashTable) proc next(it *HashTableIterator) Void! do
+receiver (using ht *HashTable) proc next(it *HashTableIterator) Void! do
     let table = it.table
     while it.index < capatity : ++it.index do
         let item := try entry[it.index] orReturn

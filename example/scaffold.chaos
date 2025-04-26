@@ -7,10 +7,10 @@ endtype
 type Example builds SomeInterface struct
     mandatoryFieldOne String
     mandatoryFieldTwo Bool = false
-    anotherField Bool
+    anotherField      Bool
 endtype
 
-with (self *Example) proc doSomeOperation()
+receiver self *Example proc doSomeOperation() do
     example.anotherFieldOne = true
 endproc
 
@@ -19,17 +19,17 @@ type SomeInterface builds AnotherExample struct
     mandatoryFieldTwo Bool = false
 endtype
 
-with (self *AnotherExample) proc doSomeOperation()
+receiver self *AnotherExample proc doSomeOperation() do
     anotherExample.mandatoryFieldOne = «»
     anotherExample.mandatoryFieldTwo = false
 endproc
 
-proc main()
+proc main() do
     // TODO: reconsider how to handle scaffolds - specifically the '<type> build <identifier>'
-    let newExample *SomeInterface.scaffold = *Example {
+    let newExample *SomeInferface = make *Example with
         mandatoryFieldOne = «Hello, world»,
-        anotherField = false
-    }
+        mandatoryFieldTwo = false
+    endmake
 
     printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»)
     newExample*.doSomeOperation()
@@ -38,6 +38,6 @@ proc main()
     return
 endproc
 
-module exampleScaffold
-import «core::fmt::io.chaos»
+#module exampleScaffold
+#import «core::fmt::io.chaos»
 

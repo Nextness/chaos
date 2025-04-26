@@ -8,14 +8,14 @@ proc initNode[T]() *Node[T]! do
     return nodeHead
 endproc
 
-with (n *Node[T]) proc insert(value T) Void! do
+with n *Node[T] proc insert(value T) Void! do
     let currentNode *Node[T] = n
     while currenNode != null do currentNode = currentNode.next endwhile
     currentNode.next = try ctx.?alloc(Node[T]) orReturn outOfMemory!
     currentNode.next = value
 endproc
 
-module linkedList
-import «core::error.chaos»
-import «core::allocator.chaos»
+#module linkedList
+#import «core::error.chaos»
+#import «core::allocator.chaos»
 
