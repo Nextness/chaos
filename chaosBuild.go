@@ -86,7 +86,7 @@ func main() {
 
 	programName := os.Args[0]
 	otherArgs := os.Args[1:]
-	main := "./src/main.go"
+	main := "./src/"
 
 	if 0 >= len(otherArgs) {
 		if err := runCommand(fmt.Sprintf("go build -o ./build/main %s", main)); err != nil {

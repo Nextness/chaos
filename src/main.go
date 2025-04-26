@@ -9,23 +9,8 @@ import (
 	"unicode"
 )
 
-type TokenType int
-type TokenKind int
 type Operation string
 type NodeType int
-
-const (
-	tokGlobal TokenType = iota
-	tokLet
-	tokAssignment
-	tokPlus
-	tokPrimitiveType
-	tokIdentifier
-	tokNumber
-	tokSemiColon
-	tokCount
-	tokEndOfFile
-)
 
 const (
 	rtNumIntU8 TokenKind = iota
@@ -60,18 +45,6 @@ const (
 	nodeLet NodeType = iota
 )
 
-type Token struct {
-	value   string
-	tokType TokenType
-	tokKind *TokenKind
-}
-
-type Tokens struct {
-	list   []Token
-	count  int
-	curPos int
-}
-
 type NodeBinOp struct {
 	lhs, rhs  Token
 	operation Operation
@@ -101,35 +74,10 @@ type NodeStatements struct {
 	statements []Statements
 }
 
-func tokTypeToString(tokType2 TokenType) string {
-	switch tokType2 {
-	case tokGlobal:
-		return "tokGlobal"
-	case tokLet:
-		return "tokLet"
-	case tokAssignment:
-		return "tokAssingment"
-	case tokPlus:
-		return "tokPlus"
-	case tokPrimitiveType:
-		return "tokPrimitiveType"
-	case tokIdentifier:
-		return "tokIdentifier"
-	case tokNumber:
-		return "tokNumber"
-	case tokSemiColon:
-		return "tokSemiColon"
-	case tokEndOfFile:
-		return "tokEndOfFile"
-	}
-	fmt.Fprintf(os.Stderr, "[ERROR] We did not expect this tokType '%d' - please include a new case or fix your shitty code :)\n", tokType2)
-	panic("unrecheable")
-}
-
 func printTokens(tokens Tokens) {
 	fmt.Print("Token List:\n")
 	for _, theToken := range tokens.list {
-		fmt.Printf("  Token { value: '%s', type: '%s', kind: '%v' }\n", theToken.value, tokTypeToString(theToken.tokType), theToken.tokKind)
+		fmt.Printf("  Token { value: '%s', type: '%s', kind: '%v' }\n", theToken.value, theToken.tokType.asString(), theToken.tokKind)
 	}
 }
 
@@ -139,12 +87,12 @@ func printStatements(program []Statements) {
 	for _, statement := range program {
 		if node := statement.node; node != nil {
 			fmt.Printf("  - let (node)\n")
-			fmt.Printf("    '- %s (%s)\n", node.identifier.value, tokTypeToString(node.identifier.tokType))
-			fmt.Printf("    '- %s (%s)\n", node.identifierType.value, tokTypeToString(node.identifierType.tokType))
+			fmt.Printf("    '- %s (%s)\n", node.identifier.value, node.identifier.tokType.asString())
+			fmt.Printf("    '- %s (%s)\n", node.identifierType.value, node.identifierType.tokType.asString())
 			if node.binaryExpression != nil {
 				fmt.Printf("    '- %s (node)\n", node.binaryExpression.operation)
-				fmt.Printf("      '- %s (%s) [lhs]\n", node.binaryExpression.lhs.value, tokTypeToString(node.binaryExpression.lhs.tokType))
-				fmt.Printf("      '- %s (%s) [rhs]\n", node.binaryExpression.rhs.value, tokTypeToString(node.binaryExpression.rhs.tokType))
+				fmt.Printf("      '- %s (%s) [lhs]\n", node.binaryExpression.lhs.value, node.binaryExpression.lhs.tokType.asString())
+				fmt.Printf("      '- %s (%s) [rhs]\n", node.binaryExpression.rhs.value, node.binaryExpression.rhs.tokType.asString())
 			}
 		}
 	}
@@ -216,101 +164,8 @@ func (tk *Tokens) expect(tokType TokenType, offset ...int) bool {
 	return tk.peak(offset...).tokType == tokType
 }
 
-func chaosTokenizer(fileContent *bytes.Buffer) []Token {
-	tokens := bytes.Buffer{}
-	listTok := []Token{}
-	pos := 0
-
-	content := fileContent.String()
-	singleTokens := []byte{'=', '+', ';'}
-
-	for pos < fileContent.Len() {
-		token := Token{}
-		if unicode.IsSpace(rune(content[pos])) {
-			pos++
-			continue
-		} else if isInside(content[pos], singleTokens) {
-			tokens.WriteByte(content[pos])
-			pos++
-			val := tokens.String()
-
-			if val == "=" {
-				token.value = val
-				token.tokType = tokAssignment
-			} else if val == "+" {
-				token.value = val
-				token.tokType = tokPlus
-			} else if val == ";" {
-				token.value = val
-				token.tokType = tokSemiColon
-			}
-
-			listTok = append(listTok, token)
-			tokens.Reset()
-			continue
-		} else if isNum(content[pos]) {
-			for isNum(content[pos]) {
-				tokens.WriteByte(content[pos])
-				pos++
-			}
-
-			// TODO: Improve details about numbers with tokenKind,
-			// defining what type of number it is - int32, int64, etc...
-			token := Token{
-				value:   tokens.String(),
-				tokType: tokNumber,
-			}
-
-			listTok = append(listTok, token)
-			tokens.Reset()
-			continue
-		} else if isAlpha(content[pos]) && isUppercase(content[pos]) {
-			for isAlphanum(content[pos]) {
-				tokens.WriteByte(content[pos])
-				pos++
-			}
-
-			token := Token{
-				value:   tokens.String(),
-				tokType: tokPrimitiveType,
-			}
-
-			listTok = append(listTok, token)
-			tokens.Reset()
-			continue
-		} else if isAlpha(content[pos]) {
-			for isAlphanum(content[pos]) {
-				tokens.WriteByte(content[pos])
-				pos++
-			}
-			val := tokens.String()
-
-			if val == "global" {
-				token.value = val
-				token.tokType = tokGlobal
-			} else if val == "let" {
-				token.value = val
-				token.tokType = tokLet
-			} else {
-				token.value = val
-				token.tokType = tokIdentifier
-			}
-
-			listTok = append(listTok, token)
-			tokens.Reset()
-			continue
-		} else {
-			fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(content[pos]))
-			panic("unrecheable")
-		}
-	}
-	listTok = append(listTok, Token{value: "eof", tokType: tokEndOfFile})
-	return listTok
-}
-
 func lexNodeExpression(tokens *Tokens) (*AtomNode, error) {
 	nodeExpression := AtomNode{}
-	lexError := errors.New("failed to lex expression node")
 
 	hasBinOp := (tokens.expect(tokNumber) &&
 		tokens.peak(1) != nil && tokens.expect(tokPlus, 1) &&
@@ -324,16 +179,9 @@ func lexNodeExpression(tokens *Tokens) (*AtomNode, error) {
 		nodeBinOp.rhs = *tokens.current()
 		tokens.consume()
 		nodeExpression.binaryExpression = nodeBinOp
-
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
-		return nil, lexError
-
 	} else if tokens.expect(tokNumber) {
 		nodeExpression.identifier = *tokens.current()
 		tokens.consume()
-
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected semicolon but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
-		return nil, lexError
 	}
 	return &nodeExpression, nil
 }
@@ -346,7 +194,7 @@ func lexNodeLet(tokens *Tokens) (*AtomNode, error) {
 		nodeLet.identifier = *tokens.current()
 		tokens.consume()
 	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected identifier but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected identifier but found %s with value %s\n", tokens.current().tokType.asString(), tokens.current().value)
 		return nil, lexError
 	}
 
@@ -354,7 +202,7 @@ func lexNodeLet(tokens *Tokens) (*AtomNode, error) {
 		nodeLet.identifierType = tokens.current()
 		tokens.consume()
 	} else {
-		fmt.Fprintf(os.Stderr, "[ERROR] Expected type but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
+		fmt.Fprintf(os.Stderr, "[ERROR] Expected type but found %s with value %s\n", tokens.current().tokType.asString(), tokens.current().value)
 		return nil, lexError
 	}
 
@@ -362,7 +210,7 @@ func lexNodeLet(tokens *Tokens) (*AtomNode, error) {
 		if tokens.expect(tokAssignment) {
 			tokens.consume()
 		} else {
-			fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s\n", tokTypeToString(tokens.current().tokType), tokens.current().value)
+			fmt.Fprintf(os.Stderr, "[ERROR] Expected assignment but found %s with value %s\n", tokens.current().tokType.asString(), tokens.current().value)
 			return nil, lexError
 		}
 	}
@@ -434,6 +282,4 @@ func main() {
 			os.Exit(1)
 		}
 	}
-
-	os.Exit(0)
 }
