@@ -79,7 +79,7 @@ proc goRebuildYourSelfTek() do
     defer newCommand.deinit()
 
     newCommand.append(«chaosc build {buildSourcePath}»)
-    try newCommand.runAndReset() orExitWith 1
+    newCommand.runAndReset() orExitWith 1
     goRebuildYourSelfTek()
 endproc
 

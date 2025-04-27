@@ -20,7 +20,7 @@ proc initHashTable[Key, Value]() *HashTable[Key, Value]! do
     type HT alias HashTable[Key, Value] endtype
     type E alias Entry[Key, Value] endtype
 
-    let table *HT = try alloc(HT) orReturn nullPointer!
+    let table *HT = alloc(HT) orReturn nullPointer!
     if table.entry = calloc[E](table.capacity) catch err do
         logger(Error, «Failed to allocate memory, buy more RAM»)
         free(table)
@@ -32,7 +32,7 @@ endproc
 
 receiver (using ht *HashTable) proc destroy() Void! do
     while i < capacity : ++i do
-        let curEntry = try entry[i] orReturn outOfBounds!
+        let curEntry = entry[i] orReturn outOfBounds!
         free(curEntry.key)
     endwhile
     free(entry)
@@ -43,7 +43,7 @@ receiver (using ht *HashTable[Key, Value]) proc get(key *Key) Value! do
     let hash := hashKey(key)
     let i = hash & (capacity - 1)
 
-    while hasKey = try entry[i] orReturn outOfBounds! : ++i do
+    while hasKey = entry[i] orReturn outOfBounds! : ++i do
         if hasKey == null do break endif
         if key == hasKey do return hasKey.value endif
     endwhile
@@ -55,12 +55,12 @@ receiver (using ht *HashTable[Key, Value]) proc expand() Void! do
     let newCapacity := capacity * 2
     if newCapacity < capacity do return overflow! endif
 
-    let newEntry = try calloc(newCapacity, sizeOf(Entry[Value])) orReturn nullPointer!
+    let newEntry = calloc(newCapacity, sizeOf(Entry[Value])) orReturn nullPointer!
     defer free(newEntry)
 
     while i < capacity : ++i do
-        let localEntry := try entry[i] orReturn notFound!;
-        if key != null do try setEntry(newEntry, newCapacity, key, value, null) orReturn endif
+        let localEntry := entry[i] orReturn notFound!;
+        if key != null do setEntry(newEntry, newCapacity, key, value, null) orReturn endif
     endwhile
 
     entry = newEntry
@@ -69,15 +69,15 @@ endproc
 
 
 receiver (using ht *HashTable[Key, Value]) proc set(key *Key, value *Value) *Key! do
-    if size >= capacity / 2 do try ht.expand() orReturn endif
-    let key := try setEntry(entry, capacity, key, value, size) orReturn
+    if size >= capacity / 2 do ht.expand() orReturn endif
+    let key := setEntry(entry, capacity, key, value, size) orReturn
     return key
 endproc
 
 receiver (using ht *HashTable) proc next(it *HashTableIterator) Void! do
     let table = it.table
     while it.index < capatity : ++it.index do
-        let item := try entry[it.index] orReturn
+        let item := entry[it.index] orReturn
         if item.key != null do it.{key = item.key, value = item.value} endif
     endwhile
     return outOfBounds!
@@ -103,7 +103,7 @@ endproc
 proc setEntry[T](entry *Entry[T], capacity U64, key *String, value *T, size *?U64) String do
     let i := hashKey(key) & (capacity - 1)
 
-    while curEntry = try entry[i] orReturn outOfBounds! : ++i do
+    while curEntry = entry[i] orReturn outOfBounds! : ++i do
         if curEntry.key == null do break endif
         if curEntry.key == key do
             curEntry.value = value
@@ -116,7 +116,7 @@ proc setEntry[T](entry *Entry[T], capacity U64, key *String, value *T, size *?U6
         (*size)++
     endif
 
-    let curEntry := try entry[i] orReturn outOfBounds!
+    let curEntry := entry[i] orReturn outOfBounds!
     curEntry.key = key.(*String)
     curEntry.value = value
     return key

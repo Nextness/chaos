@@ -7,14 +7,14 @@ endproc
 proc getUserByUsername(username String, session Session) Async[User]! do
     if username.len >= 4096 do return largeText! endif
     let getUserQuery := «SELECT username FROM user_database WHERE username={username}»
-    let user := try performQuery(session, getUserQuery) orReturn userNotFound!
+    let user := performQuery(session, getUserQuery) orReturn userNotFound!
     return user
 endproc
 
 proc getUser(username String) User! do
     proc task() User! do
-        let globalSession := try getGlobalSession() orReturn noSessionAvailable!
-        let user := try getUserByUsername(
+        let globalSession := getGlobalSession() orReturn noSessionAvailable!
+        let user := getUserByUsername(
             globalSession, username, globalSession
         ) orReturn userNotFound!
         return user

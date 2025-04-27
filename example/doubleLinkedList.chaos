@@ -49,7 +49,7 @@ proc initNode[T](data *T) *Node[T]! do
 endproc
 
 receiver dll *DoubleLinkedList proc pushHead[T](data *T) Void! do
-    let newNode = try initNode(data) orReturn nullPointer!
+    let newNode = initNode(data) orReturn nullPointer!
 
     if dll.count == 0 do
         dll.head = newNode
@@ -64,7 +64,7 @@ receiver dll *DoubleLinkedList proc pushHead[T](data *T) Void! do
 endproc
 
 receiver dll *DoubleLinkedList proc pushTail[T](data *T) Void! do
-    let newNode = try initNode(data) orReturn nullPointer!
+    let newNode = initNode(data) orReturn nullPointer!
     if dll.count == 0 do
         dll.tail = newNode and  dll.head = newNode
     else do
@@ -90,7 +90,7 @@ receiver dll *DoubleLinkedList proc insertNode[T](data *T, index U64) Void! do
         while i < dll.count : ++i do tmp = tmp.prev endwhile
     endif
 
-    let newNode = try initNode(data) orReturn nullPointer!
+    let newNode = initNode(data) orReturn nullPointer!
     tmp.next.prev = newNode
     newNode.next = tmp.next
     tmp.next = newNode

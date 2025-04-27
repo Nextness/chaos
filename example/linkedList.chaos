@@ -4,14 +4,14 @@ type Node[T] struct
 endtype
 
 proc initNode[T]() *Node[T]! do
-    let nodeHead = try ctx.?alloc(Node[T]) orReturn outOfMemory!
+    let nodeHead = ctx.?alloc(Node[T]) orReturn outOfMemory!
     return nodeHead
 endproc
 
 with n *Node[T] proc insert(value T) Void! do
     let currentNode *Node[T] = n
     while currenNode != null do currentNode = currentNode.next endwhile
-    currentNode.next = try ctx.?alloc(Node[T]) orReturn outOfMemory!
+    currentNode.next = ctx.?alloc(Node[T]) orReturn outOfMemory!
     currentNode.next = value
 endproc
 

@@ -74,7 +74,7 @@ endtype
 
 let someStruct = make &SomeStruct with
     username := «username»,
-    password := try getEnvVar(«ENV_VAR_NAME») orSet «none»,
+    password := getEnvVar(«ENV_VAR_NAME») orSet «none»,
 endmake
 
 // The value "error" is implicit for convenience, but can be changed
@@ -85,7 +85,7 @@ proc main() U64 do
         return 1
     endif
 
-    let window Window = try initializeWindow(100, 100, «AnotherWindow») orExitWith 1
+    let window Window = initializeWindow(100, 100, «AnotherWindow») orExitWith 1
 endproc
 
 proc testListCreateAccess() Void! do
@@ -109,7 +109,7 @@ proc testMapCreateAccess() Void! do
 endproc
 
 proc newCounter() (*U64, proc U64)! do
-    let someVariable *U64 = try mem::allocAndAssign(U64, 0) orReturn nullPointer!
+    let someVariable *U64 = mem::allocAndAssign(U64, 0) orReturn nullPointer!
     proc counter() U64 do
         return ++(someVariable*)
     endproc
@@ -130,7 +130,7 @@ proc someFunc[T](someProc SomeFunc[T], <args>) T! do
         return err
     endif
 endproc
-let result Bool = try someFunc[Bool](funcWithInput, <10, «somethingNew», false>) orSet true
+let result Bool = someFunc[Bool](funcWithInput, <10, «somethingNew», false>) orSet true
 
 inline proc ResultReturns(#noArguments) do
     if T builds do

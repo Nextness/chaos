@@ -2,12 +2,12 @@
 // from Tsoding: https://github.com/tsodin/bpe/blob/main/src/bpe.cg
 
 proc dumpTokens(filePath &String, tokens &Tokens) Void! do
-    try writeEntireFile(filePath, tokens.items, tokens.count*sizeOf(tokens.items)) orReturn
+    writeEntireFile(filePath, tokens.items, tokens.count*sizeOf(tokens.items)) orReturn
 endproc
 
 proc loadTokens(filePath &String, tokens &Tokens, tmpSb &StringBuilder) Void! do
     tmpSb.count = 0;
-    try readEntireFile(filePath, tmpSb) orReturn
+    readEntireFile(filePath, tmpSb) orReturn
     if tmpSb.count % sizeOf(tokens.items) != 0 do return generic! endif
 
     let itemsCount &U32 = tmpSb.items.(&Void)
@@ -16,7 +16,7 @@ endproc
 
 proc loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U64) Void! do
     tmpSb.count = 0
-    try readEntireFile(filePath, tmpSb) orReturn
+    readEntireFile(filePath, tmpSb) orReturn
 
     let data StringView = sbToSv(tmpSb)
     let magicCount U64 := 4
@@ -30,10 +30,10 @@ proc loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U6
     data.count -= magicCount
 
     if version == do
-        case 0 do try
+        case 0 do
             parsePairsV0(filePath, pairs, data) orReturn
         endcase
-        case 1 do try
+        case 1 do
             parsePairsV1(filePath, pairs, data) orReturn
         endcase
         case default do
@@ -44,7 +44,7 @@ proc loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U6
     let magicPrefixV0 StringView = svFromParts(«\0\0\0\0», 4)
     if svStartsWith(data, magicPrefixV0) do
         version = 0
-        try parsePairsV0(filePath, pairs, data) orReturn
+        parsePairsV0(filePath, pairs, data) orReturn
     endif
 
     return generic!

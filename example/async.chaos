@@ -10,7 +10,7 @@ type FutureHeader struct
 endtype
 
 proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) *FutureHeader! do
-    let future *FutureHeader = try calloc(wholeSize) orReturn nullPointer!
+    let future *FutureHeader = calloc(wholeSize) orReturn nullPointer!
     if future.init(valueSize, inOffs, outOffs) catch err do
         print(«Error initializing future - reason: {err}»)
         return genericErrorFuture!
@@ -19,7 +19,7 @@ proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) *FutureHeader! do
 endproc
 
 receiver fh *FutureHeader proc await(timeout I32[Microseconds]) Void! do
-    try mutex(fh) orReturn genericFutureError!
+    mutex(fh) orReturn genericFutureError!
     defer mutexUnlock(fh)
 
     if fh.isSet do return null endif
@@ -41,7 +41,7 @@ receiver fh *FutureHeader proc
 do
     if !fh.isValid return nullPointer! endif
     if destinationSize != fh.valueSize do return destinationSizeNotMatched! endif
-    try await(fh, timeout) orReturn
+    await(fh, timeout) orReturn
 
     let &Void source = fh.(&U8) + fh.outOffs.(&Void)
     memcpy(destination, source, fh.valueSize)
