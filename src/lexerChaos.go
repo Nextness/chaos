@@ -1,13 +1,18 @@
 package main
 
-import "fmt"
-
-type ArrayItem[T any] struct {
-	value T
-}
+import (
+	"fmt"
+	"os"
+)
 
 type LexerArray struct {
-	data   []ArrayItem[any]
+	data   []any
+	count  int
+	cursor int
+}
+
+type LexerState struct {
+	data   []any
 	count  int
 	cursor int
 }
@@ -51,67 +56,80 @@ func (n *Node) print() {
 	fmt.Printf("  Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
 }
 
-type LexerState struct {
-	data   string
-	count  int
-	cursor int
-}
+func lexChaosLet(ts *TokenizerState) *Node {
+	var newNode Node
 
-func lexChaosLet(tokenizerState *TokenizerState) *Node {
-	var newNode *Node = nil
-	if tokenizerState.expects(0, tokLet) {
-		tokenizerState.consume() // consume the 'let'
-		newNode.nodeType = identifierNode
-		newNode.identifier.sym = tokenizerState.current().value
+	ts.consume() // consume the 'let'
+	newNode.nodeType = identifierNode
+	newNode.identifier.sym = ts.current().value
+
+	if !ts.expects(0, tokIdentifier) {
+		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+		config.printAndExitLexerError(ts)
 	}
-	return newNode
+	ts.consume()
+
+	if !ts.expects(0, tokVarType, tokAssignment) {
+		errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+		config.printAndExitLexerError(ts)
+	}
+
+	if ts.expects(0, tokVarType) {
+		newNode.identifier.tpe = ts.consume().value
+	}
+
+	if ts.expects(0, tokAssignment) {
+		newNode.identifier.tpe = "must-infer"
+		ts.consume() // Consume '='
+		if !ts.expects(0, tokNumber) {
+			errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
+			config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+			config.printAndExitLexerError(ts)
+		}
+		newNode.identifier.val = ts.consume().value
+		newNode.identifier.stt = "initialized"
+	} else if ts.expects(0, tokNewline) {
+		newNode.identifier.val = ""
+		newNode.identifier.stt = "not-initialized"
+	} else {
+		errMsg := fmt.Sprintf("Unexpected a token found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+		config.printAndExitLexerError(ts)
+	}
+
+	ts.consume() // consume the 'newline'
+	return &newNode
 }
 
-func lexerChaos(tokenizerState *TokenizerState) *LexerState {
-	assert(tokenizerState.cursor == 0, "Cursor is not 0")
-	lexerState := LexerState{count: 0, cursor: 0}
-	for tokenizerState.cursor < tokenizerState.count {
+func lexerChaos(ts *TokenizerState) *LexerState {
+	assert(ts.cursor == 0, "Cursor is not 0")
+	lexerState := LexerState{data: []any{}, count: 0, cursor: 0}
+	var node *Node = nil
 
-		if tokenizerState.expects(0, tokLet) {
-			tokenizerState.consume()
-			newNode := Node{}
-			newNode.nodeType = identifierNode
-			newNode.identifier.sym = tokenizerState.current().value
-			if tokenizerState.expects(0, tokIdentifier) &&
-				tokenizerState.expects(1, tokVarType, tokAssignment) {
-				tokenizerState.consume()
-			}
-			if tokenizerState.expects(0, tokVarType) {
-				newNode.identifier.tpe = tokenizerState.current().value
-				tokenizerState.consume()
-			} else {
-				newNode.identifier.tpe = "must-infer"
-			}
-			if tokenizerState.expects(0, tokAssignment) {
-				tokenizerState.consume()
-				newNode.identifier.val = tokenizerState.current().value
-				newNode.identifier.stt = "initialized"
-				tokenizerState.consume()
-			} else {
-				newNode.identifier.val = ""
-				newNode.identifier.stt = "not-initialized"
-				tokenizerState.consume()
-			}
-			if tokenizerState.expects(0, tokNewline) {
-				tokenizerState.consume()
-			}
-			newNode.print()
-			continue
-		}
-		if tokenizerState.expects(0, tokNewline) {
-			tokenizerState.consume()
-		}
-
-		if tokenizerState.expects(0, tokEndOfFile) {
+	for ts.cursor < ts.count {
+		if ts.expects(0, tokEndOfFile) {
 			break
 		}
+
+		if ts.expects(0, tokLet) {
+			// TODO: better hanadle lexing errors
+			if node = lexChaosLet(ts); node == nil {
+				os.Exit(1)
+			}
+			node.print()
+			lexerState.data = append(lexerState.data, node)
+			continue
+		}
+
+		if ts.expects(0, tokNewline) {
+			ts.consume()
+			continue
+		}
 	}
 
-	assert(tokEndOfFile == tokenizerState.current().tokType, "Expected eof")
+	assert(tokEndOfFile == ts.current().tokType, "Expected eof")
+	ts.consume()
 	return &lexerState
 }

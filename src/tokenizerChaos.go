@@ -48,7 +48,7 @@ func (tok TokenType) asString() string {
 type Token struct {
 	value   string
 	tokType TokenType
-	row     int
+	line    int
 	column  int
 }
 
@@ -91,7 +91,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			val := contentState.token.String()
 			token.value = val
 			token.tokType = tokNewline
-			token.row = contentState.line
+			token.line = contentState.line
 			token.column = contentState.column
 			contentState.line++
 			contentState.column = 0
@@ -107,7 +107,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 
 		if isInside(contentState.currentChar(), singleTokens) {
 			token := Token{}
-			token.row = contentState.line
+			token.line = contentState.line
 			token.column = contentState.column
 			contentState.token.WriteByte(contentState.currentChar())
 			val := contentState.token.String()
@@ -130,7 +130,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 
 		if isNum(contentState.currentChar()) {
 			token := Token{}
-			token.row = contentState.line
+			token.line = contentState.line
 			token.column = contentState.column
 			for isNum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
@@ -146,7 +146,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 
 		if isAlpha(contentState.currentChar()) && isUppercase(contentState.currentChar()) {
 			token := Token{}
-			token.row = contentState.line
+			token.line = contentState.line
 			token.column = contentState.column
 			for isAlphanum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
@@ -162,7 +162,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 
 		if isAlpha(contentState.currentChar()) {
 			token := Token{}
-			token.row = contentState.line
+			token.line = contentState.line
 			token.column = contentState.column
 			for isAlphanum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
@@ -188,7 +188,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		panic("unrecheable")
 	}
 
-	eof := Token{value: "eof", tokType: tokEndOfFile, column: contentState.column, row: contentState.line}
+	eof := Token{value: "eof", tokType: tokEndOfFile, column: contentState.column, line: contentState.line}
 	tokenizerState.data = append(tokenizerState.data, eof)
 	tokenizerState.count = len(tokenizerState.data)
 	return &tokenizerState
@@ -209,7 +209,7 @@ func (tokens TokenizerState) print() {
 		}
 		fmt.Printf(
 			"%s [%03d:%03d] token %05d: '%s' (%s)\n",
-			tokens.fileName, tok.row, tok.column, idx, tok.value, tok.tokType.asString(),
+			tokens.fileName, tok.line, tok.column, idx, tok.value, tok.tokType.asString(),
 		)
 	}
 }
@@ -242,7 +242,10 @@ func (ts *TokenizerState) peak(offset int) (result Token) {
 
 func (ts *TokenizerState) consume(count ...int) (result Token) {
 	assert(len(count) <= 1, "Count can only be 1 or empty")
-	c := count[0]
+	c := 0
+	if len(count) == 1 {
+		c = count[0]
+	}
 	result = Token{}
 	for range c - 1 {
 		ts.cursor++
@@ -252,4 +255,33 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 		ts.cursor++
 	}
 	return
+}
+
+type LexerErrorConfig struct {
+	errorMsg string
+	examples []string
+}
+
+func newLexerErroConfig(errorMsg string, examples ...string) LexerErrorConfig {
+	return LexerErrorConfig{
+		errorMsg: errorMsg,
+		examples: examples,
+	}
+}
+
+func (lec LexerErrorConfig) printAndExitLexerError(ts *TokenizerState) {
+	buffer := bytes.Buffer{}
+	buffer.WriteString(fmt.Sprintf("%s:%d:%d [ERROR] ", ts.fileName, ts.current().line, ts.current().column))
+	buffer.WriteString(lec.errorMsg)
+	if len(lec.examples) > 0 {
+		buffer.WriteString("    ")
+		buffer.WriteString("Example:\n")
+		for idx, ex := range lec.examples {
+			buffer.WriteString("        ")
+			buffer.WriteString(fmt.Sprintf("(%d) ", idx+1))
+			buffer.WriteString(ex)
+		}
+	}
+	fmt.Print(buffer.String())
+	os.Exit(1)
 }
