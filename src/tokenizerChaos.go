@@ -19,8 +19,8 @@ const (
 	tokNumber
 	tokNewline
 	tokSemiColon
-	tokCount
 	tokEndOfFile
+	tokCount
 )
 
 type TokenToStringMap map[TokenType]string
@@ -149,7 +149,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
-		if unicode.IsSpace(rune(contentState.currentChar())) {
+		if unicode.IsSpace(rune(contentState.currentChar())) ||
+			rune(contentState.currentChar()) == rune("\x00"[0]) {
 			contentState.column++
 			contentState.cursor++
 			continue
