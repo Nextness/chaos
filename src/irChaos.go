@@ -38,10 +38,14 @@ func irChaos(ls *LexerState) *bytes.Buffer {
 				irIdent := fmt.Sprintf("%s%d", identPrefix, identId)
 				if val, ok := mapIdent[v.identifier.val]; ok {
 					mapIdent[v.identifier.sym] = val
-					irIdentifiers.WriteString(fmt.Sprintf("  %s %s = %s\n", irIdent, mapVars[v.identifier.tpe], val))
+					irIdentifiers.WriteString(fmt.Sprintf("  (c) %s %s = %s\n", irIdent, mapVars[v.identifier.tpe], val))
 				} else if _, ok := mapIdent[v.identifier.sym]; !ok {
 					mapIdent[v.identifier.sym] = irIdent
-					irIdentifiers.WriteString(fmt.Sprintf("  %s %s = %s\n", irIdent, mapVars[v.identifier.tpe], v.identifier.val))
+					if v.identifier.stt != "not-initialized" {
+						irIdentifiers.WriteString(fmt.Sprintf("  (p) %s %s = %s\n", irIdent, mapVars[v.identifier.tpe], v.identifier.val))
+					} else {
+						irIdentifiers.WriteString(fmt.Sprintf("  (p) %s %s\n", irIdent, mapVars[v.identifier.tpe]))
+					}
 				}
 
 				identId++

@@ -17,6 +17,7 @@ const (
 	tokVarType
 	tokIdentifier
 	tokNumber
+	tokString
 	tokNewline
 	tokSemiColon
 	tokEndOfFile
@@ -33,6 +34,7 @@ var mapping = TokenToStringMap{
 	tokVarType:    "tokVarType",
 	tokIdentifier: "tokIdentifier",
 	tokNumber:     "tokNumber",
+	tokString:     "tokString",
 	tokNewline:    "tokNewline",
 	tokEndOfFile:  "tokEndOfFile",
 }
@@ -60,8 +62,20 @@ type ContentState struct {
 	line, column int
 }
 
+func (cs *ContentState) currentCharAsString() string {
+	return string(cs.data[cs.cursor])
+}
+
 func (cs *ContentState) currentChar() byte {
 	return cs.data[cs.cursor]
+}
+
+func (cs *ContentState) peakCharAsString(offset int) (result string) {
+	result = ""
+	if cs.cursor+offset < cs.count {
+		result = string(cs.data[cs.cursor+offset])
+	}
+	return
 }
 
 func (cs *ContentState) peakChar(offset int) (result byte) {
@@ -72,6 +86,9 @@ func (cs *ContentState) peakChar(offset int) (result byte) {
 	return
 }
 
+// TODO: Improve how characters are handled. Probably move to a byte or uint32 type of char
+// I want to avoid this kind of shit '"«"[0]', which is super annoying - also it will probaly
+// make it easier to handle other things in the lexer
 func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	contentState := ContentState{
 		token:  bytes.Buffer{},
@@ -93,6 +110,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	singleTokens := []byte{'=', '+', ';'}
 
 	for contentState.cursor < contentState.count {
+		// Single line comment
 		if contentState.currentChar() == '/' && contentState.peakChar(1) == '/' {
 			for contentState.currentChar() != '\n' {
 				contentState.cursor++
@@ -100,6 +118,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
+		// Multiline and inplace comment
 		if contentState.currentChar() == '/' &&
 			contentState.peakChar(1) == '*' &&
 			contentState.peakChar(2) == '*' {
@@ -133,6 +152,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
+		// New line
 		if contentState.currentChar() == '\n' {
 			token := Token{}
 			contentState.token.WriteString("newline")
@@ -149,6 +169,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
+		// Empty characters
 		if unicode.IsSpace(rune(contentState.currentChar())) ||
 			rune(contentState.currentChar()) == rune("\x00"[0]) {
 			contentState.column++
@@ -156,6 +177,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
+		// Single char tokens
 		if isInside(contentState.currentChar(), singleTokens) {
 			token := Token{}
 			token.line = contentState.line
@@ -179,6 +201,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
+		// Number tokens
 		if isNum(contentState.currentChar()) {
 			token := Token{}
 			token.line = contentState.line
@@ -195,7 +218,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
-		if isAlpha(contentState.currentChar()) && isUppercase(contentState.currentChar()) {
+		// Variable Type tokens
+		if isAlpha(contentState.currentChar()) && isUppercase(contentState.currentChar()) && contentState.currentChar() != "«"[0] {
 			token := Token{}
 			token.line = contentState.line
 			token.column = contentState.column
@@ -211,7 +235,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
-		if isAlpha(contentState.currentChar()) {
+		// Identifier and keyword tokens
+		if isAlpha(contentState.currentChar()) && contentState.currentChar() != "«"[0] {
 			token := Token{}
 			token.line = contentState.line
 			token.column = contentState.column
@@ -235,6 +260,25 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			contentState.token.Reset()
 			continue
 		}
+
+		// String literal tokens
+		if contentState.currentChar() == "«"[0] {
+			token := Token{}
+			token.line = contentState.line
+			token.column = contentState.column
+			contentState.cursor += 2
+			for contentState.peakCharAsString(1) != "»" {
+				contentState.token.WriteString(contentState.currentCharAsString())
+				contentState.cursor++
+			}
+			contentState.cursor += 2
+			token.tokType = tokString
+			token.value = contentState.token.String()
+			tokenizerState.data = append(tokenizerState.data, token)
+			contentState.token.Reset()
+			continue
+		}
+
 		fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(contentState.currentChar()))
 		panic("unrecheable")
 	}

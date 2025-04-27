@@ -47,7 +47,7 @@ func (n *Node) print() {
 	fmt.Printf("Node:\n")
 	fmt.Printf("    Type:   '%s'\n", n.nodeType.asString())
 	fmt.Printf("    State:  '%s'\n", n.identifier.stt)
-	fmt.Printf("    Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
+	fmt.Printf("    Symbol: '%s (%s) = %s'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
 }
 
 func lexChaosLet(ts *TokenizerState) *Node {
@@ -82,12 +82,18 @@ func lexChaosLet(ts *TokenizerState) *Node {
 			newNode.identifier.tpe = "must-infer"
 		}
 		ts.consume() // Consume '='
-		if !ts.expects(0, tokNumber, tokIdentifier) {
+		if !ts.expects(0, tokNumber, tokIdentifier, tokString) {
 			errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
 			config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
 			config.printAndExitLexerError(ts)
 		}
 		if ts.expects(0, tokNumber) {
+			value := ts.consume().value
+			newNode.identifier.val = value
+			newNode.identifier.stt = "initialized"
+			ts.variables[varName] = value
+		}
+		if ts.expects(0, tokString) {
 			value := ts.consume().value
 			newNode.identifier.val = value
 			newNode.identifier.stt = "initialized"
