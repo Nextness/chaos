@@ -33,7 +33,11 @@ func main() {
 			tokenState.print()
 			fmt.Print("\n")
 
-			lexerChaos(tokenState)
+			lexerState := lexerChaos(tokenState)
+			fmt.Print("\n")
+
+			irState := irChaos(lexerState)
+			fmt.Printf("%s\n", irState.String())
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)
@@ -41,3 +45,4 @@ func main() {
 		}
 	}
 }
+

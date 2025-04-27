@@ -5,14 +5,8 @@ import (
 	"os"
 )
 
-type LexerArray struct {
-	data   []any
-	count  int
-	cursor int
-}
-
 type LexerState struct {
-	data   []any
+	data   []interface{}
 	count  int
 	cursor int
 }
@@ -103,7 +97,7 @@ func lexChaosLet(ts *TokenizerState) *Node {
 			if val, ok := ts.variables[ts.current().value]; ok {
 				name := ts.consume().value
 				ts.variables[name] = val
-				newNode.identifier.val = val
+				newNode.identifier.val = name
 				newNode.identifier.stt = "initialized"
 			} else {
 				errMsg := fmt.Sprintf("Undefined identifier %s\n", ts.current().value)
@@ -152,5 +146,6 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 
 	assert(tokEndOfFile == ts.current().tokType, "Expected eof")
 	ts.consume()
+	lexerState.count = len(lexerState.data)
 	return &lexerState
 }
