@@ -75,10 +75,11 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	}
 
 	tokenizerState := TokenizerState{
-		fileName: fileName,
-		data:     []Token{},
-		count:    0,
-		cursor:   0,
+		fileName:  fileName,
+		data:      []Token{},
+		variables: map[string]string{},
+		count:     0,
+		cursor:    0,
 	}
 
 	singleTokens := []byte{'=', '+', ';'}
@@ -195,10 +196,11 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 }
 
 type TokenizerState struct {
-	fileName string
-	data     []Token
-	count    int
-	cursor   int
+	fileName  string
+	data      []Token
+	variables map[string]string
+	count     int
+	cursor    int
 }
 
 func (tokens TokenizerState) print() {
@@ -208,7 +210,7 @@ func (tokens TokenizerState) print() {
 			return
 		}
 		fmt.Printf(
-			"%s [%03d:%03d] token %05d: '%s' (%s)\n",
+			"    %s [%03d:%03d] token %05d: '%s' (%s)\n",
 			tokens.fileName, tok.line, tok.column, idx, tok.value, tok.tokType.asString(),
 		)
 	}

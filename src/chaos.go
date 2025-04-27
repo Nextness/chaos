@@ -32,6 +32,7 @@ func main() {
 			tokenState:= tokenizeChaos(arg, fileContent)
 			tokenState.print()
 			fmt.Print("\n")
+
 			lexerChaos(tokenState)
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)

@@ -51,9 +51,9 @@ type Node struct {
 
 func (n *Node) print() {
 	fmt.Printf("Node:\n")
-	fmt.Printf("  Type:   '%s'\n", n.nodeType.asString())
-	fmt.Printf("  State:  '%s'\n", n.identifier.stt)
-	fmt.Printf("  Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
+	fmt.Printf("    Type:   '%s'\n", n.nodeType.asString())
+	fmt.Printf("    State:  '%s'\n", n.identifier.stt)
+	fmt.Printf("    Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
 }
 
 func lexChaosLet(ts *TokenizerState) *Node {
@@ -68,7 +68,10 @@ func lexChaosLet(ts *TokenizerState) *Node {
 		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
 		config.printAndExitLexerError(ts)
 	}
-	ts.consume()
+	varName := ts.consume().value
+	if _, ok := ts.variables[varName]; !ok {
+		ts.variables[varName] = ""
+	}
 
 	if !ts.expects(0, tokVarType, tokAssignment) {
 		errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.current().tokType.asString())
@@ -81,15 +84,33 @@ func lexChaosLet(ts *TokenizerState) *Node {
 	}
 
 	if ts.expects(0, tokAssignment) {
-		newNode.identifier.tpe = "must-infer"
+		if newNode.identifier.tpe == "" {
+			newNode.identifier.tpe = "must-infer"
+		}
 		ts.consume() // Consume '='
-		if !ts.expects(0, tokNumber) {
+		if !ts.expects(0, tokNumber, tokIdentifier) {
 			errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
 			config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
 			config.printAndExitLexerError(ts)
 		}
-		newNode.identifier.val = ts.consume().value
-		newNode.identifier.stt = "initialized"
+		if ts.expects(0, tokNumber) {
+			value := ts.consume().value
+			newNode.identifier.val = value
+			newNode.identifier.stt = "initialized"
+			ts.variables[varName] = value
+		}
+		if ts.expects(0, tokIdentifier) {
+			if val, ok := ts.variables[ts.current().value]; ok {
+				name := ts.consume().value
+				ts.variables[name] = val
+				newNode.identifier.val = val
+				newNode.identifier.stt = "initialized"
+			} else {
+				errMsg := fmt.Sprintf("Undefined identifier %s\n", ts.current().value)
+				config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n", "let something U64 = 1\n            let somethingElse = something\n")
+				config.printAndExitLexerError(ts)
+			}
+		}
 	} else if ts.expects(0, tokNewline) {
 		newNode.identifier.val = ""
 		newNode.identifier.stt = "not-initialized"

@@ -1,2 +1,2 @@
-let something U64
-
+let something U64 = 1
+let something1 U32 = something
