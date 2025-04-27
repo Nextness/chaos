@@ -64,6 +64,14 @@ func (cs *ContentState) currentChar() byte {
 	return cs.data[cs.cursor]
 }
 
+func (cs *ContentState) peakChar(offset int) (result byte) {
+	result = byte(0)
+	if cs.cursor+offset < cs.count {
+		result = cs.data[cs.cursor+offset]
+	}
+	return
+}
+
 func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	contentState := ContentState{
 		token:  bytes.Buffer{},
@@ -85,6 +93,45 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	singleTokens := []byte{'=', '+', ';'}
 
 	for contentState.cursor < contentState.count {
+		if contentState.currentChar() == '/' && contentState.peakChar(1) == '/' {
+			for contentState.currentChar() != '\n' {
+				contentState.cursor++
+			}
+			continue
+		}
+
+		if contentState.currentChar() == '/' &&
+			contentState.peakChar(1) == '*' &&
+			contentState.peakChar(2) == '*' {
+			nestedComment := 0
+			contentState.cursor += 3
+			for {
+				if contentState.currentChar() == '*' &&
+					contentState.peakChar(1) == '*' &&
+					contentState.peakChar(2) == '/' &&
+					nestedComment > 0 {
+					nestedComment--
+					contentState.cursor += 3
+					continue
+				}
+
+				if contentState.currentChar() == '*' &&
+					contentState.peakChar(1) == '*' &&
+					contentState.peakChar(2) == '/' {
+					contentState.cursor += 3
+					break
+				}
+				contentState.cursor++
+				if contentState.currentChar() == '/' &&
+					contentState.peakChar(1) == '*' &&
+					contentState.peakChar(2) == '*' {
+					nestedComment++
+					contentState.cursor += 3
+					continue
+				}
+			}
+			continue
+		}
 
 		if contentState.currentChar() == '\n' {
 			token := Token{}
@@ -95,9 +142,11 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			token.line = contentState.line
 			token.column = contentState.column
 			contentState.line++
+			contentState.cursor++
 			contentState.column = 0
 			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
+			continue
 		}
 
 		if unicode.IsSpace(rune(contentState.currentChar())) {
