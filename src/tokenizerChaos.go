@@ -17,6 +17,7 @@ const (
 	tokVarType
 	tokIdentifier
 	tokNumber
+	tokNewline
 	tokSemiColon
 	tokCount
 	tokEndOfFile
@@ -29,9 +30,10 @@ var mapping = TokenToStringMap{
 	tokLet:        "tokLet",
 	tokAssignment: "tokAssignment",
 	tokPlus:       "tokPlus",
-	tokVarType:    "tokVarPlus",
+	tokVarType:    "tokVarType",
 	tokIdentifier: "tokIdentifier",
 	tokNumber:     "tokNumber",
+	tokNewline:    "tokNewline",
 	tokEndOfFile:  "tokEndOfFile",
 }
 
@@ -51,42 +53,52 @@ type Token struct {
 }
 
 type ContentState struct {
-	token       bytes.Buffer
-	data        string
-	count       int
-	cursor      int
-	row, column int
+	token        bytes.Buffer
+	data         string
+	count        int
+	cursor       int
+	line, column int
 }
 
 func (cs *ContentState) currentChar() byte {
 	return cs.data[cs.cursor]
 }
 
-func tokenizeChaos(fileContent *bytes.Buffer) *TokenizerState {
+func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	contentState := ContentState{
 		token:  bytes.Buffer{},
 		data:   fileContent.String(),
 		count:  fileContent.Len(),
 		cursor: 0,
-		row: 0,
-		column: 0,
+		line:   1,
+		column: 1,
 	}
 
 	tokenizerState := TokenizerState{
-		data:   []Token{},
-		count:  0,
-		cursor: 0,
+		fileName: fileName,
+		data:     []Token{},
+		count:    0,
+		cursor:   0,
 	}
 
 	singleTokens := []byte{'=', '+', ';'}
 
 	for contentState.cursor < contentState.count {
+
 		if contentState.currentChar() == '\n' {
-			contentState.row++
+			token := Token{}
+			contentState.token.WriteString("newline")
+			val := contentState.token.String()
+			token.value = val
+			token.tokType = tokNewline
+			token.row = contentState.line
+			token.column = contentState.column
+			contentState.line++
 			contentState.column = 0
+			tokenizerState.data = append(tokenizerState.data, token)
+			contentState.token.Reset()
 		}
 
-		token := Token{}
 		if unicode.IsSpace(rune(contentState.currentChar())) {
 			contentState.column++
 			contentState.cursor++
@@ -94,23 +106,20 @@ func tokenizeChaos(fileContent *bytes.Buffer) *TokenizerState {
 		}
 
 		if isInside(contentState.currentChar(), singleTokens) {
+			token := Token{}
+			token.row = contentState.line
+			token.column = contentState.column
 			contentState.token.WriteByte(contentState.currentChar())
 			val := contentState.token.String()
 			if val == "=" {
 				token.value = val
 				token.tokType = tokAssignment
-				token.row = contentState.row
-				token.column = contentState.column
 			} else if val == "+" {
 				token.value = val
 				token.tokType = tokPlus
-				token.row = contentState.row
-				token.column = contentState.column
 			} else if val == ";" {
 				token.value = val
 				token.tokType = tokSemiColon
-				token.row = contentState.row
-				token.column = contentState.column
 			}
 			contentState.column++
 			contentState.cursor++
@@ -120,40 +129,41 @@ func tokenizeChaos(fileContent *bytes.Buffer) *TokenizerState {
 		}
 
 		if isNum(contentState.currentChar()) {
+			token := Token{}
+			token.row = contentState.line
+			token.column = contentState.column
 			for isNum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
 				contentState.column++
 				contentState.cursor++
 			}
-			token := Token{
-				value:   contentState.token.String(),
-				tokType: tokNumber,
-				column:  contentState.column,
-				row:     contentState.row,
-			}
+			token.value = contentState.token.String()
+			token.tokType = tokNumber
 			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
 			continue
 		}
 
 		if isAlpha(contentState.currentChar()) && isUppercase(contentState.currentChar()) {
+			token := Token{}
+			token.row = contentState.line
+			token.column = contentState.column
 			for isAlphanum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
 				contentState.column++
 				contentState.cursor++
 			}
-			token := Token{
-				value:   contentState.token.String(),
-				tokType: tokVarType,
-				column:  contentState.column,
-				row:     contentState.row,
-			}
+			token.value = contentState.token.String()
+			token.tokType = tokVarType
 			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
 			continue
 		}
 
 		if isAlpha(contentState.currentChar()) {
+			token := Token{}
+			token.row = contentState.line
+			token.column = contentState.column
 			for isAlphanum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
 				contentState.column++
@@ -163,18 +173,12 @@ func tokenizeChaos(fileContent *bytes.Buffer) *TokenizerState {
 			if val == "global" {
 				token.value = val
 				token.tokType = tokGlobal
-				token.row = contentState.row
-				token.column = contentState.column
 			} else if val == "let" {
 				token.value = val
 				token.tokType = tokLet
-				token.row = contentState.row
-				token.column = contentState.column
 			} else {
 				token.value = val
 				token.tokType = tokIdentifier
-				token.row = contentState.row
-				token.column = contentState.column
 			}
 			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
@@ -184,25 +188,28 @@ func tokenizeChaos(fileContent *bytes.Buffer) *TokenizerState {
 		panic("unrecheable")
 	}
 
-	eof := Token{value: "eof", tokType: tokEndOfFile, column: contentState.column, row: contentState.row}
+	eof := Token{value: "eof", tokType: tokEndOfFile, column: contentState.column, row: contentState.line}
 	tokenizerState.data = append(tokenizerState.data, eof)
 	tokenizerState.count = len(tokenizerState.data)
 	return &tokenizerState
 }
 
-
 type TokenizerState struct {
-	data   []Token
-	count  int
-	cursor int
+	fileName string
+	data     []Token
+	count    int
+	cursor   int
 }
 
 func (tokens TokenizerState) print() {
 	fmt.Print("Token List:\n")
 	for idx, tok := range tokens.data {
+		if tok.tokType == tokEndOfFile {
+			return
+		}
 		fmt.Printf(
-			"  [%03d:%03d] token %05d: '%s' (%s)\n",
-			tok.row, tok.column, idx, tok.value, tok.tokType.asString(),
+			"%s [%03d:%03d] token %05d: '%s' (%s)\n",
+			tokens.fileName, tok.row, tok.column, idx, tok.value, tok.tokType.asString(),
 		)
 	}
 }
@@ -211,10 +218,21 @@ func (ts *TokenizerState) current() Token {
 	return ts.data[ts.cursor]
 }
 
-func (ts *TokenizerState) peak(offset int) (result Token) {
-	if offset == 0 {
-		panic("cannot peak with 0")
+func (ts *TokenizerState) expects(offset int, tokTypes ...TokenType) (result bool) {
+	result = false
+	for _, tok := range tokTypes {
+		if ts.cursor+offset < ts.count {
+			if ts.data[ts.cursor+offset].tokType == tok {
+				result = true
+				break
+			}
+		}
 	}
+	return
+}
+
+func (ts *TokenizerState) peak(offset int) (result Token) {
+	assert(offset == 0, "cannot peak with 0")
 	result = Token{}
 	if ts.cursor+offset < ts.count {
 		result = ts.data[ts.cursor+offset]
@@ -222,15 +240,16 @@ func (ts *TokenizerState) peak(offset int) (result Token) {
 	return
 }
 
-func (ts *TokenizerState) consume(offset int) (result Token) {
-	if offset == 0 {
-		panic("cannot peak with 0")
-	}
+func (ts *TokenizerState) consume(count ...int) (result Token) {
+	assert(len(count) <= 1, "Count can only be 1 or empty")
+	c := count[0]
 	result = Token{}
-	if ts.cursor+offset < ts.count {
+	for range c - 1 {
+		ts.cursor++
+	}
+	if ts.cursor < ts.count {
 		result = ts.current()
-		ts.count++
+		ts.cursor++
 	}
 	return
 }
-

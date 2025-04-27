@@ -1,6 +1,9 @@
 package main
 
-import "unicode"
+import (
+	"unicode"
+	"fmt"
+)
 
 func isUppercase(b byte) bool {
 	s := rune(b)
@@ -30,5 +33,11 @@ func isInside(b byte, listChar []byte) bool {
 		}
 	}
 	return result
+}
+
+func assert(ok bool, reason string) {
+	if !ok {
+		panic(fmt.Sprintf("Assertion failed: %s\n", reason))
+	}
 }
 
