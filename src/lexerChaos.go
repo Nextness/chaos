@@ -6,7 +6,7 @@ import (
 )
 
 type LexerState struct {
-	data   []interface{}
+	data   []any
 	count  int
 	cursor int
 }
@@ -47,6 +47,11 @@ func (n *Node) print() {
 	fmt.Printf("Node:\n")
 	fmt.Printf("    Type:   '%s'\n", n.nodeType.asString())
 	fmt.Printf("    State:  '%s'\n", n.identifier.stt)
+	// TODO: Improve this printing and handling of type in Nodes
+	if n.identifier.tpe == "String" {
+		fmt.Printf("    Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
+		return
+	}
 	fmt.Printf("    Symbol: '%s (%s) = %s'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
 }
 
@@ -83,7 +88,7 @@ func lexChaosLet(ts *TokenizerState) *Node {
 		}
 		ts.consume() // Consume '='
 		if !ts.expects(0, tokNumber, tokIdentifier, tokString) {
-			errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
+			errMsg := fmt.Sprintf("Expected a number, or identifier or string but found %s\n", ts.current().tokType.asString())
 			config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
 			config.printAndExitLexerError(ts)
 		}
@@ -107,7 +112,16 @@ func lexChaosLet(ts *TokenizerState) *Node {
 				newNode.identifier.stt = "initialized"
 			} else {
 				errMsg := fmt.Sprintf("Undefined identifier %s\n", ts.current().value)
-				config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n", "let something U64 = 1\n            let somethingElse = something\n")
+				examples := []string{
+					"let something U64\n",
+					"let something U64 = 1\n",
+					"let something U64 = 1\n" +
+						"            let somethingElse = something\n",
+					"let something String = «string literal»\n",
+					"let something String = «string literal»\n" +
+						"            let somethingElse = something\n",
+				}
+				config := newLexerErroConfig(errMsg, examples...)
 				config.printAndExitLexerError(ts)
 			}
 		}
