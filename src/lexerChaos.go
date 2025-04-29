@@ -44,15 +44,15 @@ type Node struct {
 }
 
 func (n *Node) print() {
-	fmt.Printf("Node:\n")
-	fmt.Printf("    Type:   '%s'\n", n.nodeType.asString())
-	fmt.Printf("    State:  '%s'\n", n.identifier.stt)
+	fmt.Printf("Node\n")
+	fmt.Printf("├─➜ Type:   '%s'\n", n.nodeType.asString())
+	fmt.Printf("├─➜ State:  '%s'\n", n.identifier.stt)
 	// TODO: Improve this printing and handling of type in Nodes
-	if n.identifier.tpe == "String" {
-		fmt.Printf("    Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
+	if n.identifier.tpe == kindString.asString() {
+		fmt.Printf("└─➜ Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
 		return
 	}
-	fmt.Printf("    Symbol: '%s (%s) = %s'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
+	fmt.Printf("└─➜ Symbol: '%s (%s) = %s'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
 }
 
 func lexChaosLet(ts *TokenizerState) *Node {
@@ -79,7 +79,8 @@ func lexChaosLet(ts *TokenizerState) *Node {
 	}
 
 	if ts.expects(0, tokVarType) {
-		newNode.identifier.tpe = ts.consume().value
+		token := ts.consume()
+		newNode.identifier.tpe = token.tokKind.asString()
 	}
 
 	if ts.expects(0, tokAssignment) {
@@ -162,6 +163,9 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 			ts.consume()
 			continue
 		}
+
+		fmt.Fprintf(os.Stderr, "[ERROR] The token '%s' is not expected\n", ts.current().value)
+		panic("Expected token found")
 	}
 
 	assert(tokEndOfFile == ts.current().tokType, "Expected eof")

@@ -47,9 +47,82 @@ func (tok TokenType) asString() string {
 	panic(errorMsg)
 }
 
+type TokenKind int
+
+const (
+	kindAnyError TokenKind = iota
+	kindAnyType
+	kindString
+	kindChar
+	kindBool
+	kindU8
+	kindU16
+	kindU32
+	kindU64
+	kindU128
+	kindI8
+	kindI16
+	kindI32
+	kindI64
+	kindI128
+	kindF16
+	kindF32
+	kindF64
+	kindF128
+	kindC64
+	kindC128
+	kindQ128
+	kindQ256
+	kindArray
+	kindVoid
+	kindMap
+	kindNone
+)
+
+type IdentTypeToStringMap map[TokenKind]string
+
+var identTypeMapping = IdentTypeToStringMap{
+	kindAnyError: "AnyError",
+	kindAnyType:  "AnyType",
+	kindString:   "String",
+	kindChar:     "Char",
+	kindBool:     "Bool",
+	kindU8:       "U8",
+	kindU16:      "U16",
+	kindU32:      "U32",
+	kindU64:      "U64",
+	kindU128:     "U128",
+	kindI8:       "I8",
+	kindI16:      "I16",
+	kindI32:      "I32",
+	kindI64:      "I64",
+	kindI128:     "I128",
+	kindF16:      "F16",
+	kindF32:      "F32",
+	kindF64:      "F64",
+	kindF128:     "F128",
+	kindC64:      "C64",
+	kindC128:     "C128",
+	kindQ128:     "Q128",
+	kindQ256:     "Q256",
+	kindArray:    "Array",
+	kindVoid:     "Void",
+	kindMap:      "Map",
+	kindNone:     "noType",
+}
+
+func (tok TokenKind) asString() string {
+	if tokType, ok := identTypeMapping[tok]; ok {
+		return tokType
+	}
+	errorMsg := fmt.Sprintf("[ERROR] Unexpected type '%d' - fix this shitty code :)\n", tok)
+	panic(errorMsg)
+}
+
 type Token struct {
 	value   string
 	tokType TokenType
+	tokKind TokenKind
 	line    int
 	column  int
 }
@@ -161,6 +234,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			token.tokType = tokNewline
 			token.line = contentState.line
 			token.column = contentState.column
+			token.tokKind = kindNone
 			contentState.line++
 			contentState.cursor++
 			contentState.column = 0
@@ -182,6 +256,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			token := Token{}
 			token.line = contentState.line
 			token.column = contentState.column
+			token.tokKind = kindNone
 			contentState.token.WriteByte(contentState.currentChar())
 			val := contentState.token.String()
 			if val == "=" {
@@ -206,6 +281,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			token := Token{}
 			token.line = contentState.line
 			token.column = contentState.column
+			token.tokKind = kindNone
 			for isNum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
 				contentState.column++
@@ -228,8 +304,63 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 				contentState.column++
 				contentState.cursor++
 			}
-			token.value = contentState.token.String()
 			token.tokType = tokVarType
+			token.value = contentState.token.String()
+			switch token.value {
+			case "AnyError":
+				token.tokKind = kindAnyError
+			case "AnyType":
+				token.tokKind = kindAnyType
+			case "String":
+				token.tokKind = kindString
+			case "Char":
+				token.tokKind = kindChar
+			case "Bool":
+				token.tokKind = kindBool
+			case "U8":
+				token.tokKind = kindU8
+			case "U16":
+				token.tokKind = kindU16
+			case "U32":
+				token.tokKind = kindU32
+			case "U64":
+				token.tokKind = kindU64
+			case "U128":
+				token.tokKind = kindU128
+			case "I8":
+				token.tokKind = kindI8
+			case "I16":
+				token.tokKind = kindI16
+			case "I32":
+				token.tokKind = kindI32
+			case "I64":
+				token.tokKind = kindI64
+			case "I128":
+				token.tokKind = kindI128
+			case "F16":
+				token.tokKind = kindF16
+			case "F32":
+				token.tokKind = kindF32
+			case "F64":
+				token.tokKind = kindF64
+			case "F128":
+				token.tokKind = kindF128
+			case "C64":
+				token.tokKind = kindC64
+			case "C128":
+				token.tokKind = kindC128
+			case "Q128":
+				token.tokKind = kindQ128
+			case "Q256":
+				token.tokKind = kindQ256
+			case "Array":
+				token.tokKind = kindArray
+			case "Void":
+				token.tokKind = kindVoid
+			case "Map":
+				token.tokKind = kindMap
+			}
+
 			tokenizerState.data = append(tokenizerState.data, token)
 			contentState.token.Reset()
 			continue
@@ -240,6 +371,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			token := Token{}
 			token.line = contentState.line
 			token.column = contentState.column
+			token.tokKind = kindNone
 			for isAlphanum(contentState.currentChar()) {
 				contentState.token.WriteByte(contentState.currentChar())
 				contentState.column++
@@ -266,6 +398,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			token := Token{}
 			token.line = contentState.line
 			token.column = contentState.column
+			token.tokKind = kindNone
 			contentState.cursor += 2
 			for contentState.peakCharAsString(1) != "»" {
 				contentState.token.WriteString(contentState.currentCharAsString())
@@ -303,10 +436,17 @@ func (tokens TokenizerState) print() {
 		if tok.tokType == tokEndOfFile {
 			return
 		}
-		fmt.Printf(
-			"    %s [%03d:%03d] token %05d: '%s' (%s)\n",
-			tokens.fileName, tok.line, tok.column, idx, tok.value, tok.tokType.asString(),
-		)
+		if tok.tokKind == kindNone {
+			fmt.Printf(
+				"    %s [%03d:%03d] token %05d: '%s' (%s)\n",
+				tokens.fileName, tok.line, tok.column, idx, tok.value, tok.tokType.asString(),
+			)
+		} else {
+			fmt.Printf(
+				"    %s [%03d:%03d] token %05d: '%s' (%s[%s])\n",
+				tokens.fileName, tok.line, tok.column, idx, tok.value, tok.tokType.asString(), tok.tokKind.asString(),
+			)
+		}
 	}
 }
 
