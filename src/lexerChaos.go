@@ -18,8 +18,8 @@ type LexerState struct {
 
 type NodeExitWith struct {
 	sym string
-	val int
 	msg string
+	val int
 }
 
 type NodeIdentifier struct {
@@ -28,6 +28,9 @@ type NodeIdentifier struct {
 	tpe string
 	val string
 }
+
+var _ Node = &NodeExitWith{}
+var _ Node = &NodeIdentifier{}
 
 func (n *NodeExitWith) print() {
 	fmt.Printf("Node\n")
@@ -60,7 +63,9 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 
 	if !ts.matchAt(0, tokIdentifier) {
 		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.current().tokType.asString())
-		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+		config := newLexerErroConfig(errMsg)
+		config.newExample("let something U64")
+		config.newExample("let something U64 = 1")
 		config.printAndExitLexerError(ts)
 	}
 	varName := ts.consume().value
@@ -70,7 +75,9 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 
 	if !ts.matchAt(0, tokVarType, tokAssignment) {
 		errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.current().tokType.asString())
-		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+		config := newLexerErroConfig(errMsg)
+		config.newExample("let something U64")
+		config.newExample("let something U64 = 1")
 		config.printAndExitLexerError(ts)
 	}
 
@@ -86,7 +93,9 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 		ts.consume() // Consume '='
 		if !ts.matchAt(0, tokNumber, tokIdentifier, tokString) {
 			errMsg := fmt.Sprintf("Expected a number, or identifier or string but found %s\n", ts.current().tokType.asString())
-			config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+			config := newLexerErroConfig(errMsg)
+			config.newExample("let something U64")
+			config.newExample("let something U64 = 1")
 			config.printAndExitLexerError(ts)
 		}
 		if ts.matchAt(0, tokNumber) {
@@ -109,16 +118,13 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 				newNode.stt = "initialized"
 			} else {
 				errMsg := fmt.Sprintf("Undefined identifier %s\n", ts.current().value)
-				examples := []string{
-					"let something U64\n",
-					"let something U64 = 1\n",
-					"let something U64 = 1\n" +
-						"            let somethingElse = something\n",
-					"let something String = «string literal»\n",
-					"let something String = «string literal»\n" +
-						"            let somethingElse = something\n",
-				}
-				config := newLexerErroConfig(errMsg, examples...)
+
+				config := newLexerErroConfig(errMsg)
+				config.newExample("let something U64")
+				config.newExample("let something U64 = 1")
+				config.newExample("let something U64 = 1", "let somethingElse = something")
+				config.newExample("let something String = «string literal»")
+				config.newExample("let something String = «string literal»", "let somethingElse = something")
 				config.printAndExitLexerError(ts)
 			}
 		}
@@ -126,8 +132,10 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 		newNode.val = ""
 		newNode.stt = "not-initialized"
 	} else {
-		errMsg := fmt.Sprintf("Unexpected a token found %s\n", ts.current().tokType.asString())
-		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
+		errMsg := fmt.Sprintf("Unexpected token found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("let something U64")
+		config.newExample("let something U64 = 1")
 		config.printAndExitLexerError(ts)
 	}
 
@@ -141,15 +149,11 @@ func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
 	ts.consume()
 	if !ts.matchAt(0, tokNumber, tokIdentifier) {
 		errMsg := fmt.Sprintf("Expected a number or identifier but found %s\n", ts.current().tokType.asString())
-		examples := []string{
-			"exitWith 1\n",
-			"exitWith 1, «reason for exiting early»\n",
-			"let code U64 = 1" +
-				"            exitWith code\n",
-			"let code U64 = 1" +
-				"            exitWith code, «reason for exitin early»\n",
-		}
-		config := newLexerErroConfig(errMsg, examples...)
+		config := newLexerErroConfig(errMsg)
+		config.newExample("exitWith 1")
+		config.newExample("exitWith 1, «reason for exiting early»")
+		config.newExample("let code U64 = 1", "exitWith code")
+		config.newExample("let code U64 = 1", "exitWith code, «reason for exitin early»")
 		config.printAndExitLexerError(ts)
 	}
 
@@ -181,7 +185,11 @@ func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
 				ts.consume()
 			}
 			errMsg := fmt.Sprintf("Expected a string but found %s\n", ts.current().tokType.asString())
-			config := newLexerErroConfig(errMsg, "exitWith 1, «reason for exiting early»\n")
+			config := newLexerErroConfig(errMsg)
+			config.newExample("exitWith 1")
+			config.newExample("exitWith 1, «reason for exiting early»")
+			config.newExample("let code U64 = 1", "exitWith code")
+			config.newExample("let code U64 = 1", "exitWith code, «reason for exitin early»")
 			config.printAndExitLexerError(ts)
 		}
 	}

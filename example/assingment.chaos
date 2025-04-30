@@ -11,5 +11,5 @@ let somethingNew2 Bool = 1
 
 let someString String = «something should be here»
 
-exitWith somethingNew, «some error»
+exitWith somethingNew
 
