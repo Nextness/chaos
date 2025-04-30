@@ -21,6 +21,8 @@ const (
 	tokNewline
 	tokSemiColon
 	tokEndOfFile
+	tokExitWith
+	tokComma
 	tokCount
 )
 
@@ -36,6 +38,8 @@ var mapping = TokenToStringMap{
 	tokNumber:     "tokNumber",
 	tokString:     "tokString",
 	tokNewline:    "tokNewline",
+	tokExitWith:   "tokExitWith",
+	tokComma:      "tokComma",
 	tokEndOfFile:  "tokEndOfFile",
 }
 
@@ -180,7 +184,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		cursor:    0,
 	}
 
-	singleTokens := []byte{'=', '+', ';'}
+	singleTokens := []byte{'=', '+', ';', ','}
 
 	for contentState.cursor < contentState.count {
 		// Single line comment
@@ -268,6 +272,9 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			} else if val == ";" {
 				token.value = val
 				token.tokType = tokSemiColon
+			} else if val == "," {
+				token.value = val
+				token.tokType = tokComma
 			}
 			contentState.column++
 			contentState.cursor++
@@ -384,6 +391,9 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			} else if val == "let" {
 				token.value = val
 				token.tokType = tokLet
+			} else if val == "exitWith" {
+				token.value = val
+				token.tokType = tokExitWith
 			} else {
 				token.value = val
 				token.tokType = tokIdentifier
@@ -454,7 +464,7 @@ func (ts *TokenizerState) current() Token {
 	return ts.data[ts.cursor]
 }
 
-func (ts *TokenizerState) expects(offset int, tokTypes ...TokenType) (result bool) {
+func (ts *TokenizerState) matchAt(offset int, tokTypes ...TokenType) (result bool) {
 	result = false
 	for _, tok := range tokTypes {
 		if ts.cursor+offset < ts.count {
