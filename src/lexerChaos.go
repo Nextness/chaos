@@ -6,32 +6,14 @@ import (
 	"strconv"
 )
 
+type Node interface {
+	print()
+}
+
 type LexerState struct {
-	data   []any
+	data   []Node
 	count  int
 	cursor int
-}
-
-type NodeType int
-
-const (
-	identifierNode NodeType = iota
-	literalNode
-)
-
-type NodeToStringMap map[NodeType]string
-
-var nodeMapping = NodeToStringMap{
-	identifierNode: "identifierNode",
-	literalNode:    "literalNode",
-}
-
-func (tok NodeType) asString() string {
-	if tokType, ok := nodeMapping[tok]; ok {
-		return tokType
-	}
-	errorMsg := fmt.Sprintf("[ERROR] Unexpected node '%d' - fix this shitty code :)\n", tok)
-	panic(errorMsg)
 }
 
 type NodeExitWith struct {
@@ -40,14 +22,11 @@ type NodeExitWith struct {
 	msg string
 }
 
-type Node struct {
-	nodeType   NodeType
-	identifier struct {
-		sym string
-		stt string
-		tpe string
-		val string
-	}
+type NodeIdentifier struct {
+	sym string
+	stt string
+	tpe string
+	val string
 }
 
 func (n *NodeExitWith) print() {
@@ -62,24 +41,22 @@ func (n *NodeExitWith) print() {
 	fmt.Printf("└─➜ Value:  '%d'\n", n.val)
 }
 
-func (n *Node) print() {
+func (n *NodeIdentifier) print() {
 	fmt.Printf("Node\n")
-	fmt.Printf("├─➜ Type:   '%s'\n", n.nodeType.asString())
-	fmt.Printf("├─➜ State:  '%s'\n", n.identifier.stt)
+	fmt.Printf("├─➜ State:  '%s'\n", n.stt)
 	// TODO: Improve this printing and handling of type in Nodes
-	if n.identifier.tpe == kindString.asString() {
-		fmt.Printf("└─➜ Symbol: '%s (%s) = «%s»'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
+	if n.tpe == kindString.asString() {
+		fmt.Printf("└─➜ Symbol: '%s (%s) = «%s»'\n", n.sym, n.tpe, n.val)
 		return
 	}
-	fmt.Printf("└─➜ Symbol: '%s (%s) = %s'\n", n.identifier.sym, n.identifier.tpe, n.identifier.val)
+	fmt.Printf("└─➜ Symbol: '%s (%s) = %s'\n", n.sym, n.tpe, n.val)
 }
 
-func lexChaosLet(ts *TokenizerState) *Node {
-	var newNode Node
+func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
+	newNode := NodeIdentifier{}
 
 	ts.consume() // consume the 'let'
-	newNode.nodeType = identifierNode
-	newNode.identifier.sym = ts.current().value
+	newNode.sym = ts.current().value
 
 	if !ts.matchAt(0, tokIdentifier) {
 		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.current().tokType.asString())
@@ -99,12 +76,12 @@ func lexChaosLet(ts *TokenizerState) *Node {
 
 	if ts.matchAt(0, tokVarType) {
 		token := ts.consume()
-		newNode.identifier.tpe = token.tokKind.asString()
+		newNode.tpe = token.tokKind.asString()
 	}
 
 	if ts.matchAt(0, tokAssignment) {
-		if newNode.identifier.tpe == "" {
-			newNode.identifier.tpe = "must-infer"
+		if newNode.tpe == "" {
+			newNode.tpe = "must-infer"
 		}
 		ts.consume() // Consume '='
 		if !ts.matchAt(0, tokNumber, tokIdentifier, tokString) {
@@ -114,22 +91,22 @@ func lexChaosLet(ts *TokenizerState) *Node {
 		}
 		if ts.matchAt(0, tokNumber) {
 			value := ts.consume().value
-			newNode.identifier.val = value
-			newNode.identifier.stt = "initialized"
+			newNode.val = value
+			newNode.stt = "initialized"
 			ts.variables[varName] = value
 		}
 		if ts.matchAt(0, tokString) {
 			value := ts.consume().value
-			newNode.identifier.val = value
-			newNode.identifier.stt = "initialized"
+			newNode.val = value
+			newNode.stt = "initialized"
 			ts.variables[varName] = value
 		}
 		if ts.matchAt(0, tokIdentifier) {
 			if val, ok := ts.variables[ts.current().value]; ok {
 				name := ts.consume().value
 				ts.variables[name] = val
-				newNode.identifier.val = name
-				newNode.identifier.stt = "initialized"
+				newNode.val = name
+				newNode.stt = "initialized"
 			} else {
 				errMsg := fmt.Sprintf("Undefined identifier %s\n", ts.current().value)
 				examples := []string{
@@ -146,8 +123,8 @@ func lexChaosLet(ts *TokenizerState) *Node {
 			}
 		}
 	} else if ts.matchAt(0, tokNewline) {
-		newNode.identifier.val = ""
-		newNode.identifier.stt = "not-initialized"
+		newNode.val = ""
+		newNode.stt = "not-initialized"
 	} else {
 		errMsg := fmt.Sprintf("Unexpected a token found %s\n", ts.current().tokType.asString())
 		config := newLexerErroConfig(errMsg, "let something U64\n", "let something U64 = 1\n")
@@ -159,7 +136,7 @@ func lexChaosLet(ts *TokenizerState) *Node {
 }
 
 func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
-	var nodeExit NodeExitWith
+	newNode := NodeExitWith{}
 
 	ts.consume()
 	if !ts.matchAt(0, tokNumber, tokIdentifier) {
@@ -182,7 +159,7 @@ func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
 		if err != nil {
 			panic("failed to convert str to number")
 		}
-		nodeExit.val = asInt
+		newNode.val = asInt
 	}
 	if ts.matchAt(0, tokIdentifier) {
 		token := ts.consume()
@@ -191,14 +168,14 @@ func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
 		if err != nil {
 			panic("failed to convert str to number")
 		}
-		nodeExit.sym = token.value
-		nodeExit.val = asInt
+		newNode.sym = token.value
+		newNode.val = asInt
 	}
 
 	if ts.matchAt(0, tokComma) {
 		if ts.matchAt(1, tokString) {
 			ts.consume()
-			nodeExit.msg = ts.consume().value
+			newNode.msg = ts.consume().value
 		} else {
 			if ts.matchAt(0, tokComma) {
 				ts.consume()
@@ -210,14 +187,12 @@ func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
 	}
 
 	ts.consume() // consume the 'newline'
-	return &nodeExit
+	return &newNode
 }
 
 func lexerChaos(ts *TokenizerState) *LexerState {
 	assert(ts.cursor == 0, "Cursor is not 0")
-	lexerState := LexerState{data: []any{}, count: 0, cursor: 0}
-	var node *Node = nil
-	var nodeExit *NodeExitWith = nil
+	lexerState := LexerState{data: []Node{}, count: 0, cursor: 0}
 
 	for ts.cursor < ts.count {
 		if ts.matchAt(0, tokEndOfFile) {
@@ -225,6 +200,7 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 		}
 
 		if ts.matchAt(0, tokLet) {
+			node := &NodeIdentifier{}
 			// TODO: better hanadle lexing errors
 			if node = lexChaosLet(ts); node == nil {
 				os.Exit(1)
@@ -235,11 +211,12 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 		}
 
 		if ts.matchAt(0, tokExitWith) {
-			if nodeExit = lexExitWithChaos(ts); node == nil {
+			node := &NodeExitWith{}
+			if node = lexExitWithChaos(ts); node == nil {
 				os.Exit(1)
 			}
-			nodeExit.print()
-			lexerState.data = append(lexerState.data, nodeExit)
+			node.print()
+			lexerState.data = append(lexerState.data, node)
 			continue
 		}
 
