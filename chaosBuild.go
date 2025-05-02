@@ -94,14 +94,14 @@ func main() {
 		}
 	} else {
 		for _, arg := range otherArgs {
-			if arg == "build-and-run-default" {
+			if arg == "default" {
 				defaultFileChaos := "./example/assingment.chaos"
 				if err := runCommand(fmt.Sprintf("go build -o ./build/main %s && ./build/main %s", main, defaultFileChaos)); err != nil {
 					os.Exit(1)
 				}
 			} else if arg == "help" {
 				fmt.Printf("Help - Options:\n")
-				fmt.Printf("    build-and-run-default\n")
+				fmt.Printf("    default\n")
 			} else {
 				fmt.Fprintf(os.Stderr, "[ERROR] Unknown command '%s'\n", arg)
 				fmt.Printf("Usage: %s [build-and-run-default]\n", programName)

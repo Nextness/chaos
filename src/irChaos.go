@@ -1,131 +1,193 @@
 package main
 
 import (
-	"bytes"
+	// "bytes"
 	"fmt"
 )
 
-// TODO: Improve how I'm handling IR in general. This code looks like shit...
-func irChaos(ls *LexerState) *bytes.Buffer {
-	buffer := bytes.Buffer{}
+type Architecture = int
 
-	irVarTypes := bytes.Buffer{}
-	typeId := 0
-	typePrefix := "typ"
-	mapVars := map[string]string{}
+type IrInstructions interface {
+	toString() string
+	toAsm(arch Architecture)
+}
 
-	irSymbols := bytes.Buffer{}
-	symbolsId := 0
-	symbolsPrefix := "sym"
-	mapSymbols := map[string]string{}
+type ExitInstruction struct {
+	name   string
+	status int
+	msg    string
+}
 
-	irIdentifiers := bytes.Buffer{}
-	identId := 0
-	identPrefix := "var"
-	mapIdent := map[string]string{}
+type AssignmentInstruction struct {
+	lhs string
+	rhs string
+	typ string
+}
 
-	procTable := bytes.Buffer{}
-	procId := 0
-	procPrefix := "proc"
-	mapProc := map[string]string{}
+type Details struct {
+	symbols map[string]string
+	types   map[string]string
+	procs   map[string]string
+}
 
-	argTable := bytes.Buffer{}
-	argId := 0
-	argPrefix := "arg"
-	mapArg := map[string]string{}
+func (ai AssignmentInstruction) toAsm(arc Architecture) {
+	assert(false, "AssignmentIntrusction.asAsim() not implemented")
+	return
+}
 
-	mainLoop := bytes.Buffer{}
+func (ai AssignmentInstruction) toString() string {
+	return fmt.Sprintf("%s %s := %s;", ai.lhs, ai.typ, ai.rhs)
+}
 
-	buffer.WriteString("chaosIntermediateRepresentation\n")
-	irVarTypes.WriteString("\ntypes\n")
-	irSymbols.WriteString("\nsymbols\n")
-	irIdentifiers.WriteString("\nvars\n")
-	mainLoop.WriteString("\nmain\n")
+func (ei ExitInstruction) toAsm(arc Architecture) {
+	assert(false, "ExitInstruct.asAsm() not implemented")
+}
 
-	// TODO: Better handle proc/builtins in IR
-	procTable.WriteString("\nproc\n")
-	procType := fmt.Sprintf("%s%d", procPrefix, procId)
-	procTable.WriteString(fmt.Sprintf("    %s print\n", procType))
-	mapProc["print"] = procType
-	procId++
+func (ei ExitInstruction) toString() string {
+	if ei.msg == "" {
+		return fmt.Sprintf("call %s %d;", ei.name, ei.status)
+	}
+	return fmt.Sprintf(
+		"call %s %d '%s';",
+		ei.name, ei.status, ei.msg,
+	)
+}
 
-	argTable.WriteString("\nargs\n")
+type IrState struct {
+	details Details
+	data    []IrInstructions
+	count   int
+	cursor  int
+}
 
+// sym0 someVariable;
+// sym1 something;
+// sym2 something1;
+//
+// typ0 String;
+// typ1 U64;
+//
+// sym1 typ1 := 1;
+// sym2 typ1 := sym1;
+//
+// $EXIT_SYSCALL := 60;
+//
+// exit :=
+//     param sym0 I32
+//     & param sym1 ?String undefined
+//     & isundef sym1 goto lab0
+//     & call print sym1
+//     & lab0:
+//     & syscall $EXIT_SYSCALL sym0;
+//
+// call exit 1;
+
+func irChaos(ls *LexerState) *IrState {
+	is := IrState{
+		details: Details{
+			symbols: map[string]string{},
+			types:   map[string]string{},
+			procs:   map[string]string{},
+		},
+	}
+	symbolsCount := 0
+	typesCount := 0
 	for ls.cursor < ls.count {
 		entry := ls.data[ls.cursor]
 		switch v := entry.(type) {
 		case *NodeIdentifier:
-			irType := fmt.Sprintf("%s%d", typePrefix, typeId)
-			if _, ok := mapVars[v.tpe]; !ok {
-				mapVars[v.tpe] = irType
-				irVarTypes.WriteString(fmt.Sprintf("    %s %s\n", irType, v.tpe))
-				typeId++
+			// Stora type information and keep track of it
+			typ, ok := is.details.types[v.tpe]
+			if !ok {
+				typ = fmt.Sprintf("typ%d", typesCount)
+				is.details.types[v.tpe] = typ
+				typesCount++
 			}
 
-			irIdent := fmt.Sprintf("%s%d", identPrefix, identId)
-			if val, ok := mapIdent[v.val]; ok {
-				// already existing in vars
-				mapIdent[v.sym] = val
-				irIdentifiers.WriteString(fmt.Sprintf("    %s %s %s\n", irIdent, mapVars[v.tpe], val))
-			} else if _, ok := mapIdent[v.sym]; !ok {
-				mapIdent[v.sym] = irIdent
-				symbolFmt := fmt.Sprintf("%s%d", symbolsPrefix, symbolsId)
-				mapSymbols[v.sym] = symbolFmt
-				// non existing variables
-				var formattedStr string
-				if v.stt != "not-initialized" {
-					formattedStr = fmt.Sprintf("    %s %s %s\n", irIdent, mapVars[v.tpe], v.val)
-					irSymbols.WriteString(fmt.Sprintf("    %s %s %s\n", symbolFmt, irIdent, v.sym))
-					symbolsId++
-				} else {
-					formattedStr = fmt.Sprintf("    %s %s\n", irIdent, mapVars[v.tpe])
+			// Store variable symbol and keep track of it
+			sym, ok := is.details.symbols[v.sym]
+			if !ok {
+				sym = fmt.Sprintf("sym%d", symbolsCount)
+				is.details.symbols[v.sym] = sym
+				symbolsCount++
+			}
+
+			if v.val == "" {
+				v.val = "undefined"
+			}
+
+			switch val := v.val.(type) {
+			case string:
+				if result, ok := is.details.symbols[val]; ok {
+					val = result
 				}
-				irIdentifiers.WriteString(formattedStr)
-			}
 
-			identId++
+				ai := AssignmentInstruction{
+					lhs: sym,
+					rhs: val,
+					typ: typ,
+				}
+				is.data = append(is.data, ai)
+			case NodeBinOp:
+				ai := AssignmentInstruction{
+					lhs: sym,
+					rhs: fmt.Sprintf("%s %s %s", val.lhs, val.op, val.rhs),
+					typ: typ,
+				}
+				is.data = append(is.data, ai)
+			}
 			ls.cursor++
 			continue
-
 		case *NodeExitWith:
-			if v.msg != "" {
-				prnt := mapProc["print"]
-				assert(prnt != "", "Expected value for print intrinsic")
-				arg, ok := mapArg[v.msg]
-				if !ok {
-					a := fmt.Sprintf("%s%d", argPrefix, argId)
-					mapArg[v.msg] = a
-					arg = a
-					argId++
-
-					argVal := fmt.Sprintf("    %s %s '%s'\n", a, prnt, v.msg)
-					argTable.WriteString(argVal)
-				}
-
-				out := fmt.Sprintf("    call %s %s\n", prnt, arg)
-				mainLoop.WriteString(out)
+			// TODO: Include this as an intrisict and not as part of calling exit
+			if _, ok := is.details.procs["exit"]; !ok {
+				is.details.procs["exit"] = "exit :=\n" +
+					"        param stt AnyNumber\n" +
+					"        & param msg ?String undefined\n" +
+					"        & isundef msg goto lab0\n" +
+					"        & call print msg\n" +
+					"        & lab0:\n" +
+					"        & syscall 60 stt;"
 			}
-			var out string
-			out = fmt.Sprintf("    call exit %d\n", v.val)
-			if v.sym != "" {
-				out = fmt.Sprintf("    call exit %s\n", v.sym)
+
+			sym, ok := is.details.symbols[fmt.Sprintf("%d", v.val)]
+			if !ok {
+				sym = fmt.Sprintf("sym%d", symbolsCount)
+				is.details.symbols["literal0"] = sym
+				symbolsCount++
 			}
-			mainLoop.WriteString(out)
+
+			ei := ExitInstruction{
+				name:   "exit",
+				status: v.val,
+				msg:    v.msg,
+			}
+			is.data = append(is.data, ei)
 			ls.cursor++
 			continue
-
 		default:
 			fmt.Printf("IR Not implemented for %T\n", v)
 			panic("not implemented")
 		}
 	}
+	return &is
+}
 
-	buffer.Write(procTable.Bytes())
-	buffer.WriteString(irSymbols.String())
-	buffer.Write(argTable.Bytes())
-	buffer.Write(irVarTypes.Bytes())
-	buffer.Write(irIdentifiers.Bytes())
-	buffer.WriteString(mainLoop.String())
-
-	return &buffer
+func irChaosToString(is *IrState) {
+	fmt.Print("symbols\n")
+	for idx, val := range is.details.symbols {
+		fmt.Printf("    %s := %s;\n", val, idx)
+	}
+	fmt.Print("types\n")
+	for idx, val := range is.details.types {
+		fmt.Printf("    %s := %s;\n", val, idx)
+	}
+	fmt.Print("pocs\n")
+	for _, val := range is.details.procs {
+		fmt.Printf("    %s\n", val)
+	}
+	fmt.Print("main\n")
+	for _, val := range is.data {
+		fmt.Printf("    %v\n", val.toString())
+	}
 }

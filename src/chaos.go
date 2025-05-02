@@ -30,14 +30,17 @@ func main() {
 
 			fileContent := bytes.NewBuffer(file)
 			tokenState:= tokenizeChaos(arg, fileContent)
-			tokenState.print()
-			fmt.Print("\n")
+			// tokenState.print()
+			// fmt.Print("\n")
 
 			lexerState := lexerChaos(tokenState)
-			fmt.Print("\n")
+			// for _, ls := range lexerState.data {
+			// 	ls.print(0)
+			// }
+			// fmt.Print("\n")
 
 			irState := irChaos(lexerState)
-			fmt.Printf("%s\n", irState.String())
+			irChaosToString(irState)
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)

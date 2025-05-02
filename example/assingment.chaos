@@ -1,15 +1,11 @@
 // Example for comment
 
-let uninitialized String
 
+let somePlus U64 = 1 - 1
+let someVariable String
 let something /** something in here **/ U64 = 1
 let something1 U64 = something
-let something2 U32 = something1
-let somethingNew U16 = 2
-let somethingNew1 Bool = 0
-let somethingNew2 Bool = 1
-
 let someString String = «something should be here»
 
-exitWith somethingNew
+exitWith 1, «failed to complete action»
 

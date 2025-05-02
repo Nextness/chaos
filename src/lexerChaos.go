@@ -4,16 +4,23 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Node interface {
-	print()
+	print(int)
 }
 
 type LexerState struct {
 	data   []Node
 	count  int
 	cursor int
+}
+
+type NodeBinOp struct {
+	lhs string
+	rhs string
+	op  string
 }
 
 type NodeExitWith struct {
@@ -26,37 +33,55 @@ type NodeIdentifier struct {
 	sym string
 	stt string
 	tpe string
-	val string
+	val any
 }
 
 var _ Node = &NodeExitWith{}
 var _ Node = &NodeIdentifier{}
+var _ Node = &NodeBinOp{}
 
-func (n *NodeExitWith) print() {
-	fmt.Printf("Node\n")
-	fmt.Printf("├─➜ Type:   'chaosIntrisic'\n")
-	fmt.Printf("├─➜ Symbol: 'exitWith'\n")
-	if n.msg != "" {
-		fmt.Printf("├─➜ Value:  '%d'\n", n.val)
-		fmt.Printf("└─➜ Msg:    '%s'\n", n.msg)
-		return
-	}
-	fmt.Printf("└─➜ Value:  '%d'\n", n.val)
+func (n *NodeBinOp) print(padSize int) {
+	pad := strings.Join([]string{strings.Repeat(" ", padSize)}, "")
+	fmt.Printf("%sNodeBinOp\n", pad)
+	fmt.Printf("%s├─➜ lhs: '%s'\n", pad, n.lhs)
+	fmt.Printf("%s├─➜ rhs: '%s'\n", pad, n.rhs)
+	fmt.Printf("%s└─➜ op:  '%s'\n", pad, n.op)
 }
 
-func (n *NodeIdentifier) print() {
-	fmt.Printf("Node\n")
-	fmt.Printf("├─➜ State:  '%s'\n", n.stt)
-	// TODO: Improve this printing and handling of type in Nodes
-	if n.tpe == kindString.asString() {
-		fmt.Printf("└─➜ Symbol: '%s (%s) = «%s»'\n", n.sym, n.tpe, n.val)
+func (n *NodeExitWith) print(padSize int) {
+	pad := strings.Join([]string{strings.Repeat(" ", padSize)}, "")
+	fmt.Printf("%sNodeExitWith\n", pad)
+	fmt.Printf("%s├─➜ Type:   'chaosIntrisic'\n", pad)
+	fmt.Printf("%s├─➜ Symbol: 'exitWith'\n", pad)
+	if n.msg != "" {
+		fmt.Printf("%s├─➜ Value:  '%d'\n", pad, n.val)
+		fmt.Printf("%s└─➜ Msg:    '%s'\n", pad, n.msg)
 		return
 	}
-	fmt.Printf("└─➜ Symbol: '%s (%s) = %s'\n", n.sym, n.tpe, n.val)
+	fmt.Printf("%s└─➜ Value:  '%d'\n", pad, n.val)
+}
+
+func (n *NodeIdentifier) print(padSize int) {
+	pad := strings.Join([]string{strings.Repeat(" ", padSize)}, "")
+	fmt.Printf("%sNodeIdentifier\n", pad)
+	fmt.Printf("%s├─➜ State:  '%s'\n", pad, n.stt)
+	switch v := n.val.(type) {
+	case string:
+		if n.tpe == kindString.asString() {
+			fmt.Printf("%s└─➜ Symbol: '%s (%s) = «%s»'\n", pad, n.sym, n.tpe, n.val)
+			return
+		}
+		fmt.Printf("%s└─➜ Symbol: '%s (%s) = %s'\n", pad, n.sym, n.tpe, n.val)
+	case NodeBinOp:
+		fmt.Printf("%s└─➜ Symbol: '%s (%s) = <NodeBinOp>'\n", pad, n.sym, n.tpe)
+		v.print(padSize + 4)
+	}
 }
 
 func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	newNode := NodeIdentifier{}
+	newNode.val = ""
+	newNode.stt = "not-initialized"
 
 	ts.consume() // consume the 'let'
 	newNode.sym = ts.current().value
@@ -99,18 +124,33 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 			config.printAndExitLexerError(ts)
 		}
 		if ts.matchAt(0, tokNumber) {
+			newNode.stt = "initialized"
+			if ts.matchAt(1, tokPlus, tokMinus) {
+				lhs := ts.consume()
+				op := ts.consume()
+				if !ts.matchAt(0, tokNumber) {
+					errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
+					config := newLexerErroConfig(errMsg)
+					config.printAndExitLexerError(ts)
+				}
+				rhs := ts.consume()
+				binOp := NodeBinOp{
+					lhs: lhs.value,
+					rhs: rhs.value,
+					op:  op.value,
+				}
+				newNode.val = binOp
+			} else {
+				value := ts.consume().value
+				newNode.val = value
+				ts.variables[varName] = value
+			}
+		} else if ts.matchAt(0, tokString) {
 			value := ts.consume().value
 			newNode.val = value
 			newNode.stt = "initialized"
 			ts.variables[varName] = value
-		}
-		if ts.matchAt(0, tokString) {
-			value := ts.consume().value
-			newNode.val = value
-			newNode.stt = "initialized"
-			ts.variables[varName] = value
-		}
-		if ts.matchAt(0, tokIdentifier) {
+		} else if ts.matchAt(0, tokIdentifier) {
 			if val, ok := ts.variables[ts.current().value]; ok {
 				name := ts.consume().value
 				ts.variables[name] = val
@@ -128,17 +168,14 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 				config.printAndExitLexerError(ts)
 			}
 		}
-	} else if ts.matchAt(0, tokNewline) {
-		newNode.val = ""
-		newNode.stt = "not-initialized"
-	} else {
+	}
+	if !ts.matchAt(0, tokNewline) {
 		errMsg := fmt.Sprintf("Unexpected token found %s\n", ts.current().tokType.asString())
 		config := newLexerErroConfig(errMsg)
 		config.newExample("let something U64")
 		config.newExample("let something U64 = 1")
 		config.printAndExitLexerError(ts)
 	}
-
 	ts.consume() // consume the 'newline'
 	return &newNode
 }
@@ -213,7 +250,6 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 			if node = lexChaosLet(ts); node == nil {
 				os.Exit(1)
 			}
-			node.print()
 			lexerState.data = append(lexerState.data, node)
 			continue
 		}
@@ -223,7 +259,6 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 			if node = lexExitWithChaos(ts); node == nil {
 				os.Exit(1)
 			}
-			node.print()
 			lexerState.data = append(lexerState.data, node)
 			continue
 		}
@@ -234,7 +269,7 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 		}
 
 		fmt.Fprintf(os.Stderr, "[ERROR] The token '%s' is not expected\n", ts.current().value)
-		panic("Expected token found")
+		panic("Unexpected token found")
 	}
 
 	assert(tokEndOfFile == ts.current().tokType, "Expected eof")

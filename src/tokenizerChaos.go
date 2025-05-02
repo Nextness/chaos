@@ -14,6 +14,7 @@ const (
 	tokLet
 	tokAssignment
 	tokPlus
+	tokMinus
 	tokVarType
 	tokIdentifier
 	tokNumber
@@ -33,6 +34,7 @@ var mapping = TokenToStringMap{
 	tokLet:        "tokLet",
 	tokAssignment: "tokAssignment",
 	tokPlus:       "tokPlus",
+	tokMinus:      "tokMinus",
 	tokVarType:    "tokVarType",
 	tokIdentifier: "tokIdentifier",
 	tokNumber:     "tokNumber",
@@ -184,7 +186,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		cursor:    0,
 	}
 
-	singleTokens := []byte{'=', '+', ';', ','}
+	singleTokens := []byte{'=', '+', ';', ',', '-'}
 
 	for contentState.cursor < contentState.count {
 		// Single line comment
@@ -269,6 +271,9 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			} else if val == "+" {
 				token.value = val
 				token.tokType = tokPlus
+			} else if val == "-" {
+				token.value = val
+				token.tokType = tokMinus
 			} else if val == ";" {
 				token.value = val
 				token.tokType = tokSemiColon
