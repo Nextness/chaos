@@ -7,34 +7,34 @@ type Log scaffold
     logLevel enumArray U64 = ...
 
     // Expected Methods for logging
-    proc trace(self &Self, message ...String)
-    proc debug(self &Self, message ...String)
-    proc info(self &Self, message ...String)
-    proc warning(self &Self, message ...String)
-    proc error(self &Self, message ...String)
-    proc critical(self &Self, message ...String)
-    proc disaster(self &Self, message ...String)
+    proc trace(self &Self, message ...String) do ... endproc
+    proc debug(self &Self, message ...String) do ... endproc
+    proc info(self &Self, message ...String) do ... endproc
+    proc warning(self &Self, message ...String) do ... endproc
+    proc error(self &Self, message ...String) do ... endproc
+    proc critical(self &Self, message ...String) do ... endproc
+    proc disaster(self &Self, message ...String) do ... endproc
 endtype
 
 type LoggerLevel enumArray U64
-    trace
-    debug
-    info
-    warning
-    error
-    critical
-    disabled
+    trace,
+    debug,
+    info,
+    warning,
+    error,
+    critical,
+    disabled,
 endtype
 
 type Log builds Logger struct
-    dateFormat = default
-    output = default
-    includeOSName = default
-    logLevel LoggerLevel = .info
+    dateFormat = default,
+    output = default,
+    includeOSName = default,
+    logLevel LoggerLevel = .info,
 endtype
 
 #overload
-with (using self *Logger) proc trace(message ...String) do
+receiver using self *Logger proc trace(message ...String) do
     #if loglevel <= .trace do
         #notImplemented(«Default trace log needs to be implemented»)
     else do
@@ -43,7 +43,7 @@ with (using self *Logger) proc trace(message ...String) do
 endproc
 
 #overload
-with (using self *Logger) proc debug(message ...String) do
+receiver using self *Logger proc debug(message ...String) do
     #if loglevel <= .debug do
         #notImplemented(«Default debug log needs to be implemented»)
     else do
@@ -52,7 +52,7 @@ with (using self *Logger) proc debug(message ...String) do
 endproc
 
 #overload
-with (using self *Logger) proc info(uessage: ...String) do
+receiver using self *Logger proc info(uessage: ...String) do
     #if loglevel <= .info do
         #notImplemented(«Default info log needs to be implemented») 
     else do
@@ -61,7 +61,7 @@ with (using self *Logger) proc info(uessage: ...String) do
 endproc
 
 #overload
-with (using self *Logger) proc warnin, message ...String) do
+receiver using self *Logger proc warnin, message ...String) do
     #if loglevel <= .warning do
         #notImplemented(«Default warning log needs to be implemented»)
     else do
@@ -70,7 +70,7 @@ with (using self *Logger) proc warnin, message ...String) do
 endproc
 
 #overload
-with (using self *Logger) proc error(message ...String) do
+receiver using self *Logger proc error(message ...String) do
     #if loglevel <= .error do
         #notImplemented(«Default error log needs to be implemented»)
     else do
@@ -79,7 +79,7 @@ with (using self *Logger) proc error(message ...String) do
 endproc
 
 #overload
-with (using self *Logger) proc criticr, message ...String) do
+receiver using self *Logger proc criticr, message ...String) do
     #if loglevel <= .critical do
         #notImplemented(«Default critical log needs to be implemented»)
     else do

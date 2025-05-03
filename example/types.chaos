@@ -1,15 +1,22 @@
 // Numbers
-type Ints       alias I8 | I16 | I32 | I64 | I128           endtype
-type UInts      alias U8 | U16 | U32 | U64 | U128           endtype
-type Floats     alias F16 | F32 | F64 | F128                endtype
-type Complex    alias C64 | C128                            endtype
-type Quaternion alias Q128 | Q256                           endtype
-type Natural    alias Ints | UInts                          endtype
-type Real       alias Ints | UInts | Floats                 endtype
-type AnyNumber  alias Natural | Real | Complex | Quaternion endtype
-type Text       alias Char | String                         endtype
+type Ints  alias I8 | I16 | I32 | I64 | I128 endtype
+type UInts alias U8 | U16 | U32 | U64 | U128 endtype
 
-type Vector2[T AnyNumber] struct x, y T endtype
+type Floats alias F16 | F32 | F64 | F128 endtype
+
+type Complex    alias C64  | C128 endtype
+type Quaternion alias Q128 | Q256 endtype
+
+type Natural   alias Ints    | UInts                        endtype
+type Real      alias Ints    | UInts | Floats               endtype
+type AnyNumber alias Natural | Real  | Complex | Quaternion endtype
+
+type Text alias Char | String endtype
+
+type Vector2[T AnyNumber] struct
+    x T = undefined,
+    y T = undefined,
+endtype
 
 type Primitives alias
     I8   | I16   | I32 | I64  | I128 |

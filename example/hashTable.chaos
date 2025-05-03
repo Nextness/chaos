@@ -2,23 +2,28 @@
 // Probably it doesn't work - used just to evaluate language. Most likely things will change...
 
 
-inline proc length(ht *HashTable) U64 do set ht.size endproc
-inline proc iterator(ht *HashTable) HashTableIterator do set HashTableIterator{ht, 0} endproc
+receiver ht *HashTable inline proc length() U64 do
+    set ht.size
+endproc
 
-type Entry[Key, Value] struct
-    key   *Key,
-    value *Value
+receiver ht *HashTable inline proc iterator() HashTableIterator do
+    set HashTableIterator{ht, 0}
+endproc
+
+type Entry[K, V] struct
+    key   *K,
+    value *V,
 endtype
 
-type HashTable[Key, Value] struct
-    entry    *Entry[Key, Value],
+type HashTable[K, V] struct
+    entry    *Entry[K, V],
     capacity U64 = 256,
-    size     U64 = 0
+    size     U64 = 0,
 endtype
 
-proc initHashTable[Key, Value]() *HashTable[Key, Value]! do
-    type HT alias HashTable[Key, Value] endtype
-    type E alias Entry[Key, Value] endtype
+proc initHashTable[K, V]() *HashTable[K, V]! do
+    type HT alias HashTable[K, V] endtype
+    type E alias Entry[K, V] endtype
 
     let table *HT = alloc(HT) orReturn nullPointer!
     if table.entry = calloc[E](table.capacity) catch err do
@@ -30,7 +35,7 @@ proc initHashTable[Key, Value]() *HashTable[Key, Value]! do
     return table
 endproc
 
-receiver (using ht *HashTable) proc destroy() Void! do
+receiver using ht *HashTable proc destroy() Void! do
     while i < capacity : ++i do
         let curEntry = entry[i] orReturn outOfBounds!
         free(curEntry.key)
@@ -39,11 +44,11 @@ receiver (using ht *HashTable) proc destroy() Void! do
     free(ht)
 endproc
 
-receiver (using ht *HashTable[Key, Value]) proc get(key *Key) Value! do
-    let hash := hashKey(key)
+receiver using ht *HashTable[K, V] proc get(key *K) V! do
+    let hash := hashK(key)
     let i = hash & (capacity - 1)
 
-    while hasKey = entry[i] orReturn outOfBounds! : ++i do
+    while hasKey = entry[i] orReturn outOfBounds! |++i| do
         if hasKey == null do break endif
         if key == hasKey do return hasKey.value endif
     endwhile
@@ -51,11 +56,11 @@ receiver (using ht *HashTable[Key, Value]) proc get(key *Key) Value! do
     return notFound!
 endproc
 
-receiver (using ht *HashTable[Key, Value]) proc expand() Void! do
+receiver using ht *HashTable[K, V] proc expand() Void! do
     let newCapacity := capacity * 2
     if newCapacity < capacity do return overflow! endif
 
-    let newEntry = calloc(newCapacity, sizeOf(Entry[Value])) orReturn nullPointer!
+    let newEntry = calloc(newCapacity, sizeOf(Entry[V])) orReturn nullPointer!
     defer free(newEntry)
 
     while i < capacity : ++i do
@@ -68,13 +73,13 @@ receiver (using ht *HashTable[Key, Value]) proc expand() Void! do
 endproc
 
 
-receiver (using ht *HashTable[Key, Value]) proc set(key *Key, value *Value) *Key! do
+receiver using ht *HashTable[K, V] proc set(key *K, value *V) *K! do
     if size >= capacity / 2 do ht.expand() orReturn endif
     let key := setEntry(entry, capacity, key, value, size) orReturn
     return key
 endproc
 
-receiver (using ht *HashTable) proc next(it *HashTableIterator) Void! do
+receiver using ht *HashTable proc next(it *HashTableIterator) Void! do
     let table = it.table
     while it.index < capatity : ++it.index do
         let item := entry[it.index] orReturn
@@ -88,7 +93,7 @@ endproc
 #let fnvOffset := 14695981039346656037;
 #let fnvPrime  := 1099511628211;
 
-proc hasKey[Key, Value](key *Key) Value do
+proc hasKey[K, V](key *K) V do
     let hash = fnvOffset
     let tmp = key.(String)
     while i < tmp.length : ++i do
@@ -101,7 +106,7 @@ proc hasKey[Key, Value](key *Key) Value do
 endproc
 
 proc setEntry[T](entry *Entry[T], capacity U64, key *String, value *T, size *?U64) String do
-    let i := hashKey(key) & (capacity - 1)
+    let i := hashK(key) & (capacity - 1)
 
     while curEntry = entry[i] orReturn outOfBounds! : ++i do
         if curEntry.key == null do break endif

@@ -1,0 +1,57 @@
+
+proc chaosTokenizer(fileContent *Buffer) Array[Token] do
+    let tokens Buffer
+    let tokArray Array[Token]
+
+    let pos = 0
+    let content = assert fileContent.string()
+    let singleTokens Array[Char] := {"=, "+, "}
+
+    while pos < fileContent.len() |pos++| do
+        let token Token
+        if isSpace(assert content[pos]) do continue endif
+
+        if isInside(assert content[pos], singleTokens) do
+            tokens.writeByte(content[pos])
+            val = tokens.string()
+
+            if val == do
+            case "= do token.value = val token.typ = tokAssignment endcase
+            case "+ do token.value = val token.typ = tokPlus       endcase
+            case " do token.value = val token.typ = tokSemiColon  endcase
+            endif
+
+            assert listTok.append(token)
+            tokens.reset()
+            continue
+        endif
+    endwhile
+    return tokArray
+endproc
+
+type TokenType distinct I64    endtype
+type TokenKind distinct I64    endtype
+type Operation distinct String endtype
+type NodeType  distinct I64    endtype
+
+type TokType enum TokenType
+    tokGlobal,
+    tokLet,
+    tokAssignment,
+    tokPlus,
+    tokPrimitiveType,
+    tokIdentifier,
+    tokNumber,
+    tokSemiColon,
+    tokCount,
+    tokEndOfFile,
+endtype
+
+#module main
+
+#import «bytes.chaos»
+#import «fmt.chaos»
+#import «os.chaos»
+#import «strings.chaos»
+#import «unicode.chaos»
+

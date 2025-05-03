@@ -1,21 +1,21 @@
 #module random
 
-// Void values are 'notNumber | undefined | null';
+// Void values are 'nan | undefined | null';
 
 type Context scaffold
-    logger ?Logger
-    calloc proc[T](num::Ints) &T
-    alloc  proc[T](num::Ints) &T
-    free   proc[T](&T) Void
+    logger ?Logger,
+    calloc proc[T](num::Ints) *T,
+    alloc  proc[T](num::Ints) *T,
+    free   proc[T](&T) Void,
 endtype
 
 type Contex builds Ctx struct
-    logger = default
-    alloc = proc[T](U64 size) &T do
+    logger = default,
+    alloc = proc[T](size U64) *T do
         
-    endproc
-    calloc = default
-    free = default
+    endproc,
+    calloc = default,
+    free = default,
 endtype
 
 let ctx Ctx
@@ -24,10 +24,10 @@ type AnotherInt alias I32 endtype
 type SomethingNew distinct I32 endtype
 
 type SomeEnum enum U64
-    a := (0 << iota)
-    b
-    d
-    e
+    a := (0 << iota),
+    b,
+    d,
+    e,
 endtype
 
 /** -- Explanation --
@@ -36,9 +36,9 @@ endtype
  *  When we call AnotherEnum.somethingInHere we will have 482518638 [1cc2a66e3]
 **/
 type AnotherEnum enumUnique
-    somethingInHere
-    anotherThingInHere
-    yetAnotherThingIsHere
+    somethingInHere,
+    anotherThingInHere,
+    yetAnotherThingIsHere,
 endtype
 
 let someChar Char := "a
@@ -52,8 +52,10 @@ proc attemptingSwitch(something SomeEnum) Void do
 endproc
 
 type Version[T num::Ints = U8] struct
-    major, minor, fix T
-    phase             *?String = null
+    major T        = undefined,
+    minor T        = undefined,
+    fix   T        = undefined,
+    phase *?String = null,
 endtype
 
 proc toString[T](using version &Version[T]) String do
@@ -63,19 +65,19 @@ proc toString[T](using version &Version[T]) String do
 endproc
 
 type JsonResponse[T Primitive] struct
-    statusCode U32 #tag(«json:status_code») = ...
-    content    T   #tag(«json:content»)     = ...
+    statusCode U32 #tag(«json:status_code») = undefined,
+    content    T   #tag(«json:content»)     = undefined,
 endtype
 
 type SomeStruct struct
-    username String
-    password String #redacted
+    username String,
+    password String #redacted,
 endtype
 
-let someStruct = make &SomeStruct with
+let someStruct = &SomeStruct {
     username := «username»,
     password := getEnvVar(«ENV_VAR_NAME») orSet «none»,
-endmake
+}
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
@@ -89,18 +91,17 @@ proc main() U64 do
 endproc
 
 proc testListCreateAccess() Void! do
-    let someList = make List[4, String] with «Hello», «World» endmake
+    let someList = make List[String] with «Hello», «World» endmake
     if let firstString String = someList[5] catch err do
         exitWith outOfBounds!, «Accessing element out of bounds»
     endif
 endproc
 
 proc testMapCreateAccess() Void! do
-    let someMap =
-        make Map[4, String, String] with
-            [«someKey»] = «some value»,
-            [«anotherKey»] = «another value»,
-        endmake
+    let someMap = Map[4, String, String] {
+        [«someKey»] = «some value»,
+        [«anotherKey»] = «another value»,
+    }
 
     let secondKey := assert someMap[«anotherKey»]
     if let firstKey = someMap[«unavailableKey»] catch err do
@@ -122,7 +123,7 @@ proc freeCounter(value *Void) do
 endproc
 
 type SomeFunc[T] alias
-    (proc[T](...) T! do ... endproc)
+    proc[T](...) T! do ... endproc
 endtype
 
 proc someFunc[T](someProc SomeFunc[T], <args>) T! do
@@ -144,16 +145,13 @@ proc ResultReturns anotherTest[(Iterable | Incrementable) builds T](T input, Str
     return result
 endproc
 
-let someMap *Map[-, String, U32] := newMap()
-let someArray *Array[-, String] := newArray()
-
 proc something(Array[T] something) do
     #if RunTimeCheck do ... endif
 endproc
 
 proc loopWithLabel() Bool! do
-    while x > 10 : ++x label someLoop do
-        while y > 10 : ++y do
+    while x > 10 |++x| label someLoop do
+        while y > 10 |++y| do
             if let something = operation() catch err do
                 ctx.logger(Error, «The operation failed - reason: {err}»)
                 break someLoop
