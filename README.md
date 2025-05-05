@@ -22,7 +22,7 @@ This is the basic. For more examples look at *examples*...
 // ./build/main ./<file_name>.chaos
 // Hello world
 proc main() do
-    fmt::print(«Chaotic hello\n»)
+    print(«Chaotic hello\n»)
 endproc
 
 #import «fmt.chaos»

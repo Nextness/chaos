@@ -95,7 +95,7 @@ func main() {
 	} else {
 		for _, arg := range otherArgs {
 			if arg == "default" {
-				defaultFileChaos := "./example/assingment.chaos"
+				defaultFileChaos := "./example/assignment.chaos"
 				if err := runCommand(fmt.Sprintf("go build -o ./build/main %s && ./build/main %s", main, defaultFileChaos)); err != nil {
 					os.Exit(1)
 				}

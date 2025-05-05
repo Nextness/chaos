@@ -17,6 +17,12 @@ type LexerState struct {
 	cursor int
 }
 
+type NodeCondition struct {
+	conditionCount int
+	conditions     []NodeBinOp
+	scope          map[int][]Node
+}
+
 type NodeBinOp struct {
 	lhs string
 	rhs string
@@ -40,8 +46,29 @@ var _ Node = &NodeExitWith{}
 var _ Node = &NodeIdentifier{}
 var _ Node = &NodeBinOp{}
 
+func makePad(padSize int) string {
+	pad := strings.Repeat(" ", padSize)
+	return pad
+}
+
+func (n *NodeCondition) print(padSize int) {
+	pad := makePad(padSize)
+	fmt.Printf("%sNodeCondition\n", pad)
+	for _, binOp := range n.conditions {
+		binOp.print(padSize + 4)
+	}
+	var i int
+	for i <= n.conditionCount {
+		for _, expr := range n.scope[i] {
+			expr.print(padSize + 4)
+		}
+		i++
+	}
+	fmt.Printf("%s\n", pad)
+}
+
 func (n *NodeBinOp) print(padSize int) {
-	pad := strings.Join([]string{strings.Repeat(" ", padSize)}, "")
+	pad := makePad(padSize)
 	fmt.Printf("%sNodeBinOp\n", pad)
 	fmt.Printf("%s├─➜ lhs: '%s'\n", pad, n.lhs)
 	fmt.Printf("%s├─➜ rhs: '%s'\n", pad, n.rhs)
@@ -76,6 +103,77 @@ func (n *NodeIdentifier) print(padSize int) {
 		fmt.Printf("%s└─➜ Symbol: '%s (%s) = <NodeBinOp>'\n", pad, n.sym, n.tpe)
 		v.print(padSize + 4)
 	}
+}
+
+func lexChaosConditions(ts *TokenizerState) *NodeCondition {
+	newNode := NodeCondition{
+		conditionCount: 0,
+		conditions:     []NodeBinOp{},
+		scope:          map[int][]Node{},
+	}
+
+	ts.consume() // consume the 'if'
+
+	if !ts.matchAt(0, tokNumber) {
+		errMsg := fmt.Sprintf("Expected a Number but found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("if 1 < 2 do ... endif")
+		config.printAndExitLexerError(ts)
+	}
+
+	if ts.matchAt(1, tokLessThan, tokGreaterThan) {
+		lhs := ts.consume()
+		op := ts.consume()
+		if !ts.matchAt(0, tokNumber) {
+			errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
+			config := newLexerErroConfig(errMsg)
+			config.printAndExitLexerError(ts)
+		}
+		rhs := ts.consume()
+		binOp := NodeBinOp{
+			lhs: lhs.value,
+			rhs: rhs.value,
+			op:  op.value,
+		}
+		newNode.conditions = append(newNode.conditions, binOp)
+		newNode.conditionCount++
+	}
+
+	if !ts.matchAt(0, tokDo) {
+		errMsg := fmt.Sprintf("Expected 'do' but found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("if 1 < 2 do ... endif")
+		config.printAndExitLexerError(ts)
+	}
+
+	ts.consume(2) // consume the 'do' and 'newline'
+
+	if ts.matchAt(0, tokLet) {
+		node := &NodeIdentifier{}
+		// TODO: better hanadle lexing errors
+		if node = lexChaosLet(ts); node == nil {
+			os.Exit(1)
+		}
+		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
+	}
+
+	if ts.matchAt(0, tokExitWith) {
+		node := &NodeExitWith{}
+		if node = lexExitWithChaos(ts); node == nil {
+			os.Exit(1)
+		}
+		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
+	}
+
+	if !ts.matchAt(0, tokEndIf) {
+		errMsg := fmt.Sprintf("Expected 'endif' but found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("if 1 < 2 do ... endif")
+		config.printAndExitLexerError(ts)
+	}
+	ts.consume() // consume the 'endif'
+
+	return &newNode
 }
 
 func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
@@ -248,6 +346,15 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 			node := &NodeIdentifier{}
 			// TODO: better hanadle lexing errors
 			if node = lexChaosLet(ts); node == nil {
+				os.Exit(1)
+			}
+			lexerState.data = append(lexerState.data, node)
+			continue
+		}
+
+		if ts.matchAt(0, tokIf) {
+			node := &NodeCondition{}
+			if node = lexChaosConditions(ts); node == nil {
 				os.Exit(1)
 			}
 			lexerState.data = append(lexerState.data, node)

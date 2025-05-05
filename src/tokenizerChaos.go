@@ -24,25 +24,35 @@ const (
 	tokEndOfFile
 	tokExitWith
 	tokComma
+	tokLessThan
+	tokGreaterThan
+	tokDo
+	tokIf
+	tokEndIf
 	tokCount
 )
 
 type TokenToStringMap map[TokenType]string
 
 var mapping = TokenToStringMap{
-	tokGlobal:     "tokGlobal",
-	tokLet:        "tokLet",
-	tokAssignment: "tokAssignment",
-	tokPlus:       "tokPlus",
-	tokMinus:      "tokMinus",
-	tokVarType:    "tokVarType",
-	tokIdentifier: "tokIdentifier",
-	tokNumber:     "tokNumber",
-	tokString:     "tokString",
-	tokNewline:    "tokNewline",
-	tokExitWith:   "tokExitWith",
-	tokComma:      "tokComma",
-	tokEndOfFile:  "tokEndOfFile",
+	tokGlobal:      "tokGlobal",
+	tokLet:         "tokLet",
+	tokAssignment:  "tokAssignment",
+	tokPlus:        "tokPlus",
+	tokMinus:       "tokMinus",
+	tokVarType:     "tokVarType",
+	tokIdentifier:  "tokIdentifier",
+	tokNumber:      "tokNumber",
+	tokString:      "tokString",
+	tokNewline:     "tokNewline",
+	tokExitWith:    "tokExitWith",
+	tokComma:       "tokComma",
+	tokLessThan:    "tokLessThan",
+	tokGreaterThan: "tokGreaterThan",
+	tokDo:          "tokDo",
+	tokIf:          "tokIf",
+	tokEndIf:       "tokEndIf",
+	tokEndOfFile:   "tokEndOfFile",
 }
 
 func (tok TokenType) asString() string {
@@ -186,7 +196,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		cursor:    0,
 	}
 
-	singleTokens := []byte{'=', '+', ';', ',', '-'}
+	singleTokens := []byte{'=', '+', ';', ',', '-', '<', '>'}
 
 	for contentState.cursor < contentState.count {
 		// Single line comment
@@ -280,6 +290,12 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			} else if val == "," {
 				token.value = val
 				token.tokType = tokComma
+			} else if val == "<" {
+				token.value = val
+				token.tokType = tokLessThan
+			} else if val == ">" {
+				token.value = val
+				token.tokType = tokGreaterThan
 			}
 			contentState.column++
 			contentState.cursor++
@@ -399,6 +415,15 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			} else if val == "exitWith" {
 				token.value = val
 				token.tokType = tokExitWith
+			} else if val == "do" {
+				token.value = val
+				token.tokType = tokDo
+			} else if val == "if" {
+				token.value = val
+				token.tokType = tokIf
+			} else if val == "endif" {
+				token.value = val
+				token.tokType = tokEndIf
 			} else {
 				token.value = val
 				token.tokType = tokIdentifier
@@ -450,6 +475,9 @@ func (tokens TokenizerState) print() {
 	for idx, tok := range tokens.data {
 		if tok.tokType == tokEndOfFile {
 			return
+		}
+		if tok.tokType == tokNewline {
+			continue
 		}
 		if tok.tokKind == kindNone {
 			fmt.Printf(
