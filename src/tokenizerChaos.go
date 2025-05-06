@@ -153,7 +153,6 @@ type Token struct {
 }
 
 type ContentState struct {
-	token        bytes.Buffer
 	data         string
 	count        int
 	cursor       int
@@ -184,80 +183,84 @@ func (cs *ContentState) peakChar(offset int) (result byte) {
 	return
 }
 
-func (cs *ContentState) handleSingleLineComments() (result bool) {
-	result = false
-	if cs.currentChar() == '/' && cs.peakChar(1) == '/' {
-		result = true
-		for cs.currentChar() != '\n' {
-			cs.cursor++
-		}
+func (cs *ContentState) matchStrAt(offset int, str string) bool {
+	if cs.cursor+offset > cs.count {
+		panic("Out of bounds while matchStrAt")
 	}
-	return
+	length := len(str)
+	result := true
+	for i := 0; i < length; i++ {
+		result = result && (cs.peakChar(i+offset) == str[i])
+	}
+	return result
 }
 
-func (cs *ContentState) handleMultiLineComments() (result bool) {
-	result = false
-	if cs.currentChar() == '/' && cs.peakChar(1) == '*' && cs.peakChar(2) == '*' {
-		result = true
-		nestedComment := 0
-		cs.cursor += 3
-		for {
-			if cs.currentChar() == '*' && cs.peakChar(1) == '*' && cs.peakChar(2) == '/' && nestedComment > 0 {
-				nestedComment--
-				cs.cursor += 3
-				continue
-			}
-
-			if cs.currentChar() == '*' && cs.peakChar(1) == '*' && cs.peakChar(2) == '/' {
-				cs.cursor += 3
-				break
-			}
-
-			cs.cursor++
-			if cs.currentChar() == '/' && cs.peakChar(1) == '*' && cs.peakChar(2) == '*' {
-				nestedComment++
-				cs.cursor += 3
-				continue
-			}
-		}
+func (cs *ContentState) handleSingleLineComments() bool {
+	if !cs.matchStrAt(0, "//") {
+		return false
 	}
-	return
-}
-
-func (cs *ContentState) handleNewline(ts *TokenizerState) (result bool) {
-	result = false
-	if cs.currentChar() == '\n' {
-		result = true
-		token := Token{}
-		cs.token.WriteString("newline")
-		val := cs.token.String()
-		token.value = val
-		token.tokType = tokNewline
-		token.line = cs.line
-		token.column = cs.column
-		token.tokKind = kindNone
-		cs.line++
-		cs.cursor++
-		cs.column = 0
-		ts.data = append(ts.data, token)
-		cs.token.Reset()
-	}
-	return
-}
-
-func (cs *ContentState) handleEmptyCharacters() (result bool) {
-	result = false
-	if unicode.IsSpace(rune(cs.currentChar())) ||
-		rune(cs.currentChar()) == rune("\x00"[0]) {
-		result = true
-		cs.column++
+	for cs.currentChar() != '\n' {
 		cs.cursor++
 	}
-	return
+	return true
 }
 
-func (cs *ContentState) handleSingleCharacters(ts *TokenizerState) (result bool) {
-	result = false
+func (cs *ContentState) handleMultiLineComments() bool {
+	if !cs.matchStrAt(0, "/**") {
+		return false
+	}
+	nestedComment := 0
+	cs.cursor += 3
+	for true {
+		if cs.matchStrAt(0, "**/") && nestedComment > 0 {
+			nestedComment--
+			cs.cursor += 3
+			continue
+		}
+		if cs.matchStrAt(0, "**/") {
+			cs.cursor += 3
+			break
+		}
+		cs.cursor++
+		if cs.matchStrAt(0, "/**") {
+			nestedComment++
+			cs.cursor += 3
+			continue
+		}
+	}
+	return true
+}
+
+func (cs *ContentState) handleNewline() (bool, *Token) {
+	if cs.currentChar() != '\n' {
+		return false, nil
+	}
+
+	token := Token{
+		value:   "newline",
+		tokType: tokNewline,
+		line:    cs.line,
+		column:  cs.column,
+		tokKind: kindNone,
+	}
+
+	cs.line++
+	cs.cursor++
+	cs.column = 0
+	return true, &token
+}
+
+func (cs *ContentState) handleEmptyCharacters() bool {
+	if !unicode.IsSpace(rune(cs.currentChar())) && rune(cs.currentChar()) != rune("\x00"[0]) {
+		return false
+	}
+
+	cs.column++
+	cs.cursor++
+	return true
+}
+
+func (cs *ContentState) handleSingleCharacters() (bool, *Token) {
 	singleTokenMap := map[byte]Token{
 		'=': {value: "=", tokType: tokAssignment},
 		'+': {value: "+", tokType: tokPlus},
@@ -268,165 +271,169 @@ func (cs *ContentState) handleSingleCharacters(ts *TokenizerState) (result bool)
 		'(': {value: "(", tokType: tokOpenParen},
 		')': {value: ")", tokType: tokCloseParen},
 	}
+
 	token, ok := singleTokenMap[cs.currentChar()]
 	if !ok {
-		return
+		return false, nil
 	}
-	result = true
+
 	token.line = cs.line
 	token.column = cs.column
 	token.tokKind = kindNone
 	cs.column++
 	cs.cursor++
-	ts.data = append(ts.data, token)
-	return
+	return true, &token
 }
 
-func (cs *ContentState) handleNumbers(ts *TokenizerState) (result bool) {
-	result = false
-	if isNum(cs.currentChar()) {
-		result = true
-		token := Token{}
-		token.line = cs.line
-		token.column = cs.column
-		token.tokKind = kindNone
-		for isNum(cs.currentChar()) {
-			cs.token.WriteByte(cs.currentChar())
-			cs.column++
-			cs.cursor++
-		}
-		token.value = cs.token.String()
-		token.tokType = tokNumber
-		ts.data = append(ts.data, token)
-		cs.token.Reset()
+func (cs *ContentState) handleNumbers() (bool, *Token) {
+	if !isNum(cs.currentChar()) {
+		return false, nil
 	}
-	return
-}
 
-func (cs *ContentState) handleVariadics(ts *TokenizerState) (result bool) {
-	result = false
-	if cs.currentChar() == '.' && cs.peakChar(1) == '.' && cs.peakChar(2) == '.' {
-		result = true
-		token := Token{}
-		token.column = cs.column
-		token.line = cs.line
-		token.value = "..."
-		token.tokType = tokVariadic
-		token.tokKind = kindNone
-		ts.data = append(ts.data, token)
-		cs.column += 3
-		cs.cursor += 3
+	token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
+	tmp := bytes.Buffer{}
+	defer tmp.Reset()
+
+	for isNum(cs.currentChar()) {
+		tmp.WriteByte(cs.currentChar())
+		cs.column++
+		cs.cursor++
 	}
-	return
+
+	token.value = tmp.String()
+	token.tokType = tokNumber
+	return true, &token
 }
 
-func (cs *ContentState) handleVarTypes(ts *TokenizerState) (result bool) {
-	result = false
-	if isAlpha(cs.currentChar()) && isUppercase(cs.currentChar()) && cs.currentChar() != "«"[0] {
-		result = true
-		token := Token{line: cs.line, column: cs.column, tokType: tokVarType}
-		for isAlphanum(cs.currentChar()) {
-			cs.token.WriteByte(cs.currentChar())
-			cs.column++
-			cs.cursor++
-		}
-		value := cs.token.String()
-		token.value = value
-		varTypeMap := map[string]TokenKind{
-			"AnyError": kindAnyError,
-			"AnyType":  kindAnyType,
-			"String":   kindString,
-			"Char":     kindChar,
-			"Bool":     kindBool,
-			"U8":       kindU8,
-			"U16":      kindU16,
-			"U32":      kindU32,
-			"U64":      kindU64,
-			"U128":     kindU128,
-			"I8":       kindI8,
-			"I16":      kindI16,
-			"I32":      kindI32,
-			"I64":      kindI64,
-			"I128":     kindI128,
-			"F16":      kindF16,
-			"F32":      kindF32,
-			"F64":      kindF64,
-			"F128":     kindF128,
-			"C64":      kindC64,
-			"C128":     kindC128,
-			"Q128":     kindQ128,
-			"Q256":     kindQ256,
-			"Array":    kindArray,
-			"Void":     kindVoid,
-			"Map":      kindMap,
-		}
-		kind, ok := varTypeMap[value]
-		if !ok {
-			panic("This will eventually fail because of structs. Needs to be implemented")
-		}
+func (cs *ContentState) handleVariadics() (bool, *Token) {
+	if !cs.matchStrAt(0, "...") {
+		return false, nil
+	}
+
+	token := Token{
+		value:   "...",
+		column:  cs.column,
+		line:    cs.line,
+		tokType: tokVariadic,
+		tokKind: kindNone,
+	}
+
+	cs.column += 3
+	cs.cursor += 3
+	return true, &token
+}
+
+func (cs *ContentState) handleVarTypes() (bool, *Token) {
+	if !isAlpha(cs.currentChar()) || !isUppercase(cs.currentChar()) || cs.currentChar() == "«"[0] {
+		return false, nil
+	}
+
+	token := Token{line: cs.line, column: cs.column, tokType: tokVarType}
+	tmp := bytes.Buffer{}
+	defer tmp.Reset()
+
+	for isAlphanum(cs.currentChar()) {
+		tmp.WriteByte(cs.currentChar())
+		cs.column++
+		cs.cursor++
+	}
+
+	value := tmp.String()
+	token.value = value
+	varTypeMap := map[string]TokenKind{
+		"AnyError": kindAnyError,
+		"AnyType":  kindAnyType,
+		"String":   kindString,
+		"Char":     kindChar,
+		"Bool":     kindBool,
+		"U8":       kindU8,
+		"U16":      kindU16,
+		"U32":      kindU32,
+		"U64":      kindU64,
+		"U128":     kindU128,
+		"I8":       kindI8,
+		"I16":      kindI16,
+		"I32":      kindI32,
+		"I64":      kindI64,
+		"I128":     kindI128,
+		"F16":      kindF16,
+		"F32":      kindF32,
+		"F64":      kindF64,
+		"F128":     kindF128,
+		"C64":      kindC64,
+		"C128":     kindC128,
+		"Q128":     kindQ128,
+		"Q256":     kindQ256,
+		"Array":    kindArray,
+		"Void":     kindVoid,
+		"Map":      kindMap,
+	}
+
+	if kind, ok := varTypeMap[value]; ok {
 		token.tokKind = kind
-
-		ts.data = append(ts.data, token)
-		cs.token.Reset()
+		return true, &token
+	} else {
+		panic("Unexpected type - probably a struct?")
 	}
-	return
 }
 
-func (cs *ContentState) handleKeywordsAndIdentifiers(ts *TokenizerState) (result bool) {
-	result = false
-	if isAlpha(cs.currentChar()) && cs.currentChar() != "«"[0] {
-		result = true
-		token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
-		for isAlphanum(cs.currentChar()) {
-			cs.token.WriteByte(cs.currentChar())
-			cs.column++
-			cs.cursor++
-		}
-		value := cs.token.String()
-		keyworkMap := map[string]Token{
-			"global":   {value: "global", tokType: tokGlobal},
-			"let":      {value: "let", tokType: tokLet},
-			"exitWith": {value: "exitWith", tokType: tokExitWith},
-			"do":       {value: "do", tokType: tokDo},
-			"if":       {value: "if", tokType: tokIf},
-			"endif":    {value: "endif", tokType: tokEndIf},
-			"proc":     {value: "proc", tokType: tokProc},
-			"endproc":  {value: "endproc", tokType: tokEndProc},
-		}
-		keyword, ok := keyworkMap[value]
-		if !ok {
-			token.value = value
-			token.tokType = tokIdentifier
-		} else {
-			token.value = keyword.value
-			token.tokType = keyword.tokType
-		}
-		ts.data = append(ts.data, token)
-		cs.token.Reset()
+func (cs *ContentState) handleKeywordsAndIdentifiers() (bool, *Token) {
+	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
+		return false, nil
 	}
-	return
+	token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
+	tmp := bytes.Buffer{}
+	defer tmp.Reset()
+
+	for isAlphanum(cs.currentChar()) {
+		tmp.WriteByte(cs.currentChar())
+		cs.column++
+		cs.cursor++
+	}
+
+	value := tmp.String()
+	keyworkMap := map[string]Token{
+		"global":   {value: "global", tokType: tokGlobal},
+		"let":      {value: "let", tokType: tokLet},
+		"exitWith": {value: "exitWith", tokType: tokExitWith},
+		"do":       {value: "do", tokType: tokDo},
+		"if":       {value: "if", tokType: tokIf},
+		"endif":    {value: "endif", tokType: tokEndIf},
+		"proc":     {value: "proc", tokType: tokProc},
+		"endproc":  {value: "endproc", tokType: tokEndProc},
+	}
+
+	keyword, ok := keyworkMap[value]
+	if !ok {
+		token.value = value
+		token.tokType = tokIdentifier
+	} else {
+		token.value = keyword.value
+		token.tokType = keyword.tokType
+	}
+
+	return true, &token
 }
 
-func (cs *ContentState) handleStringLiterals(ts *TokenizerState) (result bool) {
-	result = false
-	if cs.currentChar() == "«"[0] {
-		result = true
-		token := Token{}
-		token.line = cs.line
-		token.column = cs.column
-		token.tokKind = kindNone
-		cs.cursor += 2
-		for cs.peakCharAsString(1) != "»" {
-			cs.token.WriteString(cs.currentCharAsString())
-			cs.cursor++
-		}
-		cs.cursor += 2
-		token.tokType = tokString
-		token.value = cs.token.String()
-		ts.data = append(ts.data, token)
-		cs.token.Reset()
+func (cs *ContentState) handleStringLiterals() (bool, *Token) {
+	if cs.currentChar() != "«"[0] {
+		return false, nil
 	}
-	return
+
+	token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
+	tmp := bytes.Buffer{}
+	defer tmp.Reset()
+	cs.cursor += 2
+
+	for cs.peakCharAsString(1) != "»" {
+		tmp.WriteString(cs.currentCharAsString())
+		cs.cursor++
+	}
+
+	cs.cursor += 2
+	token.tokType = tokString
+	token.value = tmp.String()
+	return true, &token
 }
 
 // TODO: Improve how characters are handled. Probably move to a byte or uint32 type of char
@@ -434,7 +441,6 @@ func (cs *ContentState) handleStringLiterals(ts *TokenizerState) (result bool) {
 // make it easier to handle other things in the lexer
 func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	cs := &ContentState{
-		token:  bytes.Buffer{},
 		data:   fileContent.String(),
 		count:  fileContent.Len(),
 		cursor: 0,
@@ -459,7 +465,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
-		if cs.handleNewline(ts) {
+		if ok, token := cs.handleNewline(); ok {
+			ts.data = append(ts.data, *token)
 			continue
 		}
 
@@ -467,27 +474,33 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
-		if cs.handleSingleCharacters(ts) {
+		if ok, token := cs.handleSingleCharacters(); ok {
+			ts.data = append(ts.data, *token)
 			continue
 		}
 
-		if cs.handleNumbers(ts) {
+		if ok, token := cs.handleNumbers(); ok {
+			ts.data = append(ts.data, *token)
 			continue
 		}
 
-		if cs.handleVariadics(ts) {
+		if ok, token := cs.handleVariadics(); ok {
+			ts.data = append(ts.data, *token)
 			continue
 		}
 
-		if cs.handleVarTypes(ts) {
+		if ok, token := cs.handleVarTypes(); ok {
+			ts.data = append(ts.data, *token)
 			continue
 		}
 
-		if cs.handleKeywordsAndIdentifiers(ts) {
+		if ok, token := cs.handleKeywordsAndIdentifiers(); ok {
+			ts.data = append(ts.data, *token)
 			continue
 		}
 
-		if cs.handleStringLiterals(ts) {
+		if ok, token := cs.handleStringLiterals(); ok {
+			ts.data = append(ts.data, *token)
 			continue
 		}
 
@@ -573,49 +586,4 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 		ts.cursor++
 	}
 	return
-}
-
-type LexerErrorConfig struct {
-	errorMsg     string
-	examples     []string
-	exampleCount int
-}
-
-func newLexerErroConfig(errorMsg string) LexerErrorConfig {
-	return LexerErrorConfig{
-		errorMsg:     errorMsg,
-		examples:     []string{},
-		exampleCount: 0,
-	}
-}
-
-func (lec *LexerErrorConfig) newExample(examples ...string) {
-	examplesLen := len(examples)
-	assert(examplesLen > 0, "Expected at least one example")
-	pad := "    "
-	lec.exampleCount++
-	prefix := fmt.Sprintf("(%d)", lec.exampleCount)
-	for idx, example := range examples {
-		if idx == 0 {
-			tmp := fmt.Sprintf("%s%s %s\n", pad, prefix, example)
-			lec.examples = append(lec.examples, tmp)
-			continue
-		}
-		tmp := fmt.Sprintf("%s    %s\n", pad, example)
-		lec.examples = append(lec.examples, tmp)
-	}
-}
-
-func (lec LexerErrorConfig) printAndExitLexerError(ts *TokenizerState) {
-	buffer := bytes.Buffer{}
-	buffer.WriteString(fmt.Sprintf("%s:%d:%d [ERROR] ", ts.fileName, ts.current().line, ts.current().column))
-	buffer.WriteString(lec.errorMsg)
-	if len(lec.examples) > 0 {
-		buffer.WriteString("Example:\n")
-		for _, ex := range lec.examples {
-			buffer.WriteString(ex)
-		}
-	}
-	fmt.Print(buffer.String())
-	os.Exit(1)
 }
