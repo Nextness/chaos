@@ -20,7 +20,6 @@ const (
 	tokNumber
 	tokString
 	tokNewline
-	tokSemiColon
 	tokEndOfFile
 	tokExitWith
 	tokComma
@@ -185,11 +184,256 @@ func (cs *ContentState) peakChar(offset int) (result byte) {
 	return
 }
 
+func (cs *ContentState) handleSingleLineComments() (result bool) {
+	result = false
+	if cs.currentChar() == '/' && cs.peakChar(1) == '/' {
+		result = true
+		for cs.currentChar() != '\n' {
+			cs.cursor++
+		}
+	}
+	return
+}
+
+func (cs *ContentState) handleMultiLineComments() (result bool) {
+	result = false
+	if cs.currentChar() == '/' && cs.peakChar(1) == '*' && cs.peakChar(2) == '*' {
+		result = true
+		nestedComment := 0
+		cs.cursor += 3
+		for {
+			if cs.currentChar() == '*' && cs.peakChar(1) == '*' && cs.peakChar(2) == '/' && nestedComment > 0 {
+				nestedComment--
+				cs.cursor += 3
+				continue
+			}
+
+			if cs.currentChar() == '*' && cs.peakChar(1) == '*' && cs.peakChar(2) == '/' {
+				cs.cursor += 3
+				break
+			}
+
+			cs.cursor++
+			if cs.currentChar() == '/' && cs.peakChar(1) == '*' && cs.peakChar(2) == '*' {
+				nestedComment++
+				cs.cursor += 3
+				continue
+			}
+		}
+	}
+	return
+}
+
+func (cs *ContentState) handleNewline(ts *TokenizerState) (result bool) {
+	result = false
+	if cs.currentChar() == '\n' {
+		result = true
+		token := Token{}
+		cs.token.WriteString("newline")
+		val := cs.token.String()
+		token.value = val
+		token.tokType = tokNewline
+		token.line = cs.line
+		token.column = cs.column
+		token.tokKind = kindNone
+		cs.line++
+		cs.cursor++
+		cs.column = 0
+		ts.data = append(ts.data, token)
+		cs.token.Reset()
+	}
+	return
+}
+
+func (cs *ContentState) handleEmptyCharacters() (result bool) {
+	result = false
+	if unicode.IsSpace(rune(cs.currentChar())) ||
+		rune(cs.currentChar()) == rune("\x00"[0]) {
+		result = true
+		cs.column++
+		cs.cursor++
+	}
+	return
+}
+
+func (cs *ContentState) handleSingleCharacters(ts *TokenizerState) (result bool) {
+	result = false
+	singleTokenMap := map[byte]Token{
+		'=': {value: "=", tokType: tokAssignment},
+		'+': {value: "+", tokType: tokPlus},
+		'-': {value: "-", tokType: tokMinus},
+		',': {value: ",", tokType: tokComma},
+		'<': {value: "<", tokType: tokLessThan},
+		'>': {value: ">", tokType: tokGreaterThan},
+		'(': {value: "(", tokType: tokOpenParen},
+		')': {value: ")", tokType: tokCloseParen},
+	}
+	token, ok := singleTokenMap[cs.currentChar()]
+	if !ok {
+		return
+	}
+	result = true
+	token.line = cs.line
+	token.column = cs.column
+	token.tokKind = kindNone
+	cs.column++
+	cs.cursor++
+	ts.data = append(ts.data, token)
+	return
+}
+
+func (cs *ContentState) handleNumbers(ts *TokenizerState) (result bool) {
+	result = false
+	if isNum(cs.currentChar()) {
+		result = true
+		token := Token{}
+		token.line = cs.line
+		token.column = cs.column
+		token.tokKind = kindNone
+		for isNum(cs.currentChar()) {
+			cs.token.WriteByte(cs.currentChar())
+			cs.column++
+			cs.cursor++
+		}
+		token.value = cs.token.String()
+		token.tokType = tokNumber
+		ts.data = append(ts.data, token)
+		cs.token.Reset()
+	}
+	return
+}
+
+func (cs *ContentState) handleVariadics(ts *TokenizerState) (result bool) {
+	result = false
+	if cs.currentChar() == '.' && cs.peakChar(1) == '.' && cs.peakChar(2) == '.' {
+		result = true
+		token := Token{}
+		token.column = cs.column
+		token.line = cs.line
+		token.value = "..."
+		token.tokType = tokVariadic
+		token.tokKind = kindNone
+		ts.data = append(ts.data, token)
+		cs.column += 3
+		cs.cursor += 3
+	}
+	return
+}
+
+func (cs *ContentState) handleVarTypes(ts *TokenizerState) (result bool) {
+	result = false
+	if isAlpha(cs.currentChar()) && isUppercase(cs.currentChar()) && cs.currentChar() != "«"[0] {
+		result = true
+		token := Token{line: cs.line, column: cs.column, tokType: tokVarType}
+		for isAlphanum(cs.currentChar()) {
+			cs.token.WriteByte(cs.currentChar())
+			cs.column++
+			cs.cursor++
+		}
+		value := cs.token.String()
+		token.value = value
+		varTypeMap := map[string]TokenKind{
+			"AnyError": kindAnyError,
+			"AnyType":  kindAnyType,
+			"String":   kindString,
+			"Char":     kindChar,
+			"Bool":     kindBool,
+			"U8":       kindU8,
+			"U16":      kindU16,
+			"U32":      kindU32,
+			"U64":      kindU64,
+			"U128":     kindU128,
+			"I8":       kindI8,
+			"I16":      kindI16,
+			"I32":      kindI32,
+			"I64":      kindI64,
+			"I128":     kindI128,
+			"F16":      kindF16,
+			"F32":      kindF32,
+			"F64":      kindF64,
+			"F128":     kindF128,
+			"C64":      kindC64,
+			"C128":     kindC128,
+			"Q128":     kindQ128,
+			"Q256":     kindQ256,
+			"Array":    kindArray,
+			"Void":     kindVoid,
+			"Map":      kindMap,
+		}
+		kind, ok := varTypeMap[value]
+		if !ok {
+			panic("This will eventually fail because of structs. Needs to be implemented")
+		}
+		token.tokKind = kind
+
+		ts.data = append(ts.data, token)
+		cs.token.Reset()
+	}
+	return
+}
+
+func (cs *ContentState) handleKeywordsAndIdentifiers(ts *TokenizerState) (result bool) {
+	result = false
+	if isAlpha(cs.currentChar()) && cs.currentChar() != "«"[0] {
+		result = true
+		token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
+		for isAlphanum(cs.currentChar()) {
+			cs.token.WriteByte(cs.currentChar())
+			cs.column++
+			cs.cursor++
+		}
+		value := cs.token.String()
+		keyworkMap := map[string]Token{
+			"global":   {value: "global", tokType: tokGlobal},
+			"let":      {value: "let", tokType: tokLet},
+			"exitWith": {value: "exitWith", tokType: tokExitWith},
+			"do":       {value: "do", tokType: tokDo},
+			"if":       {value: "if", tokType: tokIf},
+			"endif":    {value: "endif", tokType: tokEndIf},
+			"proc":     {value: "proc", tokType: tokProc},
+			"endproc":  {value: "endproc", tokType: tokEndProc},
+		}
+		keyword, ok := keyworkMap[value]
+		if !ok {
+			token.value = value
+			token.tokType = tokIdentifier
+		} else {
+			token.value = keyword.value
+			token.tokType = keyword.tokType
+		}
+		ts.data = append(ts.data, token)
+		cs.token.Reset()
+	}
+	return
+}
+
+func (cs *ContentState) handleStringLiterals(ts *TokenizerState) (result bool) {
+	result = false
+	if cs.currentChar() == "«"[0] {
+		result = true
+		token := Token{}
+		token.line = cs.line
+		token.column = cs.column
+		token.tokKind = kindNone
+		cs.cursor += 2
+		for cs.peakCharAsString(1) != "»" {
+			cs.token.WriteString(cs.currentCharAsString())
+			cs.cursor++
+		}
+		cs.cursor += 2
+		token.tokType = tokString
+		token.value = cs.token.String()
+		ts.data = append(ts.data, token)
+		cs.token.Reset()
+	}
+	return
+}
+
 // TODO: Improve how characters are handled. Probably move to a byte or uint32 type of char
 // I want to avoid this kind of shit '"«"[0]', which is super annoying - also it will probaly
 // make it easier to handle other things in the lexer
 func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
-	contentState := ContentState{
+	cs := &ContentState{
 		token:  bytes.Buffer{},
 		data:   fileContent.String(),
 		count:  fileContent.Len(),
@@ -198,7 +442,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		column: 1,
 	}
 
-	tokenizerState := TokenizerState{
+	ts := &TokenizerState{
 		fileName:  fileName,
 		data:      []Token{},
 		variables: map[string]string{},
@@ -206,297 +450,55 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		cursor:    0,
 	}
 
-	singleTokens := []byte{'=', '+', ';', ',', '-', '<', '>', '(', ')'}
-
-	for contentState.cursor < contentState.count {
-		// Single line comment
-		if contentState.currentChar() == '/' && contentState.peakChar(1) == '/' {
-			for contentState.currentChar() != '\n' {
-				contentState.cursor++
-			}
+	for cs.cursor < cs.count {
+		if cs.handleSingleLineComments() {
 			continue
 		}
 
-		if contentState.currentChar() == '.' &&
-			contentState.peakChar(1) == '.' &&
-			contentState.peakChar(2) == '.' {
-			token := Token{}
-			token.column = contentState.column
-			token.line = contentState.line
-			token.value = "..."
-			token.tokType = tokVariadic
-			token.tokKind = kindNone
-			tokenizerState.data = append(tokenizerState.data, token)
-			contentState.column += 3
-			contentState.cursor += 3
+		if cs.handleMultiLineComments() {
 			continue
 		}
 
-		// Multiline and inplace comment
-		if contentState.currentChar() == '/' &&
-			contentState.peakChar(1) == '*' &&
-			contentState.peakChar(2) == '*' {
-			nestedComment := 0
-			contentState.cursor += 3
-			for {
-				if contentState.currentChar() == '*' &&
-					contentState.peakChar(1) == '*' &&
-					contentState.peakChar(2) == '/' &&
-					nestedComment > 0 {
-					nestedComment--
-					contentState.cursor += 3
-					continue
-				}
-
-				if contentState.currentChar() == '*' &&
-					contentState.peakChar(1) == '*' &&
-					contentState.peakChar(2) == '/' {
-					contentState.cursor += 3
-					break
-				}
-				contentState.cursor++
-				if contentState.currentChar() == '/' &&
-					contentState.peakChar(1) == '*' &&
-					contentState.peakChar(2) == '*' {
-					nestedComment++
-					contentState.cursor += 3
-					continue
-				}
-			}
+		if cs.handleNewline(ts) {
 			continue
 		}
 
-		// New line
-		if contentState.currentChar() == '\n' {
-			token := Token{}
-			contentState.token.WriteString("newline")
-			val := contentState.token.String()
-			token.value = val
-			token.tokType = tokNewline
-			token.line = contentState.line
-			token.column = contentState.column
-			token.tokKind = kindNone
-			contentState.line++
-			contentState.cursor++
-			contentState.column = 0
-			tokenizerState.data = append(tokenizerState.data, token)
-			contentState.token.Reset()
+		if cs.handleEmptyCharacters() {
 			continue
 		}
 
-		// Empty characters
-		if unicode.IsSpace(rune(contentState.currentChar())) ||
-			rune(contentState.currentChar()) == rune("\x00"[0]) {
-			contentState.column++
-			contentState.cursor++
+		if cs.handleSingleCharacters(ts) {
 			continue
 		}
 
-		// Single char tokens
-		if isInside(contentState.currentChar(), singleTokens) {
-			token := Token{}
-			token.line = contentState.line
-			token.column = contentState.column
-			token.tokKind = kindNone
-			contentState.token.WriteByte(contentState.currentChar())
-			val := contentState.token.String()
-			if val == "=" {
-				token.value = val
-				token.tokType = tokAssignment
-			} else if val == "+" {
-				token.value = val
-				token.tokType = tokPlus
-			} else if val == "-" {
-				token.value = val
-				token.tokType = tokMinus
-			} else if val == ";" {
-				token.value = val
-				token.tokType = tokSemiColon
-			} else if val == "," {
-				token.value = val
-				token.tokType = tokComma
-			} else if val == "<" {
-				token.value = val
-				token.tokType = tokLessThan
-			} else if val == ">" {
-				token.value = val
-				token.tokType = tokGreaterThan
-			} else if val == "(" {
-				token.value = val
-				token.tokType = tokOpenParen
-			} else if val == ")" {
-				token.value = val
-				token.tokType = tokCloseParen
-			}
-			contentState.column++
-			contentState.cursor++
-			tokenizerState.data = append(tokenizerState.data, token)
-			contentState.token.Reset()
+		if cs.handleNumbers(ts) {
 			continue
 		}
 
-		// Number tokens
-		if isNum(contentState.currentChar()) {
-			token := Token{}
-			token.line = contentState.line
-			token.column = contentState.column
-			token.tokKind = kindNone
-			for isNum(contentState.currentChar()) {
-				contentState.token.WriteByte(contentState.currentChar())
-				contentState.column++
-				contentState.cursor++
-			}
-			token.value = contentState.token.String()
-			token.tokType = tokNumber
-			tokenizerState.data = append(tokenizerState.data, token)
-			contentState.token.Reset()
+		if cs.handleVariadics(ts) {
 			continue
 		}
 
-		// Variable Type tokens
-		if isAlpha(contentState.currentChar()) && isUppercase(contentState.currentChar()) && contentState.currentChar() != "«"[0] {
-			token := Token{}
-			token.line = contentState.line
-			token.column = contentState.column
-			for isAlphanum(contentState.currentChar()) {
-				contentState.token.WriteByte(contentState.currentChar())
-				contentState.column++
-				contentState.cursor++
-			}
-			token.tokType = tokVarType
-			token.value = contentState.token.String()
-			switch token.value {
-			case "AnyError":
-				token.tokKind = kindAnyError
-			case "AnyType":
-				token.tokKind = kindAnyType
-			case "String":
-				token.tokKind = kindString
-			case "Char":
-				token.tokKind = kindChar
-			case "Bool":
-				token.tokKind = kindBool
-			case "U8":
-				token.tokKind = kindU8
-			case "U16":
-				token.tokKind = kindU16
-			case "U32":
-				token.tokKind = kindU32
-			case "U64":
-				token.tokKind = kindU64
-			case "U128":
-				token.tokKind = kindU128
-			case "I8":
-				token.tokKind = kindI8
-			case "I16":
-				token.tokKind = kindI16
-			case "I32":
-				token.tokKind = kindI32
-			case "I64":
-				token.tokKind = kindI64
-			case "I128":
-				token.tokKind = kindI128
-			case "F16":
-				token.tokKind = kindF16
-			case "F32":
-				token.tokKind = kindF32
-			case "F64":
-				token.tokKind = kindF64
-			case "F128":
-				token.tokKind = kindF128
-			case "C64":
-				token.tokKind = kindC64
-			case "C128":
-				token.tokKind = kindC128
-			case "Q128":
-				token.tokKind = kindQ128
-			case "Q256":
-				token.tokKind = kindQ256
-			case "Array":
-				token.tokKind = kindArray
-			case "Void":
-				token.tokKind = kindVoid
-			case "Map":
-				token.tokKind = kindMap
-			}
-
-			tokenizerState.data = append(tokenizerState.data, token)
-			contentState.token.Reset()
+		if cs.handleVarTypes(ts) {
 			continue
 		}
 
-		// Identifier and keyword tokens
-		if isAlpha(contentState.currentChar()) && contentState.currentChar() != "«"[0] {
-			token := Token{}
-			token.line = contentState.line
-			token.column = contentState.column
-			token.tokKind = kindNone
-			for isAlphanum(contentState.currentChar()) {
-				contentState.token.WriteByte(contentState.currentChar())
-				contentState.column++
-				contentState.cursor++
-			}
-			val := contentState.token.String()
-			if val == "global" {
-				token.value = val
-				token.tokType = tokGlobal
-			} else if val == "let" {
-				token.value = val
-				token.tokType = tokLet
-			} else if val == "exitWith" {
-				token.value = val
-				token.tokType = tokExitWith
-			} else if val == "do" {
-				token.value = val
-				token.tokType = tokDo
-			} else if val == "if" {
-				token.value = val
-				token.tokType = tokIf
-			} else if val == "endif" {
-				token.value = val
-				token.tokType = tokEndIf
-			} else if val == "proc" {
-				token.value = val
-				token.tokType = tokProc
-			} else if val == "endproc" {
-				token.value = val
-				token.tokType = tokEndProc
-			} else {
-				token.value = val
-				token.tokType = tokIdentifier
-			}
-			tokenizerState.data = append(tokenizerState.data, token)
-			contentState.token.Reset()
+		if cs.handleKeywordsAndIdentifiers(ts) {
 			continue
 		}
 
-		// String literal tokens
-		if contentState.currentChar() == "«"[0] {
-			token := Token{}
-			token.line = contentState.line
-			token.column = contentState.column
-			token.tokKind = kindNone
-			contentState.cursor += 2
-			for contentState.peakCharAsString(1) != "»" {
-				contentState.token.WriteString(contentState.currentCharAsString())
-				contentState.cursor++
-			}
-			contentState.cursor += 2
-			token.tokType = tokString
-			token.value = contentState.token.String()
-			tokenizerState.data = append(tokenizerState.data, token)
-			contentState.token.Reset()
+		if cs.handleStringLiterals(ts) {
 			continue
 		}
 
-		fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(contentState.currentChar()))
+		fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(cs.currentChar()))
 		panic("unrecheable")
 	}
 
-	eof := Token{value: "eof", tokType: tokEndOfFile, column: contentState.column, line: contentState.line}
-	tokenizerState.data = append(tokenizerState.data, eof)
-	tokenizerState.count = len(tokenizerState.data)
-	return &tokenizerState
+	eof := Token{value: "eof", tokType: tokEndOfFile, column: cs.column, line: cs.line}
+	ts.data = append(ts.data, eof)
+	ts.count = len(ts.data)
+	return ts
 }
 
 type TokenizerState struct {

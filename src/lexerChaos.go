@@ -214,7 +214,6 @@ func lexChaosProc(ts *TokenizerState) *NodeProc {
 			continue
 		}
 
-		fmt.Print("Reached here\n")
 		if ts.matchAt(0, tokIf) {
 			node := &NodeCondition{}
 			if node = lexChaosConditions(ts); node == nil {
@@ -237,7 +236,6 @@ func lexChaosProc(ts *TokenizerState) *NodeProc {
 
 	ts.consume() // consume the 'endproc'
 
-	fmt.Printf("DEBUG: %v\n", newNode)
 	return &newNode
 }
 
