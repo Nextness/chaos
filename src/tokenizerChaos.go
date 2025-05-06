@@ -29,6 +29,11 @@ const (
 	tokDo
 	tokIf
 	tokEndIf
+	tokProc
+	tokEndProc
+	tokOpenParen
+	tokCloseParen
+	tokVariadic
 	tokCount
 )
 
@@ -53,6 +58,11 @@ var mapping = TokenToStringMap{
 	tokIf:          "tokIf",
 	tokEndIf:       "tokEndIf",
 	tokEndOfFile:   "tokEndOfFile",
+	tokProc:        "tokProc",
+	tokEndProc:     "tokEndProc",
+	tokOpenParen:   "tokOpenParen",
+	tokCloseParen:  "tokCloseParen",
+	tokVariadic:    "tokVariadic",
 }
 
 func (tok TokenType) asString() string {
@@ -196,7 +206,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		cursor:    0,
 	}
 
-	singleTokens := []byte{'=', '+', ';', ',', '-', '<', '>'}
+	singleTokens := []byte{'=', '+', ';', ',', '-', '<', '>', '(', ')'}
 
 	for contentState.cursor < contentState.count {
 		// Single line comment
@@ -204,6 +214,21 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			for contentState.currentChar() != '\n' {
 				contentState.cursor++
 			}
+			continue
+		}
+
+		if contentState.currentChar() == '.' &&
+			contentState.peakChar(1) == '.' &&
+			contentState.peakChar(2) == '.' {
+			token := Token{}
+			token.column = contentState.column
+			token.line = contentState.line
+			token.value = "..."
+			token.tokType = tokVariadic
+			token.tokKind = kindNone
+			tokenizerState.data = append(tokenizerState.data, token)
+			contentState.column += 3
+			contentState.cursor += 3
 			continue
 		}
 
@@ -296,6 +321,12 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			} else if val == ">" {
 				token.value = val
 				token.tokType = tokGreaterThan
+			} else if val == "(" {
+				token.value = val
+				token.tokType = tokOpenParen
+			} else if val == ")" {
+				token.value = val
+				token.tokType = tokCloseParen
 			}
 			contentState.column++
 			contentState.cursor++
@@ -424,6 +455,12 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			} else if val == "endif" {
 				token.value = val
 				token.tokType = tokEndIf
+			} else if val == "proc" {
+				token.value = val
+				token.tokType = tokProc
+			} else if val == "endproc" {
+				token.value = val
+				token.tokType = tokEndProc
 			} else {
 				token.value = val
 				token.tokType = tokIdentifier

@@ -17,6 +17,21 @@ type LexerState struct {
 	cursor int
 }
 
+// TODO: Include fields to overload procedures
+// TODO: Include fields to generics in procedures
+type NodeProc struct {
+	name        string
+	argCount    int
+	args        []any
+	argsType    []any
+	argDefault  []any
+	retsCount   int
+	rets        []any
+	retsType    []string
+	retsDefault []any
+	procBody    []Node
+}
+
 type NodeCondition struct {
 	conditionCount int
 	conditions     []NodeBinOp
@@ -45,10 +60,36 @@ type NodeIdentifier struct {
 var _ Node = &NodeExitWith{}
 var _ Node = &NodeIdentifier{}
 var _ Node = &NodeBinOp{}
+var _ Node = &NodeProc{}
 
 func makePad(padSize int) string {
-	pad := strings.Repeat(" ", padSize)
-	return pad
+	return strings.Repeat(" ", padSize)
+}
+
+func (n *NodeProc) print(padSize int) {
+	pad := makePad(padSize)
+	fmt.Printf("%sNodeProc\n", pad)
+
+	fmt.Printf("%s├─➜ inputs: ", pad)
+	for idx, arg := range n.args {
+		fmt.Printf("%s(%d) %s ", pad, idx, arg.(Token).value)
+	}
+	fmt.Print("\n")
+	fmt.Printf("%s├─➜ types:  ", pad)
+	for idx, arg := range n.argsType {
+		fmt.Printf("%s(%d) %s ", pad, idx, arg.(Token).value)
+	}
+	fmt.Print("\n")
+	fmt.Printf("%s├─➜ returns: ", pad)
+	for idx, arg := range n.rets {
+		fmt.Printf("%s(%d) %s ", pad, idx, arg.(Token).value)
+	}
+	fmt.Print("\n")
+	fmt.Printf("%s└─➜ procBody: \n", pad)
+	for _, arg := range n.procBody {
+		arg.print(padSize+4)
+	}
+	fmt.Print("\n")
 }
 
 func (n *NodeCondition) print(padSize int) {
@@ -57,7 +98,7 @@ func (n *NodeCondition) print(padSize int) {
 	for _, binOp := range n.conditions {
 		binOp.print(padSize + 4)
 	}
-	var i int
+	var i int = 0
 	for i <= n.conditionCount {
 		for _, expr := range n.scope[i] {
 			expr.print(padSize + 4)
@@ -103,6 +144,101 @@ func (n *NodeIdentifier) print(padSize int) {
 		fmt.Printf("%s└─➜ Symbol: '%s (%s) = <NodeBinOp>'\n", pad, n.sym, n.tpe)
 		v.print(padSize + 4)
 	}
+}
+
+func lexChaosProc(ts *TokenizerState) *NodeProc {
+	newNode := NodeProc{
+		argCount:  0,
+		retsCount: 0,
+	}
+
+	ts.consume() // consume the 'proc'
+	if !ts.matchAt(0, tokIdentifier) {
+		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("proc someName(arg1 String) do ... endproc")
+		config.printAndExitLexerError(ts)
+	}
+
+	newNode.name = ts.current().value
+	ts.consume()
+	if !ts.matchAt(0, tokOpenParen) {
+		errMsg := fmt.Sprintf("Expected an '(' but found %s\n", ts.current().tokType.asString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("proc someName(arg1 String) do ... endproc")
+		config.printAndExitLexerError(ts)
+	}
+
+	ts.consume() // consume the '('
+
+	for ts.current().tokType != tokCloseParen {
+		if !ts.matchAt(0, tokIdentifier) {
+			panic("Expected identifier - handle errors correctly")
+		}
+		newNode.args = append(newNode.args, ts.consume())
+
+		if !ts.matchAt(0, tokVariadic, tokVarType) {
+			panic("Expected Type - handle errors correctly")
+		}
+
+		// TODO: Handle variadic types
+		if ts.matchAt(0, tokVariadic) && ts.matchAt(1, tokVarType) {
+			ts.consume()
+			newNode.argsType = append(newNode.argsType, ts.consume())
+		} else if ts.matchAt(0, tokVarType) {
+			newNode.argsType = append(newNode.argsType, ts.consume())
+		}
+
+		if ts.matchAt(0, tokComma) {
+			ts.consume()
+		}
+	}
+
+	ts.consume() // consume the ')'
+
+	// TODO: Handle parenthesis in return type
+	for ts.current().tokType != tokDo {
+		newNode.rets = append(newNode.rets, ts.consume())
+	}
+
+	ts.consume() // consume the 'do'
+
+	for ts.current().tokType != tokEndProc {
+		if ts.matchAt(0, tokLet) {
+			node := &NodeIdentifier{}
+			// TODO: better hanadle lexing errors
+			if node = lexChaosLet(ts); node == nil {
+				os.Exit(1)
+			}
+			newNode.procBody = append(newNode.procBody, node)
+			continue
+		}
+
+		fmt.Print("Reached here\n")
+		if ts.matchAt(0, tokIf) {
+			node := &NodeCondition{}
+			if node = lexChaosConditions(ts); node == nil {
+				os.Exit(1)
+			}
+			newNode.procBody = append(newNode.procBody, node)
+			continue
+		}
+
+		if ts.matchAt(0, tokExitWith) {
+			node := &NodeExitWith{}
+			if node = lexExitWithChaos(ts); node == nil {
+				os.Exit(1)
+			}
+			newNode.procBody = append(newNode.procBody, node)
+			continue
+		}
+		ts.consume()
+	}
+
+	ts.consume() // consume the 'endproc'
+
+	fmt.Printf("DEBUG: %v\n", newNode)
+	return &newNode
 }
 
 func lexChaosConditions(ts *TokenizerState) *NodeCondition {
@@ -340,6 +476,15 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 	for ts.cursor < ts.count {
 		if ts.matchAt(0, tokEndOfFile) {
 			break
+		}
+
+		if ts.matchAt(0, tokProc) {
+			node := &NodeProc{}
+			if node = lexChaosProc(ts); node == nil {
+				os.Exit(1)
+			}
+			lexerState.data = append(lexerState.data, node)
+			continue
 		}
 
 		if ts.matchAt(0, tokLet) {
