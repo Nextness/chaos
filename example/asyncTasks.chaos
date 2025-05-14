@@ -1,33 +1,45 @@
 // Copyright
 
-proc asyncTask(p proc) AsyncTask
+proc asyncTask with p proc returns AsyncTask executes
     
-endproc
+end proc
 
-proc getUserByUsername(username String, session Session) Async[User]! do
-    if username.len >= 4096 do return largeText! endif
+proc getUserByUsername
+    expects username String, session Session
+    returns (Async using User)!
+executes
+    if username.len >= 4096 executes return largeText! end if
     let getUserQuery := «SELECT username FROM user_database WHERE username={username}»
-    let user := performQuery(session, getUserQuery) orReturn userNotFound!
+    let user := run performQuery
+        with session, getUserQuery
     return user
-endproc
+end proc
 
-proc getUser(username String) User! do
-    proc task() User! do
-        let globalSession := getGlobalSession() orReturn noSessionAvailable!
-        let user := getUserByUsername(
-            globalSession, username, globalSession
-        ) orReturn userNotFound!
+proc getUser
+    expects username String
+    returns User!
+executes
+    proc task
+        returns User!
+    executes
+        let globalSession := run getGlobalSession
+            or return noSessionAvailable!
+        let user := run getUserByUsername
+            with username, globalSession
+            or return userNotFound!
         return user
-    endproc
+    end proc
 
-    let currentuser AsyncTask := asyncTask(task)
-    if let user := currentUser.await() catch do
-        ctx.?logger(Error, «Failed to get user {username}»)
+    let currentuser AsyncTask := run asyncTask
+        with task
+    if let user := run currentUser.await catch executes
+        run ctx.error.?logger
+            with «Failed to get user {username}»
         return err
-    endif
+    end if
 
     return user
-endproc
+end proc
 
 #module asyncTasks
 #import «core::tasks.chaos»

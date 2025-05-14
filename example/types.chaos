@@ -1,22 +1,23 @@
 // Numbers
-type Ints  alias I8 | I16 | I32 | I64 | I128 endtype
-type UInts alias U8 | U16 | U32 | U64 | U128 endtype
+type Ints  alias I8 | I16 | I32 | I64 | I128 end type
+type UInts alias U8 | U16 | U32 | U64 | U128 end type
 
-type Floats alias F16 | F32 | F64 | F128 endtype
+type Floats alias F16 | F32 | F64 | F128 end type
 
-type Complex    alias C64  | C128 endtype
-type Quaternion alias Q128 | Q256 endtype
+type Complex    alias C64  | C128 end type
+type Quaternion alias Q128 | Q256 end type
 
-type Natural   alias Ints    | UInts                        endtype
-type Real      alias Ints    | UInts | Floats               endtype
-type AnyNumber alias Natural | Real  | Complex | Quaternion endtype
+type Natural   alias Ints    | UInts                        end type
+type Real      alias Ints    | UInts | Floats               end type
+type AnyNumber alias Natural | Real  | Complex | Quaternion end type
 
-type Text alias Char | String endtype
+type Text alias Char | String end type
 
-type Vector2[T AnyNumber] struct
-    x T = undefined,
-    y T = undefined,
-endtype
+generic T AnyNumber for
+type Vector struct
+    x T? = undefined
+    y T? = undefined
+end type
 
 type Primitives alias
     I8   | I16   | I32 | I64  | I128 |
@@ -25,7 +26,7 @@ type Primitives alias
     C64  | C128  |
     Q128 | Q256  |
     Char | String
-endtype
+end type
 
 type TimeUnit enum U64
     NanoSeconds = 1_000_000_000.0,
@@ -34,14 +35,15 @@ type TimeUnit enum U64
     Seconds = 60.0,
     Minutes = 60.0,
     Hours = 24.0,
-endtype
+end type
 
 #assert(TimeUnit.NanoSeconds.value == TimeUnit[0].value)
 
-type Time[Litera[TimeUnit] Unit = Seconds] struct
-    date U64,
-    time F64,
-endtype
+generic Unit #TimeUnit = #Seconds for
+type Time struct
+    date U64
+    time F64
+end type
 
 #module types
 

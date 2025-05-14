@@ -1,20 +1,19 @@
 
 type Log scaffold
     // Expected Fields for logging
-    dateFormat String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»
-    output List[dynamic, Stream] = list(StdOut)
-    incldueOSName Bool = false
-    logLevel enumArray U64 = ...
+    dateFormat String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»,
+    output Array inserts Stream = new with StdOut end new,
+    incldueOSName Bool = false,
+    logLevel ?EnumArray inserts U64 = undefined
 
     // Expected Methods for logging
-    proc trace(self &Self, message ...String) do ... endproc
-    proc debug(self &Self, message ...String) do ... endproc
-    proc info(self &Self, message ...String) do ... endproc
-    proc warning(self &Self, message ...String) do ... endproc
-    proc error(self &Self, message ...String) do ... endproc
-    proc critical(self &Self, message ...String) do ... endproc
-    proc disaster(self &Self, message ...String) do ... endproc
-endtype
+    receiver *Self proc trace with message ...String returns Void end proc
+    receiver *Self proc debug with message ...String returns Void end proc
+    receiver *Self proc info with message ...String returns Void end proc
+    receiver *Self proc warning with message ...String returns Void end proc
+    receiver *Self proc error with message ...String returns Void end proc
+    receiver *Self proc critical with message ...String returns Void end proc
+end type
 
 type LoggerLevel enumArray U64
     trace,
@@ -24,14 +23,14 @@ type LoggerLevel enumArray U64
     error,
     critical,
     disabled,
-endtype
+end type
 
 type Log builds Logger struct
     dateFormat = default,
     output = default,
     includeOSName = default,
     logLevel LoggerLevel = .info,
-endtype
+end type
 
 #overload
 receiver using self *Logger proc trace(message ...String) do
@@ -40,7 +39,7 @@ receiver using self *Logger proc trace(message ...String) do
     else do
         #compiler(__optimize_out__)
     endif
-endproc
+end proc
 
 #overload
 receiver using self *Logger proc debug(message ...String) do

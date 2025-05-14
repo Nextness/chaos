@@ -1,52 +1,65 @@
 // Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
 // to use as example
 
-receiver dll &DoubleLinkedList inline proc length() U64 do
-    set dll.count.(U64*)
-endproc
+receiver dll &DoubleLinkedList for proc length returns U64 executes
+    return dll.count* as U64
+end proc
 
-inline proc head(dll &DoubleLinkedList) Node! do
-    if dll.head != null do set dll.head endif
+proc head expects dll &DoubleLinkedList returns Node! executes
+    if dll.head != null do return dll.head
+    return nullPointer!
+end proc
+
+proc tail expects dll &DoubleLinkedList returns Node! executes
+    if dll.tail != null do set dll.tail
     set nullPointer!
-endproc
+end proc
 
-inline proc tail(dll &DoubleLinkedList) Node! do
-    if dll.tail != null do set dll.tail endif
-    set nullPointer!
-endproc
-
-receiver dll &DoubleLinkedList proc print() do
+receiver dll &DoubleLinkedList for proc print executes
     let node &Node = dll.head
-    while i < dll.count : ++i do
+    while i < dll.count : ++i executes
         let pad = i * 2
-        io::print(«{pad:node.data}»)
+        run io::print with «{pad:node.data}»
         node = node.next
-    endwhile
-endproc
+    end while
+end proc
 
-type DoubleLinkedList[C num::Ints = U64, T] struct
-    count C        = 0
+generic C num::Ints = U64, T for type DoubleLinkedList struct
+    count C         = 0
     head  *?Node[T] = null
     tail  *?Node[T] = null
-endtype
+end type
 
-type Node[T] struct
+generic T for type Node struct
     data *T
     prev *?Node[T] = null
     next *?Node[T] = null
-endtype
+end type
 
-proc initNode[T](data *T) *Node[T]! do
-    type ND alias Node[T] endtype
+generic T for
+proc initNode expects data *T returns *Node[T] {
+    type ND alias = Node[T];
+    if let newNode = alloc(ND) catch err {
+        ctx.logger(Error, «Failed to allocate node - {err}»);
+        return outOfMemory!;
+    }
+    newNode.data = data;
+    return newNode;
+}
 
-    if let newNode *ND = alloc(ND) catch err do
-        ctx.?logger(Error, «Failed to allocate node - {err}»)
+generic T for proc initNode with data *T returns (*Node inserts T)! executes
+    type ND alias Node inserts T end type
+
+    if let newNode *ND = run alloc with ND catch err executes
+        run ctx.?logger with Error, «Failed to allocate node - {err}»
         return outOfMemory!
-    endif
+    end if
 
-    ctx.?logger(Trace, «Allocated memory for node: {newNode.address()}»)
-    return *newNode.{data=data}
-endproc
+    run ctx.?logger with Trace, «Allocated memory for node: {newNode.address()}»
+    newNode.data = data
+
+    return newNode
+end proc
 
 receiver dll *DoubleLinkedList proc pushHead[T](data *T) Void! do
     let newNode = initNode(data) orReturn nullPointer!

@@ -1,52 +1,67 @@
 // Trying real life code to validate syntax
 // from Tsoding: https://github.com/tsodin/bpe/blob/main/src/bpe.cg
 
-proc dumpTokens(filePath &String, tokens &Tokens) Void! do
-    writeEntireFile(filePath, tokens.items, tokens.count*sizeOf(tokens.items)) orReturn
-endproc
+proc dumpTokens
+    expects filePath &String, tokens &Tokens
+    returns Void!
+do
+    run writeEntireFile
+        with filePath, tokens.items, (tokens.count * run sizeOf with tokens.items)
+        or return
+end proc
 
-proc loadTokens(filePath &String, tokens &Tokens, tmpSb &StringBuilder) Void! do
-    tmpSb.count = 0;
-    readEntireFile(filePath, tmpSb) orReturn
-    if tmpSb.count % sizeOf(tokens.items) != 0 do return generic! endif
-
-    let itemsCount &U32 = tmpSb.items.(&Void)
-    while i < itemsCount : ++i do daAppend(tokens, items[i]) endwhile
-endproc
-
-proc loadPairs(filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U64) Void! do
+proc loadTokens
+    expects filePath &String, tokens &Tokens, tmpSb &StringBuilder
+    returns Void!
+do
     tmpSb.count = 0
-    readEntireFile(filePath, tmpSb) orReturn
+    run readEntireFile
+        with filePath, tmpSb or return
 
-    let data StringView = sbToSv(tmpSb)
+    if (tmpSb.count % run sizeOf with tokens.items) != 0 do
+        return generic!
+    end if
+
+    let itemsCount &U32 = tmpSb.items as &Void
+    while i < itemsCount : ++i do
+        run daAppend with tokens, items[i]
+    end while
+end proc
+
+proc loadPairs
+    expects filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U64
+    returns Void!
+do
+    tmpSb.count = 0
+    run readEntireFile
+        with filePath, tmpSb or return
+
+    let data StringView = run sbToSv with tmpSb
     let magicCount U64 := 4
-    let magicPrefix StringView := svFromCstr(«BPE»)
-    if svStartsWith(data, magicPrefix) do
-        if data.count < magicCount do return generic! endif
-    endif
+    let magicPrefix StringView := run svFromCstr with «BPE»
+    if run svStartsWith with data, magicPrefix do
+        if data.count < magicCount do return generic! end if
+    end if
 
-    version = assert data.data[3]
+    if let version = data.data[3] catch err executes
+        run logger with Error, «Invalid data»
+        return invalidData!
+    end if
     data.data += magicCount
     data.count -= magicCount
 
     if version == do
-        case 0 do
-            parsePairsV0(filePath, pairs, data) orReturn
-        endcase
-        case 1 do
-            parsePairsV1(filePath, pairs, data) orReturn
-        endcase
-        case default do
-            return generic!
-        endcase
-    endif
+        case 0       do run parsePairsV0 with filePath, pairs, data or return break case
+        case 1       do run parsePairsV1 with filePath, pairs, data or return break case
+        case default do return generic! break case
+    end if
 
-    let magicPrefixV0 StringView = svFromParts(«\0\0\0\0», 4)
-    if svStartsWith(data, magicPrefixV0) do
+    let magicPrefixV0 StringView = run svFromParts with «\0\0\0\0», 4
+    if run svStartsWith with data, magicPrefixV0 do
         version = 0
-        parsePairsV0(filePath, pairs, data) orReturn
-    endif
+        run parsePairsV0 with filePath, pairs, data or return
+    end if
 
     return generic!
-endproc
+end proc
 

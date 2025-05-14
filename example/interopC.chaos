@@ -1,7 +1,7 @@
 
 #extern(«libc.o», «printf»)
-proc print(fmt Cstr, args ...Cstr) Cvoid do ... endproc
+proc print with fmt Cstr, args ...Cstr returns Cvoid end proc
 
 #extern(«raylib.o», «windowShouldClose»)
-proc windowShouldClose(Cvoid) Cbool do ... endproc
+proc windowShouldClose with Cvoid returns Cbool end proc
 

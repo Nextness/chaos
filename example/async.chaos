@@ -2,74 +2,104 @@
 // doesn't work properly. Later needs to be recreated...
 
 type FutureHeader struct
-    conditionalVariable        CndT
-    mutex                      Mutex
-    isValid                    AtomicBool
-    isSet                      Bool
-    valueSize, inOffs, outOffs U64
-endtype
+    conditionalVariable        CndT,
+    mutex                      Mutex,
+    isValid                    AtomicBool,
+    isSet                      Bool,
+    valueSize, inOffs, outOffs U64,
+end type
 
-proc newFuture(wholeSize, valueSize, inOffs, outOffs U64) *FutureHeader! do
-    let future *FutureHeader = calloc(wholeSize) orReturn nullPointer!
-    if future.init(valueSize, inOffs, outOffs) catch err do
-        print(«Error initializing future - reason: {err}»)
-        return genericErrorFuture!
-    endif
-    return future
-endproc
-
-receiver fh *FutureHeader proc await(timeout I32[Microseconds]) Void! do
-    mutex(fh) orReturn genericFutureError!
-    defer mutexUnlock(fh)
-
-    if fh.isSet do return null endif
-    if timeout < 0 do return timeout! endif
-
-    start, end Timespec = ...
-    timespecGet(*start, timeUtc)
-    end.tvSec = start.tvSEC + (timeout / 1_000)
-    end.nSec = (timeout % 1_000) & 1_000_000
-
-    if let result = cndTimedWait(fh.conditionalVariable, end) catch err do
-        case threadTimedout! do return timeout! endcase
-        case default do return genericFutureError! endcase
-    endif
-endproc
-
-receiver fh *FutureHeader proc
-    get(timeout I32[Microseconds], destioation &Void, destinationSize, check U64) Void!
+proc newFuture
+    expects wholeSize, valueSize, inOffs, outOffs U64
+    returns *FutureHeader!
 do
-    if !fh.isValid return nullPointer! endif
-    if destinationSize != fh.valueSize do return destinationSizeNotMatched! endif
-    await(fh, timeout) orReturn
+    let future *FutureHeader = call calloc with wholeSize or return nullPointer!
+    if call futute.init
+        with valueSize, inOffs, outOffs
+    catch err do
+        call print
+            with «Error initializing future - reason: {err}»
+        return genericErrorFuture!
+    end if
+    return future
+end proc
 
-    let &Void source = fh.(&U8) + fh.outOffs.(&Void)
-    memcpy(destination, source, fh.valueSize)
-endproc
+receiver fh *FutureHeader
+proc await
+    expects timeout I32 inserts Microseconds
+    returns Void!
+do
+    call mutex
+        with fg
+        or return genericFutureError!
+    defer call mutexUnlock
+        with fh
 
-type FutureOf[T] struct
+    if fh.isSet do return null end if
+    if timeout < 0 do return timeout! end if
+
+    start, end Timespec = undefined, undefined
+    call timespceGet
+        with *start, timeUtc
+    end.tvSec = start.tvSEC + (timeout / 1_000)
+    end.tSec = (timeout % 1_000) & 1_000_000
+
+    if let result = candTimedWait
+        with fh.confitionalVariable, end
+    catch err do
+        case threadTimedout! do return timeout! end case
+        default do return genericFutureError! end case
+    end if
+end proc
+
+
+receiver fh *FutureHeader
+proc get
+    expects timeout I32 inserts Microseconds, destination *Void, destinationSize, check U64
+    returns Void!
+do
+    if not fh.isValid return nullPointer! end if
+    if destinationSize != fh.valueSize do return destinationSizeNotMatched end if
+    call await
+        with fh, timeout or return
+
+    let source *Void = ((fh as *U8) + fh.outOffs) as *Void
+    call memcpy
+        with destination, source, fh.valueSize
+end proc
+
+generic T in
+type FutureOf struct
     header            FutureHeader
     inValue, outValue T
-endtype
+end type
 
 #scope(«file»);
 
-receiver (fh *FutureHeader) proc init(valueSize, inOffs, outOffs U64) do
-    cndInit(fh.conditionalVariable*)
-    mutexInit(fh.mutex*, mutexPlain)
+receiver fh *FutureHeader
+proc init
+    expects valueSize, inOffs, outOffs U64
+do
+    call cndInit
+        with fh.conditionalVariable*
+    call mutexInit
+        with fh.mutex*, mutexPlain
     fh.isValid = true
     fh.isSet = false
     fh.valueSize = valueSize
     fh.inOffs = inOffs
     fh.outOffs = outOffs
-endproc
+end proc
 
-receiver (fh *FutureHeader) proc destroy() do
+receiver fh *FutureHeader
+proc destroy do
     fh.isValid* = false
-    cndDestroy(fh.conditionalVariable*)
-    mutexDestroy(fh.mutex*)
-endproc
+    call cndDestroy
+        with fh.conditionalVariable*
+    call mutexDestroy
+        with fh.mutex*
+end proc
 
-#module future;
-#import «core::fmt::io»;
+#module future
+#import «core::fmt::io»
 

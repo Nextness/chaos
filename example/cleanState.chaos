@@ -1,0 +1,89 @@
+
+generic T for
+type Context scaffold
+    logger Logger?,
+    calloc generic T for proc with num::Ints returns *T,
+    alloc  generic T for proc with num::Ints returns *T,
+    free   generic T for proc with *T returns Void,
+end type
+
+generic K for
+type Custom struct
+    value   String,
+    another U64,
+    key     K,
+end type
+
+generic K for
+proc someOperation
+    expects value String, another U64, key K
+    returns *Custom using Bool
+executes
+    let result :=
+        new Custom using K with
+            value = «string literal»,
+            another = 10,
+            key = true,
+        end new
+    run print
+        with «Got the result: {result.value}\n»
+    return *result
+end proc
+
+generic T num::Ints = U8 for
+type Version struct
+    major T?       = undefined,
+    minor T?       = undefined,
+    fix   T?       = undefined,
+    phase *String? = undefined,
+end type
+
+generic T for
+receiver exposes version *Version using T for
+proc toString
+    returns String
+executes
+    let versionString = «{major}.{minor}.{fix}»
+    if phase != undefined executes versionString = «{versionString}-{phase}»
+    return versionString
+end proc
+
+proc testMapCreateAccess returns Void! executes
+    let someMap = new Map using 4, String, String with
+        [«someKey»] = «some value»,
+        [«anotherKey»] = «another value»,
+    end new
+
+    let secondKey := assert someMap[«anotherKey»]
+    if let firstKey = someMap[«unavailableKey»] catch err executes
+        exit keyNotFound!
+    end if
+end proc
+
+proc newCounter
+    returns (*U64, proc returns U64)!
+    comptime currentOS #OS := #run getCurrentOS
+executes
+    if currentOS == .linux executes
+        let someVariable *U64 = run mem::allocAndAssign
+            using U64 with 0
+            or return nullPointer!
+        proc counter returns U64 executes
+            return ++(someVariable*)
+        end proc
+        return someVariable, counter
+    elif currentOS == .windows executes
+        // TODO: not implemented yet
+    end if
+end proc
+
+let ptrResult, func := run newCounter at .windows
+
+proc switch with something SomeEnum returns Void executes
+    if something ==
+        case .a run print with «{A}» break case
+        case .b run print with «Something else {B}» break case
+        case .c run print with «String {D}s nuutz» break case
+    end if
+end proc
+

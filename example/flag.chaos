@@ -5,7 +5,7 @@ type FlagType enumArray
     uint64,
     size,
     str,
-endtype
+end type
 
 #assert FlagType.length == 4 && «Exhaustive FlagValue definition»
 
@@ -14,7 +14,7 @@ type FlagValue union
     asUint64 U64,
     asBool   Bool,
     asSize   Size,
-endtype
+end type
 
 type Flag struct
     flagType FlagType,
@@ -22,7 +22,7 @@ type Flag struct
     desc     &String,
     val      FlagValue,
     def      FlagValue
-endtype
+end type
 
 #let flagsCap := 256
 type FlagContext struct
@@ -32,22 +32,22 @@ type FlagContext struct
     programName &String
     restArgc    I64,
     restArgv    Array[-, String]
-endtype
+end type
 
 static let flagGlobalContext FlagContext
 
-proc flagNew(flagType FlagType, name &String, desc &String) Flag do
-    ctx *FlagContext = *flagGlobalContext
+proc flaNew
+    expects flagType FlagType, name &String, des &String
+    returns Flag
+do
+    ctx *FlagContext= *FlagGlobalContext
     #assert ctx.flagsCount < flagCap && «Expected maximum of {flagCap} flags, but found {ctx.flagsCount}»
-
-    flag *Flag = ctx.flags[ctx.flagsCount++] orReturn outOfBounds!
-    memset(flag, 0, sizeOf(flags*)) orReturn nullPointer!
-
+    let flag *Flag = ctx.flargs[ctx.flagsCount++] or return outOfBounds!
+    call memset with flag, 0, (call sizeOf with flags*) or return nullPointer!
     flag.name = name
     flag.desc = desc
-
     return flag
-endproc
+end proc
 
 proc flagName(val *String | U64 | Bool | Size) String do
     

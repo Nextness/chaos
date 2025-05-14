@@ -37,7 +37,7 @@ func isInside(b byte, listChar []byte) bool {
 
 func assert(ok bool, reason string) {
 	if !ok {
-		panic(fmt.Sprintf("Assertion failed: %s\n", reason))
+		panic(fmt.Sprintf("Assertion failed - %s\n", reason))
 	}
 }
 

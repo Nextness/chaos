@@ -1,10 +1,12 @@
-proc main() do
-    let error AnyError := make nullPointer! with
-        id := «some_id», reason := «reason for the error»
-    endmake
-    run printfn(«The error is {error.?reason}»)
+proc main
+    expects argc I64, argv ...String
+    returns Void
+executes
+    let error AnyError := nullPointer!
+    run printfn
+        with «The error is {error}»
     return
-endproc
+end proc
 
 #module errors
 #import «core::fmt::io.chaos»

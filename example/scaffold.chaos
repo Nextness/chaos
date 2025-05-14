@@ -1,42 +1,45 @@
+generic T in
 type SomeInterface scaffold
-    mandatoryFieldOne String
-    mandatoryFieldTwo Bool
-    proc doSomeOperation[T](&Self)
-endtype
+    mandatoryFieldOne String,
+    mandatoryFieldTwo Bool,
+    generic T for receiver &Self for proc doSomeOperation end proc,
+end type
 
-type Example builds SomeInterface struct
+type Example struct
     mandatoryFieldOne String
     mandatoryFieldTwo Bool = false
     anotherField      Bool
-endtype
+end type
 
-receiver self *Example proc doSomeOperation() do
+generic T for
+receiver self *Example proc doSomeOperation executes
     example.anotherFieldOne = true
-endproc
+end proc
 
-type SomeInterface builds AnotherExample struct
+type AnotherExample struct
     mandatoryFieldOne String = «»
     mandatoryFieldTwo Bool = false
-endtype
+end type
 
-receiver self *AnotherExample proc doSomeOperation() do
+generic T for
+receiver self *AnotherExample proc doSomeOperation executes
     anotherExample.mandatoryFieldOne = «»
     anotherExample.mandatoryFieldTwo = false
-endproc
+end proc
 
-proc main() do
+proc main do
     // TODO: reconsider how to handle scaffolds - specifically the '<type> build <identifier>'
-    let newExample *SomeInferface = make *Example with
+    let newExample *SomeInferface = new *Example with
         mandatoryFieldOne = «Hello, world»,
         mandatoryFieldTwo = false
-    endmake
+    end new
 
-    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»)
-    newExample*.doSomeOperation()
-    printfn(«{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»)
+    run printfn with «{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»
+    run newExample*.doSomeOperation
+    run printfn «{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»
 
     return
-endproc
+end proc
 
 #module exampleScaffold
 #import «core::fmt::io.chaos»

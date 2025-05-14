@@ -25,11 +25,12 @@ const (
 	tokComma
 	tokLessThan
 	tokGreaterThan
-	tokDo
+	tokExecutes
 	tokIf
-	tokEndIf
 	tokProc
-	tokEndProc
+	tokReturns
+	tokExpects
+	tokEnd
 	tokOpenParen
 	tokCloseParen
 	tokVariadic
@@ -37,6 +38,59 @@ const (
 )
 
 type TokenToStringMap map[TokenType]string
+
+func (tokTyp TokenType) toString() string {
+	if tokTyp == tokGlobal {
+		return "tokGlobal"
+	} else if tokTyp == tokLet {
+		return "tokLet"
+	} else if tokTyp == tokAssignment {
+		return "tokAssignment"
+	} else if tokTyp == tokPlus {
+		return "tokPlus"
+	} else if tokTyp == tokMinus {
+		return "tokMinus"
+	} else if tokTyp == tokVarType {
+		return "tokVarType"
+	} else if tokTyp == tokIdentifier {
+		return "tokIdentifier"
+	} else if tokTyp == tokNumber {
+		return "tokNumber"
+	} else if tokTyp == tokString {
+		return "tokString"
+	} else if tokTyp == tokNewline {
+		return "tokNewline"
+	} else if tokTyp == tokExitWith {
+		return "tokExitWith"
+	} else if tokTyp == tokComma {
+		return "tokComma"
+	} else if tokTyp == tokLessThan {
+		return "tokLessThan"
+	} else if tokTyp == tokGreaterThan {
+		return "tokGreaterThan"
+	} else if tokTyp == tokExecutes {
+		return "tokExecutes"
+	} else if tokTyp == tokIf {
+		return "tokIf"
+	} else if tokTyp == tokEndOfFile {
+		return "tokEndOfFile"
+	} else if tokTyp == tokProc {
+		return "tokProc"
+	} else if tokTyp == tokReturns {
+		return "tokReturns"
+	} else if tokTyp == tokExpects {
+		return "tokExpects"
+	} else if tokTyp == tokEnd {
+		return "tokEnd"
+	} else if tokTyp == tokOpenParen {
+		return "tokOpenParen"
+	} else if tokTyp == tokCloseParen {
+		return "tokCloseParen"
+	} else if tokTyp == tokVariadic {
+		return "tokVariadic"
+	}
+	panic(fmt.Sprintf("Unknown keyword '%d'", tokTyp))
+}
 
 var mapping = TokenToStringMap{
 	tokGlobal:      "tokGlobal",
@@ -53,12 +107,13 @@ var mapping = TokenToStringMap{
 	tokComma:       "tokComma",
 	tokLessThan:    "tokLessThan",
 	tokGreaterThan: "tokGreaterThan",
-	tokDo:          "tokDo",
+	tokExecutes:    "tokExecutes",
 	tokIf:          "tokIf",
-	tokEndIf:       "tokEndIf",
 	tokEndOfFile:   "tokEndOfFile",
 	tokProc:        "tokProc",
-	tokEndProc:     "tokEndProc",
+	tokReturns:     "tokReturns",
+	tokExpects:     "tokExpects",
+	tokEnd:         "tokEnd",
 	tokOpenParen:   "tokOpenParen",
 	tokCloseParen:  "tokCloseParen",
 	tokVariadic:    "tokVariadic",
@@ -231,23 +286,23 @@ func (cs *ContentState) handleMultiLineComments() bool {
 	return true
 }
 
-func (cs *ContentState) handleNewline() (bool, *Token) {
+func (cs *ContentState) handleNewline() bool {
 	if cs.currentChar() != '\n' {
-		return false, nil
+		return false
 	}
 
-	token := Token{
-		value:   "newline",
-		tokType: tokNewline,
-		line:    cs.line,
-		column:  cs.column,
-		tokKind: kindNone,
-	}
+	// token := Token{
+	// 	value:   "newline",
+	// 	tokType: tokNewline,
+	// 	line:    cs.line,
+	// 	column:  cs.column,
+	// 	tokKind: kindNone,
+	// }
 
 	cs.line++
 	cs.cursor++
 	cs.column = 0
-	return true, &token
+	return true
 }
 
 func (cs *ContentState) handleEmptyCharacters() bool {
@@ -396,11 +451,12 @@ func (cs *ContentState) handleKeywordsAndIdentifiers() (bool, *Token) {
 		"global":   {value: "global", tokType: tokGlobal},
 		"let":      {value: "let", tokType: tokLet},
 		"exitWith": {value: "exitWith", tokType: tokExitWith},
-		"do":       {value: "do", tokType: tokDo},
+		"executes": {value: "executes", tokType: tokExecutes},
 		"if":       {value: "if", tokType: tokIf},
-		"endif":    {value: "endif", tokType: tokEndIf},
 		"proc":     {value: "proc", tokType: tokProc},
-		"endproc":  {value: "endproc", tokType: tokEndProc},
+		"end":      {value: "end", tokType: tokEnd},
+		"returns":  {value: "returns", tokType: tokReturns},
+		"expects":  {value: "expects", tokType: tokExpects},
 	}
 
 	keyword, ok := keyworkMap[value]
@@ -465,8 +521,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
-		if ok, token := cs.handleNewline(); ok {
-			ts.data = append(ts.data, *token)
+		if cs.handleNewline() {
 			continue
 		}
 
@@ -546,6 +601,10 @@ func (tokens TokenizerState) print() {
 }
 
 func (ts *TokenizerState) current() Token {
+	assert(
+		ts.cursor < ts.count,
+		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", ts.cursor, ts.count),
+	)
 	return ts.data[ts.cursor]
 }
 

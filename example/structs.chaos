@@ -1,19 +1,20 @@
 type HelloWorld struct
     hello String
     world String = «world!»
-endtype
+end type
 
-type AnotherHello[T] struct
+generic T in
+type AnotherHello struct
     another T
     hello   String = «world!»
-endtype
+end type
 
-proc main() do
-    let value = HelloWorld{«Hello,»}
-    printfn(«{value.hello} {value.world}»)
+proc main do
+    let value = new HelloWorld with «Hello,» end new
+    call printfn with «{value.hello} {value.world}»
     return
-endproc
+end proc
 
-module exampleStructs
-import «core::fmt:io.chaos»
+#module exampleStructs
+#import «core::fmt:io.chaos»
 

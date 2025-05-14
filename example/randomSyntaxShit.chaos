@@ -4,31 +4,28 @@
 
 type Context scaffold
     logger ?Logger,
-    calloc proc[T](num::Ints) *T,
-    alloc  proc[T](num::Ints) *T,
-    free   proc[T](&T) Void,
-endtype
+    calloc generic T in proc with num::Ints returns *T end proc,
+    alloc  generic T in proc with num::Ints returns *T end proc,
+    free   generic T in proc with &T returns Void end proc,
+end type
 
 type Contex builds Ctx struct
     logger = default,
-    alloc = proc[T](size U64) *T do
-        
-    endproc,
-    calloc = default,
-    free = default,
-endtype
+    alloc = generic T in proc with size U64 returns *T do
+    end proc,
+end type
 
 let ctx Ctx
 
-type AnotherInt alias I32 endtype
-type SomethingNew distinct I32 endtype
+type AnotherInt alias I32 end type
+type SomethingNew distinct I32 end type
 
 type SomeEnum enum U64
     a := (0 << iota),
     b,
     d,
     e,
-endtype
+end type
 
 /** -- Explanation --
  *  Perform Sha3 using '<nameOfEnum>.<value>' and get the first 64 bits starting fromthe begining.
@@ -39,128 +36,169 @@ type AnotherEnum enumUnique
     somethingInHere,
     anotherThingInHere,
     yetAnotherThingIsHere,
-endtype
+end type
 
 let someChar Char := "a
 
-proc attemptingSwitch(something SomeEnum) Void do
+proc attemptingSwitch with something SomeEnum returns Void do
     #partial if something == do
-        case a do print(«{A}»)                endcase
-        case b do print(«Something else {B}») endcase
-        case d do print(«String {D}s nuutz»)  endcase
-    endif
-endproc
+        case a do call print with «{A}» end case
+        case b do call print with «Something else {B}» end case
+        case c do call print with «String {D}s nuutz» end case
+    end if
+end proc
 
-type Version[T num::Ints = U8] struct
-    major T        = undefined,
-    minor T        = undefined,
-    fix   T        = undefined,
+generic T num::Ints = U8 in type Version struct
+    major ?T       = undefined,
+    minor ?T       = undefined,
+    fix   ?T       = undefined,
     phase *?String = null,
-endtype
+end type
 
-proc toString[T](using version &Version[T]) String do
+generic T in proc toString with using version &Version inserts T returns String do
     let versionString = «{major}.{minor}.{fix}»
-    if phase != null do versionString = «{versionString}-{phase}» endif
+    if phase != null do versionString = «{versionString}-{phase}» end if
     return versionString
-endproc
+end proc
 
-type JsonResponse[T Primitive] struct
-    statusCode U32 #tag(«json:status_code») = undefined,
-    content    T   #tag(«json:content»)     = undefined,
-endtype
+generic T Primitive in type JsonResponse struct
+    #tag(«json:status_code») statusCode U32 = undefined,
+    #tag(«json:content»)     content    T        = undefined,
+end type
 
 type SomeStruct struct
     username String,
     password String #redacted,
-endtype
+end type
 
-let someStruct = &SomeStruct {
+let someStruct = new &SomeStruct with
     username := «username»,
-    password := getEnvVar(«ENV_VAR_NAME») orSet «none»,
-}
+    password := getEnvVar(«ENV_VAR_NAME») or set «none»,
+end new
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
-proc main() U64 do
-    if let window Window = initializeWindow(100, 100, «Window») catch err do
-        printfn(«Something went wrong in here - reason: {error.reason()}»)
+proc main returns U64 do
+    if let window Window = call initializeWindow with 100, 100, «Window» catch err do
+        call printfn with «Something went wrong in here - reason: {error.reason()}»
         return 1
-    endif
+    end if
 
-    let window Window = initializeWindow(100, 100, «AnotherWindow») orExitWith 1
-endproc
+    let window Window = call initializeWindow with 100, 100, «AnotherWindow» or exitWith 1
+end proc
 
-proc testListCreateAccess() Void! do
-    let someList = make List[String] with «Hello», «World» endmake
+proc testListCreateAcces returns Void! do
+    let someList = new Array inserts String with «Hello», «World» end new
     if let firstString String = someList[5] catch err do
         exitWith outOfBounds!, «Accessing element out of bounds»
-    endif
-endproc
+    end if
+end proc
 
-proc testMapCreateAccess() Void! do
-    let someMap = Map[4, String, String] {
+proc testMapCreateAcces returns Void! do
+    let someMap = new Map inserts 4, String, String with
         [«someKey»] = «some value»,
         [«anotherKey»] = «another value»,
-    }
+    end new
 
-    let secondKey := assert someMap[«anotherKey»]
+    if secondKey := assert someMap[«anotherKey»]
     if let firstKey = someMap[«unavailableKey»] catch err do
-        exitWith noKeyFound!
+        exitWith keyNotFound!
+    end if
+end proc
+
+type #OS enumUnique
+    linux,
+    windows,
+end type
+
+proc newCounter
+    returns (*U64, proc returns U64)!
+    comptime currentOS #OS := #call getCurrentOS
+do
+    // TODO: fix highlight in #if
+    if currentOS == .linux do
+        let someVariable *U64 = call mem::allocAndAssign with U64, 0 or return nullPointer!
+        proc counter returns U64 do
+            return ++(someVariable*)
+        end proc
+        return someVariable, counter
+    elif currentOS == .windows do
+        // TODO: not implemented yet
     endif
+end proc
+
+let ptrResult, func := call newCounter at .windows
+
+proc freeCounter with value *Void do
+    call ctx.free with value
+    call ctx.memset with value, 0
 endproc
 
-proc newCounter() (*U64, proc U64)! do
-    let someVariable *U64 = mem::allocAndAssign(U64, 0) orReturn nullPointer!
-    proc counter() U64 do
-        return ++(someVariable*)
-    endproc
-    return someVariable, counter
-endproc
+type (SomeFunc inserts T) alias (generic T in proc with ... returns T!) end type
 
-proc freeCounter(value *Void) do
-    ctx.free(value)
-    ctx.memset(value, 0)
-endproc
-
-type SomeFunc[T] alias
-    proc[T](...) T! do ... endproc
-endtype
-
-proc someFunc[T](someProc SomeFunc[T], <args>) T! do
-    if let result T = someProc[T](<args>) catch err do
+generic T in
+proc someFunction
+    with someProc SomeFunc inserts T, <args>
+    returns T!
+do
+    if let result T = call someProc inserts T with <args> catch err do
         return err
-    endif
-endproc
-let result Bool = someFunc[Bool](funcWithInput, <10, «somethingNew», false>) orSet true
+    end if
+    return result
+end proc
+let result Bool = call someFunction
+    inserts Bool
+    with funcWithInput, <10, «somethingNew», false>
+    or return true
 
-inline proc ResultReturns(#noArguments) do
+if something do call theOperation end if
+
+proc ResultReturns with #noArguments do
     if T builds do
-        case Iterable do result Bool = false endcase
-        case Incrementable do result I64 = 0 endcase
-    endif
-endproc
+    case Iterable do result Bool = false end case
+    case Incrementable do result I64 = 0 end case
+    end if
+end proc
 
-proc ResultReturns anotherTest[(Iterable | Incrementable) builds T](T input, String value) do
+generic T builds Iterable | Incrementable in
+proc anotherTest with input T, value String returns ResultReturns do
     ...
     return result
-endproc
+end proc
 
-proc something(Array[T] something) do
-    #if RunTimeCheck do ... endif
-endproc
+proc loopWithLabel return Bool! executes
+    while x > 10 : ++x label loop executes
+        while y > 10 : ++y executes
+            if let something = run operation; catch something executes
+                run ctx.logger with Error, «The operation failed - reason: {something}»;
+                break loop;
+            end if
+        end while
+        return something;
+    end while
+    return operationFailed!;
+end proc
 
-proc loopWithLabel() Bool! do
-    while x > 10 |++x| label someLoop do
-        while y > 10 |++y| do
-            if let something = operation() catch err do
-                ctx.logger(Error, «The operation failed - reason: {err}»)
+proc loopWithLabel returns Bool! do
+    while x > 10 : ++x label someLoop do
+        while y > 10 : ++y do
+            if let something = call operation catch err do
+                call ctx.logger with Error, «The operation failed - reason: {err}»
                 break someLoop
-            endif
-        endwhile
+            end if
+        end while
         return something
-    endwhile
-    return failedOperation!
-endproc
+    end while
+    return operationFailed!
+end proc
+
+proc coroutineInChaosExample with something String returns Bool do
+
+end proc
+
+if let result := async run coroutineInChaosExample with «something» catch err do
+    // failed for some reason
+end if
 
 #scope(«file»)
 

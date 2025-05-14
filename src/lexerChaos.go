@@ -22,10 +22,11 @@ type LexerState struct {
 type NodeProc struct {
 	name        string
 	argCount    int
+	argTypeCount int
+	retsCount   int
 	args        []any
 	argsType    []any
 	argDefault  []any
-	retsCount   int
 	rets        []any
 	retsType    []string
 	retsDefault []any
@@ -70,24 +71,24 @@ func (n *NodeProc) print(padSize int) {
 	pad := makePad(padSize)
 	fmt.Printf("%sNodeProc\n", pad)
 
-	fmt.Printf("%s├─➜ inputs: ", pad)
+	fmt.Printf("%s├─➜ %d inputs: ", pad, n.argCount)
 	for idx, arg := range n.args {
-		fmt.Printf("%s(%d) %s ", pad, idx, arg.(Token).value)
+		fmt.Printf("%s[%d] %s ", pad, idx, arg.(Token).value)
 	}
 	fmt.Print("\n")
-	fmt.Printf("%s├─➜ types:  ", pad)
+	fmt.Printf("%s├─➜ %d types:  ", pad, n.argTypeCount)
 	for idx, arg := range n.argsType {
-		fmt.Printf("%s(%d) %s ", pad, idx, arg.(Token).value)
+		fmt.Printf("%s[%d] %s ", pad, idx, arg.(Token).value)
 	}
 	fmt.Print("\n")
-	fmt.Printf("%s├─➜ returns: ", pad)
+	fmt.Printf("%s├─➜ %d returns: ", pad, n.retsCount)
 	for idx, arg := range n.rets {
-		fmt.Printf("%s(%d) %s ", pad, idx, arg.(Token).value)
+		fmt.Printf("%s[%d] %s ", pad, idx, arg.(Token).value)
 	}
 	fmt.Print("\n")
 	fmt.Printf("%s└─➜ procBody: \n", pad)
 	for _, arg := range n.procBody {
-		arg.print(padSize+4)
+		arg.print(padSize + 4)
 	}
 	fmt.Print("\n")
 }
@@ -156,22 +157,22 @@ func lexChaosProc(ts *TokenizerState) *NodeProc {
 	if !ts.matchAt(0, tokIdentifier) {
 		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.current().tokType.asString())
 		config := newLexerErroConfig(errMsg)
-		config.newExample("proc someName(arg1 String) do ... endproc")
+		config.newExample("proc someName with arg1 String returns Void executes ... endproc")
 		config.printAndExitLexerError(ts)
 	}
 
-	newNode.name = ts.current().value
-	ts.consume()
-	if !ts.matchAt(0, tokOpenParen) {
+	newNode.name = ts.consume().value
+
+	if !ts.matchAt(0, tokExpects) {
 		errMsg := fmt.Sprintf("Expected an '(' but found %s\n", ts.current().tokType.asString())
 		config := newLexerErroConfig(errMsg)
-		config.newExample("proc someName(arg1 String) do ... endproc")
+		config.newExample("proc someName with arg1 String returns Void executes ... endproc")
 		config.printAndExitLexerError(ts)
 	}
 
-	ts.consume() // consume the '('
+	ts.consume() // consume the 'expects'
 
-	for ts.current().tokType != tokCloseParen {
+	for ts.current().tokType != tokReturns {
 		if !ts.matchAt(0, tokIdentifier) {
 			panic("Expected identifier - handle errors correctly")
 		}
@@ -193,17 +194,20 @@ func lexChaosProc(ts *TokenizerState) *NodeProc {
 			ts.consume()
 		}
 	}
+	newNode.argCount = len(newNode.args)
+	newNode.argTypeCount = len(newNode.argsType)
 
-	ts.consume() // consume the ')'
+	ts.consume() // consume the 'returns'
 
 	// TODO: Handle parenthesis in return type
-	for ts.current().tokType != tokDo {
+	for ts.current().tokType != tokExecutes {
 		newNode.rets = append(newNode.rets, ts.consume())
 	}
+	newNode.retsCount = len(newNode.rets)
 
-	ts.consume() // consume the 'do'
+	ts.consume() // consume the 'executes'
 
-	for ts.current().tokType != tokEndProc {
+	for ts.current().tokType != tokEnd {
 		if ts.matchAt(0, tokLet) {
 			node := &NodeIdentifier{}
 			// TODO: better hanadle lexing errors
@@ -234,7 +238,8 @@ func lexChaosProc(ts *TokenizerState) *NodeProc {
 		ts.consume()
 	}
 
-	ts.consume() // consume the 'endproc'
+	ts.consume() // consume the 'end'
+	ts.consume() // consume the 'proc'
 
 	return &newNode
 }
@@ -273,14 +278,14 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 		newNode.conditionCount++
 	}
 
-	if !ts.matchAt(0, tokDo) {
-		errMsg := fmt.Sprintf("Expected 'do' but found %s\n", ts.current().tokType.asString())
+	if !ts.matchAt(0, tokExecutes) {
+		errMsg := fmt.Sprintf("Expected 'executes' but found %s\n", ts.current().tokType.asString())
 		config := newLexerErroConfig(errMsg)
 		config.newExample("if 1 < 2 do ... endif")
 		config.printAndExitLexerError(ts)
 	}
 
-	ts.consume(2) // consume the 'do' and 'newline'
+	ts.consume() // consume the 'executes'
 
 	if ts.matchAt(0, tokLet) {
 		node := &NodeIdentifier{}
@@ -299,13 +304,14 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
 	}
 
-	if !ts.matchAt(0, tokEndIf) {
-		errMsg := fmt.Sprintf("Expected 'endif' but found %s\n", ts.current().tokType.asString())
+	if !ts.matchAt(0, tokEnd) && !ts.matchAt(1, tokIf) {
+		errMsg := fmt.Sprintf("Expected 'end if' but found %s\n", ts.current().tokType.asString())
 		config := newLexerErroConfig(errMsg)
-		config.newExample("if 1 < 2 do ... endif")
+		config.newExample("if 1 < 2 executes ... end if")
 		config.printAndExitLexerError(ts)
 	}
-	ts.consume() // consume the 'endif'
+	ts.consume() // consume the 'end'
+	ts.consume() // consume the 'if'
 
 	return &newNode
 }
@@ -401,14 +407,7 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 			}
 		}
 	}
-	if !ts.matchAt(0, tokNewline) {
-		errMsg := fmt.Sprintf("Unexpected token found %s\n", ts.current().tokType.asString())
-		config := newLexerErroConfig(errMsg)
-		config.newExample("let something U64")
-		config.newExample("let something U64 = 1")
-		config.printAndExitLexerError(ts)
-	}
-	ts.consume() // consume the 'newline'
+
 	return &newNode
 }
 
@@ -463,10 +462,11 @@ func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
 		}
 	}
 
-	ts.consume() // consume the 'newline'
 	return &newNode
 }
 
+// TODO: better handle how 'end <block>' is parsed in the lexer
+// since we are always doing the same operation once a block is closed
 func lexerChaos(ts *TokenizerState) *LexerState {
 	assert(ts.cursor == 0, "Cursor is not 0")
 	lexerState := LexerState{data: []Node{}, count: 0, cursor: 0}
