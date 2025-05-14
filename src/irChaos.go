@@ -138,7 +138,7 @@ func irChaos(ls *LexerState) *IrState {
 			}
 			ls.cursor++
 			continue
-		case *NodeExitWith:
+		case *NodeExit:
 			// TODO: Include this as an intrisict and not as part of calling exit
 			if _, ok := is.details.procs["exit"]; !ok {
 				is.details.procs["exit"] = "exit :=\n" +

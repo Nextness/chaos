@@ -21,7 +21,7 @@ const (
 	tokString
 	tokNewline
 	tokEndOfFile
-	tokExitWith
+	tokExit
 	tokComma
 	tokLessThan
 	tokGreaterThan
@@ -60,8 +60,8 @@ func (tokTyp TokenType) toString() string {
 		return "tokString"
 	} else if tokTyp == tokNewline {
 		return "tokNewline"
-	} else if tokTyp == tokExitWith {
-		return "tokExitWith"
+	} else if tokTyp == tokExit {
+		return "tokExit"
 	} else if tokTyp == tokComma {
 		return "tokComma"
 	} else if tokTyp == tokLessThan {
@@ -103,7 +103,7 @@ var mapping = TokenToStringMap{
 	tokNumber:      "tokNumber",
 	tokString:      "tokString",
 	tokNewline:     "tokNewline",
-	tokExitWith:    "tokExitWith",
+	tokExit:        "tokExit",
 	tokComma:       "tokComma",
 	tokLessThan:    "tokLessThan",
 	tokGreaterThan: "tokGreaterThan",
@@ -450,7 +450,7 @@ func (cs *ContentState) handleKeywordsAndIdentifiers() (bool, *Token) {
 	keyworkMap := map[string]Token{
 		"global":   {value: "global", tokType: tokGlobal},
 		"let":      {value: "let", tokType: tokLet},
-		"exitWith": {value: "exitWith", tokType: tokExitWith},
+		"exit":     {value: "exit", tokType: tokExit},
 		"executes": {value: "executes", tokType: tokExecutes},
 		"if":       {value: "if", tokType: tokIf},
 		"proc":     {value: "proc", tokType: tokProc},
@@ -646,3 +646,12 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 	}
 	return
 }
+
+func (ts *TokenizerState) consumeEndBlock(tokType TokenType) {
+	if !ts.matchAt(0, tokEnd) {
+		erroMsg := fmt.Sprintf("Expected 'end %s' but found 'end %s'", tokType.asString(), ts.current().tokType.asString())
+		panic(erroMsg)
+	}
+	ts.consume(2)
+}
+

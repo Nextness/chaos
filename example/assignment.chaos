@@ -20,9 +20,9 @@ executes
 
     if 1 < 2 executes
         let somevalue String = «something»
-        exitWith 1, «failed to complete action»
+        exit 1, «failed to complete action»
     end if
 
-    exitWith 1, «failed to complete action»
+    exit 1, «failed to complete action»
 end proc
 

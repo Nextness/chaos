@@ -20,17 +20,17 @@ type LexerState struct {
 // TODO: Include fields to overload procedures
 // TODO: Include fields to generics in procedures
 type NodeProc struct {
-	name        string
-	argCount    int
+	name         string
+	argCount     int
 	argTypeCount int
-	retsCount   int
-	args        []any
-	argsType    []any
-	argDefault  []any
-	rets        []any
-	retsType    []string
-	retsDefault []any
-	procBody    []Node
+	retsCount    int
+	args         []any
+	argsType     []any
+	argDefault   []any
+	rets         []any
+	retsType     []string
+	retsDefault  []any
+	procBody     []Node
 }
 
 type NodeCondition struct {
@@ -45,7 +45,7 @@ type NodeBinOp struct {
 	op  string
 }
 
-type NodeExitWith struct {
+type NodeExit struct {
 	sym string
 	msg string
 	val int
@@ -58,7 +58,7 @@ type NodeIdentifier struct {
 	val any
 }
 
-var _ Node = &NodeExitWith{}
+var _ Node = &NodeExit{}
 var _ Node = &NodeIdentifier{}
 var _ Node = &NodeBinOp{}
 var _ Node = &NodeProc{}
@@ -117,11 +117,11 @@ func (n *NodeBinOp) print(padSize int) {
 	fmt.Printf("%s└─➜ op:  '%s'\n", pad, n.op)
 }
 
-func (n *NodeExitWith) print(padSize int) {
+func (n *NodeExit) print(padSize int) {
 	pad := strings.Join([]string{strings.Repeat(" ", padSize)}, "")
-	fmt.Printf("%sNodeExitWith\n", pad)
+	fmt.Printf("%sNodeExit\n", pad)
 	fmt.Printf("%s├─➜ Type:   'chaosIntrisic'\n", pad)
-	fmt.Printf("%s├─➜ Symbol: 'exitWith'\n", pad)
+	fmt.Printf("%s├─➜ Symbol: 'exit'\n", pad)
 	if n.msg != "" {
 		fmt.Printf("%s├─➜ Value:  '%d'\n", pad, n.val)
 		fmt.Printf("%s└─➜ Msg:    '%s'\n", pad, n.msg)
@@ -227,9 +227,9 @@ func lexChaosProc(ts *TokenizerState) *NodeProc {
 			continue
 		}
 
-		if ts.matchAt(0, tokExitWith) {
-			node := &NodeExitWith{}
-			if node = lexExitWithChaos(ts); node == nil {
+		if ts.matchAt(0, tokExit) {
+			node := &NodeExit{}
+			if node = lexExitChaos(ts); node == nil {
 				os.Exit(1)
 			}
 			newNode.procBody = append(newNode.procBody, node)
@@ -238,9 +238,7 @@ func lexChaosProc(ts *TokenizerState) *NodeProc {
 		ts.consume()
 	}
 
-	ts.consume() // consume the 'end'
-	ts.consume() // consume the 'proc'
-
+	ts.consumeEndBlock(tokProc)
 	return &newNode
 }
 
@@ -296,9 +294,9 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
 	}
 
-	if ts.matchAt(0, tokExitWith) {
-		node := &NodeExitWith{}
-		if node = lexExitWithChaos(ts); node == nil {
+	if ts.matchAt(0, tokExit) {
+		node := &NodeExit{}
+		if node = lexExitChaos(ts); node == nil {
 			os.Exit(1)
 		}
 		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
@@ -310,9 +308,8 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 		config.newExample("if 1 < 2 executes ... end if")
 		config.printAndExitLexerError(ts)
 	}
-	ts.consume() // consume the 'end'
-	ts.consume() // consume the 'if'
 
+	ts.consumeEndBlock(tokIf)
 	return &newNode
 }
 
@@ -411,8 +408,8 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	return &newNode
 }
 
-func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
-	newNode := NodeExitWith{}
+func lexExitChaos(ts *TokenizerState) *NodeExit {
+	newNode := NodeExit{}
 
 	ts.consume()
 	if !ts.matchAt(0, tokNumber, tokIdentifier) {
@@ -465,6 +462,19 @@ func lexExitWithChaos(ts *TokenizerState) *NodeExitWith {
 	return &newNode
 }
 
+func lexChaosExpression(ts *TokenizerState) (bool, Node) {
+	// TODO: tokLet should allow not only variable definition and assignment, but also anonymous
+	// structs and functions
+	if ts.matchAt(0, tokLet) {
+		node := &NodeIdentifier{}
+		if node = lexChaosLet(ts); node == nil {
+			os.Exit(1)
+		}
+		return true, node
+	}
+	return false, nil
+}
+
 // TODO: better handle how 'end <block>' is parsed in the lexer
 // since we are always doing the same operation once a block is closed
 func lexerChaos(ts *TokenizerState) *LexerState {
@@ -485,12 +495,7 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 			continue
 		}
 
-		if ts.matchAt(0, tokLet) {
-			node := &NodeIdentifier{}
-			// TODO: better hanadle lexing errors
-			if node = lexChaosLet(ts); node == nil {
-				os.Exit(1)
-			}
+		if ok, node := lexChaosExpression(ts); ok {
 			lexerState.data = append(lexerState.data, node)
 			continue
 		}
@@ -504,9 +509,9 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 			continue
 		}
 
-		if ts.matchAt(0, tokExitWith) {
-			node := &NodeExitWith{}
-			if node = lexExitWithChaos(ts); node == nil {
+		if ts.matchAt(0, tokExit) {
+			node := &NodeExit{}
+			if node = lexExitChaos(ts); node == nil {
 				os.Exit(1)
 			}
 			lexerState.data = append(lexerState.data, node)
