@@ -69,81 +69,81 @@ func makePad(padSize int) string {
 
 func (n *NodeProc) print(padSize int) {
 	pad := makePad(padSize)
-	fmt.Printf("%sNodeProc\n", pad)
+	fmt.Printf("%sNodeProc [%s]\n", pad, n.name)
+	fmt.Printf("%s├─ Inputs [%d]: ", pad, n.argCount)
+	for _, arg := range n.args {
+		fmt.Printf("%s ", arg.(Token).value)
+	}
+	fmt.Print("\n")
 
-	fmt.Printf("%s├─➜ %d inputs: ", pad, n.argCount)
-	for idx, arg := range n.args {
-		fmt.Printf("%s[%d] %s ", pad, idx, arg.(Token).value)
+	fmt.Printf("%s├─ Types [%d]: ", pad, n.argTypeCount)
+	for _, arg := range n.argsType {
+		fmt.Printf("%s ", arg.(Token).value)
 	}
 	fmt.Print("\n")
-	fmt.Printf("%s├─➜ %d types:  ", pad, n.argTypeCount)
-	for idx, arg := range n.argsType {
-		fmt.Printf("%s[%d] %s ", pad, idx, arg.(Token).value)
+
+	fmt.Printf("%s├─ Returns [%d]: ", pad, n.retsCount)
+	for _, arg := range n.rets {
+		fmt.Printf("%s ", arg.(Token).value)
 	}
 	fmt.Print("\n")
-	fmt.Printf("%s├─➜ %d returns: ", pad, n.retsCount)
-	for idx, arg := range n.rets {
-		fmt.Printf("%s[%d] %s ", pad, idx, arg.(Token).value)
-	}
-	fmt.Print("\n")
-	fmt.Printf("%s└─➜ procBody: \n", pad)
+
+	fmt.Printf("%s└─ Body\n", pad)
 	for _, arg := range n.procBody {
 		arg.print(padSize + 4)
 	}
-	fmt.Print("\n")
 }
 
 func (n *NodeCondition) print(padSize int) {
 	pad := makePad(padSize)
-	fmt.Printf("%sNodeCondition\n", pad)
+	fmt.Printf("%sNodeCondition [chaosIntrinsic]\n", pad)
 	for _, binOp := range n.conditions {
 		binOp.print(padSize + 4)
 	}
-	var i int = 0
-	for i <= n.conditionCount {
+	for i := 0; i <= n.conditionCount; i++ {
 		for _, expr := range n.scope[i] {
 			expr.print(padSize + 4)
 		}
-		i++
 	}
-	fmt.Printf("%s\n", pad)
 }
 
 func (n *NodeBinOp) print(padSize int) {
 	pad := makePad(padSize)
-	fmt.Printf("%sNodeBinOp\n", pad)
-	fmt.Printf("%s├─➜ lhs: '%s'\n", pad, n.lhs)
-	fmt.Printf("%s├─➜ rhs: '%s'\n", pad, n.rhs)
-	fmt.Printf("%s└─➜ op:  '%s'\n", pad, n.op)
+	fmt.Printf("%sNodeBinOp [chaosIntrinsic]\n", pad)
+	fmt.Printf("%s├─ lhs: '%s'\n", pad, n.lhs)
+	fmt.Printf("%s├─ rhs: '%s'\n", pad, n.rhs)
+	fmt.Printf("%s└─ op:  '%s'\n", pad, n.op)
 }
 
 func (n *NodeExit) print(padSize int) {
-	pad := strings.Join([]string{strings.Repeat(" ", padSize)}, "")
-	fmt.Printf("%sNodeExit\n", pad)
-	fmt.Printf("%s├─➜ Type:   'chaosIntrisic'\n", pad)
-	fmt.Printf("%s├─➜ Symbol: 'exit'\n", pad)
+	pad := makePad(padSize)
+	fmt.Printf("%sNodeExit [chaosIntrinsic]\n", pad)
 	if n.msg != "" {
-		fmt.Printf("%s├─➜ Value:  '%d'\n", pad, n.val)
-		fmt.Printf("%s└─➜ Msg:    '%s'\n", pad, n.msg)
+		fmt.Printf("%s├─ Value: '%d'\n", pad, n.val)
+		fmt.Printf("%s└─ Msg: '%s'\n", pad, n.msg)
 		return
 	}
-	fmt.Printf("%s└─➜ Value:  '%d'\n", pad, n.val)
+	fmt.Printf("%s└─➜ Value:'%d'\n", pad, n.val)
 }
 
 func (n *NodeIdentifier) print(padSize int) {
-	pad := strings.Join([]string{strings.Repeat(" ", padSize)}, "")
-	fmt.Printf("%sNodeIdentifier\n", pad)
-	fmt.Printf("%s├─➜ State:  '%s'\n", pad, n.stt)
+	pad := makePad(padSize)
+	fmt.Printf("%sNodeIdentifier [%s]\n", pad, n.sym)
 	switch v := n.val.(type) {
 	case string:
+		fmt.Printf("%s├─ State: %s\n", pad, n.stt)
+		fmt.Printf("%s├─ Type: %s\n", pad, n.tpe)
 		if n.tpe == kindString.asString() {
-			fmt.Printf("%s└─➜ Symbol: '%s (%s) = «%s»'\n", pad, n.sym, n.tpe, n.val)
-			return
+			fmt.Printf("%s└─ Value: «%s»\n", pad, n.val)
+			break
 		}
-		fmt.Printf("%s└─➜ Symbol: '%s (%s) = %s'\n", pad, n.sym, n.tpe, n.val)
+		fmt.Printf("%s└─ Value: %s\n", pad, n.val)
 	case NodeBinOp:
-		fmt.Printf("%s└─➜ Symbol: '%s (%s) = <NodeBinOp>'\n", pad, n.sym, n.tpe)
+		fmt.Printf("%s├─ State: %s\n", pad, n.stt)
+		fmt.Printf("%s├─ Type: %s\n", pad, n.tpe)
+		fmt.Printf("%s└─ Value:\n", pad)
 		v.print(padSize + 4)
+		break
 	}
 }
 
@@ -251,7 +251,7 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 
 	ts.consume() // consume the 'if'
 
-	if !ts.matchAt(0, tokNumber) {
+	if !ts.matchAt(0, tokNumber, tokIdentifier) {
 		errMsg := fmt.Sprintf("Expected a Number but found %s\n", ts.current().tokType.asString())
 		config := newLexerErroConfig(errMsg)
 		config.newExample("if 1 < 2 do ... endif")
