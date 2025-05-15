@@ -97,12 +97,20 @@ func (n *NodeProc) print(padSize int) {
 func (n *NodeCondition) print(padSize int) {
 	pad := makePad(padSize)
 	fmt.Printf("%sNodeCondition [chaosIntrinsic]\n", pad)
-	for _, binOp := range n.conditions {
-		binOp.print(padSize + 4)
-	}
-	for i := 0; i <= n.conditionCount; i++ {
-		for _, expr := range n.scope[i] {
-			expr.print(padSize + 4)
+	conditionIsValid := len(n.conditions) == n.conditionCount && len(n.scope) == n.conditionCount
+	assert(conditionIsValid, "Number of conditions doesn't match number of scopes")
+	conditionCount := 0
+	for id := range n.conditionCount {
+		pad = makePad(padSize + 4)
+		binOp := n.conditions[id]
+		conditionCount++
+		fmt.Printf("%sCondition [%d]\n", pad, conditionCount)
+		if binOp != (NodeBinOp{}) {
+			binOp.print(padSize + 8)
+		}
+		fmt.Printf("%sBody\n", pad)
+		for _, expr := range n.scope[id] {
+			expr.print(padSize + 8)
 		}
 	}
 }
@@ -258,7 +266,7 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 		config.printAndExitLexerError(ts)
 	}
 
-	if ts.matchAt(1, tokLessThan, tokGreaterThan) {
+	if ts.matchAt(1, tokLessThan, tokGreaterThan, tokEquals) {
 		lhs := ts.consume()
 		op := ts.consume()
 		if !ts.matchAt(0, tokNumber) {
@@ -273,7 +281,6 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 			op:  op.value,
 		}
 		newNode.conditions = append(newNode.conditions, binOp)
-		newNode.conditionCount++
 	}
 
 	if !ts.matchAt(0, tokExecutes) {
@@ -300,6 +307,94 @@ func lexChaosConditions(ts *TokenizerState) *NodeCondition {
 			os.Exit(1)
 		}
 		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
+	}
+	newNode.conditionCount++
+
+	if ts.matchAt(0, tokElif) {
+		ts.consume()
+		if !ts.matchAt(0, tokNumber, tokIdentifier) {
+			errMsg := fmt.Sprintf("Expected a Number of Identifier but found %s\n", ts.current().tokType.asString())
+			config := newLexerErroConfig(errMsg)
+			config.newExample("if 1 < 2 do ... endif")
+			config.printAndExitLexerError(ts)
+		}
+
+		if ts.matchAt(1, tokLessThan, tokGreaterThan, tokEquals) {
+			lhs := ts.consume()
+			op := ts.consume()
+			if !ts.matchAt(0, tokNumber) {
+				errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
+				config := newLexerErroConfig(errMsg)
+				config.printAndExitLexerError(ts)
+			}
+			rhs := ts.consume()
+			binOp := NodeBinOp{
+				lhs: lhs.value,
+				rhs: rhs.value,
+				op:  op.value,
+			}
+			newNode.conditions = append(newNode.conditions, binOp)
+		}
+
+		if !ts.matchAt(0, tokExecutes) {
+			errMsg := fmt.Sprintf("Expected 'executes' but found %s\n", ts.current().tokType.asString())
+			config := newLexerErroConfig(errMsg)
+			config.newExample("if 1 < 2 do ... endif")
+			config.printAndExitLexerError(ts)
+		}
+
+		ts.consume() // consume the 'executes'
+
+		if ts.matchAt(0, tokLet) {
+			node := &NodeIdentifier{}
+			// TODO: better hanadle lexing errors
+			if node = lexChaosLet(ts); node == nil {
+				os.Exit(1)
+			}
+			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
+		}
+
+		if ts.matchAt(0, tokExit) {
+			node := &NodeExit{}
+			if node = lexExitChaos(ts); node == nil {
+				os.Exit(1)
+			}
+			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
+		}
+		newNode.conditionCount++
+	}
+
+	if ts.matchAt(0, tokElse) {
+		ts.consume()
+		if !ts.matchAt(0, tokExecutes) {
+			errMsg := fmt.Sprintf("Expected 'executes' but found %s\n", ts.current().tokType.asString())
+			config := newLexerErroConfig(errMsg)
+			config.newExample("if 1 < 2 do ... endif")
+			config.printAndExitLexerError(ts)
+		}
+
+		ts.consume() // consume the 'executes'
+
+		// TODO: Improve how to handle the else branch
+		newNode.conditions = append(newNode.conditions, NodeBinOp{})
+
+		if ts.matchAt(0, tokLet) {
+			node := &NodeIdentifier{}
+			// TODO: better hanadle lexing errors
+			if node = lexChaosLet(ts); node == nil {
+				os.Exit(1)
+			}
+			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
+		}
+
+		if ts.matchAt(0, tokExit) {
+			node := &NodeExit{}
+			if node = lexExitChaos(ts); node == nil {
+				os.Exit(1)
+			}
+			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
+		}
+		newNode.conditionCount++
 	}
 
 	if !ts.matchAt(0, tokEnd) && !ts.matchAt(1, tokIf) {

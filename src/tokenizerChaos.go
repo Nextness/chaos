@@ -25,8 +25,11 @@ const (
 	tokComma
 	tokLessThan
 	tokGreaterThan
+	tokEquals
 	tokExecutes
 	tokIf
+	tokElif
+	tokElse
 	tokProc
 	tokReturns
 	tokExpects
@@ -107,8 +110,11 @@ var mapping = TokenToStringMap{
 	tokComma:       "tokComma",
 	tokLessThan:    "tokLessThan",
 	tokGreaterThan: "tokGreaterThan",
+	tokEquals:      "tokEquals",
 	tokExecutes:    "tokExecutes",
 	tokIf:          "tokIf",
+	tokElif:        "tokElif",
+	tokElse:        "tokElse",
 	tokEndOfFile:   "tokEndOfFile",
 	tokProc:        "tokProc",
 	tokReturns:     "tokReturns",
@@ -453,6 +459,8 @@ func (cs *ContentState) handleKeywordsAndIdentifiers() (bool, *Token) {
 		"exit":     {value: "exit", tokType: tokExit},
 		"executes": {value: "executes", tokType: tokExecutes},
 		"if":       {value: "if", tokType: tokIf},
+		"elif":     {value: "elif", tokType: tokElif},
+		"else":     {value: "else", tokType: tokElse},
 		"proc":     {value: "proc", tokType: tokProc},
 		"end":      {value: "end", tokType: tokEnd},
 		"returns":  {value: "returns", tokType: tokReturns},
@@ -495,6 +503,8 @@ func (cs *ContentState) handleStringLiterals() (bool, *Token) {
 // TODO: Improve how characters are handled. Probably move to a byte or uint32 type of char
 // I want to avoid this kind of shit '"«"[0]', which is super annoying - also it will probaly
 // make it easier to handle other things in the lexer
+// TODO: Handle how we use tokens. A lot of duplication using 'value' for all tokens, when
+// in reality most of the tokens don't have values.
 func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	cs := &ContentState{
 		data:   fileContent.String(),
@@ -526,6 +536,21 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		}
 
 		if cs.handleEmptyCharacters() {
+			continue
+		}
+
+		// TODO: Improve how to handle two character tokens
+		if cs.matchStrAt(0, "==") {
+			tok := Token{
+				value:   "==",
+				tokType: tokEquals,
+				line: cs.line,
+				column: cs.column,
+				tokKind: kindNone,
+			}
+			cs.column++
+			cs.cursor += 2
+			ts.data = append(ts.data, tok)
 			continue
 		}
 
@@ -654,4 +679,3 @@ func (ts *TokenizerState) consumeEndBlock(tokType TokenType) {
 	}
 	ts.consume(2)
 }
-
