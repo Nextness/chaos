@@ -1,12 +1,12 @@
 // Example for comment
 
-// proc somethingElse
-//     expects someVariableName I64, anotherVariable Bool
-//     returns Void
-// executes
-//     let variableName String = «some shit»
-//     let a = 10
-// end proc
+proc somethingElse
+    expects someVariableName I64, anotherVariable Bool
+    returns Void
+executes
+    let variableName String = «some shit»
+    let a = 10
+end proc
 
 proc main
     expects argc I64, argv ...String

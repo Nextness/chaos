@@ -30,13 +30,13 @@ func main() {
 
 			fileContent := bytes.NewBuffer(file)
 			tokenState:= tokenizeChaos(arg, fileContent)
-			// tokenState.print()
-			// fmt.Print("\n")
+			tokenState.print()
+			fmt.Print("\n")
 
-			lexerState := lexerChaos(tokenState)
-			for _, ls := range lexerState.data {
-				ls.print(0)
-			}
+			// lexerState := lexerChaos(tokenState)
+			// for _, ls := range lexerState.data {
+			// 	ls.print(0)
+			// }
 			// fmt.Print("\n")
 
 			// irState := irChaos(lexerState)

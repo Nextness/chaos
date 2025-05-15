@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strconv"
 	"unicode"
 )
 
@@ -36,13 +37,11 @@ const (
 	tokEnd
 	tokOpenParen
 	tokCloseParen
-	tokVariadic
+	tokEllipsis
 	tokCount
 )
 
-type TokenToStringMap map[TokenType]string
-
-func (tokTyp TokenType) toString() string {
+func (tokTyp TokenType) asString() string {
 	if tokTyp == tokGlobal {
 		return "tokGlobal"
 	} else if tokTyp == tokLet {
@@ -89,48 +88,16 @@ func (tokTyp TokenType) toString() string {
 		return "tokOpenParen"
 	} else if tokTyp == tokCloseParen {
 		return "tokCloseParen"
-	} else if tokTyp == tokVariadic {
-		return "tokVariadic"
+	} else if tokTyp == tokEllipsis {
+		return "tokEllipsis"
+	} else if tokTyp == tokEquals {
+		return "tokEquals"
+	} else if tokTyp == tokElif {
+		return "tokElif"
+	} else if tokTyp == tokElse {
+		return "tokElse"
 	}
-	panic(fmt.Sprintf("Unknown keyword '%d'", tokTyp))
-}
-
-var mapping = TokenToStringMap{
-	tokGlobal:      "tokGlobal",
-	tokLet:         "tokLet",
-	tokAssignment:  "tokAssignment",
-	tokPlus:        "tokPlus",
-	tokMinus:       "tokMinus",
-	tokVarType:     "tokVarType",
-	tokIdentifier:  "tokIdentifier",
-	tokNumber:      "tokNumber",
-	tokString:      "tokString",
-	tokNewline:     "tokNewline",
-	tokExit:        "tokExit",
-	tokComma:       "tokComma",
-	tokLessThan:    "tokLessThan",
-	tokGreaterThan: "tokGreaterThan",
-	tokEquals:      "tokEquals",
-	tokExecutes:    "tokExecutes",
-	tokIf:          "tokIf",
-	tokElif:        "tokElif",
-	tokElse:        "tokElse",
-	tokEndOfFile:   "tokEndOfFile",
-	tokProc:        "tokProc",
-	tokReturns:     "tokReturns",
-	tokExpects:     "tokExpects",
-	tokEnd:         "tokEnd",
-	tokOpenParen:   "tokOpenParen",
-	tokCloseParen:  "tokCloseParen",
-	tokVariadic:    "tokVariadic",
-}
-
-func (tok TokenType) asString() string {
-	if tokType, ok := mapping[tok]; ok {
-		return tokType
-	}
-	errorMsg := fmt.Sprintf("[ERROR] Unexpected toke '%d' - fix this shitty code :)\n", tok)
-	panic(errorMsg)
+	panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
 }
 
 type TokenKind int
@@ -165,53 +132,99 @@ const (
 	kindNone
 )
 
-type IdentTypeToStringMap map[TokenKind]string
-
-var identTypeMapping = IdentTypeToStringMap{
-	kindAnyError: "AnyError",
-	kindAnyType:  "AnyType",
-	kindString:   "String",
-	kindChar:     "Char",
-	kindBool:     "Bool",
-	kindU8:       "U8",
-	kindU16:      "U16",
-	kindU32:      "U32",
-	kindU64:      "U64",
-	kindU128:     "U128",
-	kindI8:       "I8",
-	kindI16:      "I16",
-	kindI32:      "I32",
-	kindI64:      "I64",
-	kindI128:     "I128",
-	kindF16:      "F16",
-	kindF32:      "F32",
-	kindF64:      "F64",
-	kindF128:     "F128",
-	kindC64:      "C64",
-	kindC128:     "C128",
-	kindQ128:     "Q128",
-	kindQ256:     "Q256",
-	kindArray:    "Array",
-	kindVoid:     "Void",
-	kindMap:      "Map",
-	kindNone:     "noType",
+type Token interface {
+	asString() string
+	getTokenType() TokenType
 }
 
-func (tok TokenKind) asString() string {
-	if tokType, ok := identTypeMapping[tok]; ok {
-		return tokType
+type Position struct {
+	line   int
+	column int
+}
+
+type TokenKeyword struct {
+	tokType  TokenType
+	position Position
+}
+
+func (t *TokenKeyword) asString() string {
+	return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
+}
+
+func (t *TokenKeyword) getTokenType() TokenType {
+	return t.tokType
+}
+
+type TokenVarType struct {
+	symbol   string
+	tokType  TokenType
+	tokKind  TokenKind
+	position Position
+}
+
+func (t *TokenVarType) asString() string {
+	return fmt.Sprintf("%03d:%03d [%s] %s", t.position.line, t.position.column, t.tokType.asString(), t.symbol)
+}
+
+func (t *TokenVarType) getTokenType() TokenType {
+	return t.tokType
+}
+
+type TokenOperator struct {
+	tokType  TokenType
+	position Position
+}
+
+func (t *TokenOperator) asString() string {
+	return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
+}
+
+func (t *TokenOperator) getTokenType() TokenType {
+	return t.tokType
+}
+
+type TokenLiteral[T any] struct {
+	value    T
+	tokType  TokenType
+	position Position
+}
+
+func (t *TokenLiteral[T]) asString() string {
+	curType := any(t.value)
+	if val, ok := curType.(string); ok {
+		if val != "" {
+			return fmt.Sprintf("%03d:%03d [%s] \"%s\"", t.position.line, t.position.column, t.tokType.asString(), val)
+		}
+		return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
+	} else if val, ok := curType.(int); ok {
+		return fmt.Sprintf("%03d:%03d [%s] %d", t.position.line, t.position.column, t.tokType.asString(), val)
 	}
-	errorMsg := fmt.Sprintf("[ERROR] Unexpected type '%d' - fix this shitty code :)\n", tok)
-	panic(errorMsg)
+	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
 }
 
-type Token struct {
-	value   string
-	tokType TokenType
-	tokKind TokenKind
-	line    int
-	column  int
+func (t *TokenLiteral[T]) getTokenType() TokenType {
+	return t.tokType
 }
+
+type TokenIdentifier struct {
+	symbol   string
+	tokType  TokenType
+	position Position
+}
+
+func (t *TokenIdentifier) asString() string {
+	return fmt.Sprintf("%03d:%03d [%s] %s", t.position.line, t.position.column, t.tokType.asString(), t.symbol)
+}
+
+func (t *TokenIdentifier) getTokenType() TokenType {
+	return t.tokType
+}
+
+var _ Token = &TokenKeyword{}
+var _ Token = &TokenVarType{}
+var _ Token = &TokenOperator{}
+var _ Token = &TokenLiteral[any]{}
+var _ Token = &TokenIdentifier{}
 
 type ContentState struct {
 	data         string
@@ -297,14 +310,6 @@ func (cs *ContentState) handleNewline() bool {
 		return false
 	}
 
-	// token := Token{
-	// 	value:   "newline",
-	// 	tokType: tokNewline,
-	// 	line:    cs.line,
-	// 	column:  cs.column,
-	// 	tokKind: kindNone,
-	// }
-
 	cs.line++
 	cs.cursor++
 	cs.column = 0
@@ -321,37 +326,36 @@ func (cs *ContentState) handleEmptyCharacters() bool {
 	return true
 }
 
-func (cs *ContentState) handleSingleCharacters() (bool, *Token) {
-	singleTokenMap := map[byte]Token{
-		'=': {value: "=", tokType: tokAssignment},
-		'+': {value: "+", tokType: tokPlus},
-		'-': {value: "-", tokType: tokMinus},
-		',': {value: ",", tokType: tokComma},
-		'<': {value: "<", tokType: tokLessThan},
-		'>': {value: ">", tokType: tokGreaterThan},
-		'(': {value: "(", tokType: tokOpenParen},
-		')': {value: ")", tokType: tokCloseParen},
-	}
-
-	token, ok := singleTokenMap[cs.currentChar()]
-	if !ok {
+func (cs *ContentState) handleSingleCharacters() (bool, *TokenOperator) {
+	tokenOperator := TokenOperator{}
+	curByte := cs.currentChar()
+	if curByte == '=' {
+		tokenOperator.tokType = tokEquals
+	} else if curByte == '+' {
+		tokenOperator.tokType = tokPlus
+	} else if curByte == '-' {
+		tokenOperator.tokType = tokMinus
+	} else if curByte == ',' {
+		tokenOperator.tokType = tokComma
+	} else if curByte == '<' {
+		tokenOperator.tokType = tokLessThan
+	} else if curByte == '>' {
+		tokenOperator.tokType = tokGreaterThan
+	} else {
 		return false, nil
 	}
-
-	token.line = cs.line
-	token.column = cs.column
-	token.tokKind = kindNone
+	tokenOperator.position.line = cs.line
+	tokenOperator.position.column = cs.column
 	cs.column++
 	cs.cursor++
-	return true, &token
+	return true, &tokenOperator
 }
 
-func (cs *ContentState) handleNumbers() (bool, *Token) {
+func (cs *ContentState) handleNumberLiterals() (bool, *TokenLiteral[int]) {
 	if !isNum(cs.currentChar()) {
 		return false, nil
 	}
 
-	token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
 	tmp := bytes.Buffer{}
 	defer tmp.Reset()
 
@@ -361,88 +365,156 @@ func (cs *ContentState) handleNumbers() (bool, *Token) {
 		cs.cursor++
 	}
 
-	token.value = tmp.String()
-	token.tokType = tokNumber
+	val, err := strconv.Atoi(tmp.String())
+	assert(err == nil, "Failed to convert string to number")
+
+	token := TokenLiteral[int]{
+		value:   val,
+		tokType: tokNumber,
+		position: Position{
+			line:   cs.line,
+			column: cs.column,
+		},
+	}
+
 	return true, &token
 }
 
-func (cs *ContentState) handleVariadics() (bool, *Token) {
-	if !cs.matchStrAt(0, "...") {
-		return false, nil
-	}
-
-	token := Token{
-		value:   "...",
-		column:  cs.column,
-		line:    cs.line,
-		tokType: tokVariadic,
-		tokKind: kindNone,
-	}
-
-	cs.column += 3
-	cs.cursor += 3
-	return true, &token
-}
-
-func (cs *ContentState) handleVarTypes() (bool, *Token) {
+func (cs *ContentState) handleVarTypes() (bool, *TokenVarType) {
 	if !isAlpha(cs.currentChar()) || !isUppercase(cs.currentChar()) || cs.currentChar() == "«"[0] {
 		return false, nil
 	}
 
-	token := Token{line: cs.line, column: cs.column, tokType: tokVarType}
 	tmp := bytes.Buffer{}
 	defer tmp.Reset()
-
 	for isAlphanum(cs.currentChar()) {
 		tmp.WriteByte(cs.currentChar())
 		cs.column++
 		cs.cursor++
 	}
 
-	value := tmp.String()
-	token.value = value
-	varTypeMap := map[string]TokenKind{
-		"AnyError": kindAnyError,
-		"AnyType":  kindAnyType,
-		"String":   kindString,
-		"Char":     kindChar,
-		"Bool":     kindBool,
-		"U8":       kindU8,
-		"U16":      kindU16,
-		"U32":      kindU32,
-		"U64":      kindU64,
-		"U128":     kindU128,
-		"I8":       kindI8,
-		"I16":      kindI16,
-		"I32":      kindI32,
-		"I64":      kindI64,
-		"I128":     kindI128,
-		"F16":      kindF16,
-		"F32":      kindF32,
-		"F64":      kindF64,
-		"F128":     kindF128,
-		"C64":      kindC64,
-		"C128":     kindC128,
-		"Q128":     kindQ128,
-		"Q256":     kindQ256,
-		"Array":    kindArray,
-		"Void":     kindVoid,
-		"Map":      kindMap,
+	sym := tmp.String()
+	token := TokenVarType{
+		symbol:  sym,
+		tokType: tokVarType,
+		position: Position{
+			cs.line,
+			cs.column,
+		},
 	}
 
-	if kind, ok := varTypeMap[value]; ok {
-		token.tokKind = kind
-		return true, &token
+	if sym == "AnyError" {
+		token.tokKind = kindAnyError
+	} else if sym == "AnyType" {
+		token.tokKind = kindAnyType
+	} else if sym == "String" {
+		token.tokKind = kindString
+	} else if sym == "Char" {
+		token.tokKind = kindChar
+	} else if sym == "Bool" {
+		token.tokKind = kindBool
+	} else if sym == "U8" {
+		token.tokKind = kindU8
+	} else if sym == "U16" {
+		token.tokKind = kindU16
+	} else if sym == "U32" {
+		token.tokKind = kindU32
+	} else if sym == "U64" {
+		token.tokKind = kindU64
+	} else if sym == "U128" {
+		token.tokKind = kindU128
+	} else if sym == "I8" {
+		token.tokKind = kindI8
+	} else if sym == "I16" {
+		token.tokKind = kindI16
+	} else if sym == "I32" {
+		token.tokKind = kindI32
+	} else if sym == "I64" {
+		token.tokKind = kindI64
+	} else if sym == "I128" {
+		token.tokKind = kindI128
+	} else if sym == "F16" {
+		token.tokKind = kindF16
+	} else if sym == "F32" {
+		token.tokKind = kindF32
+	} else if sym == "F64" {
+		token.tokKind = kindF64
+	} else if sym == "F128" {
+		token.tokKind = kindF128
+	} else if sym == "C64" {
+		token.tokKind = kindC64
+	} else if sym == "C128" {
+		token.tokKind = kindC128
+	} else if sym == "Q128" {
+		token.tokKind = kindQ128
+	} else if sym == "Q256" {
+		token.tokKind = kindQ256
+	} else if sym == "Array" {
+		token.tokKind = kindArray
+	} else if sym == "Void" {
+		token.tokKind = kindVoid
+	} else if sym == "Map" {
+		token.tokKind = kindMap
 	} else {
-		panic("Unexpected type - probably a struct?")
+		return false, nil
 	}
+	return true, &token
 }
 
-func (cs *ContentState) handleKeywordsAndIdentifiers() (bool, *Token) {
+func (cs *ContentState) handleKeywords() (bool, *TokenKeyword) {
 	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
 		return false, nil
 	}
-	token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
+
+	token := TokenKeyword{}
+	saveCursorPos := cs.cursor
+	saveColumPos := cs.column
+	tmp := bytes.Buffer{}
+	defer tmp.Reset()
+	for isAlphanum(cs.currentChar()) {
+		tmp.WriteByte(cs.currentChar())
+		cs.column++
+		cs.cursor++
+	}
+
+	keyword := tmp.String()
+	if keyword == "global" {
+		token.tokType = tokGlobal
+	} else if keyword == "let" {
+		token.tokType = tokLet
+	} else if keyword == "exit" {
+		token.tokType = tokExit
+	} else if keyword == "executes" {
+		token.tokType = tokExecutes
+	} else if keyword == "if" {
+		token.tokType = tokIf
+	} else if keyword == "elif" {
+		token.tokType = tokElif
+	} else if keyword == "else" {
+		token.tokType = tokElse
+	} else if keyword == "proc" {
+		token.tokType = tokProc
+	} else if keyword == "end" {
+		token.tokType = tokEnd
+	} else if keyword == "returns" {
+		token.tokType = tokReturns
+	} else if keyword == "expects" {
+		token.tokType = tokExpects
+	} else {
+		cs.cursor = saveCursorPos
+		cs.column = saveColumPos
+		return false, nil
+	}
+
+	token.position = Position{cs.line, cs.column}
+	return true, &token
+}
+
+func (cs *ContentState) handleIdentifiers() (bool, *TokenIdentifier) {
+	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
+		return false, nil
+	}
+
 	tmp := bytes.Buffer{}
 	defer tmp.Reset()
 
@@ -452,39 +524,23 @@ func (cs *ContentState) handleKeywordsAndIdentifiers() (bool, *Token) {
 		cs.cursor++
 	}
 
-	value := tmp.String()
-	keyworkMap := map[string]Token{
-		"global":   {value: "global", tokType: tokGlobal},
-		"let":      {value: "let", tokType: tokLet},
-		"exit":     {value: "exit", tokType: tokExit},
-		"executes": {value: "executes", tokType: tokExecutes},
-		"if":       {value: "if", tokType: tokIf},
-		"elif":     {value: "elif", tokType: tokElif},
-		"else":     {value: "else", tokType: tokElse},
-		"proc":     {value: "proc", tokType: tokProc},
-		"end":      {value: "end", tokType: tokEnd},
-		"returns":  {value: "returns", tokType: tokReturns},
-		"expects":  {value: "expects", tokType: tokExpects},
-	}
-
-	keyword, ok := keyworkMap[value]
-	if !ok {
-		token.value = value
-		token.tokType = tokIdentifier
-	} else {
-		token.value = keyword.value
-		token.tokType = keyword.tokType
+	token := TokenIdentifier{
+		symbol:  tmp.String(),
+		tokType: tokIdentifier,
+		position: Position{
+			line:   cs.line,
+			column: cs.column,
+		},
 	}
 
 	return true, &token
 }
 
-func (cs *ContentState) handleStringLiterals() (bool, *Token) {
+func (cs *ContentState) handleStringLiterals() (bool, *TokenLiteral[string]) {
 	if cs.currentChar() != "«"[0] {
 		return false, nil
 	}
 
-	token := Token{line: cs.line, column: cs.column, tokKind: kindNone}
 	tmp := bytes.Buffer{}
 	defer tmp.Reset()
 	cs.cursor += 2
@@ -492,6 +548,15 @@ func (cs *ContentState) handleStringLiterals() (bool, *Token) {
 	for cs.peakCharAsString(1) != "»" {
 		tmp.WriteString(cs.currentCharAsString())
 		cs.cursor++
+	}
+
+	token := TokenLiteral[string]{
+		value:   tmp.String(),
+		tokType: tokString,
+		position: Position{
+			line:   cs.line,
+			column: cs.column,
+		},
 	}
 
 	cs.cursor += 2
@@ -515,11 +580,9 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 	}
 
 	ts := &TokenizerState{
-		fileName:  fileName,
-		data:      []Token{},
-		variables: map[string]string{},
-		count:     0,
-		cursor:    0,
+		data:   []Token{},
+		count:  0,
+		cursor: 0,
 	}
 
 	for cs.cursor < cs.count {
@@ -541,46 +604,63 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 
 		// TODO: Improve how to handle two character tokens
 		if cs.matchStrAt(0, "==") {
-			tok := Token{
-				value:   "==",
-				tokType: tokEquals,
-				line: cs.line,
-				column: cs.column,
-				tokKind: kindNone,
+			tok := &TokenOperator{
+				tokType:  tokEquals,
+				position: Position{cs.line, cs.column},
 			}
-			cs.column++
+			cs.column += 2
 			cs.cursor += 2
 			ts.data = append(ts.data, tok)
 			continue
 		}
 
+		// TODO: Improve how to handle three character tokens
+		if cs.matchStrAt(0, "...") {
+			tok := &TokenKeyword{
+				tokType: tokEllipsis,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column += 3
+			cs.cursor += 3
+			ts.data = append(ts.data, tok)
+			continue
+		}
+
 		if ok, token := cs.handleSingleCharacters(); ok {
-			ts.data = append(ts.data, *token)
-			continue
-		}
-
-		if ok, token := cs.handleNumbers(); ok {
-			ts.data = append(ts.data, *token)
-			continue
-		}
-
-		if ok, token := cs.handleVariadics(); ok {
-			ts.data = append(ts.data, *token)
-			continue
-		}
-
-		if ok, token := cs.handleVarTypes(); ok {
-			ts.data = append(ts.data, *token)
-			continue
-		}
-
-		if ok, token := cs.handleKeywordsAndIdentifiers(); ok {
-			ts.data = append(ts.data, *token)
+			ts.data = append(ts.data, token)
 			continue
 		}
 
 		if ok, token := cs.handleStringLiterals(); ok {
-			ts.data = append(ts.data, *token)
+			ts.data = append(ts.data, token)
+			continue
+		}
+
+		if ok, token := cs.handleNumberLiterals(); ok {
+			ts.data = append(ts.data, token)
+			continue
+		}
+
+		// if ok, token := cs.handleVariadics(); ok {
+		// 	ts.data = append(ts.data, *token)
+		// 	continue
+		// }
+
+		if ok, token := cs.handleVarTypes(); ok {
+			ts.data = append(ts.data, token)
+			continue
+		}
+
+		if ok, token := cs.handleKeywords(); ok {
+			ts.data = append(ts.data, token)
+			continue
+		}
+
+		if ok, token := cs.handleIdentifiers(); ok {
+			ts.data = append(ts.data, token)
 			continue
 		}
 
@@ -588,40 +668,35 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		panic("unrecheable")
 	}
 
-	eof := Token{value: "eof", tokType: tokEndOfFile, column: cs.column, line: cs.line}
+	eof := &TokenLiteral[string]{
+		value:   "eof",
+		tokType: tokEndOfFile,
+		position: Position{
+			line:   cs.line,
+			column: cs.column,
+		},
+	}
 	ts.data = append(ts.data, eof)
 	ts.count = len(ts.data)
 	return ts
 }
 
 type TokenizerState struct {
-	fileName  string
-	data      []Token
-	variables map[string]string
-	count     int
-	cursor    int
+	data   []Token
+	count  int
+	cursor int
 }
 
 func (tokens TokenizerState) print() {
 	fmt.Print("Token List:\n")
-	for idx, tok := range tokens.data {
-		if tok.tokType == tokEndOfFile {
+	for _, tok := range tokens.data {
+		if tok.getTokenType() == tokEndOfFile {
 			return
 		}
-		if tok.tokType == tokNewline {
+		if tok.getTokenType() == tokNewline {
 			continue
 		}
-		if tok.tokKind == kindNone {
-			fmt.Printf(
-				"    %s [%03d:%03d] token %05d: '%s' (%s)\n",
-				tokens.fileName, tok.line, tok.column, idx, tok.value, tok.tokType.asString(),
-			)
-		} else {
-			fmt.Printf(
-				"    %s [%03d:%03d] token %05d: '%s' (%s[%s])\n",
-				tokens.fileName, tok.line, tok.column, idx, tok.value, tok.tokType.asString(), tok.tokKind.asString(),
-			)
-		}
+		fmt.Printf("%s\n", tok.asString())
 	}
 }
 
@@ -637,7 +712,8 @@ func (ts *TokenizerState) matchAt(offset int, tokTypes ...TokenType) (result boo
 	result = false
 	for _, tok := range tokTypes {
 		if ts.cursor+offset < ts.count {
-			if ts.data[ts.cursor+offset].tokType == tok {
+			curTok := ts.data[ts.cursor+offset]
+			if curTok.getTokenType() == tok {
 				result = true
 				break
 			}
@@ -648,7 +724,7 @@ func (ts *TokenizerState) matchAt(offset int, tokTypes ...TokenType) (result boo
 
 func (ts *TokenizerState) peak(offset int) (result Token) {
 	assert(offset == 0, "cannot peak with 0")
-	result = Token{}
+	result = nil
 	if ts.cursor+offset < ts.count {
 		result = ts.data[ts.cursor+offset]
 	}
@@ -661,7 +737,7 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 	if len(count) == 1 {
 		c = count[0]
 	}
-	result = Token{}
+	result = nil
 	for range c - 1 {
 		ts.cursor++
 	}
@@ -674,7 +750,7 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 
 func (ts *TokenizerState) consumeEndBlock(tokType TokenType) {
 	if !ts.matchAt(0, tokEnd) {
-		erroMsg := fmt.Sprintf("Expected 'end %s' but found 'end %s'", tokType.asString(), ts.current().tokType.asString())
+		erroMsg := fmt.Sprintf("Expected 'end %s' but found 'end %s'", tokType.asString(), ts.current().getTokenType().asString())
 		panic(erroMsg)
 	}
 	ts.consume(2)
