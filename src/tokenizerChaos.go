@@ -167,6 +167,7 @@ func (t *TokenKeyword) getPosition() Position {
 
 type TokenVarType struct {
 	symbol   string
+	variadic bool
 	tokType  TokenType
 	tokKind  TokenKind
 	position Position
@@ -745,7 +746,7 @@ func (ts *TokenizerState) currentTokenTypeAsString() string {
 func (ts *TokenizerState) matchAllAt(offset int, tokTypes []TokenType) (result bool) {
 	result = false
 	for i, tok := range tokTypes {
-		pos := ts.cursor+i+offset
+		pos := ts.cursor + i + offset
 		if pos > ts.count {
 			panic(fmt.Sprintf("out of bounds operation while checking for %v", tokTypes))
 		}

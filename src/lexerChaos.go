@@ -137,11 +137,11 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	}
 	tmp.WriteByte('\n')
 
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
 	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
 	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
 
 	if any(n.value) == nil {
 		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
@@ -341,11 +341,10 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 		config.printAndExitLexerError(ts)
 	}
 
+	node.varType = nodeInfer()
 	if ts.matchAt(0, tokVarType) {
 		token = ts.consume()
 		node.varType = token.(*TokenVarType)
-	} else {
-		node.varType = nodeInfer()
 	}
 
 	if ts.matchAt(0, tokAssignment) {
@@ -390,6 +389,12 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			token = ts.consume()
 			n.identifier, _ = token.(*TokenIdentifier)
 
+			isVariadic := false
+			if ts.matchAt(0, tokEllipsis) {
+				ts.consumeAssert(tokEllipsis)
+				isVariadic = true
+			}
+
 			if !ts.matchAt(0, tokVarType) {
 				errMsg := fmt.Sprintf("Expected a var type as part of argument to proc but found %s\n", ts.currentTokenTypeAsString())
 				config := newLexerErroConfig(errMsg)
@@ -397,6 +402,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			}
 			token = ts.consume()
 			n.varType, _ = token.(*TokenVarType)
+			n.varType.variadic = isVariadic
 			// TODO: For now we don't allow default values, so all the identifiers should be
 			// uninitialized.
 			n.state = nodeUninitialized
@@ -404,6 +410,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			if ts.matchAt(0, tokComma) {
 				ts.consume()
 			}
+
 			node.args = append(node.args, n)
 		}
 	}
@@ -424,7 +431,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			n.identifier = &TokenIdentifier{}
 			n.varType, _ = token.(*TokenVarType)
 			n.state = nodeUninitialized
-			chaosDebug("%+v", n)
+
 			node.rets = append(node.rets, n)
 		}
 	}
