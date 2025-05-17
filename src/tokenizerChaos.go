@@ -11,7 +11,8 @@ import (
 type TokenType int
 
 const (
-	tokGlobal TokenType = iota
+	tokInferType           = -1
+	tokGlobal    TokenType = iota
 	tokLet
 	tokAssignment
 	tokPlus
@@ -42,7 +43,9 @@ const (
 )
 
 func (tokTyp TokenType) asString() string {
-	if tokTyp == tokGlobal {
+	if tokTyp == tokInferType {
+		return "tokInferType"
+	} else if tokTyp == tokGlobal {
 		return "tokGlobal"
 	} else if tokTyp == tokLet {
 		return "tokLet"
@@ -132,9 +135,12 @@ const (
 	kindNone
 )
 
+type PtrAnyToken any
+
 type Token interface {
 	asString() string
 	getTokenType() TokenType
+	getPosition() Position
 }
 
 type Position struct {
@@ -155,6 +161,10 @@ func (t *TokenKeyword) getTokenType() TokenType {
 	return t.tokType
 }
 
+func (t *TokenKeyword) getPosition() Position {
+	return t.position
+}
+
 type TokenVarType struct {
 	symbol   string
 	tokType  TokenType
@@ -170,6 +180,10 @@ func (t *TokenVarType) getTokenType() TokenType {
 	return t.tokType
 }
 
+func (t *TokenVarType) getPosition() Position {
+	return t.position
+}
+
 type TokenOperator struct {
 	tokType  TokenType
 	position Position
@@ -183,13 +197,17 @@ func (t *TokenOperator) getTokenType() TokenType {
 	return t.tokType
 }
 
-type TokenLiteral[T any] struct {
-	value    T
+func (t *TokenOperator) getPosition() Position {
+	return t.position
+}
+
+type TokenLiteral struct {
+	value    PtrAnyToken
 	tokType  TokenType
 	position Position
 }
 
-func (t *TokenLiteral[T]) asString() string {
+func (t *TokenLiteral) asString() string {
 	curType := any(t.value)
 	if val, ok := curType.(string); ok {
 		if val != "" {
@@ -202,8 +220,12 @@ func (t *TokenLiteral[T]) asString() string {
 	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
 }
 
-func (t *TokenLiteral[T]) getTokenType() TokenType {
+func (t *TokenLiteral) getTokenType() TokenType {
 	return t.tokType
+}
+
+func (t *TokenLiteral) getPosition() Position {
+	return t.position
 }
 
 type TokenIdentifier struct {
@@ -220,10 +242,14 @@ func (t *TokenIdentifier) getTokenType() TokenType {
 	return t.tokType
 }
 
+func (t *TokenIdentifier) getPosition() Position {
+	return t.position
+}
+
 var _ Token = &TokenKeyword{}
 var _ Token = &TokenVarType{}
 var _ Token = &TokenOperator{}
-var _ Token = &TokenLiteral[any]{}
+var _ Token = &TokenLiteral{}
 var _ Token = &TokenIdentifier{}
 
 type ContentState struct {
@@ -330,7 +356,7 @@ func (cs *ContentState) handleSingleCharacters() (bool, *TokenOperator) {
 	tokenOperator := TokenOperator{}
 	curByte := cs.currentChar()
 	if curByte == '=' {
-		tokenOperator.tokType = tokEquals
+		tokenOperator.tokType = tokAssignment
 	} else if curByte == '+' {
 		tokenOperator.tokType = tokPlus
 	} else if curByte == '-' {
@@ -351,7 +377,7 @@ func (cs *ContentState) handleSingleCharacters() (bool, *TokenOperator) {
 	return true, &tokenOperator
 }
 
-func (cs *ContentState) handleNumberLiterals() (bool, *TokenLiteral[int]) {
+func (cs *ContentState) handleNumberLiterals() (bool, *TokenLiteral) {
 	if !isNum(cs.currentChar()) {
 		return false, nil
 	}
@@ -368,7 +394,7 @@ func (cs *ContentState) handleNumberLiterals() (bool, *TokenLiteral[int]) {
 	val, err := strconv.Atoi(tmp.String())
 	assert(err == nil, "Failed to convert string to number")
 
-	token := TokenLiteral[int]{
+	token := TokenLiteral{
 		value:   val,
 		tokType: tokNumber,
 		position: Position{
@@ -536,7 +562,7 @@ func (cs *ContentState) handleIdentifiers() (bool, *TokenIdentifier) {
 	return true, &token
 }
 
-func (cs *ContentState) handleStringLiterals() (bool, *TokenLiteral[string]) {
+func (cs *ContentState) handleStringLiterals() (bool, *TokenLiteral) {
 	if cs.currentChar() != "«"[0] {
 		return false, nil
 	}
@@ -550,7 +576,7 @@ func (cs *ContentState) handleStringLiterals() (bool, *TokenLiteral[string]) {
 		cs.cursor++
 	}
 
-	token := TokenLiteral[string]{
+	token := TokenLiteral{
 		value:   tmp.String(),
 		tokType: tokString,
 		position: Position{
@@ -668,7 +694,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		panic("unrecheable")
 	}
 
-	eof := &TokenLiteral[string]{
+	eof := &TokenLiteral{
 		value:   "eof",
 		tokType: tokEndOfFile,
 		position: Position{
@@ -708,6 +734,29 @@ func (ts *TokenizerState) current() Token {
 	return ts.data[ts.cursor]
 }
 
+func (ts *TokenizerState) currentTokenType() TokenType {
+	return ts.current().getTokenType()
+}
+
+func (ts *TokenizerState) currentTokenTypeAsString() string {
+	return ts.currentTokenType().asString()
+}
+
+func (ts *TokenizerState) matchAllAt(offset int, tokTypes []TokenType) (result bool) {
+	result = false
+	for i, tok := range tokTypes {
+		pos := ts.cursor+i+offset
+		if pos > ts.count {
+			panic(fmt.Sprintf("out of bounds operation while checking for %v", tokTypes))
+		}
+		curTok := ts.data[pos]
+		if curTok.getTokenType() == tok {
+			result = true
+		}
+	}
+	return result
+}
+
 func (ts *TokenizerState) matchAt(offset int, tokTypes ...TokenType) (result bool) {
 	result = false
 	for _, tok := range tokTypes {
@@ -729,6 +778,15 @@ func (ts *TokenizerState) peak(offset int) (result Token) {
 		result = ts.data[ts.cursor+offset]
 	}
 	return
+}
+
+func (ts *TokenizerState) consumeAssert(tokType TokenType) Token {
+	assert(ts.currentTokenType() == tokType, fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.asString(), ts.currentTokenTypeAsString()))
+	result := ts.current()
+	if ts.cursor < ts.count {
+		ts.cursor++
+	}
+	return result
 }
 
 func (ts *TokenizerState) consume(count ...int) (result Token) {

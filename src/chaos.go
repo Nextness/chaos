@@ -33,11 +33,11 @@ func main() {
 			tokenState.print()
 			fmt.Print("\n")
 
-			// lexerState := lexerChaos(tokenState)
-			// for _, ls := range lexerState.data {
-			// 	ls.print(0)
-			// }
-			// fmt.Print("\n")
+			lexerState := lexerChaos(tokenState)
+			for _, ls := range lexerState.data {
+				val := ls.asBuffer(0)
+				fmt.Printf("%s\n", val.String())
+			}
 
 			// irState := irChaos(lexerState)
 			// irChaosToString(irState)

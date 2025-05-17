@@ -1,629 +1,503 @@
 package main
 
-// import (
-// 	"fmt"
-// 	"os"
-// 	"strconv"
-// 	"strings"
-// )
-//
-// type Node interface {
-// 	print(int)
-// }
-//
-// type LexerState struct {
-// 	data   []Node
-// 	count  int
-// 	cursor int
-// }
-//
-// // TODO: Include fields to overload procedures
-// // TODO: Include fields to generics in procedures
-// type NodeProc struct {
-// 	name         string
-// 	argCount     int
-// 	argTypeCount int
-// 	retsCount    int
-// 	args         []any
-// 	argsType     []any
-// 	argDefault   []any
-// 	rets         []any
-// 	retsType     []string
-// 	retsDefault  []any
-// 	procBody     []Node
-// }
-//
-// type NodeCondition struct {
-// 	conditionCount int
-// 	conditions     []NodeBinOp
-// 	scope          map[int][]Node
-// }
-//
-// type NodeBinOp struct {
-// 	lhs string
-// 	rhs string
-// 	op  string
-// }
-//
-// type NodeExit struct {
-// 	sym string
-// 	msg string
-// 	val int
-// }
-//
-// type NodeIdentifier struct {
-// 	sym string
-// 	stt string
-// 	tpe string
-// 	val any
-// }
-//
-// var _ Node = &NodeExit{}
-// var _ Node = &NodeIdentifier{}
-// var _ Node = &NodeBinOp{}
-// var _ Node = &NodeProc{}
-//
-// func makePad(padSize int) string {
-// 	return strings.Repeat(" ", padSize)
-// }
-//
-// func (n *NodeProc) print(padSize int) {
-// 	pad := makePad(padSize)
-// 	fmt.Printf("%sNodeProc [%s]\n", pad, n.name)
-// 	fmt.Printf("%s├─ Inputs [%d]: ", pad, n.argCount)
-// 	for _, arg := range n.args {
-// 		fmt.Printf("%s ", arg.(Token).value)
-// 	}
-// 	fmt.Print("\n")
-//
-// 	fmt.Printf("%s├─ Types [%d]: ", pad, n.argTypeCount)
-// 	for _, arg := range n.argsType {
-// 		fmt.Printf("%s ", arg.(Token).value)
-// 	}
-// 	fmt.Print("\n")
-//
-// 	fmt.Printf("%s├─ Returns [%d]: ", pad, n.retsCount)
-// 	for _, arg := range n.rets {
-// 		fmt.Printf("%s ", arg.(Token).value)
-// 	}
-// 	fmt.Print("\n")
-//
-// 	fmt.Printf("%s└─ Body\n", pad)
-// 	for _, arg := range n.procBody {
-// 		arg.print(padSize + 4)
-// 	}
-// }
-//
-// func (n *NodeCondition) print(padSize int) {
-// 	pad := makePad(padSize)
-// 	fmt.Printf("%sNodeCondition [chaosIntrinsic]\n", pad)
-// 	conditionIsValid := len(n.conditions) == n.conditionCount && len(n.scope) == n.conditionCount
-// 	assert(conditionIsValid, "Number of conditions doesn't match number of scopes")
-// 	conditionCount := 0
-// 	for id := range n.conditionCount {
-// 		pad = makePad(padSize + 4)
-// 		binOp := n.conditions[id]
-// 		conditionCount++
-// 		fmt.Printf("%sCondition [%d]\n", pad, conditionCount)
-// 		if binOp != (NodeBinOp{}) {
-// 			binOp.print(padSize + 8)
-// 		}
-// 		fmt.Printf("%sBody\n", pad)
-// 		for _, expr := range n.scope[id] {
-// 			expr.print(padSize + 8)
-// 		}
-// 	}
-// }
-//
-// func (n *NodeBinOp) print(padSize int) {
-// 	pad := makePad(padSize)
-// 	fmt.Printf("%sNodeBinOp [chaosIntrinsic]\n", pad)
-// 	fmt.Printf("%s├─ lhs: '%s'\n", pad, n.lhs)
-// 	fmt.Printf("%s├─ rhs: '%s'\n", pad, n.rhs)
-// 	fmt.Printf("%s└─ op:  '%s'\n", pad, n.op)
-// }
-//
-// func (n *NodeExit) print(padSize int) {
-// 	pad := makePad(padSize)
-// 	fmt.Printf("%sNodeExit [chaosIntrinsic]\n", pad)
-// 	if n.msg != "" {
-// 		fmt.Printf("%s├─ Value: '%d'\n", pad, n.val)
-// 		fmt.Printf("%s└─ Msg: '%s'\n", pad, n.msg)
-// 		return
-// 	}
-// 	fmt.Printf("%s└─➜ Value:'%d'\n", pad, n.val)
-// }
-//
-// func (n *NodeIdentifier) print(padSize int) {
-// 	pad := makePad(padSize)
-// 	fmt.Printf("%sNodeIdentifier [%s]\n", pad, n.sym)
-// 	switch v := n.val.(type) {
-// 	case string:
-// 		fmt.Printf("%s├─ State: %s\n", pad, n.stt)
-// 		fmt.Printf("%s├─ Type: %s\n", pad, n.tpe)
-// 		if n.tpe == kindString.asString() {
-// 			fmt.Printf("%s└─ Value: «%s»\n", pad, n.val)
-// 			break
-// 		}
-// 		fmt.Printf("%s└─ Value: %s\n", pad, n.val)
-// 	case NodeBinOp:
-// 		fmt.Printf("%s├─ State: %s\n", pad, n.stt)
-// 		fmt.Printf("%s├─ Type: %s\n", pad, n.tpe)
-// 		fmt.Printf("%s└─ Value:\n", pad)
-// 		v.print(padSize + 4)
-// 		break
-// 	}
-// }
-//
-// func lexChaosProc(ts *TokenizerState) *NodeProc {
-// 	newNode := NodeProc{
-// 		argCount:  0,
-// 		retsCount: 0,
-// 	}
-//
-// 	ts.consume() // consume the 'proc'
-// 	if !ts.matchAt(0, tokIdentifier) {
-// 		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("proc someName with arg1 String returns Void executes ... endproc")
-// 		config.printAndExitLexerError(ts)
-// 	}
-//
-// 	newNode.name = ts.consume().value
-//
-// 	if !ts.matchAt(0, tokExpects) {
-// 		errMsg := fmt.Sprintf("Expected an '(' but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("proc someName with arg1 String returns Void executes ... endproc")
-// 		config.printAndExitLexerError(ts)
-// 	}
-//
-// 	ts.consume() // consume the 'expects'
-//
-// 	for ts.current().tokType != tokReturns {
-// 		if !ts.matchAt(0, tokIdentifier) {
-// 			panic("Expected identifier - handle errors correctly")
-// 		}
-// 		newNode.args = append(newNode.args, ts.consume())
-//
-// 		if !ts.matchAt(0, tokVariadic, tokVarType) {
-// 			panic("Expected Type - handle errors correctly")
-// 		}
-//
-// 		// TODO: Handle variadic types
-// 		if ts.matchAt(0, tokVariadic) && ts.matchAt(1, tokVarType) {
-// 			ts.consume()
-// 			newNode.argsType = append(newNode.argsType, ts.consume())
-// 		} else if ts.matchAt(0, tokVarType) {
-// 			newNode.argsType = append(newNode.argsType, ts.consume())
-// 		}
-//
-// 		if ts.matchAt(0, tokComma) {
-// 			ts.consume()
-// 		}
-// 	}
-// 	newNode.argCount = len(newNode.args)
-// 	newNode.argTypeCount = len(newNode.argsType)
-//
-// 	ts.consume() // consume the 'returns'
-//
-// 	// TODO: Handle parenthesis in return type
-// 	for ts.current().tokType != tokExecutes {
-// 		newNode.rets = append(newNode.rets, ts.consume())
-// 	}
-// 	newNode.retsCount = len(newNode.rets)
-//
-// 	ts.consume() // consume the 'executes'
-//
-// 	for ts.current().tokType != tokEnd {
-// 		if ts.matchAt(0, tokLet) {
-// 			node := &NodeIdentifier{}
-// 			// TODO: better hanadle lexing errors
-// 			if node = lexChaosLet(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			newNode.procBody = append(newNode.procBody, node)
-// 			continue
-// 		}
-//
-// 		if ts.matchAt(0, tokIf) {
-// 			node := &NodeCondition{}
-// 			if node = lexChaosConditions(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			newNode.procBody = append(newNode.procBody, node)
-// 			continue
-// 		}
-//
-// 		if ts.matchAt(0, tokExit) {
-// 			node := &NodeExit{}
-// 			if node = lexExitChaos(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			newNode.procBody = append(newNode.procBody, node)
-// 			continue
-// 		}
-// 		ts.consume()
-// 	}
-//
-// 	ts.consumeEndBlock(tokProc)
-// 	return &newNode
-// }
-//
-// func lexChaosConditions(ts *TokenizerState) *NodeCondition {
-// 	newNode := NodeCondition{
-// 		conditionCount: 0,
-// 		conditions:     []NodeBinOp{},
-// 		scope:          map[int][]Node{},
-// 	}
-//
-// 	ts.consume() // consume the 'if'
-//
-// 	if !ts.matchAt(0, tokNumber, tokIdentifier) {
-// 		errMsg := fmt.Sprintf("Expected a Number but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("if 1 < 2 do ... endif")
-// 		config.printAndExitLexerError(ts)
-// 	}
-//
-// 	if ts.matchAt(1, tokLessThan, tokGreaterThan, tokEquals) {
-// 		lhs := ts.consume()
-// 		op := ts.consume()
-// 		if !ts.matchAt(0, tokNumber) {
-// 			errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
-// 			config := newLexerErroConfig(errMsg)
-// 			config.printAndExitLexerError(ts)
-// 		}
-// 		rhs := ts.consume()
-// 		binOp := NodeBinOp{
-// 			lhs: lhs.value,
-// 			rhs: rhs.value,
-// 			op:  op.value,
-// 		}
-// 		newNode.conditions = append(newNode.conditions, binOp)
-// 	}
-//
-// 	if !ts.matchAt(0, tokExecutes) {
-// 		errMsg := fmt.Sprintf("Expected 'executes' but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("if 1 < 2 do ... endif")
-// 		config.printAndExitLexerError(ts)
-// 	}
-//
-// 	ts.consume() // consume the 'executes'
-//
-// 	if ts.matchAt(0, tokLet) {
-// 		node := &NodeIdentifier{}
-// 		// TODO: better hanadle lexing errors
-// 		if node = lexChaosLet(ts); node == nil {
-// 			os.Exit(1)
-// 		}
-// 		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
-// 	}
-//
-// 	if ts.matchAt(0, tokExit) {
-// 		node := &NodeExit{}
-// 		if node = lexExitChaos(ts); node == nil {
-// 			os.Exit(1)
-// 		}
-// 		newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
-// 	}
-// 	newNode.conditionCount++
-//
-// 	if ts.matchAt(0, tokElif) {
-// 		ts.consume()
-// 		if !ts.matchAt(0, tokNumber, tokIdentifier) {
-// 			errMsg := fmt.Sprintf("Expected a Number of Identifier but found %s\n", ts.current().tokType.asString())
-// 			config := newLexerErroConfig(errMsg)
-// 			config.newExample("if 1 < 2 do ... endif")
-// 			config.printAndExitLexerError(ts)
-// 		}
-//
-// 		if ts.matchAt(1, tokLessThan, tokGreaterThan, tokEquals) {
-// 			lhs := ts.consume()
-// 			op := ts.consume()
-// 			if !ts.matchAt(0, tokNumber) {
-// 				errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
-// 				config := newLexerErroConfig(errMsg)
-// 				config.printAndExitLexerError(ts)
-// 			}
-// 			rhs := ts.consume()
-// 			binOp := NodeBinOp{
-// 				lhs: lhs.value,
-// 				rhs: rhs.value,
-// 				op:  op.value,
-// 			}
-// 			newNode.conditions = append(newNode.conditions, binOp)
-// 		}
-//
-// 		if !ts.matchAt(0, tokExecutes) {
-// 			errMsg := fmt.Sprintf("Expected 'executes' but found %s\n", ts.current().tokType.asString())
-// 			config := newLexerErroConfig(errMsg)
-// 			config.newExample("if 1 < 2 do ... endif")
-// 			config.printAndExitLexerError(ts)
-// 		}
-//
-// 		ts.consume() // consume the 'executes'
-//
-// 		if ts.matchAt(0, tokLet) {
-// 			node := &NodeIdentifier{}
-// 			// TODO: better hanadle lexing errors
-// 			if node = lexChaosLet(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
-// 		}
-//
-// 		if ts.matchAt(0, tokExit) {
-// 			node := &NodeExit{}
-// 			if node = lexExitChaos(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
-// 		}
-// 		newNode.conditionCount++
-// 	}
-//
-// 	if ts.matchAt(0, tokElse) {
-// 		ts.consume()
-// 		if !ts.matchAt(0, tokExecutes) {
-// 			errMsg := fmt.Sprintf("Expected 'executes' but found %s\n", ts.current().tokType.asString())
-// 			config := newLexerErroConfig(errMsg)
-// 			config.newExample("if 1 < 2 do ... endif")
-// 			config.printAndExitLexerError(ts)
-// 		}
-//
-// 		ts.consume() // consume the 'executes'
-//
-// 		// TODO: Improve how to handle the else branch
-// 		newNode.conditions = append(newNode.conditions, NodeBinOp{})
-//
-// 		if ts.matchAt(0, tokLet) {
-// 			node := &NodeIdentifier{}
-// 			// TODO: better hanadle lexing errors
-// 			if node = lexChaosLet(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
-// 		}
-//
-// 		if ts.matchAt(0, tokExit) {
-// 			node := &NodeExit{}
-// 			if node = lexExitChaos(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			newNode.scope[newNode.conditionCount] = append(newNode.scope[newNode.conditionCount], node)
-// 		}
-// 		newNode.conditionCount++
-// 	}
-//
-// 	if !ts.matchAt(0, tokEnd) && !ts.matchAt(1, tokIf) {
-// 		errMsg := fmt.Sprintf("Expected 'end if' but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("if 1 < 2 executes ... end if")
-// 		config.printAndExitLexerError(ts)
-// 	}
-//
-// 	ts.consumeEndBlock(tokIf)
-// 	return &newNode
-// }
-//
-// func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
-// 	newNode := NodeIdentifier{}
-// 	newNode.val = ""
-// 	newNode.stt = "not-initialized"
-//
-// 	ts.consume() // consume the 'let'
-// 	newNode.sym = ts.current().value
-//
-// 	if !ts.matchAt(0, tokIdentifier) {
-// 		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("let something U64")
-// 		config.newExample("let something U64 = 1")
-// 		config.printAndExitLexerError(ts)
-// 	}
-// 	varName := ts.consume().value
-// 	if _, ok := ts.variables[varName]; !ok {
-// 		ts.variables[varName] = ""
-// 	}
-//
-// 	if !ts.matchAt(0, tokVarType, tokAssignment) {
-// 		errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("let something U64")
-// 		config.newExample("let something U64 = 1")
-// 		config.printAndExitLexerError(ts)
-// 	}
-//
-// 	if ts.matchAt(0, tokVarType) {
-// 		token := ts.consume()
-// 		newNode.tpe = token.tokKind.asString()
-// 	}
-//
-// 	if ts.matchAt(0, tokAssignment) {
-// 		if newNode.tpe == "" {
-// 			newNode.tpe = "must-infer"
-// 		}
-// 		ts.consume() // Consume '='
-// 		if !ts.matchAt(0, tokNumber, tokIdentifier, tokString) {
-// 			errMsg := fmt.Sprintf("Expected a number, or identifier or string but found %s\n", ts.current().tokType.asString())
-// 			config := newLexerErroConfig(errMsg)
-// 			config.newExample("let something U64")
-// 			config.newExample("let something U64 = 1")
-// 			config.printAndExitLexerError(ts)
-// 		}
-// 		if ts.matchAt(0, tokNumber) {
-// 			newNode.stt = "initialized"
-// 			if ts.matchAt(1, tokPlus, tokMinus) {
-// 				lhs := ts.consume()
-// 				op := ts.consume()
-// 				if !ts.matchAt(0, tokNumber) {
-// 					errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.current().tokType.asString())
-// 					config := newLexerErroConfig(errMsg)
-// 					config.printAndExitLexerError(ts)
-// 				}
-// 				rhs := ts.consume()
-// 				binOp := NodeBinOp{
-// 					lhs: lhs.value,
-// 					rhs: rhs.value,
-// 					op:  op.value,
-// 				}
-// 				newNode.val = binOp
-// 			} else {
-// 				value := ts.consume().value
-// 				newNode.val = value
-// 				ts.variables[varName] = value
-// 			}
-// 		} else if ts.matchAt(0, tokString) {
-// 			value := ts.consume().value
-// 			newNode.val = value
-// 			newNode.stt = "initialized"
-// 			ts.variables[varName] = value
-// 		} else if ts.matchAt(0, tokIdentifier) {
-// 			if val, ok := ts.variables[ts.current().value]; ok {
-// 				name := ts.consume().value
-// 				ts.variables[name] = val
-// 				newNode.val = name
-// 				newNode.stt = "initialized"
-// 			} else {
-// 				errMsg := fmt.Sprintf("Undefined identifier %s\n", ts.current().value)
-//
-// 				config := newLexerErroConfig(errMsg)
-// 				config.newExample("let something U64")
-// 				config.newExample("let something U64 = 1")
-// 				config.newExample("let something U64 = 1", "let somethingElse = something")
-// 				config.newExample("let something String = «string literal»")
-// 				config.newExample("let something String = «string literal»", "let somethingElse = something")
-// 				config.printAndExitLexerError(ts)
-// 			}
-// 		}
-// 	}
-//
-// 	return &newNode
-// }
-//
-// func lexExitChaos(ts *TokenizerState) *NodeExit {
-// 	newNode := NodeExit{}
-//
-// 	ts.consume()
-// 	if !ts.matchAt(0, tokNumber, tokIdentifier) {
-// 		errMsg := fmt.Sprintf("Expected a number or identifier but found %s\n", ts.current().tokType.asString())
-// 		config := newLexerErroConfig(errMsg)
-// 		config.newExample("exitWith 1")
-// 		config.newExample("exitWith 1, «reason for exiting early»")
-// 		config.newExample("let code U64 = 1", "exitWith code")
-// 		config.newExample("let code U64 = 1", "exitWith code, «reason for exitin early»")
-// 		config.printAndExitLexerError(ts)
-// 	}
-//
-// 	if ts.matchAt(0, tokNumber) {
-// 		token := ts.consume()
-// 		asInt, err := strconv.Atoi(token.value)
-// 		if err != nil {
-// 			panic("failed to convert str to number")
-// 		}
-// 		newNode.val = asInt
-// 	}
-// 	if ts.matchAt(0, tokIdentifier) {
-// 		token := ts.consume()
-// 		val := ts.variables[token.value]
-// 		asInt, err := strconv.Atoi(val)
-// 		if err != nil {
-// 			panic("failed to convert str to number")
-// 		}
-// 		newNode.sym = token.value
-// 		newNode.val = asInt
-// 	}
-//
-// 	if ts.matchAt(0, tokComma) {
-// 		if ts.matchAt(1, tokString) {
-// 			ts.consume()
-// 			newNode.msg = ts.consume().value
-// 		} else {
-// 			if ts.matchAt(0, tokComma) {
-// 				ts.consume()
-// 			}
-// 			errMsg := fmt.Sprintf("Expected a string but found %s\n", ts.current().tokType.asString())
-// 			config := newLexerErroConfig(errMsg)
-// 			config.newExample("exitWith 1")
-// 			config.newExample("exitWith 1, «reason for exiting early»")
-// 			config.newExample("let code U64 = 1", "exitWith code")
-// 			config.newExample("let code U64 = 1", "exitWith code, «reason for exitin early»")
-// 			config.printAndExitLexerError(ts)
-// 		}
-// 	}
-//
-// 	return &newNode
-// }
-//
-// func lexChaosExpression(ts *TokenizerState) (bool, Node) {
-// 	// TODO: tokLet should allow not only variable definition and assignment, but also anonymous
-// 	// structs and functions
-// 	if ts.matchAt(0, tokLet) {
-// 		node := &NodeIdentifier{}
-// 		if node = lexChaosLet(ts); node == nil {
-// 			os.Exit(1)
-// 		}
-// 		return true, node
-// 	}
-// 	return false, nil
-// }
-//
-// // TODO: better handle how 'end <block>' is parsed in the lexer
-// // since we are always doing the same operation once a block is closed
-// func lexerChaos(ts *TokenizerState) *LexerState {
-// 	assert(ts.cursor == 0, "Cursor is not 0")
-// 	lexerState := LexerState{data: []Node{}, count: 0, cursor: 0}
-//
-// 	for ts.cursor < ts.count {
-// 		if ts.matchAt(0, tokEndOfFile) {
-// 			break
-// 		}
-//
-// 		if ts.matchAt(0, tokProc) {
-// 			node := &NodeProc{}
-// 			if node = lexChaosProc(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			lexerState.data = append(lexerState.data, node)
-// 			continue
-// 		}
-//
-// 		if ok, node := lexChaosExpression(ts); ok {
-// 			lexerState.data = append(lexerState.data, node)
-// 			continue
-// 		}
-//
-// 		if ts.matchAt(0, tokIf) {
-// 			node := &NodeCondition{}
-// 			if node = lexChaosConditions(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			lexerState.data = append(lexerState.data, node)
-// 			continue
-// 		}
-//
-// 		if ts.matchAt(0, tokExit) {
-// 			node := &NodeExit{}
-// 			if node = lexExitChaos(ts); node == nil {
-// 				os.Exit(1)
-// 			}
-// 			lexerState.data = append(lexerState.data, node)
-// 			continue
-// 		}
-//
-// 		if ts.matchAt(0, tokNewline) {
-// 			ts.consume()
-// 			continue
-// 		}
-//
-// 		fmt.Fprintf(os.Stderr, "[ERROR] The token '%s' is not expected\n", ts.current().value)
-// 		panic("Unexpected token found")
-// 	}
-//
-// 	assert(tokEndOfFile == ts.current().tokType, "Expected eof")
-// 	ts.consume()
-// 	lexerState.count = len(lexerState.data)
-// 	return &lexerState
-// }
+import (
+	"bytes"
+	"fmt"
+	"os"
+)
+
+const PADNUMBER int = 2
+
+func nodeInfer() *TokenVarType {
+	result := TokenVarType{symbol: "infer", tokType: tokInferType}
+	return &result
+}
+
+type LexerState struct {
+	data   []Node
+	count  int
+	cursor int
+}
+
+type NodeType int
+
+const (
+	nodeIdentifier NodeType = iota
+	nodeExit
+	nodeProc
+)
+
+type NodeState int
+
+const (
+	nodeUninitialized NodeState = iota
+	nodeInitialized
+	nodeReassigned
+)
+
+func (n NodeType) asString() string {
+	if n == nodeIdentifier {
+		return "NodeIdentifier"
+	} else if n == nodeExit {
+		return "NodeExit"
+	} else if n == nodeProc {
+		return "NodeProc"
+	}
+	panic(fmt.Sprintf("Unexpected NodeType '%d'", n))
+}
+
+type PtrAnyNode any
+
+type Node interface {
+	asString() string
+	asBuffer(padSize int) bytes.Buffer
+	getNodeType() NodeType
+}
+
+type NodeExit struct {
+	nodeType NodeType
+	value    *TokenLiteral
+	message  *TokenLiteral
+}
+
+func (n *NodeExit) asString() string {
+	return todo[string]()
+}
+
+func (n *NodeExit) asBuffer(padSize int) bytes.Buffer {
+	pad := makePad(padSize)
+
+	tmp := bytes.Buffer{}
+	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	tmp.WriteString(fmt.Sprintf("%ssoruce [instrinsic]", pad))
+	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sno-symbol", pad))
+	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sno-state", pad))
+	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	if n.message != nil {
+		message := n.message.value.(string)
+		tmp.WriteString(fmt.Sprintf("%smessage ['%s']", pad, message))
+		tmp.WriteByte('\n')
+	}
+	tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, n.value.value.(int)))
+	return tmp
+}
+
+func (n *NodeExit) getNodeType() NodeType {
+	return n.nodeType
+}
+
+type NodeIdentifier struct {
+	nodeType   NodeType
+	state      NodeState
+	identifier *TokenIdentifier
+	varType    *TokenVarType
+	value      PtrAnyNode
+}
+
+func (n *NodeIdentifier) asString() string {
+	return todo[string]()
+}
+
+func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
+	pad := makePad(padSize)
+
+	tmp := bytes.Buffer{}
+	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	tmp.WriteString(fmt.Sprintf("%ssource [user-made]", pad))
+	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
+	tmp.WriteByte('\n')
+
+	if n.state == nodeInitialized {
+		tmp.WriteString(fmt.Sprintf("%sstate [initialized]", pad))
+	} else if n.state == nodeUninitialized {
+		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]", pad))
+	} else if n.state == nodeReassigned {
+		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]", pad))
+	} else {
+		panic(fmt.Sprintf("Unknown NodeState found: '%d'", n.state))
+	}
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
+	tmp.WriteByte('\n')
+
+	if any(n.value) == nil {
+		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
+		return tmp
+	} else {
+		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
+		tmp.WriteByte('\n')
+	}
+
+	value := n.value.(*TokenLiteral).value
+	if val, ok := value.(string); ok {
+		tmp.WriteString(fmt.Sprintf("%svalue ['%s']", pad, val))
+	} else if val, ok := value.(int); ok {
+		tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, val))
+	}
+
+	return tmp
+}
+
+func (n *NodeIdentifier) getNodeType() NodeType {
+	return n.nodeType
+}
+
+type NodeProcDef struct {
+	nodeType   NodeType
+	state      NodeState
+	identifier *TokenIdentifier
+	args       []NodeIdentifier
+	rets       []NodeIdentifier
+	statements []Node
+}
+
+func (n *NodeProcDef) asString() string {
+	return todo[string]()
+}
+
+func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
+	pad := makePad(padSize)
+
+	tmp := bytes.Buffer{}
+	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	tmp.WriteString(fmt.Sprintf("%ssource [user-made]", pad))
+	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
+	tmp.WriteByte('\n')
+
+	if n.state == nodeInitialized {
+		tmp.WriteString(fmt.Sprintf("%sstate [initialized]", pad))
+	} else if n.state == nodeUninitialized {
+		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]", pad))
+	} else if n.state == nodeReassigned {
+		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]", pad))
+	} else {
+		panic(fmt.Sprintf("Unknown NodeState found: '%d'", n.state))
+	}
+	tmp.WriteByte('\n')
+
+	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	tmp.WriteString(fmt.Sprintf("%sinput", pad))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	for _, arg := range n.args {
+		a := arg.asBuffer(padSize)
+		tmp.Write(a.Bytes())
+		tmp.WriteByte('\n')
+	}
+
+	padSize -= PADNUMBER
+	pad = makePad(padSize)
+	tmp.WriteString(fmt.Sprintf("%soutput", pad))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+	for _, arg := range n.rets {
+		a := arg.asBuffer(padSize)
+		tmp.Write(a.Bytes())
+		tmp.WriteByte('\n')
+	}
+
+	padSize -= PADNUMBER
+	pad = makePad(padSize)
+	tmp.WriteString(fmt.Sprintf("%sbody", pad))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+	for _, arg := range n.statements {
+		a := arg.asBuffer(padSize)
+		tmp.Write(a.Bytes())
+		tmp.WriteByte('\n')
+	}
+
+	return tmp
+}
+
+func (n *NodeProcDef) getNodeType() NodeType {
+	return n.nodeType
+}
+
+var _ Node = &NodeIdentifier{}
+var _ Node = &NodeExit{}
+var _ Node = &NodeProcDef{}
+
+func lexExit(ts *TokenizerState) *NodeExit {
+	var token Token
+	node := NodeExit{nodeType: nodeExit}
+
+	ts.consumeAssert(tokExit)
+	if !ts.matchAt(0, tokNumber) {
+		// TODO: Better handle errors
+		errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.currentTokenTypeAsString())
+		config := newLexerErroConfig(errMsg)
+		config.printAndExitLexerError(ts)
+	}
+
+	token = ts.consume()
+	node.value, _ = token.(*TokenLiteral)
+
+	if ts.matchAt(0, tokComma) {
+		ts.consumeAssert(tokComma)
+		if !ts.matchAt(0, tokString) {
+			errMsg := fmt.Sprintf("Expected a string but found %s\n", ts.currentTokenTypeAsString())
+			config := newLexerErroConfig(errMsg)
+			config.printAndExitLexerError(ts)
+		}
+		token = ts.consume()
+		node.message = token.(*TokenLiteral)
+	}
+
+	return &node
+}
+
+func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
+	var token Token
+	node := NodeIdentifier{
+		state:    nodeReassigned,
+		nodeType: nodeIdentifier,
+	}
+
+	token = ts.consumeAssert(tokIdentifier)
+	node.identifier = token.(*TokenIdentifier)
+
+	ts.consumeAssert(tokAssignment)
+
+	if !ts.matchAt(0, tokNumber) {
+		errMsg := fmt.Sprintf("Expected a number while reassigning but found %s\n", ts.currentTokenTypeAsString())
+		config := newLexerErroConfig(errMsg)
+		config.printAndExitLexerError(ts)
+	}
+	value := ts.consume()
+	node.value = value.(*TokenLiteral)
+	node.varType = nodeInfer()
+
+	return &node
+}
+
+func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
+	var token Token
+	node := NodeIdentifier{
+		state:    nodeUninitialized,
+		nodeType: nodeIdentifier,
+	}
+	ts.consumeAssert(tokLet)
+
+	if !ts.matchAt(0, tokIdentifier) {
+		// TODO: Improve error handling
+		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.currentTokenTypeAsString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("let something U64")
+		config.newExample("let something U64 = 1")
+		config.printAndExitLexerError(ts)
+	}
+
+	token = ts.consume()
+	node.identifier, _ = token.(*TokenIdentifier)
+
+	if !ts.matchAt(0, tokVarType, tokAssignment) {
+		// TODO: Improve error handling
+		errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.currentTokenTypeAsString())
+		config := newLexerErroConfig(errMsg)
+		config.newExample("let something U64")
+		config.newExample("let something U64 = 1")
+		config.printAndExitLexerError(ts)
+	}
+
+	if ts.matchAt(0, tokVarType) {
+		token = ts.consume()
+		node.varType = token.(*TokenVarType)
+	} else {
+		node.varType = nodeInfer()
+	}
+
+	if ts.matchAt(0, tokAssignment) {
+		ts.consumeAssert(tokAssignment)
+		if !ts.matchAt(0, tokString, tokNumber) {
+			errMsg := fmt.Sprintf("Expected a string, or number but found %s\n", ts.currentTokenTypeAsString())
+			config := newLexerErroConfig(errMsg)
+			config.printAndExitLexerError(ts)
+		}
+		if ts.matchAt(0, tokString, tokNumber) {
+			token = ts.consume()
+			node.value, _ = token.(*TokenLiteral)
+			node.state = nodeInitialized
+		}
+	}
+
+	return &node
+}
+
+func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
+	var token Token
+	node := NodeProcDef{nodeType: nodeProc, state: nodeInitialized}
+	ts.consumeAssert(tokProc)
+
+	if !ts.matchAt(0, tokIdentifier) {
+		errMsg := fmt.Sprintf("Expected an identifier to name a proc but found %s\n", ts.currentTokenTypeAsString())
+		config := newLexerErroConfig(errMsg)
+		config.printAndExitLexerError(ts)
+	}
+	token = ts.consume()
+	node.identifier, _ = token.(*TokenIdentifier)
+
+	if ts.matchAt(0, tokExpects) {
+		ts.consumeAssert(tokExpects)
+		for ts.current().getTokenType() != tokReturns {
+			n := NodeIdentifier{nodeType: nodeIdentifier}
+			if !ts.matchAt(0, tokIdentifier) {
+				errMsg := fmt.Sprintf("Expected an identifier as argument to proc but found %s\n", ts.currentTokenTypeAsString())
+				config := newLexerErroConfig(errMsg)
+				config.printAndExitLexerError(ts)
+			}
+			token = ts.consume()
+			n.identifier, _ = token.(*TokenIdentifier)
+
+			if !ts.matchAt(0, tokVarType) {
+				errMsg := fmt.Sprintf("Expected a var type as part of argument to proc but found %s\n", ts.currentTokenTypeAsString())
+				config := newLexerErroConfig(errMsg)
+				config.printAndExitLexerError(ts)
+			}
+			token = ts.consume()
+			n.varType, _ = token.(*TokenVarType)
+			// TODO: For now we don't allow default values, so all the identifiers should be
+			// uninitialized.
+			n.state = nodeUninitialized
+
+			if ts.matchAt(0, tokComma) {
+				ts.consume()
+			}
+			node.args = append(node.args, n)
+		}
+	}
+
+	if ts.matchAt(0, tokReturns) {
+		ts.consumeAssert(tokReturns)
+		for ts.current().getTokenType() != tokExecutes {
+			// TODO: For now we only allow a single return type. In the future we should not only
+			// allow multiple return types, but also named return types, and default values
+			// for return types
+			n := NodeIdentifier{nodeType: nodeIdentifier}
+			if !ts.matchAt(0, tokVarType) {
+				errMsg := fmt.Sprintf("Expected a return type as part of proc but found %s\n", ts.currentTokenTypeAsString())
+				config := newLexerErroConfig(errMsg)
+				config.printAndExitLexerError(ts)
+			}
+			token = ts.consume()
+			n.identifier = &TokenIdentifier{}
+			n.varType, _ = token.(*TokenVarType)
+			n.state = nodeUninitialized
+			chaosDebug("%+v", n)
+			node.rets = append(node.rets, n)
+		}
+	}
+
+	ts.consumeAssert(tokExecutes)
+	for !ts.matchAllAt(0, []TokenType{tokEnd, tokProc}) {
+		n, ok := lexChaosStatement(ts)
+		if !ok {
+			os.Exit(1)
+		}
+		node.statements = append(node.statements, n)
+	}
+
+	ts.consumeEndBlock(tokProc)
+
+	return &node, true
+}
+
+func lexChaosStatement(ts *TokenizerState) (Node, bool) {
+	if ts.matchAt(0, tokLet) {
+		node := lexChaosLet(ts)
+		if node == nil {
+			os.Exit(1)
+		}
+		return node, true
+	}
+	if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokAssignment) {
+		node := lexChaosReassignment(ts)
+		if node == nil {
+			os.Exit(1)
+		}
+		return node, true
+	}
+	if ts.matchAt(0, tokExit) {
+		node := lexExit(ts)
+		if node == nil {
+			os.Exit(1)
+		}
+		return node, true
+	}
+	return nil, false
+}
+
+func lexerChaos(ts *TokenizerState) *LexerState {
+	assert(ts.cursor == 0, "Cursor is not 0")
+	lexerState := LexerState{
+		data:   []Node{},
+		count:  0,
+		cursor: 0,
+	}
+
+	for ts.cursor < ts.count {
+		if ts.matchAt(0, tokEndOfFile) {
+			break
+		}
+
+		if ts.matchAt(0, tokProc) {
+			if node, ok := lexProcDefinition(ts); ok {
+				lexerState.data = append(lexerState.data, node)
+				continue
+			}
+			panic("Failed to lex proc definition")
+		}
+
+		if ts.matchAt(0, tokLet, tokExit, tokIdentifier) {
+			if node, ok := lexChaosStatement(ts); ok {
+				lexerState.data = append(lexerState.data, node)
+				continue
+			}
+			panic("Failed to lex chaos statement")
+		}
+
+		panic("Unrecheable")
+	}
+	return &lexerState
+}

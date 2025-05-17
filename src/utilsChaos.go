@@ -1,8 +1,10 @@
 package main
 
 import (
-	"unicode"
 	"fmt"
+	"os"
+	"strings"
+	"unicode"
 )
 
 func isUppercase(b byte) bool {
@@ -41,3 +43,19 @@ func assert(ok bool, reason string) {
 	}
 }
 
+func makePadOffset(padSize int, offset int) string {
+	repeat := padSize + offset
+	return strings.Repeat(" ", repeat)
+}
+
+func makePad(padSize int) string {
+	return strings.Repeat(" ", padSize)
+}
+
+func chaosDebug(format string, args ...any) {
+	fmt.Fprintf(os.Stdout, "DEBUG: "+format+"\n", args...)
+}
+
+func todo[V any](args ...any) V {
+	panic("TODO: Not implemented yet")
+}
