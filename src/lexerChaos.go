@@ -151,11 +151,15 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 		tmp.WriteByte('\n')
 	}
 
-	value := n.value.(*TokenLiteral).value
-	if val, ok := value.(string); ok {
-		tmp.WriteString(fmt.Sprintf("%svalue ['%s']", pad, val))
-	} else if val, ok := value.(int); ok {
-		tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, val))
+	chaosDebug("%+v", n.value)
+	if value, ok := n.value.(*TokenLiteral); ok {
+		if val, ok := value.value.(string); ok {
+			tmp.WriteString(fmt.Sprintf("%svalue ['%s']", pad, val))
+		} else if val, ok := value.value.(int); ok {
+			tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, val))
+		}
+	} else if value, ok := n.value.(*TokenIdentifier); ok {
+		tmp.WriteString(fmt.Sprintf("%svalue [%s]", pad, value.symbol))
 	}
 
 	return tmp
@@ -349,7 +353,7 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 
 	if ts.matchAt(0, tokAssignment) {
 		ts.consumeAssert(tokAssignment)
-		if !ts.matchAt(0, tokString, tokNumber) {
+		if !ts.matchAt(0, tokString, tokNumber, tokIdentifier) {
 			errMsg := fmt.Sprintf("Expected a string, or number but found %s\n", ts.currentTokenTypeAsString())
 			config := newLexerErroConfig(errMsg)
 			config.printAndExitLexerError(ts)
@@ -357,8 +361,12 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 		if ts.matchAt(0, tokString, tokNumber) {
 			token = ts.consume()
 			node.value, _ = token.(*TokenLiteral)
-			node.state = nodeInitialized
+		} else if ts.matchAt(0, tokIdentifier) {
+			token = ts.consume()
+			node.value, _ = token.(*TokenIdentifier)
 		}
+		node.state = nodeInitialized
+
 	}
 
 	return &node
