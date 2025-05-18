@@ -8,6 +8,8 @@ import (
 	"unicode"
 )
 
+type Symbol string
+
 type TokenType int
 
 const (
@@ -173,7 +175,7 @@ func (t *TokenKeyword) getPosition() Position {
 }
 
 type TokenVarType struct {
-	symbol   string
+	symbol   Symbol
 	variadic bool
 	tokType  TokenType
 	tokKind  TokenKind
@@ -237,7 +239,7 @@ func (t *TokenLiteral) getPosition() Position {
 }
 
 type TokenIdentifier struct {
-	symbol   string
+	symbol   Symbol
 	tokType  TokenType
 	position Position
 }
@@ -433,7 +435,7 @@ func (cs *ContentState) handleVarTypes() (bool, *TokenVarType) {
 		cs.cursor++
 	}
 
-	sym := tmp.String()
+	sym := Symbol(tmp.String())
 	token := TokenVarType{
 		symbol:  sym,
 		tokType: tokVarType,
@@ -565,7 +567,7 @@ func (cs *ContentState) handleIdentifiers() (bool, *TokenIdentifier) {
 	}
 
 	token := TokenIdentifier{
-		symbol:  tmp.String(),
+		symbol:  Symbol(tmp.String()),
 		tokType: tokIdentifier,
 		position: Position{
 			line:   cs.line,

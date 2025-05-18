@@ -571,5 +571,6 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 
 		panic("Unrecheable")
 	}
+	lexerState.count = len(lexerState.data)
 	return &lexerState
 }
