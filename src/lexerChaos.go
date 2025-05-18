@@ -151,7 +151,6 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 		tmp.WriteByte('\n')
 	}
 
-	chaosDebug("%+v", n.value)
 	if value, ok := n.value.(*TokenLiteral); ok {
 		if val, ok := value.value.(string); ok {
 			tmp.WriteString(fmt.Sprintf("%svalue ['%s']", pad, val))

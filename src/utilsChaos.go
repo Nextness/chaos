@@ -43,11 +43,6 @@ func assert(ok bool, reason string) {
 	}
 }
 
-func makePadOffset(padSize int, offset int) string {
-	repeat := padSize + offset
-	return strings.Repeat(" ", repeat)
-}
-
 func makePad(padSize int) string {
 	return strings.Repeat(" ", padSize)
 }
