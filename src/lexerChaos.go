@@ -24,6 +24,7 @@ const (
 	nodeIdentifier NodeType = iota
 	nodeExit
 	nodeProc
+	nodeBinOp
 )
 
 type NodeState int
@@ -41,11 +42,16 @@ func (n NodeType) asString() string {
 		return "NodeExit"
 	} else if n == nodeProc {
 		return "NodeProc"
+	} else if n == nodeBinOp {
+		return "NodeBinOp"
 	}
 	panic(fmt.Sprintf("Unexpected NodeType '%d'", n))
 }
 
-type PtrAnyNode any
+// In this context, this is basically either a Node or a Token, depending on
+// what is on the rhs. If it is a literal for instace, it is a *TokenLiteral.
+// If it is a binary operation of function call, then it should be a *NodeBinOp.
+type PtrAny any
 
 type Node interface {
 	asString() string
@@ -73,12 +79,6 @@ func (n *NodeExit) asBuffer(padSize int) bytes.Buffer {
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
-	tmp.WriteString(fmt.Sprintf("%ssoruce [instrinsic]", pad))
-	tmp.WriteByte('\n')
-	tmp.WriteString(fmt.Sprintf("%sno-symbol", pad))
-	tmp.WriteByte('\n')
-	tmp.WriteString(fmt.Sprintf("%sno-state", pad))
-	tmp.WriteByte('\n')
 	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
 	tmp.WriteByte('\n')
 
@@ -91,6 +91,7 @@ func (n *NodeExit) asBuffer(padSize int) bytes.Buffer {
 		tmp.WriteByte('\n')
 	}
 	tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, n.value.value.(int)))
+	tmp.WriteByte('\n')
 	return tmp
 }
 
@@ -103,7 +104,7 @@ type NodeIdentifier struct {
 	state      NodeState
 	identifier *TokenIdentifier
 	varType    *TokenVarType
-	value      PtrAnyNode
+	value      PtrAny
 }
 
 func (n *NodeIdentifier) asString() string {
@@ -120,8 +121,6 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
-	tmp.WriteString(fmt.Sprintf("%ssource [user-made]", pad))
-	tmp.WriteByte('\n')
 	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
 	tmp.WriteByte('\n')
 
@@ -144,6 +143,7 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 
 	if any(n.value) == nil {
 		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
+		tmp.WriteByte('\n')
 		return tmp
 	} else {
 		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
@@ -158,7 +158,11 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 		}
 	} else if value, ok := n.value.(*TokenIdentifier); ok {
 		tmp.WriteString(fmt.Sprintf("%svalue [%s]", pad, value.symbol))
+	} else if value, ok := n.value.(*NodeBinOp); ok {
+		buf := value.asBuffer(padSize)
+		tmp.Write(buf.Bytes())
 	}
+	tmp.WriteByte('\n')
 
 	return tmp
 }
@@ -190,20 +194,7 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
-	tmp.WriteString(fmt.Sprintf("%ssource [user-made]", pad))
-	tmp.WriteByte('\n')
 	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
-	tmp.WriteByte('\n')
-
-	if n.state == nodeInitialized {
-		tmp.WriteString(fmt.Sprintf("%sstate [initialized]", pad))
-	} else if n.state == nodeUninitialized {
-		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]", pad))
-	} else if n.state == nodeReassigned {
-		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]", pad))
-	} else {
-		panic(fmt.Sprintf("Unknown NodeState found: '%d'", n.state))
-	}
 	tmp.WriteByte('\n')
 
 	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
@@ -257,9 +248,57 @@ func (n *NodeProcDef) getNodeType() NodeType {
 	return n.nodeType
 }
 
+type NodeBinOp struct {
+	nodeType  NodeType
+	state     NodeState
+	lhs       PtrAny
+	rhs       PtrAny
+	operation *TokenOperator
+}
+
+func (n *NodeBinOp) asString() string {
+	return todo[string]()
+}
+
+func (n *NodeBinOp) asBuffer(padSize int) bytes.Buffer {
+	pad := makePad(padSize)
+
+	tmp := bytes.Buffer{}
+	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+
+	op := n.operation.tokType.asString()
+	tmp.WriteString(fmt.Sprintf("%soperation [%s]", pad, op))
+	tmp.WriteByte('\n')
+
+	lhs := n.lhs.(*TokenLiteral).value.(int)
+	tmp.WriteString(fmt.Sprintf("%slhs [%d]", pad, lhs))
+	tmp.WriteByte('\n')
+
+	rhs := n.rhs.(*TokenLiteral).value.(int)
+	tmp.WriteString(fmt.Sprintf("%srhs [%d]", pad, rhs))
+	tmp.WriteByte('\n')
+
+	return tmp
+}
+
+func (n *NodeBinOp) getNodeType() NodeType {
+	return n.nodeType
+}
+
 var _ Node = &NodeIdentifier{}
 var _ Node = &NodeExit{}
 var _ Node = &NodeProcDef{}
+var _ Node = &NodeBinOp{}
 
 func lexExit(ts *TokenizerState) *NodeExit {
 	var token Token
@@ -294,10 +333,7 @@ func lexExit(ts *TokenizerState) *NodeExit {
 
 func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
 	var token Token
-	node := NodeIdentifier{
-		state:    nodeReassigned,
-		nodeType: nodeIdentifier,
-	}
+	node := NodeIdentifier{state: nodeReassigned, nodeType: nodeIdentifier}
 
 	token = ts.consumeAssert(tokIdentifier)
 	node.identifier = token.(*TokenIdentifier)
@@ -320,10 +356,7 @@ func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
 
 func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	var token Token
-	node := NodeIdentifier{
-		state:    nodeUninitialized,
-		nodeType: nodeIdentifier,
-	}
+	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
 	ts.consumeAssert(tokLet)
 
 	if !ts.matchAt(0, tokIdentifier) {
@@ -347,6 +380,9 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 		config.printAndExitLexerError(ts)
 	}
 
+	// TODO: Fix case where we only have the identifier, but no type or assignment.
+	// This behavior is not allowed. It should be either infer type by assignment or
+	// identifier uninitialized with a type.
 	node.varType = nodeInfer()
 	if ts.matchAt(0, tokVarType) {
 		token = ts.consume()
@@ -360,14 +396,28 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 			config := newLexerErroConfig(errMsg)
 			config.printAndExitLexerError(ts)
 		}
-		if ts.matchAt(0, tokString, tokNumber) {
+
+		node.state = nodeInitialized
+		if ts.matchAt(0, tokString, tokNumber) && ts.matchAt(1, tokSemicolon) {
 			token = ts.consume()
 			node.value, _ = token.(*TokenLiteral)
-		} else if ts.matchAt(0, tokIdentifier) {
+		} else if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokSemicolon) {
 			token = ts.consume()
 			node.value, _ = token.(*TokenIdentifier)
 		}
-		node.state = nodeInitialized
+		if ts.matchAt(0, tokNumber) && ts.matchAt(1, tokEquals, tokGreaterThan, tokLessThan, tokPlus, tokMinus) {
+			binOp := NodeBinOp{nodeType: nodeBinOp, state: nodeInitialized}
+			token = ts.consumeAssert(tokNumber)
+			binOp.lhs = token.(*TokenLiteral)
+
+			token = ts.consume()
+			binOp.operation = token.(*TokenOperator)
+
+			token = ts.consumeAssert(tokNumber)
+			binOp.rhs = token.(*TokenLiteral)
+
+			node.value = &binOp
+		}
 	}
 
 	ts.consumeAssert(tokSemicolon)
