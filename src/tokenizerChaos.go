@@ -40,6 +40,7 @@ const (
 	tokCloseParen
 	tokEllipsis
 	tokSemicolon
+	tokColon
 	tokCount
 )
 
@@ -102,7 +103,10 @@ func (tokTyp TokenType) asString() string {
 		return "tokElse"
 	} else if tokTyp == tokSemicolon {
 		return "tokSemicolon"
+	} else if tokTyp == tokColon {
+		return "tokColon"
 	}
+
 	panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
 }
 
@@ -375,6 +379,8 @@ func (cs *ContentState) handleSingleCharacters() (bool, *TokenOperator) {
 		tokenOperator.tokType = tokGreaterThan
 	} else if curByte == ';' {
 		tokenOperator.tokType = tokSemicolon
+	} else if curByte == ':' {
+		tokenOperator.tokType = tokColon
 	} else {
 		return false, nil
 	}

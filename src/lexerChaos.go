@@ -371,6 +371,8 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	token = ts.consume()
 	node.identifier, _ = token.(*TokenIdentifier)
 
+	ts.consumeAssert(tokColon)
+
 	if !ts.matchAt(0, tokVarType, tokAssignment) {
 		// TODO: Improve error handling
 		errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.currentTokenTypeAsString())
@@ -449,6 +451,8 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			}
 			token = ts.consume()
 			n.identifier, _ = token.(*TokenIdentifier)
+
+			ts.consumeAssert(tokColon)
 
 			isVariadic := false
 			if ts.matchAt(0, tokEllipsis) {
