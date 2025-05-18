@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"os"
 )
 
 const PADNUMBER int = 2
@@ -288,6 +287,8 @@ func lexExit(ts *TokenizerState) *NodeExit {
 		node.message = token.(*TokenLiteral)
 	}
 
+	ts.consumeAssert(tokSemicolon)
+
 	return &node
 }
 
@@ -311,6 +312,8 @@ func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
 	value := ts.consume()
 	node.value = value.(*TokenLiteral)
 	node.varType = nodeInfer()
+
+	ts.consumeAssert(tokSemicolon)
 
 	return &node
 }
@@ -365,8 +368,9 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 			node.value, _ = token.(*TokenIdentifier)
 		}
 		node.state = nodeInitialized
-
 	}
+
+	ts.consumeAssert(tokSemicolon)
 
 	return &node
 }
@@ -447,7 +451,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 	for !ts.matchAllAt(0, []TokenType{tokEnd, tokProc}) {
 		n, ok := lexChaosStatement(ts)
 		if !ok {
-			os.Exit(1)
+			return nil, false
 		}
 		node.statements = append(node.statements, n)
 	}
@@ -461,21 +465,21 @@ func lexChaosStatement(ts *TokenizerState) (Node, bool) {
 	if ts.matchAt(0, tokLet) {
 		node := lexChaosLet(ts)
 		if node == nil {
-			os.Exit(1)
+			return nil, false
 		}
 		return node, true
 	}
 	if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokAssignment) {
 		node := lexChaosReassignment(ts)
 		if node == nil {
-			os.Exit(1)
+			return nil, false
 		}
 		return node, true
 	}
 	if ts.matchAt(0, tokExit) {
 		node := lexExit(ts)
 		if node == nil {
-			os.Exit(1)
+			return nil, false
 		}
 		return node, true
 	}

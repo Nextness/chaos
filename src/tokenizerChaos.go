@@ -39,6 +39,7 @@ const (
 	tokOpenParen
 	tokCloseParen
 	tokEllipsis
+	tokSemicolon
 	tokCount
 )
 
@@ -99,6 +100,8 @@ func (tokTyp TokenType) asString() string {
 		return "tokElif"
 	} else if tokTyp == tokElse {
 		return "tokElse"
+	} else if tokTyp == tokSemicolon {
+		return "tokSemicolon"
 	}
 	panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
 }
@@ -354,6 +357,8 @@ func (cs *ContentState) handleEmptyCharacters() bool {
 }
 
 func (cs *ContentState) handleSingleCharacters() (bool, *TokenOperator) {
+	// TODO: Technically speaking, this is not only operators, but all single character tokens
+	// that are allowed in the language. Probably need to rename it, or handle it differently.
 	tokenOperator := TokenOperator{}
 	curByte := cs.currentChar()
 	if curByte == '=' {
@@ -368,6 +373,8 @@ func (cs *ContentState) handleSingleCharacters() (bool, *TokenOperator) {
 		tokenOperator.tokType = tokLessThan
 	} else if curByte == '>' {
 		tokenOperator.tokType = tokGreaterThan
+	} else if curByte == ';' {
+		tokenOperator.tokType = tokSemicolon
 	} else {
 		return false, nil
 	}
