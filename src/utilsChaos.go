@@ -54,3 +54,15 @@ func chaosDebug(format string, args ...any) {
 func todo[V any](args ...any) V {
 	panic("TODO: Not implemented yet")
 }
+
+func cast[V any](value any) (V, bool) {
+	result, ok := value.(V)
+	return result, ok
+}
+
+func castAssert[V any](value any) V {
+	result, ok := cast[V](value)
+	assert(ok, fmt.Sprintf("failed to cast %T into %T", value, new(V)))
+	return result
+}
+

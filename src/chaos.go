@@ -39,7 +39,8 @@ func main() {
 				fmt.Printf("%s\n", val.String())
 			}
 
-			executionOrderChaos(ls)
+			eos := globalExecutionOrderChaos(ls)
+			typeCheckingChaos(eos)
 
 			// irState := irChaos(lexerState)
 			// irChaosToString(irState)

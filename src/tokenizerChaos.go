@@ -773,6 +773,22 @@ func (ts *TokenizerState) matchAllAt(offset int, tokTypes []TokenType) (result b
 	return result
 }
 
+func (tok *TokenKind) matchAt(offset int, tokKinds ...TokenKind) (result bool) {
+	result = false
+	cursor := 0
+	length := len(tokKinds)
+	for _, t := range tokKinds {
+		if cursor+offset < length {
+			if *tok == t {
+				result = true
+				break
+			}
+		}
+	}
+	return
+}
+
+
 func (ts *TokenizerState) matchAt(offset int, tokTypes ...TokenType) (result bool) {
 	result = false
 	for _, tok := range tokTypes {
