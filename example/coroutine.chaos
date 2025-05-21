@@ -1,12 +1,17 @@
 // Using https://github.com/tsoding/c3ws/tree/main as example...
 
-proc init() do
-    ...
-endproc
+proc init executes
 
-inline proc yield(#noArguments) do
-    if compTime.os == «arch» do
-        assembly do
+end proc
+
+// TODO: improve how this is actually handled. For now this is just
+// an initial idea.
+#macro
+proc yield
+    comptime curOS: #OS := #run currentOs
+executes
+    if curOS == .arch executes
+        #assembly
             pushq %rdi
             pushq %rbp
             pushq %rbx
@@ -17,7 +22,7 @@ inline proc yield(#noArguments) do
             movq %rsp, %rdi // rsp
             movq $0, %rsi   // sm = SM_NONE
             jmp coroutine_switch_context
-        endassembly
-    endif
-endproc
+        #end assembly
+    end if
+end proc
 

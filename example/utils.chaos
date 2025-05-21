@@ -40,8 +40,8 @@ executes
 end proc
 
 proc newExample
-    receiver lex *LexerErrorConfing
-    expects examples ...String
+    receiver lex: *LexerErrorConfing
+    expects examples: ...String
 executes
     let examplesLen := run length with examples
     assert examplesLen > 0;
@@ -60,7 +60,7 @@ executes
 end proc
 
 proc getSomething
-    expects id &String
+    expects id: &String
     returns I64!
 executes
     id = «»; // This should fail, since it is a reference, and references cannot be assigned.

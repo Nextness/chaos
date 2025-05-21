@@ -2,7 +2,7 @@
 
 proc length
     generic T: UInts = U64
-    expects str: *Str, maxLength: *?U64 = maxLen
+    expects str: *Str, maxLength: *U64? = maxLen
     returns T!
 executes
     let initPos: *String = str;
@@ -16,7 +16,7 @@ executes
 end proc
 
 proc copy
-    expects str: &String, maxLength: ?U64 = maxLen
+    expects str: &String, maxLength: U64? = maxLen
     returns *String!
 executes
     let tmp *String;

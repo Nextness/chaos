@@ -16,8 +16,8 @@ executes
     end if
 
     let main: String = «./chaos.chaos»;
-    let programName: String = assert argv[0];
-    if let otherArgs: Array inserts String = argv[1:] catch err executes
+    let programName: String = assert argv at 0;
+    if let otherArgs: Array inserts String = argv at 1.. catch err executes
         run print with «Failed to get other args because of {err}», stream=os::stdErr;
         return 1;
     end if

@@ -1,7 +1,11 @@
 
-#extern(«libc.o», «printf»)
-proc print with fmt Cstr, args ...Cstr returns Cvoid end proc
+#extern «libc.o», «printf»
+proc print
+    expects fmt Cstr, args ...Cstr
+    returns Cvoid;
 
-#extern(«raylib.o», «windowShouldClose»)
-proc windowShouldClose with Cvoid returns Cbool end proc
+#extern «raylib.o», «windowShouldClose»
+proc windowShouldClose
+    expects Cvoid
+    returns Cbool;
 

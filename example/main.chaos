@@ -1,57 +1,66 @@
 
-proc chaosTokenizer(fileContent *Buffer) Array[Token] do
-    let tokens Buffer
-    let tokArray Array[Token]
+proc chaosTokenizer
+    expects fileContent: *Buffer
+    returns tokArray: Array using Token = #0
+executes
+    let tokens: Buffer;
+    let content = assert run fileContent.string;
+    let singleTokens := new Array using Char with "=, "+, "  end new;
 
-    let pos = 0
-    let content = assert fileContent.string()
-    let singleTokens Array[Char] := {"=, "+, "}
+    while pos < run fileContent.len : pos++ executes
+        let token: Token;
+        if run isSpace with (assert content at pos) continue;
+        if run isInside with (assert content at pos), singleTokens executes
+            run token.writeByte with content at pos;
+            let val := run token.string;
 
-    while pos < fileContent.len() |pos++| do
-        let token Token
-        if isSpace(assert content[pos]) do continue endif
+            if val == executes
+            case "= executes
+                token.value = val;
+                token.typ = tokAssingment
+            break case
+            case "+ executes
+                token.value = val;
+                token.typ = tokPlus;
+            break case
+            case "  executes
+                token.value = val;
+                token.typ = tokSemiColon;
+            break case
+            end if
 
-        if isInside(assert content[pos], singleTokens) do
-            tokens.writeByte(content[pos])
-            val = tokens.string()
-
-            if val == do
-            case "= do token.value = val token.typ = tokAssignment endcase
-            case "+ do token.value = val token.typ = tokPlus       endcase
-            case " do token.value = val token.typ = tokSemiColon  endcase
-            endif
-
-            assert listTok.append(token)
-            tokens.reset()
+            assert run listTok.append with token;
+            run token.reset;
             continue
-        endif
-    endwhile
-    return tokArray
-endproc
+        end if
+    end while
 
-type TokenType distinct I64    endtype
-type TokenKind distinct I64    endtype
-type Operation distinct String endtype
-type NodeType  distinct I64    endtype
+    return tokArray;
+end proc
 
-type TokType enum TokenType
-    tokGlobal,
-    tokLet,
-    tokAssignment,
-    tokPlus,
-    tokPrimitiveType,
-    tokIdentifier,
-    tokNumber,
-    tokSemiColon,
-    tokCount,
-    tokEndOfFile,
-endtype
+type TokenType distinct I64    end type
+type TokenKind distinct I64    end type
+type Operation distinct String end type
+type NodeType  distinct I64    end type
+
+type TokType enum
+    tokGlobal: TokenType;
+    tokLet;
+    tokAssignment;
+    tokPlus;
+    tokPrimitiveType;
+    tokIdentifier;
+    tokNumber;
+    tokSemiColon;
+    tokCount;
+    tokEndOfFile;
+end type
 
 #module main
 
-#import «bytes.chaos»
-#import «fmt.chaos»
-#import «os.chaos»
-#import «strings.chaos»
-#import «unicode.chaos»
+#import «bytes.chaos»;
+#import «fmt.chaos»;
+#import «os.chaos»;
+#import «strings.chaos»;
+#import «unicode.chaos»;
 

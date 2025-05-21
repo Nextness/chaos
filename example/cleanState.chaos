@@ -76,7 +76,7 @@ proc switch
     expects something: SomeEnum
     returns Void
 executes
-    if something == executes
+    if something ==
     case .a executes
         run print with «{A}»;
     break case

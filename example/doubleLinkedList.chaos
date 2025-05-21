@@ -6,25 +6,23 @@ proc length
     receiver dll: &DoubleLinkedList
     returns U64
 executes
-    *dll.count as U64;
+    #set *dll.count as U64;
 end proc
 
 #macro
 proc head
     receiver dll: &DoubleLinkedList
-    returns Node!
+    returns *Node!
 executes
-    if dell.head != nill #set dll.head;
-    #set nullPointer!;
+    #set (dll.head != undefined) ? dll.head : nullPointer!;
 end proc
 
 #macro
 proc tail
     receiver dll: &DoubleLinkedList
-    returns Node!
+    returns *Node!
 executes
-    if dell.tail != nill #set dll.tail;
-    #set nullPointer!;
+    #set (dll.tail != undefined) ? dll.tail : nullPointer!;
 end proc
 
 
@@ -60,7 +58,9 @@ proc initNode
     expects data: *T
     returns (*Node using T)!
 executes
-    type ND alias Node using T end type
+    type ND alias
+        Node using T;
+    end type
 
     if let newNode *ND = run alloc with ND catch err executes
         run ctx.logger with Erro,«Failed to allocate node - {err}»;
