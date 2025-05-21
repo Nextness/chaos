@@ -4,64 +4,67 @@
 proc dumpTokens
     expects filePath &String, tokens &Tokens
     returns Void!
-do
-    run writeEntireFile
-        with filePath, tokens.items, (tokens.count * run sizeOf with tokens.items)
-        or return
+executes
+    return run writeEntireFile
+        with filePath, tokens.items, (tokens.count * run sizeOf with tokens.items);
 end proc
 
 proc loadTokens
     expects filePath &String, tokens &Tokens, tmpSb &StringBuilder
     returns Void!
-do
-    tmpSb.count = 0
-    run readEntireFile
-        with filePath, tmpSb or return
+executes
+    tmpSb.count = 0;
+    run readEntireFile with filePath, tmpSb or return generic!;
 
-    if (tmpSb.count % run sizeOf with tokens.items) != 0 do
-        return generic!
-    end if
+    if (tmpSb.count % run sizeOf with tokens.items) != 0 return generic!;
 
-    let itemsCount &U32 = tmpSb.items as &Void
-    while i < itemsCount : ++i do
-        run daAppend with tokens, items[i]
-    end while
+    let itemsCount &U32 = tmpSb.items as &Void;
+    while i < itemsCount : ++i run daAppend with tokens, items[i];
 end proc
 
 proc loadPairs
     expects filePath &String, pairs &Pairs, tmpSb &StringBuilder, version &U64
     returns Void!
-do
-    tmpSb.count = 0
-    run readEntireFile
-        with filePath, tmpSb or return
+executes
+    tmpSb.count = 0;
+    run readEntireFile with filePath, tmpSb or return generic!;
 
-    let data StringView = run sbToSv with tmpSb
-    let magicCount U64 := 4
-    let magicPrefix StringView := run svFromCstr with «BPE»
-    if run svStartsWith with data, magicPrefix do
-        if data.count < magicCount do return generic! end if
+    let data StringView = run sbToSv with tmpSb;
+    let magicCount U64 := 4;
+    let magicPrefix StringView := run svFromCstr with «BPE»;
+    if run svStartsWith with data, magicPrefix executes
+        if data.count < magicCount return generic!;
     end if
 
     if let version = data.data[3] catch err executes
-        run logger with Error, «Invalid data»
-        return invalidData!
+        run logger with Error, «Invalid data»;
+        return invalidData!;
     end if
-    data.data += magicCount
-    data.count -= magicCount
+    data.data += magicCount;
+    data.count -= magicCount;
 
-    if version == do
-        case 0       do run parsePairsV0 with filePath, pairs, data or return break case
-        case 1       do run parsePairsV1 with filePath, pairs, data or return break case
-        case default do return generic! break case
+    if version == executes
+        case 0 executes
+            run parsePairsV0
+                with filePath, pairs, data
+                or return generic!;
+        break case
+        case 1 executes
+            run parsePairsV1
+                with filePath, pairs, data
+                or return generic!;
+        break case
+        case default executes
+            return generic!;
+        break case
     end if
 
-    let magicPrefixV0 StringView = run svFromParts with «\0\0\0\0», 4
-    if run svStartsWith with data, magicPrefixV0 do
-        version = 0
-        run parsePairsV0 with filePath, pairs, data or return
+    let magicPrefixV0 StringView = run svFromParts with «\0\0\0\0», 4;
+    if run svStartsWith with data, magicPrefixV0 executes
+        version = 0;
+        run parsePairsV0 with filePath, pairs, data or return generic!;
     end if
 
-    return generic!
+    return generic!;
 end proc
 

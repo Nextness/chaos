@@ -1,119 +1,151 @@
 // Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
 // to use as example
 
-receiver dll &DoubleLinkedList for proc length returns U64 executes
-    return dll.count* as U64
+#macro
+proc length
+    receiver dll: &DoubleLinkedList
+    returns U64
+executes
+    *dll.count as U64;
 end proc
 
-proc head expects dll &DoubleLinkedList returns Node! executes
-    if dll.head != null do return dll.head
-    return nullPointer!
+#macro
+proc head
+    receiver dll: &DoubleLinkedList
+    returns Node!
+executes
+    if dell.head != nill #set dll.head;
+    #set nullPointer!;
 end proc
 
-proc tail expects dll &DoubleLinkedList returns Node! executes
-    if dll.tail != null do set dll.tail
-    set nullPointer!
+#macro
+proc tail
+    receiver dll: &DoubleLinkedList
+    returns Node!
+executes
+    if dell.tail != nill #set dll.tail;
+    #set nullPointer!;
 end proc
 
-receiver dll &DoubleLinkedList for proc print executes
-    let node &Node = dll.head
+
+proc print
+    receiver dll: &DoubleLinkedList
+executes
+    let node &Node = dll.head;
     while i < dll.count : ++i executes
-        let pad = i * 2
-        run io::print with «{pad:node.data}»
-        node = node.next
+        let pad = i * 2;
+        run io::print with «{pad:node.data}»;
+        node = node.next;
     end while
 end proc
 
-generic C num::Ints = U64, T for type DoubleLinkedList struct
-    count C         = 0
-    head  *?Node[T] = null
-    tail  *?Node[T] = null
+type DoubleLinkedList
+    generic C: num::Ints = U64, T: AnyType
+struct
+    count: C              = 0;
+    head:  *Node? using T = undefined;
+    tail:  *Node? using T = undefined;
 end type
 
-generic T for type Node struct
-    data *T
-    prev *?Node[T] = null
-    next *?Node[T] = null
+type Node
+    generic T: AnyType
+struct
+    data: *T;
+    prev: *Node? using T = null;
+    next: *Node? using T = null;
 end type
 
-generic T for
-proc initNode expects data *T returns *Node[T] {
-    type ND alias = Node[T];
-    if let newNode = alloc(ND) catch err {
-        ctx.logger(Error, «Failed to allocate node - {err}»);
-        return outOfMemory!;
-    }
-    newNode.data = data;
-    return newNode;
-}
-
-generic T for proc initNode with data *T returns (*Node inserts T)! executes
-    type ND alias Node inserts T end type
+proc initNode
+    generic T: AnyType
+    expects data: *T
+    returns (*Node using T)!
+executes
+    type ND alias Node using T end type
 
     if let newNode *ND = run alloc with ND catch err executes
-        run ctx.?logger with Error, «Failed to allocate node - {err}»
+        run ctx.logger with Erro,«Failed to allocate node - {err}»;
         return outOfMemory!
     end if
 
-    run ctx.?logger with Trace, «Allocated memory for node: {newNode.address()}»
-    newNode.data = data
-
-    return newNode
+    run ctx.logger with Trace, «Allocated memory for node: {newNode.address()}»;
+    newNode.data = data;
+    return newNode;
 end proc
 
-receiver dll *DoubleLinkedList proc pushHead[T](data *T) Void! do
-    let newNode = initNode(data) orReturn nullPointer!
+proc pushHead
+    generic T: AnyType
+    expects data: T
+    returns Void!
+executes
+    let newNode := run initNode with data or return nullPointer!;
 
-    if dll.count == 0 do
-        dll.head = newNode
-        dll.tail = newNode
-    else do
-        newNode.next = dll.head
-        dll.head.prev = newNode
-        dll.head = newNode
-    endif
+    if dll.count == 0 executes
+        dll.head = newNode;
+        dll.tail = newNode;
+    else executes
+        newNode.next = dll.head;
+        dll.head.prev = newNode;
+        dll.head = newNode;
+    end if
 
-    dll.count++
-endproc
+    dll.count++;
+end proc
 
-receiver dll *DoubleLinkedList proc pushTail[T](data *T) Void! do
-    let newNode = initNode(data) orReturn nullPointer!
-    if dll.count == 0 do
-        dll.tail = newNode and  dll.head = newNode
-    else do
-        dll.tail.next = newNode and newNode.prev = dll.tail and dll.tail = newNode
-    endif
-    dll.count++
-endproc
+proc pushHead
+    generic T: AnyType
+    expects data: T
+    returns Void!
+executes
+    let newNode := run initNode with data or return nullPointer!;
 
-receiver dll *DoubleLinkedList proc insertNode[T](data *T, index U64) Void! do
-    if index < 0 || index > dll.count do return outOfBounds! endif
+    if dll.count == 0 executes
+        dll.tail = newNode;
+        dll.head = newNode;
+    else executes
+        dll.tail.next = newNode;
+        newNode.prev = dll.tail;
+        dll.tail = newNode;
+    end if
 
-    if index == 0 do
-        dll.pushHead(data) and return
-    elif index == dll.count do
-        dll.pushTail(data) and return
-    endif
+    dll.count++;
+end proc
 
-    let tmp *Node[T]
-    if index <= dll.count / 2 do
-        while i < index - 1 : ++i do tmp = tmp.next endwhile
-    else do
-        tmp = dll.tail
-        while i < dll.count : ++i do tmp = tmp.prev endwhile
-    endif
+proc insetNode
+    generic T: AnyType
+    expects data: *T, index: U64
+    returns Void!
+executes
+    if (index < 0 || index > dll.count) return outOfbounds!;
 
-    let newNode = initNode(data) orReturn nullPointer!
-    tmp.next.prev = newNode
-    newNode.next = tmp.next
-    tmp.next = newNode
-    newNode.prev = tmp
-    dll.count++
-endproc
+    if index == 0 executes
+        run dll.pushHead with data;
+        return;
+    elif index == dll.count executes
+        run dll.pushTail with data;
+        return;
+    end if
 
-receiver dll *DoubleLinkedList proc deleteHead() do
-    #notImplemented
-endproc
+    let tmp: *Node using T;
+    if index <= (dll.count / 2) executes
+        while (i < index - 1 : ++i) tmp = tmp.next;
+    else executes
+        tmp = dll.tail;
+        while (i < dll.count : ++i) tmp = tmp.prev;
+    end if
 
-#module doubleLinkedList
+    let newNode := run initNode with data or return nullPointer!;
+    tmp.next.prev = newNode;
+    newNode.next = tmp.next;
+    tmp.next = newNode;
+    newNode.prev = tmp;
+    dll.count++;
+end proc
+
+proc deleteHead
+    receiver dll: *DoubleLinkedList
+executes
+    #notImplemented;
+end proc
+
+#module doubleLinkedList;
 

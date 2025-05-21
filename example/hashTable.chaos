@@ -1,127 +1,123 @@
 // Copied from https://github.com/benhoyt/ht/blob/master/ht.c
 // Probably it executesesn't work - used just to evaluate language. Most likely things will change...
 
-receiver ht *HashTable for
 proc iterator
+    receiver ht *HashTable using #whatever
     returns HashTableIterator
 executes
-    return new HashTableIterator with ht, 0 end new
+    return new HashTableIterator with ht, 0 end new;
 end proc
 
-generic K, V for
-type Entry struct
-    key   *K
-    value *V
+
+type Entry
+    generic K: AnyType, V: AnyType
+struct
+    key:   *K;
+    value: *V;
 end type
 
-generic K, V in
-type HashTable struct
-    entry    *Entry using K, V
-    capacity U64 = 256
-    size     U64 = 0
+type HashTable
+    generic K: AnyType, V: AnyType
+struct
+    entry:    *Entry using K, V;
+    capacity: U64 = 256;
+    size:     U64 = 0;
 end type
 
-generic K, V for
 proc initHashTable
+    generic K: AnyType, V: AnyType
     returns (*HashTable using K, V)!
 executes
     type HT alias HashTable using K, V end type
     type E alias Entry using K, V end type
 
-    let table *HT = run alloc with HT or return nullPointer!
+    let table *HT = run alloc with HT or return nullPointer!;
     if table.entry = run calloc using E with table.capacity catch err executes
-        run logger with Error, «Failed to allocate memory, buy more RAM»
-        return nullPointer!
+        run logger with Error, «Failed to allocate memory, buy more RAM»;
+        return nullPointer!;
     end if
-    return table
+    return table;
 end proc
 
-generic K, V for
-receiver exposes ht *HashTable using K, V for
 proc destroy
+    generic K: AnyType, V: AnyType
+    receiver exposes ht *HashTable using (K, V)
     returns Void!
 executes
     while i < capacity : ++i executes
-        let curEntry = entry[i] or return outOfBounds!
-        run free
-            with curEntry.key
+        let curEntry := entry[i] or return outOfBounds!;
+        run free with curEntry.key;
     end while
-    run free
-        with entry
-    run free
-        with ht
+    run free with entry;
+    run free with ht;
 end proc
 
-generic K, V for
-receiver exposes ht *HashTable using K, V for
 proc get
+    generic K: AnyType, V: AnyType
+    receiver exposes ht *HashTable using (K, V)
     expects key *K
     returns V!
 executes
-    let hash := run hashKey
-        with key
-    let i = hash & (capacity - 1)
-    while hasKey = entry[i] or false : ++i executes
-        if hasKey == undefined break
-        if key == hasKey.key return hasKey.value
+    let hash := run hashKey with key;
+    let i = hash & (capacity - 1);
+    while hasKey := entry[i] or false : ++i executes
+        if hasKey == undefined break;
+        if key == hasKey.key return hasKey.value;
     end while
-    return notFound!
+    return notFound!;
 end proc
 
-generic K, V for
-receiver exposes ht *HashTable using K, V for
 proc expand
+    generic K: AnyType, V: AnyType
+    receiver exposes ht *HashTable using (K, V)
     returns Void!
 executes
-    let newCapacity := capacity * 2
-    if newCapacity < capacity return overflow!
+    let newCapacity := capacity * 2;
+    if newCapacity < capacity return overflow!;
 
     let newEntry = run calloc
         with newCapacity, (run sizeOf with Entry using V)
-        or return nullPointer!
+        or return nullPointer!;
     defer run free
-        with newEntry
+        with newEntry;
 
     while i < capacity : ++i executes
-        let localEntry := entry[i] or return notFound!
+        let localEntry := entry[i] or return notFound!;
         if key != undefined executes
             run setEntry
                 with newEntry, newCapacity, key, value, undefined
-                or return generic!
+                or return generic!;
         end if
     end while
-    entry = newEntry
-    capacity = newCapacity
+    entry = newEntry;
+    capacity = newCapacity;
 end proc
 
-generic K, V for
-receiver exposes ht *HashTable using K, V for
 proc set
+    generic K: AnyType, V: AnyType
+    receiver exposes ht *HashTable using K, V
     expects key *K, value *V
     returns *K!
 executes
-    if size >= (capacity / 2) run ht.expand or return generic!
-    let key := run setEntry
-        with entry, capacity, key, value, size
-        or return
-    return key
+    if size >= (capacity / 2) run ht.expand or return generic!;
+    let key := run setEntry with entry, capacity, key, value, size or return;
+    return key;
 end proc
 
-generic K, V for
-receiver exposes ht *HashTable for
 proc next
+    receiver exposes ht *HashTable
     expects it *HashTableIterator
     returns Void!
 executes
-    let table = it.table
+    let table := it.table;
     while it.index < capacity : ++it.index executes
-        let item := entry[it.index] or return outOfBounds!
+        let item := entry[it.index] or return outOfBounds!;
         if item.key != undefined executes
-            it.key = item.key
-            it.value = item.value
+            it.key = item.key;
+            it.value = item.value;
         end if
     end while
-    return outOfBounds!
+    return outOfBounds!;
 end proc
 
 #scope(__File__);
@@ -129,46 +125,46 @@ end proc
 #let fnvOffset := 14695981039346656037;
 #let fnvPrime  := 1099511628211;
 
-generic K, V for
-proc hasKey 
+proc hasKey
+    generic K: AnyType, V: AnyType
     expects key *K
     returns V
 executes
-    let hash = fnvOffset
-    let tmp = key as String
+    let hash := fnvOffset;
+    let tmp := key as String;
     while i < tmp.length : ++i executes
-        let currenChar = assert tmp[i]
-        hash ^= currentChar as U64
-        hash *= fnvPrime
+        let currenChar := assert tmp[i];
+        hash ^= currentChar as U64;
+        hash *= fnvPrime;
     end while
-    return hash
+    return hash;
 end proc
 
-generic T for
 proc setEntry
+    generic T: AnyType
     expects entry *Entry inserts T, capacity U64, key *String, value *T, size *?U64
     returns String
 executes
-    let i := (call hashKey with key) & (capacity - 1)
-    while curEntry = entry[i] or set false : ++i executes
-        if curEntry.key == null executes break end if
+    let i := (call hashKey with key) & (capacity - 1);
+    while curEntry = entry[i] or false : ++i executes
+        if curEntry.key == null executes break;
         if curEntry.key == key executes
-            curEntry.value = value
-            return curEntry.key
+            curEntry.value = value;
+            return curEntry.key;
         end if
     end while
-    if size == null executes
-        key = assert call strdup
-            with key
-        (size*)++
+
+    if size == undefined executes
+        let key = assert call strdup with key;
+        (size*)++;
     end if
 
-    let curEntry := entry[i] or return outOfBounds!
-    curEntry.key = key as String
-    curEntry.value = value
-    return key
+    let curEntry := entry[i] or return outOfBounds!;
+    curEntry.key = key as String;
+    curEntry.value = value;
+    return key;
 end proc
 
-#module hashTable
-let mem := #import «core::allocators.chaos»
+#module hashTable;
+let mem := #import «core::allocators.chaos»;
 

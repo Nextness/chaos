@@ -1,91 +1,105 @@
 
 type Log scaffold
     // Expected Fields for logging
-    dateFormat String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»,
-    output Array inserts Stream = new with StdOut end new,
-    incldueOSName Bool = false,
-    logLevel ?EnumArray inserts U64 = undefined
+    dateFormat: String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
+    output := new Array using Stream with StdOut end new;
+    incldueOSName: Bool = false;
+    logLevel: EnumArray? using U64 = undefined;
 
     // Expected Methods for logging
-    receiver *Self proc trace with message ...String returns Void end proc
-    receiver *Self proc debug with message ...String returns Void end proc
-    receiver *Self proc info with message ...String returns Void end proc
-    receiver *Self proc warning with message ...String returns Void end proc
-    receiver *Self proc error with message ...String returns Void end proc
-    receiver *Self proc critical with message ...String returns Void end proc
+    proc trace receiver &Self expects message: ...String returns Void;
+    proc debug receiver &Self expects message: ...String returns Void;
+    proc info receiver &Self expects message: ...String returns Void;
+    proc warning receiver &Self expects message: ...String returns Void;
+    proc error receiver &Self expects message: ...String returns Void;
+    proc critical receiver &Self expects message: ...String returns Void;
 end type
 
-type LoggerLevel enumArray U64
-    trace,
-    debug,
-    info,
-    warning,
-    error,
-    critical,
-    disabled,
+type LoggerLevel enumArray
+    trace: U64;
+    debug;
+    info;
+    warning;
+    error;
+    critical;
+    disabled;
 end type
 
-type Log builds Logger struct
-    dateFormat = default,
-    output = default,
-    includeOSName = default,
-    logLevel LoggerLevel = .info,
+type Log
+    builds Logger
+struct
+    dateFormat := default;
+    output := default;
+    includeOSName := default;
+    logLevel: LoggerLevel = .info;
 end type
 
-#overload
-receiver using self *Logger proc trace(message ...String) do
-    #if loglevel <= .trace do
+proc trace
+    receiver exposes self: &Logger
+    expects message: ...String
+executes
+    #if loglevel <= .trace executes
         #notImplemented(«Default trace log needs to be implemented»)
-    else do
+    else executes
         #compiler(__optimize_out__)
-    endif
+    end if
 end proc
 
-#overload
-receiver using self *Logger proc debug(message ...String) do
-    #if loglevel <= .debug do
+proc debug
+    receiver exposes self: &Logger
+    expects message: ...String
+executes
+    #if loglevel <= .debug executes
         #notImplemented(«Default debug log needs to be implemented»)
-    else do
+    else executes
         #compiler(__optimize_out__)
-    endif
-endproc
+    end if
+end proc
 
-#overload
-receiver using self *Logger proc info(uessage: ...String) do
-    #if loglevel <= .info do
-        #notImplemented(«Default info log needs to be implemented») 
-    else do
+proc info
+    receiver exposes self: &Logger
+    expects message: ...String
+executes
+    #if loglevel <= .info executes
+        #notImplemented(«Default info log needs to be implemented»)
+    else executes
         #compiler(__optimize_out__)
-    endif
-endproc
+    end if
+end proc
 
-#overload
-receiver using self *Logger proc warnin, message ...String) do
-    #if loglevel <= .warning do
+proc warning
+    receiver exposes self: &Logger
+    expects message: ...String
+executes
+    #if loglevel <= .warning executes
         #notImplemented(«Default warning log needs to be implemented»)
-    else do
+    else executes
         #compiler(__optimize_out__)
-    endif
-endproc
+    end if
+end proc
 
-#overload
-receiver using self *Logger proc error(message ...String) do
-    #if loglevel <= .error do
+proc error
+    receiver exposes self: &Logger
+    expects message: ...String
+executes
+    #if loglevel <= .error executes
         #notImplemented(«Default error log needs to be implemented»)
-    else do
+    else executes
         #compiler(__optimize_out__)
-    endif
-endproc
+    end if
+end proc
 
-#overload
-receiver using self *Logger proc criticr, message ...String) do
-    #if loglevel <= .critical do
+proc critical
+    receiver exposes self: &Logger
+    expects message: ...String
+executes
+    #if loglevel <= .critical executes
         #notImplemented(«Default critical log needs to be implemented»)
-    else do
+    else executes
         #compiler(__optimize_out__)
-    endif
-endproc
+    end if
+end proc
 
-#module logger
-#let io := #import «core::fmt::io.chaos»
+#module logger;
+#let io := #import «core::fmt::io.chaos»;
 

@@ -1,15 +1,15 @@
-test firstTestSuite(tearUp TearUp, tearDown TearDown) do
+test firstTestSuite with tearUp: TearUp, tearDown: TearDown executes
 
-    proc firstTestName(t &UnitTest) do
-        let something := someConditionMustHappen(«abc»)
-        assert something && «Expected something to have a value, but it doesn't...»
-    endproc
+    proc firstTestName with t: &UnitTest executes
+        let something := run someConditionMustHappen with «abc»
+        assert something, «Expected something to have a value, but it doesn't...»
+    end proc
 
-    proc secondTestName(t &UnitTest) do
-        if let somethingElse |error| := someConditionMustHappen(«ab»); catch error do
+    proc secondTestName with t &UnitTest executes
+        if let somethingElse := run someConditionMustHappen «ab» catch error executes
             assert error && «Expected an error, but found nothing»
-        endif
-    endproc
+        end if
+    end proc
 
-endtest
+end test
 

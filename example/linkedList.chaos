@@ -1,17 +1,16 @@
 generic T for
 type Node struct
-    value T?     = undefined
-    next  *Node? = undefined
+    value T?     = undefined;
+    next  *Node? = undefined;
 end type
 
-generic T for
-proc initNode
+generic T for proc initNode
     returns (*Node using T)!
 executes
-    let nodeHead = call ctx.?alloc
+    let nodeHead = run ctx.?alloc
         with Node using T
-        or return outOfMemory!
-    return nodeHead
+        or return outOfMemory!;
+    return nodeHead;
 end proc
 
 generic T for
@@ -20,16 +19,15 @@ proc insert
     expects value T
     returns Void!
 executes
-    let currentNode *Node using T = n
-    while currenNode != null executes
-        currentNode = currentNode.next
-    end while
-    currentNode.next = call ctx.?alloc
-        with Node using T or return outOfMemory!
-    currentNode.next = value
+    let currentNode *Node using T = n;
+    while currenNode != null currentNode = currentNode.next;
+    currentNode.next = run ctx.?alloc
+        with Node using T
+        or return outOfMemory!;
+    currentNode.next = value;
 end proc
 
-#module linkedList
-#import «core::error.chaos»
-#import «core::allocator.chaos»
+#module linkedList;
+#import «core::error.chaos»;
+#import «core::allocator.chaos»;
 

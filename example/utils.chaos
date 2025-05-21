@@ -1,52 +1,71 @@
 #overload
-proc isUpppercase with val Byte returns Void! executes
-    return run intenal::isUppercase with val
+proc isUpppercase
+    expects val: Byte
+    returns Void!
+executes
+    return run intenal::isUppercase with val;
 end proc
 
 #overload
-proc isUppercase with val String returns Void! executes
-    return run intenal::isUppercase with val
+proc isUppercase
+    expects val: String
+    returns Void!
+executes
+    return run intenal::isUppercase with val;
 end proc
 
 #overload
-proc isUppercase with val Char returns Void! executes
-    return run intenal::isUppercase with val
+proc isUppercase
+    expects val: Char = " 
+    returns Void!
+executes
+    return run intenal::isUppercase with val;
 end proc
 
 type LexerErrorConfig struct
-    errorMsg     String,
-    examples     Array inserts ?String,
-    exampleCount I64,
+    errorMsg:     String;
+    examples:     Array using String?;
+    exampleCount: I64;
 end type
 
 proc newLexerErrorConfig
-    expects errorMsg String
+    expects errorMsg: String
     returns LexerErrorConfig
 executes
     return new LexerErrorConfig with
-        errorMsg     = errorMsg,
-        examples     = new Array using Strings? with undefined end new,
+        errorMsg = errorMsg,
+        examples = new Array using String?,
         exampleCount = 0,
-    end new
+    end new;
 end proc
 
-receiver lex *LexerErrorConfing for
 proc newExample
+    receiver lex *LexerErrorConfing
     expects examples ...String
 executes
     let examplesLen := run length with examples
-    assert examplesLen > 0
+    assert examplesLen > 0;
 
-    let pad := «    »
-    let prefix := «({++lex.exampleCount})»
+    let pad := «    »;
+    let prefix := «({++lex.exampleCount})»;
     while idx, example in examples executes
         if idx == 0 executes
-            let tmp := «{pad}{prefix} {example}\n»
-            run lec.examples.append with tmp
-            continue
+            let tmp := «{pad}{prefix} {example}\n»;
+            run lec.examples.append with tmp;
+            continue;
         end if
-        let tmp := «{pad}    {example}»
-        run lex.examples.append with tmp
+        let tmp := «{pad}    {example}»;
+        run lex.examples.append with tmp;
     end while
+end proc
+
+proc getSomething
+    expects id &String
+    returns I64!
+executes
+    id = «»; // This should fail, since it is a reference, and references cannot be assigned.
+             // In a sense, this value is immutable.
+    let result I64 = run someOperation with id or return generic!;
+    return result
 end proc
 

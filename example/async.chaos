@@ -2,104 +2,91 @@
 // doesn't work properly. Later needs to be recreated...
 
 type FutureHeader struct
-    conditionalVariable        CndT,
-    mutex                      Mutex,
-    isValid                    AtomicBool,
-    isSet                      Bool,
-    valueSize, inOffs, outOffs U64,
+    conditionalVariable:        CndT;
+    mutex:                      Mutex;
+    isValid:                    AtomicBool;
+    isSet:                      Bool;
+    valueSize, inOffs, outOffs: U64;
 end type
 
 proc newFuture
-    expects wholeSize, valueSize, inOffs, outOffs U64
+    expects wholeSize, valueSize, inOffs, outOffs: U64
     returns *FutureHeader!
-do
-    let future *FutureHeader = call calloc with wholeSize or return nullPointer!
-    if call futute.init
-        with valueSize, inOffs, outOffs
-    catch err do
-        call print
-            with «Error initializing future - reason: {err}»
-        return genericErrorFuture!
+executes
+    let future *FutureHeader = call calloc with wholeSize or return nullPointer!;
+    if run futute.init with valueSize, inOffs, outOffs catch err executes
+        run print with «Error initializing future - reason: {err}»;
+        return genericErrorFuture!;
     end if
-    return future
+    return future;
 end proc
 
-receiver fh *FutureHeader
 proc await
-    expects timeout I32 inserts Microseconds
+    receiver fh: *FutureHeader
+    expects timeout: I32 using Microseconds
     returns Void!
-do
-    call mutex
-        with fg
-        or return genericFutureError!
-    defer call mutexUnlock
-        with fh
+executes
+    run mutex with fh or return genericFutureError!;
+    defer call mutexUnlock with fh;
 
-    if fh.isSet do return null end if
-    if timeout < 0 do return timeout! end if
+    if fh.isSet return null
+    if timeout < 0 return timeout!
 
-    start, end Timespec = undefined, undefined
-    call timespceGet
-        with *start, timeUtc
-    end.tvSec = start.tvSEC + (timeout / 1_000)
-    end.tSec = (timeout % 1_000) & 1_000_000
+    start, end: Timespec = undefined, undefined;
+    run timespceGet with *start, timeUtc;
+    end.tvSec = start.tvSEC + (timeout / 1_000);
+    end.tSec = (timeout % 1_000) & 1_000_000;
 
-    if let result = candTimedWait
-        with fh.confitionalVariable, end
-    catch err do
-        case threadTimedout! do return timeout! end case
-        default do return genericFutureError! end case
+    if let result = run candTimedWait with fh.confitionalVariable, end catch err executes
+        case threadTimedout! return timeout!;
+        case default return genericFutureError!;
     end if
 end proc
 
 
-receiver fh *FutureHeader
 proc get
-    expects timeout I32 inserts Microseconds, destination *Void, destinationSize, check U64
+    receiver fh: *FutureHeader
+    expects timeout: I32 using Microseconds, destination: *Void, destinationSize, check: U64
     returns Void!
-do
-    if not fh.isValid return nullPointer! end if
-    if destinationSize != fh.valueSize do return destinationSizeNotMatched end if
-    call await
-        with fh, timeout or return
+executes
+    if not fh.isValid return nullPointer!;
+    if destinationSize != fh.valueSize return destinationSizeNotMatched;
+    run await with fh, timeout or return;
 
-    let source *Void = ((fh as *U8) + fh.outOffs) as *Void
-    call memcpy
-        with destination, source, fh.valueSize
+    let source *Void = ((fh as *U8) + fh.outOffs) as *Void;
+    run memcpy with destination, source, fh.valueSize;
 end proc
 
-generic T in
-type FutureOf struct
-    header            FutureHeader
-    inValue, outValue T
+type FutureOf
+    generic T
+struct
+    header:            FutureHeader;
+    inValue, outValue: T;
 end type
 
 #scope(«file»);
 
 receiver fh *FutureHeader
 proc init
-    expects valueSize, inOffs, outOffs U64
-do
-    call cndInit
-        with fh.conditionalVariable*
-    call mutexInit
-        with fh.mutex*, mutexPlain
-    fh.isValid = true
-    fh.isSet = false
-    fh.valueSize = valueSize
-    fh.inOffs = inOffs
-    fh.outOffs = outOffs
+    expects valueSize, inOffs, outOffs: U64
+executes
+    run cndInit with fh.conditionalVariable*;
+    run mutexInit with fh.mutex*, mutexPlain;
+    fh.isValid = true;
+    fh.isSet = false;
+    fh.valueSize = valueSize;
+    fh.inOffs = inOffs;
+    fh.outOffs = outOffs;
 end proc
 
-receiver fh *FutureHeader
-proc destroy do
-    fh.isValid* = false
-    call cndDestroy
-        with fh.conditionalVariable*
-    call mutexDestroy
-        with fh.mutex*
+proc destroy
+    receiver fh: *FutureHeader
+executes
+    fh.isValid* = false;
+    run cndDestroy with fh.conditionalVariable;
+    run mutexDestroy with fh.mutex;
 end proc
 
-#module future
-#import «core::fmt::io»
+#module future;
+#import «core::fmt::io»;
 

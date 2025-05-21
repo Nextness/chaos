@@ -2,29 +2,11 @@
 
 // Void values are 'nan | undefined | null';
 
-type Context scaffold
-    logger ?Logger,
-    calloc generic T in proc with num::Ints returns *T end proc,
-    alloc  generic T in proc with num::Ints returns *T end proc,
-    free   generic T in proc with &T returns Void end proc,
-end type
-
-type Contex builds Ctx struct
-    logger = default,
-    alloc = generic T in proc with size U64 returns *T do
-    end proc,
-end type
-
-let ctx Ctx
-
-type AnotherInt alias I32 end type
-type SomethingNew distinct I32 end type
-
-type SomeEnum enum U64
-    a := (0 << iota),
-    b,
-    d,
-    e,
+type SomeEnum2 enum
+    a: U64 = iota;
+    b;
+    c;
+    d;
 end type
 
 /** -- Explanation --
@@ -32,144 +14,108 @@ end type
  *  At comp time sha3(AnotherEnum.somethingInHere) is 1cc2a66e347661378dde3fc074c46e...
  *  When we call AnotherEnum.somethingInHere we will have 482518638 [1cc2a66e3]
 **/
-type AnotherEnum enumUnique
-    somethingInHere,
-    anotherThingInHere,
-    yetAnotherThingIsHere,
+type AnotherEnum enum
+    somethingInHere: #unique = iota;
+    anotherThingInHere;
+    yetAnotherThingIsHere;
 end type
 
-let someChar Char := "a
+let someChar Char := "a;
 
-proc attemptingSwitch with something SomeEnum returns Void do
-    #partial if something == do
-        case a do call print with «{A}» end case
-        case b do call print with «Something else {B}» end case
-        case c do call print with «String {D}s nuutz» end case
-    end if
-end proc
-
-generic T num::Ints = U8 in type Version struct
-    major ?T       = undefined,
-    minor ?T       = undefined,
-    fix   ?T       = undefined,
-    phase *?String = null,
+type Version
+    generic T: num::Ints = U8
+struct
+    major T?       = undefined;
+    minor T?       = undefined;
+    fix   T?       = undefined;
+    phase *String? = undefined;
 end type
 
-generic T in proc toString with using version &Version inserts T returns String do
-    let versionString = «{major}.{minor}.{fix}»
-    if phase != null do versionString = «{versionString}-{phase}» end if
-    return versionString
+proc toString
+    generic T: AnyType
+    receiver exposes version: &Version using T
+    returns String
+executes
+    let versionString = «{major}.{minor}.{fix}»;
+    if phase != null versionString = «{versionString}-{phase}»;
+    return versionString;
 end proc
 
-generic T Primitive in type JsonResponse struct
-    #tag(«json:status_code») statusCode U32 = undefined,
-    #tag(«json:content»)     content    T        = undefined,
+type JsonResponse
+    generic T: Primitive
+struct
+    statusCode: U32 = undefined; #tag «json:status_code»
+    content:    T   = undefined; #tag «json:content»
 end type
 
 type SomeStruct struct
-    username String,
-    password String #redacted,
+    username String;
+    password String; #redacted
 end type
 
-let someStruct = new &SomeStruct with
-    username := «username»,
-    password := getEnvVar(«ENV_VAR_NAME») or set «none»,
-end new
+let someStruct := new *SomeStruct with
+    username = «username»,
+    password = getEnvVar(«ENV_VAR_NAME») or set «none»,
+end new;
 
 // The value "error" is implicit for convenience, but can be changed
 // whenever we want to.
-proc main returns U64 do
-    if let window Window = call initializeWindow with 100, 100, «Window» catch err do
-        call printfn with «Something went wrong in here - reason: {error.reason()}»
-        return 1
+proc main returns U64 executes
+    if let window Window = run initializeWindow with 100, 100, «Window» catch err executes
+        run printfn with «Something went wrong in here - reason: {error.reason()}»;
+        return 1;
     end if
 
-    let window Window = call initializeWindow with 100, 100, «AnotherWindow» or exitWith 1
+    let window Window = run initializeWindow with 100, 100, «AnotherWindow» or exit 1;
 end proc
 
-proc testListCreateAcces returns Void! do
-    let someList = new Array inserts String with «Hello», «World» end new
-    if let firstString String = someList[5] catch err do
-        exitWith outOfBounds!, «Accessing element out of bounds»
-    end if
-end proc
-
-proc testMapCreateAcces returns Void! do
-    let someMap = new Map inserts 4, String, String with
-        [«someKey»] = «some value»,
-        [«anotherKey»] = «another value»,
-    end new
-
-    if secondKey := assert someMap[«anotherKey»]
-    if let firstKey = someMap[«unavailableKey»] catch err do
-        exitWith keyNotFound!
-    end if
-end proc
-
-type #OS enumUnique
-    linux,
-    windows,
+type #OS enum
+    linux: #unique = iota;
+    windows;
 end type
 
-proc newCounter
-    returns (*U64, proc returns U64)!
-    comptime currentOS #OS := #call getCurrentOS
-do
-    // TODO: fix highlight in #if
-    if currentOS == .linux do
-        let someVariable *U64 = call mem::allocAndAssign with U64, 0 or return nullPointer!
-        proc counter returns U64 do
-            return ++(someVariable*)
-        end proc
-        return someVariable, counter
-    elif currentOS == .windows do
-        // TODO: not implemented yet
-    endif
+proc freeCounter with value *Void executes
+    run ctx.free with value;
+    run ctx.memset with value, 0;
 end proc
 
-let ptrResult, func := call newCounter at .windows
+type (SomeFunc generic T) alias (proc generic T with ... returns T!; end) alias
 
-proc freeCounter with value *Void do
-    call ctx.free with value
-    call ctx.memset with value, 0
-endproc
-
-type (SomeFunc inserts T) alias (generic T in proc with ... returns T!) end type
-
-generic T in
 proc someFunction
-    with someProc SomeFunc inserts T, <args>
+    generic T: AnyType
+    expects someProc: SomeFunc using T, <args>
     returns T!
-do
-    if let result T = call someProc inserts T with <args> catch err do
-        return err
+executes
+    if let result: T = run someProc using T with <args> catch err executes
+        return err;
     end if
-    return result
+    return result;
 end proc
-let result Bool = call someFunction
-    inserts Bool
-    with funcWithInput, <10, «somethingNew», false>
-    or return true
 
-if something do call theOperation end if
+let result Bool = run someFunction using Bool with funcWithInput, <10, «somethingNew», false> or return true;
 
-proc ResultReturns with #noArguments do
-    if T builds do
-    case Iterable do result Bool = false end case
-    case Incrementable do result I64 = 0 end case
+proc ResultReturns with #noArguments executes
+    if T builds executes
+    case Iterable executes result Bool = false break case
+    case Incrementable executes result I64 = 0 break case
     end if
 end proc
 
-generic T builds Iterable | Incrementable in
-proc anotherTest with input T, value String returns ResultReturns do
+proc anotherTest
+    generic T: Iterable | Incrementable
+    expects input: T, value: String
+    returns ResultReturns
+executes
     ...
-    return result
+    return result;
 end proc
 
-proc loopWithLabel return Bool! executes
+proc loopWithLabel
+    returns Bool!
+executes
     while x > 10 : ++x label loop executes
         while y > 10 : ++y executes
-            if let something = run operation; catch something executes
+            if let something := run operation; catch something executes
                 run ctx.logger with Error, «The operation failed - reason: {something}»;
                 break loop;
             end if
@@ -179,30 +125,43 @@ proc loopWithLabel return Bool! executes
     return operationFailed!;
 end proc
 
-proc loopWithLabel returns Bool! do
-    while x > 10 : ++x label someLoop do
-        while y > 10 : ++y do
-            if let something = call operation catch err do
-                call ctx.logger with Error, «The operation failed - reason: {err}»
-                break someLoop
-            end if
-        end while
-        return something
-    end while
-    return operationFailed!
-end proc
-
-proc coroutineInChaosExample with something String returns Bool do
+proc coroutineInChaosExample
+    expects something: String
+    returns Bool
+executes
 
 end proc
 
-if let result := async run coroutineInChaosExample with «something» catch err do
+proc errorFunction returns Void! executes
+    return nullPointer!;
+end proc
+
+let some := run errorFunction;
+if let error := catch some executes
+    
+end if
+
+if let some := run errorFunction catch error executes
+
+end if
+
+#safe
+proc whatEver executes
+    let newArray := new Array using I64 with 10, 10, 10, 10, 2000 end new;
+    // This will not compile because there is no outofbounds check
+    // employed in here. It there was a check, them it would be fine.
+    // The only reason it will not compile is because of the safe comptime directive, otherwise
+    // it is up to the developer to know this. You are a responsible person, do your homework.
+    let result := newArray at 10;
+end proc
+
+if let result := async run coroutineInChaosExample with «something» catch err executes
     // failed for some reason
 end if
 
-#scope(«file»)
+#scope(«file»);
 
-#import «core::allocator.chaos»
-#import «core::logger.chaos»
-#let num := #import «core::numbers.chaos»
+#import «core::allocator.chaos»;
+#import «core::logger.chaos»;
+#let num := #import «core::numbers.chaos»;
 

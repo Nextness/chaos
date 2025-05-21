@@ -1,36 +1,36 @@
-#let maxLen := 4096
+#let maxLen := 4096;
 
-generic T UInts = U64 for
 proc length
-    expects str *Str, maxLength *?U64 = maxLen
+    generic T: UInts = U64
+    expects str: *Str, maxLength: *?U64 = maxLen
     returns T!
 executes
-    let initPos *String = str
+    let initPos: *String = str;
     while str != «\0» : ++str executes
         if maxLength != null executes
-            if !maxLength executes return maxLengthHit! end if
-            maxLength--
-            end if
+            if !maxLength return maxLengthHit!;
+            maxLength--;
+        end if
     end while
-    return (str as T) - (initPos as T)
+    return (str as T) - (initPos as T);
 end proc
 
 proc copy
-    expects str &String, maxLength ?U64 = maxLen
+    expects str: &String, maxLength: ?U64 = maxLen
     returns *String!
 executes
-    let tmp *String
+    let tmp *String;
     while str != «\0» executes
-        tmp++ = str++
+        tmp++ = str++;
         if maxLength != null executes
-            if !maxLength executes return maxLengthHit! end if
-            maxLength--
+            if !maxLength return maxLengthHit!;
+            maxLength--;
         end if
     end while
-    return tmp
+    return tmp;
 end proc
 
-#module string
-#import «core::numbers.chaos»
-#import «core::errors.chaos»
+#module string;
+#import «core::numbers.chaos»;
+#import «core::errors.chaos»;
 

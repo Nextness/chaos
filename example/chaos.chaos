@@ -2,96 +2,90 @@
 // and more things
 
 proc main
-    expects argc U64, argv ...String
+    expects argc: U64, argv: ...String
     returns U64
 executes
-    run goRebuildYourSelfTek
+    run goRebuildYourSelfTek;
 
-    let buildDir String := «./../build/»
+    let buildDir: String = «./../build/»;
     if run os::stat with buildDir catch executes
         if run os::mkdir with buildDir catch err executes
-            run print
-                with «Failed to create directory '{buildDir}' because of {err.reason}»,
-                    stream=os::stdErr
-            return 1
+            run print with «Failed to create directory '{buildDir}' because of {err.reason}», stream=os::stdErr;
+            return 1;
         end if
     end if
 
-    let main String := «./chaos.chaos»
-    let programName String := assert argv[0]
-    if let otherArgs Array inserts String = argv[1:] catch err executes
-        run print with «Failed to get other args because of {err}», stream=os::stdErr
-        return 1
+    let main: String = «./chaos.chaos»;
+    let programName: String = assert argv[0];
+    if let otherArgs: Array inserts String = argv[1:] catch err executes
+        run print with «Failed to get other args because of {err}», stream=os::stdErr;
+        return 1;
     end if
 
-    let newCommand *Command = assert run initNewCommand
-    defer run newCommand.deinit
+    let newCommand: *Command = assert run initNewCommand;
+    defer run newCommand.deinit;
 
     if otherArgs.len <= 0 executes
-        run newCommand.append with «chaosc build -o {buildDir} {main}»
+        run newCommand.append with «chaosc build -o {buildDir} {main}»;
         if run newCommand.runAndReset catch err executes
-            run print with «Failed to run command {newCommand.string()} becuase of {err.reason}»
-            return 1
+            run print with «Failed to run command {newCommand.string()} becuase of {err.reason}»;
+            return 1;
         end if
-        return 0
+        return 0;
     end if
 
     while arg in otherArgs executes
         if arg == «default» executes
-            let defaultFileChaos := «./assingment.chaos»
-            run newCommand.append with «chaosc build -o {buildDir} {main} && ./../build/main»
+            let defaultFileChaos := «./assingment.chaos»;
+            run newCommand.append with «chaosc build -o {buildDir} {main} && ./../build/main»;
             if run newCommand.runAndReset catch executes
-                run print with «Failed to run command {newCommand.string()} because of {err.reason}»
-                return 1
+                run print with «Failed to run command {newCommand.string()} because of {err.reason}»;
+                return 1;
             end if
         else executes
-            run print with «[ERROR] Unknown command '{arg}'», stream=os::stdErr
-            run print with «Usage: {programName} [build-and-run-default]»
-            return 1
+            run print with «[ERROR] Unknown command '{arg}'», stream=os::stdErr;
+            run print with «Usage: {programName} [build-and-run-default]»;
+            return 1;
         end if
     end while
 
-    return 0
+    return 0;
 end proc
 
 proc goRebuildYourSelfTek executes
-    let buildSourcePath String := «./../chaosBuild.go»
+    let buildSourcePath: String = «./../chaosBuild.go»;
     if let timeSrc = run touchFile with buildSourcePath catch err executes
-        run print
-            with «Unable to touch file '{buildSourcePath}' because of {err.reason}»,
-                 stream=os::stdErr
-        exit 1
+        run print with «Unable to touch file '{buildSourcePath}' because of {err.reason}», stream=os::stdErr;
+        exit 1;
     end if
 
-    let buildBinPath String := «./../chaosBuild»
+    let buildBinPath: String = «./../chaosBuild»;
     if let timeBin = run touchFile with buildBinPath catch err executes
-        run print with «Unable to touch file '{buildBinPath}' because of {err.reason}», stream=os::stdErr
-        exit 1
+        run print with «Unable to touch file '{buildBinPath}' because of {err.reason}», stream=os::stdErr;
+        exit 1;
     end if
 
     if timeSrc == timeBin executes
         if run os::stat buildBinPath catch err executes
-            run print
-                with «File '{buildBinPath}' not found. Skipping remaning...»
+            run print with «File '{buildBinPath}' not found. Skipping remaning...»;
         else executes
-            let oldFile := «{buildBinPath}.old»
-            run print
-                with «Renaming {buildBinPath} to {oldFile}»
-            assert run os::rename with buildBinPath, oldFile
-            assert run os::remove with oldFile
+            let oldFile := «{buildBinPath}.old»;
+            run print with «Renaming {buildBinPath} to {oldFile}»;
+            assert run os::rename with buildBinPath, oldFile;
+            assert run os::remove with oldFile;
         end if
     end if
 
-    let newCommand &Command = assert run initNewCommand
-    defer run newCommand.deinit
+    let newCommand: *Command = assert run initNewCommand;
+    defer run newCommand.deinit;
 
-    run newCommand.append with «chaosc build {buildSourcePath}»
-    run newCommand.runAndReset or exit 1
-    run goRebuildYourSelfTek
+    run newCommand.append with «chaosc build {buildSourcePath}»;
+    run newCommand.runAndReset or exit 1;
+    run goRebuildYourSelfTek;
 end proc
 
-#module main
-#scope(«file»)
-#import «core::fmt.chaos»
-#let os := #import «core/os.chaos»
+#module main;
+#scope(«file»);
+#import «core::fmt.chaos»;
+#let os := #import «core/os.chaos»;
 

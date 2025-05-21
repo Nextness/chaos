@@ -1,46 +1,42 @@
 // Copyright
 
-proc asyncTask with p proc returns AsyncTask executes
+proc asyncTask
+    expects p proc returns AsyncTask
+executes
     
 end proc
 
 proc getUserByUsername
-    expects username String, session Session
+    expects username: String, session: Session
     returns (Async using User)!
 executes
-    if username.len >= 4096 executes return largeText! end if
-    let getUserQuery := «SELECT username FROM user_database WHERE username={username}»
-    let user := run performQuery
-        with session, getUserQuery
-    return user
+    if username.len >= 4096 return largeText!;
+    let getUserQuery := «SELECT username FROM user_database WHERE username={username}»;
+    let user := run performQuery with session, getUserQuery;
+    return user;
 end proc
 
 proc getUser
-    expects username String
+    expects username: String
     returns User!
 executes
     proc task
         returns User!
     executes
-        let globalSession := run getGlobalSession
-            or return noSessionAvailable!
-        let user := run getUserByUsername
-            with username, globalSession
-            or return userNotFound!
-        return user
+        let globalSession := run getGlobalSession or return noSessionAvailable!;
+        let user := run getUserByUsername with username, globalSession or return userNotFound!;
+        return user;
     end proc
 
-    let currentuser AsyncTask := run asyncTask
-        with task
+    let currentuser AsyncTask := run asyncTask with task;
     if let user := run currentUser.await catch executes
-        run ctx.error.?logger
-            with «Failed to get user {username}»
-        return err
+        run logger with «Failed to get user {username}»;
+        return err;
     end if
 
-    return user
+    return user;
 end proc
 
-#module asyncTasks
-#import «core::tasks.chaos»
+#module asyncTasks;
+#import «core::tasks.chaos»;
 

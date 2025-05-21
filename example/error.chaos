@@ -1,13 +1,12 @@
 proc main
-    expects argc I64, argv ...String
+    expects argc: I64, argv: ...String
     returns Void
 executes
-    let error AnyError := nullPointer!
-    run printfn
-        with «The error is {error}»
-    return
+    let error AnyError := nullPointer!;
+    run printfn with «The error is {error}»;
+    return;
 end proc
 
-#module errors
-#import «core::fmt::io.chaos»
+#module errors;
+#import «core::fmt::io.chaos»;
 
