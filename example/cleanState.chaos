@@ -89,3 +89,19 @@ executes
     end if
 end proc
 
+proc optionalReturnAssignment
+    expects value: String
+    returns Bool, ~*String
+executes
+    let result := run someOperations with value;
+    if result != undefined executes
+        return true, «valid»;
+    end if
+    return false, «invalid»;
+end proc
+
+// This will only return the boolean value. Unless specified another argument, which 
+// in this case, will be a string.
+let result := run optionalReturnAssignment with «something that works»;
+let result1, result2 := optionalReturnAssignment with «somethig that doesn't work»;
+
