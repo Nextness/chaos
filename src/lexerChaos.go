@@ -153,19 +153,23 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 		tmp.WriteByte('\n')
 	}
 
-	if value, ok := n.value.(*TokenLiteral); ok {
-		if val, ok := value.value.(string); ok {
+	if value, ok := cast[*TokenLiteral](n.value); ok {
+		if val, ok := cast[string](value.value); ok {
 			tmp.WriteString(fmt.Sprintf("%svalue ['%s']", pad, val))
-		} else if val, ok := value.value.(int); ok {
+		} else if val, ok := cast[int](value.value); ok {
 			tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, val))
-		} else if val, ok := value.value.(bool); ok {
+		} else if val, ok := cast[bool](value.value); ok {
 			tmp.WriteString(fmt.Sprintf("%svalue [%t]", pad, val))
+		} else {
+			panic(fmt.Sprintf("Unsuported type %T in asBuffer for NodeIdentifier", val))
 		}
-	} else if value, ok := n.value.(*TokenIdentifier); ok {
+	} else if value, ok := cast[*TokenIdentifier](n.value); ok {
 		tmp.WriteString(fmt.Sprintf("%svalue [%s]", pad, value.symbol))
-	} else if value, ok := n.value.(*NodeBinOp); ok {
+	} else if value, ok := cast[*NodeBinOp](n.value); ok {
 		buf := value.asBuffer(padSize)
 		tmp.Write(buf.Bytes())
+	} else {
+		panic(fmt.Sprintf("Unsuported type %T in asBuffer for NodeIdentifier", value))
 	}
 	tmp.WriteByte('\n')
 
@@ -285,11 +289,13 @@ func (n *NodeBinOp) asBuffer(padSize int) bytes.Buffer {
 	tmp.WriteString(fmt.Sprintf("%soperation [%s]", pad, op))
 	tmp.WriteByte('\n')
 
-	lhs := n.lhs.(*TokenLiteral).value.(int)
+	token := castAssert[*TokenLiteral](n.lhs)
+	lhs := castAssert[int](token.value)
 	tmp.WriteString(fmt.Sprintf("%slhs [%d]", pad, lhs))
 	tmp.WriteByte('\n')
 
-	rhs := n.rhs.(*TokenLiteral).value.(int)
+	token = castAssert[*TokenLiteral](n.rhs)
+	rhs := castAssert[int](token.value)
 	tmp.WriteString(fmt.Sprintf("%srhs [%d]", pad, rhs))
 	tmp.WriteByte('\n')
 
@@ -420,7 +426,7 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	}
 
 	token = ts.consume()
-	node.identifier, _ = token.(*TokenIdentifier)
+	node.identifier = castAssert[*TokenIdentifier](token)
 
 	ts.consumeAssert(tokColon)
 
@@ -439,35 +445,36 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	node.varType = nodeInfer()
 	if ts.matchAt(0, tokVarType) {
 		token = ts.consume()
-		node.varType = token.(*TokenVarType)
+		node.varType = castAssert[*TokenVarType](token)
 	}
 
 	if ts.matchAt(0, tokAssignment) {
 		ts.consumeAssert(tokAssignment)
-		if !ts.matchAt(0, tokLiteral, tokLiteral, tokIdentifier) {
+		if !ts.matchAt(0, tokLiteral, tokIdentifier) {
 			errMsg := fmt.Sprintf("Expected a string, or number but found %s\n", ts.currentTokenTypeAsString())
 			config := newLexerErroConfig(errMsg)
 			config.printAndExitLexerError(ts)
 		}
 
 		node.state = nodeInitialized
-		if ts.matchAt(0, tokLiteral, tokLiteral) && ts.matchAt(1, tokSemicolon) {
+		if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokSemicolon) {
 			token = ts.consume()
-			node.value, _ = token.(*TokenLiteral)
+			node.value = castAssert[*TokenLiteral](token)
 		} else if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokSemicolon) {
 			token = ts.consume()
-			node.value, _ = token.(*TokenIdentifier)
+			node.value = castAssert[*TokenIdentifier](token)
 		}
+
 		if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokEquals, tokGreaterThan, tokLessThan, tokPlus, tokMinus) {
 			binOp := NodeBinOp{nodeType: nodeBinOp, state: nodeInitialized}
 			token = ts.consumeAssert(tokLiteral)
-			binOp.lhs = token.(*TokenLiteral)
+			binOp.lhs = castAssert[*TokenLiteral](token)
 
 			token = ts.consume()
-			binOp.operation = token.(*TokenOperator)
+			binOp.operation = castAssert[*TokenOperator](token)
 
 			token = ts.consumeAssert(tokLiteral)
-			binOp.rhs = token.(*TokenLiteral)
+			binOp.rhs = castAssert[*TokenLiteral](token)
 
 			node.value = &binOp
 		}
@@ -535,7 +542,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 		config.printAndExitLexerError(ts)
 	}
 	token = ts.consume()
-	node.identifier, _ = token.(*TokenIdentifier)
+	node.identifier = castAssert[*TokenIdentifier](token)
 
 	if ts.matchAt(0, tokExpects) {
 		ts.consumeAssert(tokExpects)
@@ -547,7 +554,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 				config.printAndExitLexerError(ts)
 			}
 			token = ts.consume()
-			n.identifier, _ = token.(*TokenIdentifier)
+			n.identifier = castAssert[*TokenIdentifier](token)
 
 			ts.consumeAssert(tokColon)
 
@@ -563,7 +570,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 				config.printAndExitLexerError(ts)
 			}
 			token = ts.consume()
-			n.varType, _ = token.(*TokenVarType)
+			n.varType = castAssert[*TokenVarType](token)
 			n.varType.variadic = isVariadic
 			// TODO: For now we don't allow default values, so all the identifiers should be
 			// uninitialized.
@@ -591,7 +598,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			}
 			token = ts.consume()
 			n.identifier = &TokenIdentifier{}
-			n.varType, _ = token.(*TokenVarType)
+			n.varType = castAssert[*TokenVarType](token)
 			n.state = nodeUninitialized
 
 			node.rets = append(node.rets, n)

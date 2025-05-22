@@ -223,14 +223,14 @@ type TokenLiteral struct {
 
 func (t *TokenLiteral) asString() string {
 	curType := any(t.value)
-	if val, ok := curType.(string); ok {
+	if val, ok := cast[string](curType); ok {
 		if val != "" {
 			return fmt.Sprintf("%03d:%03d [%s] \"%s\"", t.position.line, t.position.column, t.tokType.asString(), val)
 		}
 		return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
-	} else if val, ok := curType.(int); ok {
+	} else if val, ok := cast[int](curType); ok {
 		return fmt.Sprintf("%03d:%03d [%s] %d", t.position.line, t.position.column, t.tokType.asString(), val)
-	} else if val, ok := curType.(bool); ok {
+	} else if val, ok := cast[bool](curType); ok {
 		return fmt.Sprintf("%03d:%03d [%s] %t", t.position.line, t.position.column, t.tokType.asString(), val)
 	}
 	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
@@ -881,7 +881,7 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 }
 
 func (ts *TokenizerState) consumeEndBlock(tokType TokenType) {
-	if !ts.matchAt(0, tokEnd) {
+	if !ts.matchAt(0, tokEnd) && !ts.matchAt(0, tokType) {
 		erroMsg := fmt.Sprintf("Expected 'end %s' but found 'end %s'", tokType.asString(), ts.current().getTokenType().asString())
 		panic(erroMsg)
 	}
