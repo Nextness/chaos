@@ -7,9 +7,9 @@ import (
 
 const PADNUMBER int = 2
 
-func nodeInfer() *TokenVarType {
-	result := TokenVarType{symbol: "infer", tokType: tokInferType}
-	return &result
+func nodeInfer(tokKind TokenKind) *TokenVarType {
+	result := &TokenVarType{symbol: "infer", tokType: tokInferType, tokKind: tokKind}
+	return result
 }
 
 type LexerState struct {
@@ -149,7 +149,7 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 		tmp.WriteByte('\n')
 		return tmp
 	} else {
-		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
+		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.tokKind.asString()))
 		tmp.WriteByte('\n')
 	}
 
@@ -400,7 +400,7 @@ func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
 	}
 	value := ts.consume()
 	node.value = value.(*TokenLiteral)
-	node.varType = nodeInfer()
+	node.varType = nodeInfer(tokInferType)
 
 	ts.consumeAssert(tokSemicolon)
 
@@ -428,56 +428,65 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	token = ts.consume()
 	node.identifier = castAssert[*TokenIdentifier](token)
 
-	ts.consumeAssert(tokColon)
+	if ts.currentTokenType() == tokInferAssign {
+		// TODO: Handle identifier type inference.
+		// For now it only works for literals
+		ts.consumeAssert(tokInferAssign)
+		if _, ok := cast[*TokenIdentifier](ts.current()); ok {
+			panic("Type inference for token identifier is not supported yet")
+		} else {
+			token := castAssert[*TokenLiteral](ts.current())
+			node.varType = nodeInfer(token.tokKind)
+		}
+	} else if ts.currentTokenType() == tokColon {
+		ts.consumeAssert(tokColon)
 
-	if !ts.matchAt(0, tokVarType, tokAssignment) {
-		// TODO: Improve error handling
-		errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.currentTokenTypeAsString())
-		config := newLexerErroConfig(errMsg)
-		config.newExample("let something U64")
-		config.newExample("let something U64 = 1")
-		config.printAndExitLexerError(ts)
-	}
-
-	// TODO: Fix case where we only have the identifier, but no type or assignment.
-	// This behavior is not allowed. It should be either infer type by assignment or
-	// identifier uninitialized with a type.
-	node.varType = nodeInfer()
-	if ts.matchAt(0, tokVarType) {
-		token = ts.consume()
-		node.varType = castAssert[*TokenVarType](token)
-	}
-
-	if ts.matchAt(0, tokAssignment) {
-		ts.consumeAssert(tokAssignment)
-		if !ts.matchAt(0, tokLiteral, tokIdentifier) {
-			errMsg := fmt.Sprintf("Expected a string, or number but found %s\n", ts.currentTokenTypeAsString())
+		if !ts.matchAt(0, tokVarType, tokAssignment) {
+			// TODO: Improve error handling
+			errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.currentTokenTypeAsString())
 			config := newLexerErroConfig(errMsg)
+			config.newExample("let something U64")
+			config.newExample("let something U64 = 1")
 			config.printAndExitLexerError(ts)
 		}
 
-		node.state = nodeInitialized
-		if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokSemicolon) {
-			token = ts.consume()
-			node.value = castAssert[*TokenLiteral](token)
-		} else if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokSemicolon) {
-			token = ts.consume()
-			node.value = castAssert[*TokenIdentifier](token)
+		// TODO: Fix case where we only have the identifier, but no type or assignment.
+		// This behavior is not allowed. It should be either infer type by assignment or
+		// identifier uninitialized with a type.
+		token = ts.consumeAssert(tokVarType)
+		node.varType = castAssert[*TokenVarType](token)
+
+		if ts.matchAt(0, tokAssignment) {
+			ts.consumeAssert(tokAssignment)
+			if !ts.matchAt(0, tokLiteral, tokIdentifier) {
+				errMsg := fmt.Sprintf("Expected a string, or number but found %s\n", ts.currentTokenTypeAsString())
+				config := newLexerErroConfig(errMsg)
+				config.printAndExitLexerError(ts)
+			}
 		}
+	}
 
-		if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokEquals, tokGreaterThan, tokLessThan, tokPlus, tokMinus) {
-			binOp := NodeBinOp{nodeType: nodeBinOp, state: nodeInitialized}
-			token = ts.consumeAssert(tokLiteral)
-			binOp.lhs = castAssert[*TokenLiteral](token)
+	node.state = nodeInitialized
+	if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokSemicolon) {
+		token = ts.consume()
+		node.value = castAssert[*TokenLiteral](token)
+	} else if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokSemicolon) {
+		token = ts.consume()
+		node.value = castAssert[*TokenIdentifier](token)
+	}
 
-			token = ts.consume()
-			binOp.operation = castAssert[*TokenOperator](token)
+	if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokEquals, tokGreaterThan, tokLessThan, tokPlus, tokMinus) {
+		binOp := NodeBinOp{nodeType: nodeBinOp, state: nodeInitialized}
+		token = ts.consumeAssert(tokLiteral)
+		binOp.lhs = castAssert[*TokenLiteral](token)
 
-			token = ts.consumeAssert(tokLiteral)
-			binOp.rhs = castAssert[*TokenLiteral](token)
+		token = ts.consume()
+		binOp.operation = castAssert[*TokenOperator](token)
 
-			node.value = &binOp
-		}
+		token = ts.consumeAssert(tokLiteral)
+		binOp.rhs = castAssert[*TokenLiteral](token)
+
+		node.value = &binOp
 	}
 
 	ts.consumeAssert(tokSemicolon)

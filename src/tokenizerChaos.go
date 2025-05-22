@@ -44,6 +44,7 @@ const (
 	tokRun
 	tokWith
 	tokLiteral
+	tokInferAssign
 	tokCount
 )
 
@@ -110,6 +111,8 @@ func (tokTyp TokenType) asString() string {
 		return "tokWith"
 	} else if tokTyp == tokLiteral {
 		return "tokLiteral"
+	} else if tokTyp == tokInferAssign {
+		return "tokInferAssign"
 	}
 
 	panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
@@ -146,6 +149,66 @@ const (
 	kindMap
 	kindNone
 )
+
+func (t TokenKind) asString() string {
+	if t == kindAnyError {
+		return "AnyError"
+	} else if t == kindAnyType {
+		return "AnyType"
+	} else if t == kindString {
+		return "String"
+	} else if t == kindChar {
+		return "Char"
+	} else if t == kindBool {
+		return "Bool"
+	} else if t == kindU8 {
+		return "U8"
+	} else if t == kindU16 {
+		return "U16"
+	} else if t == kindU32 {
+		return "U32"
+	} else if t == kindU64 {
+		return "U64"
+	} else if t == kindU128 {
+		return "U128"
+	} else if t == kindI8 {
+		return "I8"
+	} else if t == kindI16 {
+		return "I16"
+	} else if t == kindI32 {
+		return "I32"
+	} else if t == kindI64 {
+		return "I64"
+	} else if t == kindI128 {
+		return "I128"
+	} else if t == kindF16 {
+		return "F16"
+	} else if t == kindF32 {
+		return "F32"
+	} else if t == kindF64 {
+		return "F64"
+	} else if t == kindF128 {
+		return "F128"
+	} else if t == kindC64 {
+		return "C64"
+	} else if t == kindC128 {
+		return "C128"
+	} else if t == kindQ128 {
+		return "Q128"
+	} else if t == kindQ256 {
+		return "Q256"
+	} else if t == kindArray {
+		return "Array"
+	} else if t == kindVoid {
+		return "Void"
+	} else if t == kindMap {
+		return "Map"
+	} else if t == kindNone {
+		return "None"
+	}
+
+	panic(fmt.Sprintf("Unknown keyword '%v'", t))
+}
 
 type PtrAnyToken any
 
@@ -699,6 +762,20 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			continue
 		}
 
+		if cs.matchStrAt(0, ":=") {
+			tok := &TokenKeyword{
+				tokType: tokInferAssign,
+				position: Position{
+					line: cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column += 2
+			cs.cursor += 2
+			ts.data = append(ts.data, tok)
+			continue
+		}
+
 		// TODO: Improve how to handle three character tokens
 		if cs.matchStrAt(0, "...") {
 			tok := &TokenKeyword{
@@ -846,7 +923,7 @@ func (ts *TokenizerState) matchAt(offset int, tokTypes ...TokenType) (result boo
 }
 
 func (ts *TokenizerState) peak(offset int) (result Token) {
-	assert(offset == 0, "cannot peak with 0")
+	assert(offset != 0, "cannot peak with 0")
 	result = nil
 	if ts.cursor+offset < ts.count {
 		result = ts.data[ts.cursor+offset]
