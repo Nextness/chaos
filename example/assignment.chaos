@@ -1,30 +1,30 @@
 // Example for comment
 
-// global let somethingNew: String = «some string in here»;
-// 
-// proc somethingElse
-//     expects someVariableName: I64, anotherVariable: Bool
-//     returns Void
-// executes
-//     let variableName: String = «some shit»;
-//     let a: I64 = 10;
-//     let somePlus: U64 = 1 - 1;
-//     let someVariable: String;
-//     let something1: U64 = something;
-//     let someString: String = «something should be here»;
-//     let something: /** something in here **/ U64 = 1;
-// 
-//     // if something == 2 executes
-//     //     let somevalue String = «something»;
-//     //     exit 1, «failed to complete action»;
-//     // // elif something > 1 executes
-//     // //     exit 1, «failed to complete action»
-//     // // else executes
-//     // //     exit 1, «failed to complete action»
-//     // end if
-// 
-//     exit 1, «failed to complete action»;
-// end proc
+global let somethingNew: String = «some string in here»;
+
+proc somethingElse
+    expects someVariableName: I64, anotherVariable: Bool
+    returns Void
+executes
+    let variableName: String = «some shit»;
+    let a: I64 = 10;
+    let somePlus: U64 = 1 - 1;
+    let someVariable: String;
+    let something1: U64 = something;
+    let someString: String = «something should be here»;
+    let something: /** something in here **/ U64 = 1;
+
+    if something == 2 executes
+        let somevalue String = «something»;
+        exit 1, «failed to complete action»;
+    elif something > 1 executes
+        exit 1, «failed to complete action»
+    else executes
+        exit 1, «failed to complete action»
+    end if
+
+    exit 1, «failed to complete action»;
+end proc
 
 proc main
     expects argc: I64, argv: String
@@ -34,10 +34,10 @@ executes
     let anotherString: String = stringLiteral;
     let inferedInt := 10;
 
-//    let simpleExample: U64 = 190;
-//    let another: U64 = simpleExample;
-//    let yetAnother: U64 = another;
-//
-//    run somethingElse with 10, true;
+    let simpleExample: U64 = 190;
+    let another: U64 = simpleExample;
+    let yetAnother: U64 = another;
+
+    run somethingElse with 10, true;
 end proc
 

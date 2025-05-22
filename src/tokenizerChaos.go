@@ -616,6 +616,7 @@ func (cs *ContentState) handleKeywords() (bool, *TokenKeyword) {
 	saveColumPos := cs.column
 	tmp := bytes.Buffer{}
 	defer tmp.Reset()
+
 	for isAlphanum(cs.currentChar()) {
 		tmp.WriteByte(cs.currentChar())
 		cs.column++
@@ -747,6 +748,34 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		}
 
 		if cs.handleEmptyCharacters() {
+			continue
+		}
+
+		if cs.matchStrAt(0, "(") {
+			tok := &TokenKeyword{
+				tokType: tokOpenParen,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			ts.data = append(ts.data, tok)
+			continue
+		}
+
+		if cs.matchStrAt(0, ")") {
+			tok := &TokenKeyword{
+				tokType: tokCloseParen,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			ts.data = append(ts.data, tok)
 			continue
 		}
 

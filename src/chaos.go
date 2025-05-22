@@ -29,7 +29,7 @@ func main() {
 			}
 
 			fileContent := bytes.NewBuffer(file)
-			ts:= tokenizeChaos(arg, fileContent)
+			ts := tokenizeChaos(arg, fileContent)
 			ts.print()
 			fmt.Print("\n")
 
@@ -39,11 +39,11 @@ func main() {
 				fmt.Printf("%s\n", val.String())
 			}
 
-			eos := globalExecutionOrderChaos(ls)
-			typeCheckingChaos(eos)
+			es := globalExecutionOrderChaos(ls)
+			typeCheckingChaos(es)
+			instructions := irChaos(es)
+			generateProgram(instructions)
 
-			// irState := irChaos(lexerState)
-			// irChaosToString(irState)
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)
@@ -51,4 +51,3 @@ func main() {
 		}
 	}
 }
-
