@@ -357,6 +357,9 @@ func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
 func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	var token Token
 	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
+	if ts.currentTokenType() == tokGlobal {
+		ts.consumeAssert(tokGlobal)
+	}
 	ts.consumeAssert(tokLet)
 
 	if !ts.matchAt(0, tokIdentifier) {
@@ -516,7 +519,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 }
 
 func lexChaosStatement(ts *TokenizerState) (Node, bool) {
-	if ts.matchAt(0, tokLet) {
+	if ts.matchAt(0, tokLet, tokGlobal) {
 		node := lexChaosLet(ts)
 		if node == nil {
 			return nil, false
@@ -561,7 +564,8 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 			panic("Failed to lex proc definition")
 		}
 
-		if ts.matchAt(0, tokLet, tokExit, tokIdentifier) {
+		// TODO: handle let and global let separetely
+		if ts.matchAt(0, tokGlobal, tokLet, tokExit, tokIdentifier) {
 			if node, ok := lexChaosStatement(ts); ok {
 				lexerState.data = append(lexerState.data, node)
 				continue

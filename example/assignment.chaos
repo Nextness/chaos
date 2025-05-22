@@ -1,6 +1,6 @@
 // Example for comment
 
-let somethingNew: String = «some string in here»;
+global let somethingNew: String = «some string in here»;
 
 proc somethingElse
     expects someVariableName: I64, anotherVariable: Bool
@@ -30,6 +30,9 @@ proc main
     expects argc: I64, argv: String
     returns Void
 executes
+    let stringLiteral: String = «something»;
+    let anotherString: String = stringLiteral;
+
     let simpleExample: U64 = 190;
     let another: U64 = simpleExample;
     let yetAnother: U64 = another;
