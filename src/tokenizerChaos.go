@@ -43,6 +43,9 @@ const (
 	tokEllipsis
 	tokSemicolon
 	tokColon
+	tokRun
+	tokWith
+	tokLiteral
 	tokCount
 )
 
@@ -107,6 +110,12 @@ func (tokTyp TokenType) asString() string {
 		return "tokSemicolon"
 	} else if tokTyp == tokColon {
 		return "tokColon"
+	} else if tokTyp == tokRun {
+		return "tokRun"
+	} else if tokTyp == tokWith {
+		return "tokWith"
+	} else if tokTyp == tokLiteral {
+		return "tokLiteral"
 	}
 
 	panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
@@ -226,6 +235,8 @@ func (t *TokenLiteral) asString() string {
 		return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
 	} else if val, ok := curType.(int); ok {
 		return fmt.Sprintf("%03d:%03d [%s] %d", t.position.line, t.position.column, t.tokType.asString(), val)
+	} else if val, ok := curType.(bool); ok {
+		return fmt.Sprintf("%03d:%03d [%s] %t", t.position.line, t.position.column, t.tokType.asString(), val)
 	}
 	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
 }
@@ -503,6 +514,40 @@ func (cs *ContentState) handleVarTypes() (bool, *TokenVarType) {
 	return true, &token
 }
 
+func (cs *ContentState) handleBoolean() (bool, *TokenLiteral) {
+	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
+		return false, nil
+	}
+
+	token := TokenLiteral{}
+	saveCursorPos := cs.cursor
+	saveColumPos := cs.column
+	tmp := bytes.Buffer{}
+	defer tmp.Reset()
+
+	for isAlpha(cs.currentChar()) {
+		tmp.WriteByte(cs.currentChar())
+		cs.column++
+		cs.cursor++
+	}
+
+	boolean := tmp.String()
+	if boolean == "true" {
+		token.tokType = tokLiteral
+		token.value = true
+	} else if boolean == "false" {
+		token.tokType = tokLiteral
+		token.value = false
+	} else {
+		cs.cursor = saveCursorPos
+		cs.column = saveColumPos
+		return false, nil
+	}
+
+	token.position = Position{cs.line, cs.column}
+	return true, &token
+}
+
 func (cs *ContentState) handleKeywords() (bool, *TokenKeyword) {
 	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
 		return false, nil
@@ -542,6 +587,10 @@ func (cs *ContentState) handleKeywords() (bool, *TokenKeyword) {
 		token.tokType = tokReturns
 	} else if keyword == "expects" {
 		token.tokType = tokExpects
+	} else if keyword == "run" {
+		token.tokType = tokRun
+	} else if keyword == "with" {
+		token.tokType = tokWith
 	} else {
 		cs.cursor = saveCursorPos
 		cs.column = saveColumPos
@@ -691,6 +740,11 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		// 	continue
 		// }
 
+		if ok, token := cs.handleBoolean(); ok {
+			ts.data = append(ts.data, token)
+			continue
+		}
+
 		if ok, token := cs.handleVarTypes(); ok {
 			ts.data = append(ts.data, token)
 			continue
@@ -787,7 +841,6 @@ func (tok *TokenKind) matchAt(offset int, tokKinds ...TokenKind) (result bool) {
 	}
 	return
 }
-
 
 func (ts *TokenizerState) matchAt(offset int, tokTypes ...TokenType) (result bool) {
 	result = false

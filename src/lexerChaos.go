@@ -25,6 +25,7 @@ const (
 	nodeExit
 	nodeProc
 	nodeBinOp
+	nodeProcCall
 )
 
 type NodeState int
@@ -44,6 +45,8 @@ func (n NodeType) asString() string {
 		return "NodeProc"
 	} else if n == nodeBinOp {
 		return "NodeBinOp"
+	} else if n == nodeProcCall {
+		return "NodeProcCall"
 	}
 	panic(fmt.Sprintf("Unexpected NodeType '%d'", n))
 }
@@ -155,6 +158,8 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 			tmp.WriteString(fmt.Sprintf("%svalue ['%s']", pad, val))
 		} else if val, ok := value.value.(int); ok {
 			tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, val))
+		} else if val, ok := value.value.(bool); ok {
+			tmp.WriteString(fmt.Sprintf("%svalue [%t]", pad, val))
 		}
 	} else if value, ok := n.value.(*TokenIdentifier); ok {
 		tmp.WriteString(fmt.Sprintf("%svalue [%s]", pad, value.symbol))
@@ -295,9 +300,51 @@ func (n *NodeBinOp) getNodeType() NodeType {
 	return n.nodeType
 }
 
+type NodeProcCall struct {
+	nodeType   NodeType
+	state      NodeState
+	identifier *TokenIdentifier
+	args       []NodeIdentifier
+}
+
+func (n *NodeProcCall) asString() string {
+	return todo[string]()
+}
+
+func (n *NodeProcCall) asBuffer(padSize int) bytes.Buffer {
+	pad := makePad(padSize)
+
+	tmp := bytes.Buffer{}
+	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
+	tmp.WriteByte('\n')
+
+	tmp.WriteString(fmt.Sprintf("%sinput", pad))
+	tmp.WriteByte('\n')
+
+	padSize += PADNUMBER
+	pad = makePad(padSize)
+	for _, node := range n.args {
+		n := node.asBuffer(padSize)
+		tmp.Write(n.Bytes())
+		tmp.WriteByte('\n')
+	}
+
+	return tmp
+}
+
+func (n *NodeProcCall) getNodeType() NodeType {
+	return n.nodeType
+}
+
 var _ Node = &NodeIdentifier{}
 var _ Node = &NodeExit{}
 var _ Node = &NodeProcDef{}
+var _ Node = &NodeProcCall{}
 var _ Node = &NodeBinOp{}
 
 func lexExit(ts *TokenizerState) *NodeExit {
@@ -358,6 +405,7 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 	var token Token
 	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
 	if ts.currentTokenType() == tokGlobal {
+		// TODO: Handle differently the global variables depending on scope
 		ts.consumeAssert(tokGlobal)
 	}
 	ts.consumeAssert(tokLet)
@@ -425,6 +473,52 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 		}
 	}
 
+	ts.consumeAssert(tokSemicolon)
+
+	return &node
+}
+
+func lexProcCall(ts *TokenizerState) *NodeProcCall {
+	var token Token
+	node := NodeProcCall{nodeType: nodeProcCall, state: nodeInitialized}
+	ts.consumeAssert(tokRun)
+	if !ts.matchAt(0, tokIdentifier) {
+		errMsg := fmt.Sprintf("Expected proc name a but found %s\n", ts.currentTokenTypeAsString())
+		config := newLexerErroConfig(errMsg)
+		config.printAndExitLexerError(ts)
+	}
+
+	token = ts.consume()
+	node.identifier = castAssert[*TokenIdentifier](token)
+
+	if !ts.matchAt(0, tokWith) {
+		errMsg := fmt.Sprintf("Expected 'with' but found %s\n", ts.currentTokenTypeAsString())
+		config := newLexerErroConfig(errMsg)
+		config.printAndExitLexerError(ts)
+	}
+
+	token = ts.consumeAssert(tokWith)
+
+	for ts.currentTokenType() != tokSemicolon {
+		n := NodeIdentifier{
+			nodeType:   nodeIdentifier,
+			state:      nodeInitialized,
+			identifier: &TokenIdentifier{},
+			varType:    &TokenVarType{},
+		}
+
+		if !ts.matchAt(0, tokNumber, tokLiteral) {
+			errMsg := fmt.Sprintf("Expected a literal as argument to proc but found %s\n", ts.currentTokenTypeAsString())
+			config := newLexerErroConfig(errMsg)
+			config.printAndExitLexerError(ts)
+		}
+		n.value = castAssert[*TokenLiteral](ts.consume())
+
+		if ts.matchAt(0, tokComma) {
+			ts.consume()
+		}
+		node.args = append(node.args, n)
+	}
 	ts.consumeAssert(tokSemicolon)
 
 	return &node
@@ -519,6 +613,13 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 }
 
 func lexChaosStatement(ts *TokenizerState) (Node, bool) {
+	if ts.matchAt(0, tokRun) {
+		node := lexProcCall(ts)
+		if node == nil {
+			return nil, false
+		}
+		return node, true
+	}
 	if ts.matchAt(0, tokLet, tokGlobal) {
 		node := lexChaosLet(ts)
 		if node == nil {
