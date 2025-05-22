@@ -881,7 +881,7 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 }
 
 func (ts *TokenizerState) consumeEndBlock(tokType TokenType) {
-	if !ts.matchAt(0, tokEnd) && !ts.matchAt(0, tokType) {
+	if !ts.matchAt(0, tokEnd) && !ts.matchAt(1, tokType) {
 		erroMsg := fmt.Sprintf("Expected 'end %s' but found 'end %s'", tokType.asString(), ts.current().getTokenType().asString())
 		panic(erroMsg)
 	}
