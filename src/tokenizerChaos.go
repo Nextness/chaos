@@ -21,8 +21,6 @@ const (
 	tokMinus
 	tokVarType
 	tokIdentifier
-	tokNumber
-	tokString
 	tokNewline
 	tokEndOfFile
 	tokExit
@@ -66,10 +64,6 @@ func (tokTyp TokenType) asString() string {
 		return "tokVarType"
 	} else if tokTyp == tokIdentifier {
 		return "tokIdentifier"
-	} else if tokTyp == tokNumber {
-		return "tokNumber"
-	} else if tokTyp == tokString {
-		return "tokString"
 	} else if tokTyp == tokNewline {
 		return "tokNewline"
 	} else if tokTyp == tokExit {
@@ -223,6 +217,7 @@ func (t *TokenOperator) getPosition() Position {
 type TokenLiteral struct {
 	value    PtrAnyToken
 	tokType  TokenType
+	tokKind  TokenKind
 	position Position
 }
 
@@ -423,7 +418,8 @@ func (cs *ContentState) handleNumberLiterals() (bool, *TokenLiteral) {
 
 	token := TokenLiteral{
 		value:   val,
-		tokType: tokNumber,
+		tokType: tokLiteral,
+		tokKind: kindI64,
 		position: Position{
 			line:   cs.line,
 			column: cs.column,
@@ -533,10 +529,8 @@ func (cs *ContentState) handleBoolean() (bool, *TokenLiteral) {
 
 	boolean := tmp.String()
 	if boolean == "true" {
-		token.tokType = tokLiteral
 		token.value = true
 	} else if boolean == "false" {
-		token.tokType = tokLiteral
 		token.value = false
 	} else {
 		cs.cursor = saveCursorPos
@@ -544,6 +538,7 @@ func (cs *ContentState) handleBoolean() (bool, *TokenLiteral) {
 		return false, nil
 	}
 
+	token.tokType = tokLiteral
 	token.position = Position{cs.line, cs.column}
 	return true, &token
 }
@@ -643,7 +638,8 @@ func (cs *ContentState) handleStringLiterals() (bool, *TokenLiteral) {
 
 	token := TokenLiteral{
 		value:   tmp.String(),
-		tokType: tokString,
+		tokType: tokLiteral,
+		tokKind: kindString,
 		position: Position{
 			line:   cs.line,
 			column: cs.column,
@@ -651,8 +647,6 @@ func (cs *ContentState) handleStringLiterals() (bool, *TokenLiteral) {
 	}
 
 	cs.cursor += 2
-	token.tokType = tokString
-	token.value = tmp.String()
 	return true, &token
 }
 
@@ -734,11 +728,6 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			ts.data = append(ts.data, token)
 			continue
 		}
-
-		// if ok, token := cs.handleVariadics(); ok {
-		// 	ts.data = append(ts.data, *token)
-		// 	continue
-		// }
 
 		if ok, token := cs.handleBoolean(); ok {
 			ts.data = append(ts.data, token)

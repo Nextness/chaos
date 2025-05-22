@@ -352,7 +352,7 @@ func lexExit(ts *TokenizerState) *NodeExit {
 	node := NodeExit{nodeType: nodeExit}
 
 	ts.consumeAssert(tokExit)
-	if !ts.matchAt(0, tokNumber) {
+	if !ts.matchAt(0, tokLiteral) {
 		// TODO: Better handle errors
 		errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.currentTokenTypeAsString())
 		config := newLexerErroConfig(errMsg)
@@ -364,7 +364,7 @@ func lexExit(ts *TokenizerState) *NodeExit {
 
 	if ts.matchAt(0, tokComma) {
 		ts.consumeAssert(tokComma)
-		if !ts.matchAt(0, tokString) {
+		if !ts.matchAt(0, tokLiteral) {
 			errMsg := fmt.Sprintf("Expected a string but found %s\n", ts.currentTokenTypeAsString())
 			config := newLexerErroConfig(errMsg)
 			config.printAndExitLexerError(ts)
@@ -387,7 +387,7 @@ func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
 
 	ts.consumeAssert(tokAssignment)
 
-	if !ts.matchAt(0, tokNumber) {
+	if !ts.matchAt(0, tokLiteral) {
 		errMsg := fmt.Sprintf("Expected a number while reassigning but found %s\n", ts.currentTokenTypeAsString())
 		config := newLexerErroConfig(errMsg)
 		config.printAndExitLexerError(ts)
@@ -444,29 +444,29 @@ func lexChaosLet(ts *TokenizerState) *NodeIdentifier {
 
 	if ts.matchAt(0, tokAssignment) {
 		ts.consumeAssert(tokAssignment)
-		if !ts.matchAt(0, tokString, tokNumber, tokIdentifier) {
+		if !ts.matchAt(0, tokLiteral, tokLiteral, tokIdentifier) {
 			errMsg := fmt.Sprintf("Expected a string, or number but found %s\n", ts.currentTokenTypeAsString())
 			config := newLexerErroConfig(errMsg)
 			config.printAndExitLexerError(ts)
 		}
 
 		node.state = nodeInitialized
-		if ts.matchAt(0, tokString, tokNumber) && ts.matchAt(1, tokSemicolon) {
+		if ts.matchAt(0, tokLiteral, tokLiteral) && ts.matchAt(1, tokSemicolon) {
 			token = ts.consume()
 			node.value, _ = token.(*TokenLiteral)
 		} else if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokSemicolon) {
 			token = ts.consume()
 			node.value, _ = token.(*TokenIdentifier)
 		}
-		if ts.matchAt(0, tokNumber) && ts.matchAt(1, tokEquals, tokGreaterThan, tokLessThan, tokPlus, tokMinus) {
+		if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokEquals, tokGreaterThan, tokLessThan, tokPlus, tokMinus) {
 			binOp := NodeBinOp{nodeType: nodeBinOp, state: nodeInitialized}
-			token = ts.consumeAssert(tokNumber)
+			token = ts.consumeAssert(tokLiteral)
 			binOp.lhs = token.(*TokenLiteral)
 
 			token = ts.consume()
 			binOp.operation = token.(*TokenOperator)
 
-			token = ts.consumeAssert(tokNumber)
+			token = ts.consumeAssert(tokLiteral)
 			binOp.rhs = token.(*TokenLiteral)
 
 			node.value = &binOp
@@ -507,7 +507,7 @@ func lexProcCall(ts *TokenizerState) *NodeProcCall {
 			varType:    &TokenVarType{},
 		}
 
-		if !ts.matchAt(0, tokNumber, tokLiteral) {
+		if !ts.matchAt(0, tokLiteral) {
 			errMsg := fmt.Sprintf("Expected a literal as argument to proc but found %s\n", ts.currentTokenTypeAsString())
 			config := newLexerErroConfig(errMsg)
 			config.printAndExitLexerError(ts)

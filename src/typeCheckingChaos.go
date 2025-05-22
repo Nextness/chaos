@@ -16,11 +16,9 @@ func typeCheckingChaos(es *ExecutionState) {
 			if token, ok := cast[*TokenLiteral](node.value); ok {
 				if _, ok := cast[int](token.value); ok {
 					typeMatches = typeMatches && node.varType.tokKind.matchAt(0, kindU64, kindU32)
-					typeMatches = typeMatches && token.tokType == tokNumber
 					checked[node.identifier.symbol] = node
 				} else if _, ok := cast[string](token.value); ok {
 					typeMatches = typeMatches && node.varType.tokKind.matchAt(0, kindString)
-					typeMatches = typeMatches && token.tokType == tokString
 					checked[node.identifier.symbol] = node
 				} else {
 					panic(fmt.Sprintf("Unknown token type for token %+v\n", token))
@@ -41,12 +39,10 @@ func typeCheckingChaos(es *ExecutionState) {
 				b := castAssert[*TokenLiteral](a.value)
 
 				if _, ok := cast[int](b.value); ok {
-					typeMatches = typeMatches && b.tokType == tokNumber
 					typeMatches = typeMatches && n.varType.tokKind == a.varType.tokKind
 					typeMatches = typeMatches && n.varType.tokKind.matchAt(0, kindU64, kindU32)
 					checked[node.identifier.symbol] = a
 				} else if _, ok := cast[string](b.value); ok {
-					typeMatches = typeMatches && b.tokType == tokString
 					typeMatches = typeMatches && n.varType.tokKind == a.varType.tokKind
 					typeMatches = typeMatches && n.varType.tokKind.matchAt(0, kindString)
 					checked[node.identifier.symbol] = a
