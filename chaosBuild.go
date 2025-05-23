@@ -99,12 +99,23 @@ func main() {
 				if err := runCommand(fmt.Sprintf("go build -o ./build/main %s && ./build/main %s", main, defaultFileChaos)); err != nil {
 					os.Exit(1)
 				}
+				defaultAsmFile := "./testing.asm"
+				if _, err := touchFile(defaultAsmFile); err != nil {
+					panic(fmt.Sprintf("%s not found - cannot compile", defaultAsmFile))
+				}
+				if err := runCommand(fmt.Sprintf("fasm %s testing", defaultAsmFile)); err != nil {
+					os.Exit(1)
+				}
+				os.Chmod("testing", 0744)
+				if err := runCommand(fmt.Sprint("./testing")); err != nil {
+					os.Exit(1)
+				}
 			} else if arg == "help" {
 				fmt.Printf("Help - Options:\n")
 				fmt.Printf("    default\n")
 			} else {
 				fmt.Fprintf(os.Stderr, "[ERROR] Unknown command '%s'\n", arg)
-				fmt.Printf("Usage: %s [build-and-run-default]\n", programName)
+				fmt.Printf("Usage: %s [default]\n", programName)
 				os.Exit(1)
 			}
 		}
