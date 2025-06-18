@@ -1,71 +1,84 @@
-#overload
-proc isUpppercase
-    expects val: Byte
-    returns Void!
+#[overload]
+proc is-uppercase
+    expects val as Byte
+    returns Bool
 executes
-    return run intenal::isUppercase with val;
-end proc
+    def result = true;
+    if run internal::is-uppercase with val catch err executes
+        result = false;
+    end-if
+    return false;
+end-proc
 
-#overload
-proc isUppercase
-    expects val: String
-    returns Void!
+#[overload]
+proc is-uppercase
+    expects val as String
+    returns Bool
 executes
-    return run intenal::isUppercase with val;
-end proc
+    def result = true;
+    if run internal::is-uppercase with val catch err executes
+        result = false;
+    end-if
+    return false;
+end-proc
 
-#overload
-proc isUppercase
-    expects val: Char = " 
-    returns Void!
+
+#[overload]
+proc is-uppercase
+    expects val as Char
+    returns Bool
 executes
-    return run intenal::isUppercase with val;
-end proc
+    def result = true;
+    if run internal::is-uppercase with val catch err executes
+        result = false;
+    end-if
+    return false;
+end-proc
 
-type LexerErrorConfig struct
-    errorMsg:     String;
-    examples:     Array using String?;
-    exampleCount: I64;
-end type
 
-proc newLexerErrorConfig
-    expects errorMsg: String
-    returns LexerErrorConfig
+type Lexer-Error-Config struct
+    error-msg as String;
+    examples as Array using String?;
+    example-count as I64;
+end-type
+
+proc new-lexer-error-config
+    expects error-msg as String
+    returns Lexer-Error-Config
 executes
-    return new LexerErrorConfig with
-        errorMsg = errorMsg,
+    return new Lexer-Error-Config with
+        error-msg = error-msg,
         examples = new Array using String?,
-        exampleCount = 0,
-    end new;
-end proc
+        example-count = 0,
+    end-new;
+end-proc
 
-proc newExample
-    receiver lex: *LexerErrorConfing
-    expects examples: ...String
+proc new-example
+    expects exposed lec as *Lexer-Error-Config, examples as ...String
 executes
-    let examplesLen := run length with examples
-    assert examplesLen > 0;
+    def example-len = run length with examples;
+    assert example-len > 0;
 
-    let pad := «    »;
-    let prefix := «({++lex.exampleCount})»;
+    def pad = «    »;
+    def prefix = «({++lex.example-count})»;
     while idx, example in examples executes
         if idx == 0 executes
-            let tmp := «{pad}{prefix} {example}\n»;
-            run lec.examples.append with tmp;
+            def tmp = «{pad}{prefix} {example}»;
+            run append with lec.examples, tmp;
             continue;
-        end if
-        let tmp := «{pad}    {example}»;
-        run lex.examples.append with tmp;
-    end while
-end proc
+        end-if
+        def tmp = «{pad}    {example}»;
+        run append with lec.examples, tmp;
+    end-while
+end-proc
 
-proc getSomething
-    expects id: &String
-    returns I64!
+proc get-something
+    expects id as &String
+    returns U64!
 executes
     id = «»; // This should fail, since it is a reference, and references cannot be assigned.
              // In a sense, this value is immutable.
-    let result I64 = run someOperation with id or return generic!;
-    return result
-end proc
+    def result I64 = run? someOperation with id;
+    return result;
+end-proc
 

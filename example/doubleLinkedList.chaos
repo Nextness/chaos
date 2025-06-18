@@ -1,151 +1,117 @@
 // Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
 // to use as example
 
-#macro
-proc length
-    receiver dll: &DoubleLinkedList
-    returns U64
-executes
-    #set *dll.count as U64;
-end proc
+#[macro]
+proc length expects dll as &Double-Linked-List returns U64 executes
+    return dll.*.count as U64;
+end-proc
 
-#macro
-proc head
-    receiver dll: &DoubleLinkedList
-    returns *Node!
-executes
-    #set (dll.head != undefined) ? dll.head : nullPointer!;
-end proc
+#[macro]
+proc head expects dll as &Double-Linked-List returns *Node! executes
+    return (dll.head != undefined) ? dll.head : null-pointer!;
+end-proc
 
-#macro
-proc tail
-    receiver dll: &DoubleLinkedList
-    returns *Node!
-executes
-    #set (dll.tail != undefined) ? dll.tail : nullPointer!;
-end proc
-
+#[macro]
+proc tail expects dll as &Double-Linked-List returns *Node! executes
+    return (dll.tail != undefined) ? dll.tail : null-pointer!;
+end-proc
 
 proc print
-    receiver dll: &DoubleLinkedList
+    expects dll as &Double-Linked-List
 executes
-    let node &Node = dll.head;
-    while i < dll.count : ++i executes
-        let pad = i * 2;
+    def node as &Node = dll.head;
+    while i < dll.count increment i executes
+        def pad = i * 2;
         run io::print with «{pad:node.data}»;
         node = node.next;
-    end while
-end proc
+    end-while
+end-proc
 
-type DoubleLinkedList
-    generic C: num::Ints = U64, T: AnyType
+type Duble-Linked-List
+    generic C, T
+    #if C #not #in num::Ints #execute
+        #stop-compilation «C is expected to be a number, but got {C.type}»;
+    #end-if
 struct
-    count: C              = 0;
-    head:  *Node? using T = undefined;
-    tail:  *Node? using T = undefined;
-end type
+    count as C = 0;
+    head as *Node? using T = undefined;
+    tail as *Node? using T = undefined;
+end-type
 
 type Node
-    generic T: AnyType
+    generic T
 struct
-    data: *T;
-    prev: *Node? using T = null;
-    next: *Node? using T = null;
-end type
+    data as *T;
+    prev as *Node? using T = undefined;
+    next as *Node? using T = undefined;
+end-type
 
-proc initNode
-    generic T: AnyType
-    expects data: *T
+proc init-node
+    generic T
+    expects data: T
     returns (*Node using T)!
 executes
-    type ND alias
-        Node using T;
-    end type
+    def ND = alias Node using T;
 
-    if let newNode *ND = run alloc with ND catch err executes
-        run ctx.logger with Erro,«Failed to allocate node - {err}»;
-        return outOfMemory!
-    end if
+    if def new-node as *ND = run alloc with (run size-of with ND) catch err executes
+        run logger with error, «Failed to allocate node - {err}»;
+        return out-of-memory!;
+    end-if
 
-    run ctx.logger with Trace, «Allocated memory for node: {newNode.address()}»;
-    newNode.data = data;
-    return newNode;
-end proc
+    run logger with trace, «Allocated memory for node: {new-node.address}»;
+    new-node.data = *data;
+    return new-node;
+end-proc
 
-proc pushHead
-    generic T: AnyType
-    expects data: T
+proc push-head
+    expects node as *Node, data as Node.T
     returns Void!
 executes
-    let newNode := run initNode with data or return nullPointer!;
+    def new-node = run? init-node with data;
 
     if dll.count == 0 executes
         dll.head = newNode;
         dll.tail = newNode;
     else executes
-        newNode.next = dll.head;
-        dll.head.prev = newNode;
+        new-node.next = dll.head;
+        dll.head.prev = new-node;
         dll.head = newNode;
-    end if
+    end-if
 
-    dll.count++;
-end proc
+    dll.count += 1;
+end-proc
 
-proc pushHead
-    generic T: AnyType
-    expects data: T
+proc insert-node
+    expects node as *Node, data as Node.T, index as U64
     returns Void!
 executes
-    let newNode := run initNode with data or return nullPointer!;
-
-    if dll.count == 0 executes
-        dll.tail = newNode;
-        dll.head = newNode;
-    else executes
-        dll.tail.next = newNode;
-        newNode.prev = dll.tail;
-        dll.tail = newNode;
-    end if
-
-    dll.count++;
-end proc
-
-proc insetNode
-    generic T: AnyType
-    expects data: *T, index: U64
-    returns Void!
-executes
-    if (index < 0 || index > dll.count) return outOfbounds!;
-
+    if (index < 0 or index > dll.count) return out-of-bounds!;
     if index == 0 executes
-        run dll.pushHead with data;
+        run? dll.push-head with data;
         return;
     elif index == dll.count executes
-        run dll.pushTail with data;
+        run? dll.push-tail with data;
         return;
-    end if
+    end-if
 
-    let tmp: *Node using T;
+    def tmp as *Node using Node.T;
     if index <= (dll.count / 2) executes
-        while (i < index - 1 : ++i) tmp = tmp.next;
+        while i < index - 1 increment i tmp = tmp.next;
     else executes
-        tmp = dll.tail;
-        while (i < dll.count : ++i) tmp = tmp.prev;
-    end if
+        while i < dll.count increment i tmp = tmp.prev;
+    end-if
 
-    let newNode := run initNode with data or return nullPointer!;
-    tmp.next.prev = newNode;
-    newNode.next = tmp.next;
-    tmp.next = newNode;
-    newNode.prev = tmp;
-    dll.count++;
-end proc
+    def new-node = run init-node with data or return null-pointer!;
+    tmp.next.prev = new-node;
+    new-node.next = tmp.next;
+    tmp.next = new-node;
+    new-node.prev = tmp;
+    dll.count += 1;
+end-proc
 
-proc deleteHead
-    receiver dll: *DoubleLinkedList
-executes
-    #notImplemented;
-end proc
+proc delete-head expects dll as *Double-Linked-List executes
+    #not-implemented;
+end-proc
 
 #module doubleLinkedList;
 

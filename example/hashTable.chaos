@@ -1,126 +1,116 @@
 // Copied from https://github.com/benhoyt/ht/blob/master/ht.c
-// Probably it executesesn't work - used just to evaluate language. Most likely things will change...
+// Probably it doesn't work - used just to evaluate language. Most likely things will change...
 
 proc iterator
-    receiver ht *HashTable using #whatever
-    returns HashTableIterator
+    expects hash-table as *Hash-Table
+    returns Hash-Table-Iterator
 executes
-    return new HashTableIterator with ht, 0 end new;
-end proc
-
+    def result as Hash-Table-Iterato = new with hash-table, 0 end-new;
+    return result;
+end-proc
 
 type Entry
-    generic K: AnyType, V: AnyType
+    generic K, V
 struct
-    key:   *K;
-    value: *V;
-end type
+    key   as *K;
+    value as *V;
+end-type
 
-type HashTable
-    generic K: AnyType, V: AnyType
+type Hash-Table
+    generic K, V
 struct
-    entry:    *Entry using K, V;
-    capacity: U64 = 256;
-    size:     U64 = 0;
-end type
+    entry    as Entry using K, V;
+    capacity as U64 = 256;
+    size     as U64 = 0;
+end-type
 
-proc initHashTable
-    generic K: AnyType, V: AnyType
-    returns (*HashTable using K, V)!
+proc init-hash-table
+    generic K, V
+    returns (*Hash-Table using K, V)!
 executes
-    type HT alias HashTable using K, V end type
-    type E alias Entry using K, V end type
+    def HT as Type = alias Hash-Table using K, V;
+    def E  as Type = alias Entry sing K, V;
 
-    let table *HT = run alloc with HT or return nullPointer!;
-    if table.entry = run calloc using E with table.capacity catch err executes
-        run logger with Error, «Failed to allocate memory, buy more RAM»;
-        return nullPointer!;
-    end if
+    def table as *HT = run? alloc with size-of HT);
+    if entry.table = run calloc using E with table.capacity catch err executes
+        run logger with error, «Failed to allocate memory, buy more RAM»;
+        return null-pointer!;
+    end-if
+
     return table;
-end proc
+end-proc
 
 proc destroy
-    generic K: AnyType, V: AnyType
-    receiver exposes ht *HashTable using (K, V)
+    expects exposed hash-table as *Hash-Table
     returns Void!
 executes
-    while i < capacity : ++i executes
-        let curEntry := entry[i] or return outOfBounds!;
-        run free with curEntry.key;
-    end while
+    while i < capacity increment i executes
+        def cur-entry = entry at? i;
+        run free with cur-entry.key;
+    end-while
+
     run free with entry;
-    run free with ht;
-end proc
+    run free with hash-table;
+end-proc
 
 proc get
-    generic K: AnyType, V: AnyType
-    receiver exposes ht *HashTable using (K, V)
-    expects key *K
-    returns V!
+    expects exposed hash-table as Hash-Table, key as Hash-Table.K
+    returns Hash-Table.V!
 executes
-    let hash := run hashKey with key;
-    let i = hash & (capacity - 1);
-    while hasKey := entry[i] or false : ++i executes
-        if hasKey == undefined break;
-        if key == hasKey.key return hasKey.value;
-    end while
-    return notFound!;
-end proc
+    def hash = run hash-key with key;
+    def i = hash & (capacity - 1);
+    while has-key = entry at? i increment i executes
+        if has-key == undefined break;
+        if key == has-key.key return has-key.value;
+    end-while
+    return not-found!;
+end-proc
 
 proc expand
-    generic K: AnyType, V: AnyType
-    receiver exposes ht *HashTable using (K, V)
+    expects exposed hash-table as *Hash-Table
     returns Void!
 executes
-    let newCapacity := capacity * 2;
-    if newCapacity < capacity return overflow!;
+    def new-capacity = capacity * 2;
+    if new-capacity < capacity return overflow!;
 
-    let newEntry = run calloc
-        with newCapacity, (run sizeOf with Entry using V)
-        or return nullPointer!;
-    defer run free
-        with newEntry;
+    def new-entry = run? calloc with new-capacity, size-of Entry using V;
+    defer run free with new-entry;
 
-    while i < capacity : ++i executes
-        let localEntry := entry[i] or return notFound!;
+    while i < capacity increment i executes
+        def local-entry = entry at? i;
         if key != undefined executes
-            run setEntry
-                with newEntry, newCapacity, key, value, undefined
-                or return generic!;
-        end if
-    end while
-    entry = newEntry;
-    capacity = newCapacity;
-end proc
+            run? set-entry with new-entry, new-capacity, key, value, undefined;
+        end-if
+    end-while
+    entry = new-entry;
+    capacity = new-capacity;
+end-proc
 
 proc set
-    generic K: AnyType, V: AnyType
-    receiver exposes ht *HashTable using K, V
-    expects key *K, value *V
-    returns *K!
+    expects exposed hash-table as *Hash-Table, key as Hash-Table.K, value as Hash-Table.V
+    returns *Hash-Table.K!
 executes
-    if size >= (capacity / 2) run ht.expand or return generic!;
-    let key := run setEntry with entry, capacity, key, value, size or return;
+    if (size >= capacity / 2) run? expand with hash-table;
+    def key = run? set-entry with entry, capacity, key, value, size;
     return key;
-end proc
+end-proc
 
 proc next
-    receiver exposes ht *HashTable
-    expects it *HashTableIterator
+    expects hash-table as *Hash-Table, it as *Hash-Table-Iterator
     returns Void!
 executes
-    let table := it.table;
-    while it.index < capacity : ++it.index executes
-        let item := entry[it.index] or return outOfBounds!;
+    def table = it.table;
+    while it.index < capacity increment it.index executes
+        def item = entry at? it.index;
         if item.key != undefined executes
             it.key = item.key;
             it.value = item.value;
-        end if
-    end while
-    return outOfBounds!;
-end proc
+        end-if
+    end-while
+    return out-of-bounds!;
+end-proc
 
-#scope(__File__);
+#[scope=«file»];
 
 #let fnvOffset := 14695981039346656037;
 #let fnvPrime  := 1099511628211;

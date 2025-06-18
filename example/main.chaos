@@ -1,60 +1,58 @@
-
-proc chaosTokenizer
-    expects fileContent: *Buffer
-    returns tokArray: Array using Token = #0
+proc chaos-tokenizer
+    expects file-content as &Buffer
+    returns (Array using Token)!;
 executes
-    let tokens: Buffer;
-    let content = assert run fileContent.string;
-    let singleTokens := new Array using Char with "=, "+, "  end new;
+    def tokens as Buffer;
+    def content = assert run string with file-content;
+    def single-tokens = new Array using Char with "=", "+", " " end-new;
 
-    while pos < run fileContent.len : pos++ executes
-        let token: Token;
-        if run isSpace with (assert content at pos) continue;
-        if run isInside with (assert content at pos), singleTokens executes
-            run token.writeByte with content at pos;
-            let val := run token.string;
+    while pos < run length with file-content increment pos executes
+        def token as Token;
 
-            if val == executes
-            case "= executes
+        if run is-space with (content at? pos) continue;
+        if run is-inside with (content at? pos), single-tokens executes
+            run? write-byte with token, cotent at pos;
+            def val = run string with token;
+
+            if val ==
+            case "=" executes
                 token.value = val;
-                token.typ = tokAssingment
-            break case
-            case "+ executes
+                token.typ = TOK-ASSIGNMENT;
+                break-case;
+            case "+" executes
                 token.value = val;
-                token.typ = tokPlus;
-            break case
-            case "  executes
+                token.typ = TOK-PLUS;
+                break-case;
+            case ";" executes
                 token.value = val;
-                token.typ = tokSemiColon;
-            break case
-            end if
+                token.typ = TOK-SEMICOLON;
+                break-case;
+            end-if
+            assert run append with list-tok, token;
+            run reset with token;
+            continue;
+        end-if
+    end-while
+    return tok-array;
+end-proc
 
-            assert run listTok.append with token;
-            run token.reset;
-            continue
-        end if
-    end while
+def Token-Type = distinct I64;
+def Token-Kind = distinct I64;
+def Operation = distinct String;
+def Node-Type = distinct I64;
 
-    return tokArray;
-end proc
-
-type TokenType distinct I64    end type
-type TokenKind distinct I64    end type
-type Operation distinct String end type
-type NodeType  distinct I64    end type
-
-type TokType enum
-    tokGlobal: TokenType;
-    tokLet;
-    tokAssignment;
-    tokPlus;
-    tokPrimitiveType;
-    tokIdentifier;
-    tokNumber;
-    tokSemiColon;
-    tokCount;
-    tokEndOfFile;
-end type
+type Tok-Type enum
+    TOK-GLOBAL as Token-Type;
+    TOK-LET;
+    TOK-ASSIGNMENT;
+    TOK-PLUS;
+    TOK-PRIMITIVE-TYPE;
+    TOK-IDENTIFIER;
+    TOK-NUMBER;
+    TOK-SEMICOLON;
+    TOK-COUNT;
+    TOK-END-OF-FILE;
+end-type
 
 #module main
 

@@ -1,20 +1,21 @@
-type HelloWorld struct
-    hello: String;
-    world: String = «world!»;
-end type
+type Hello-World struct
+    hello as String;
+    world as String = «world»;
+end-type
 
-type AnotherHello
-    generic T: AnyType
+type Another-Hello
+    generic T
 struct
-    another: T;
-    hello:   String = «world!»;
-end type
+    another as T;
+    hello as String = «world!»;
+end-type
 
+#[entry-point]
 proc main executes
-    let value = new HelloWorld with «Hello,» end new;
-    run printfn with «{value.hello} {value.world}»;
-    return;
-end proc
+    def value = new Hello-World with «Hello,» end-new;
+    run print-fn with «{value.hello} {value.world}»;
+    return
+end-proc
 
 #module exampleStructs;
 #import «core::fmt:io.chaos»;

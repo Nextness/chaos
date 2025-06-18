@@ -1,2 +1,1 @@
-let someAtomicValue: Atomic using U32 = 1;
-
+def some-atomic-value as Atomic using U32;

@@ -1,104 +1,44 @@
-
-type Log scaffold
-    // Expected Fields for logging
-    dateFormat: String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
-    output := new Array using Stream with StdOut end new;
-    incldueOSName: Bool = false;
-    logLevel: EnumArray? using U64 = undefined;
-
-    // Expected Methods for logging
-    proc trace receiver &Self expects message: ...String returns Void;
-    proc debug receiver &Self expects message: ...String returns Void;
-    proc info receiver &Self expects message: ...String returns Void;
-    proc warning receiver &Self expects message: ...String returns Void;
-    proc error receiver &Self expects message: ...String returns Void;
-    proc critical receiver &Self expects message: ...String returns Void;
-end type
-
-type LoggerLevel enumArray
-    trace: U64;
+type Logger-Level enum-array
+    trace as U64;
     debug;
     info;
     warning;
     error;
     critical;
     disabled;
-end type
+end-type
+
+scaffold
+type Log struct
+    date-format as String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
+    output as Array using Stream = new with STD-OUT end-new;
+    include-os-name as Bool = false;
+    log-level as EnumArray? using U64 = undefined;
+
+    proc log expects log-level as Logger-Level, logger as (Build using Self), message as ...String returns Void;
+end-type
 
 type Log
     builds Logger
 struct
-    dateFormat := default;
-    output := default;
-    includeOSName := default;
-    logLevel: LoggerLevel = .info;
-end type
+    date-format = default;
+    output = default;
+    include-os-name = default;
+    log-level = .info;
+end-type
 
-proc trace
-    receiver exposes self: &Logger
-    expects message: ...String
+proc log
+    builds Logger
+    expects log-level as Logger-Level, l as Log, message as ...String
+    returns Void
 executes
-    #if loglevel <= .trace executes
-        #notImplemented(«Default trace log needs to be implemented»)
-    else executes
-        #compiler(__optimize_out__)
-    end if
-end proc
-
-proc debug
-    receiver exposes self: &Logger
-    expects message: ...String
-executes
-    #if loglevel <= .debug executes
-        #notImplemented(«Default debug log needs to be implemented»)
-    else executes
-        #compiler(__optimize_out__)
-    end if
-end proc
-
-proc info
-    receiver exposes self: &Logger
-    expects message: ...String
-executes
-    #if loglevel <= .info executes
-        #notImplemented(«Default info log needs to be implemented»)
-    else executes
-        #compiler(__optimize_out__)
-    end if
-end proc
-
-proc warning
-    receiver exposes self: &Logger
-    expects message: ...String
-executes
-    #if loglevel <= .warning executes
-        #notImplemented(«Default warning log needs to be implemented»)
-    else executes
-        #compiler(__optimize_out__)
-    end if
-end proc
-
-proc error
-    receiver exposes self: &Logger
-    expects message: ...String
-executes
-    #if loglevel <= .error executes
-        #notImplemented(«Default error log needs to be implemented»)
-    else executes
-        #compiler(__optimize_out__)
-    end if
-end proc
-
-proc critical
-    receiver exposes self: &Logger
-    expects message: ...String
-executes
-    #if loglevel <= .critical executes
-        #notImplemented(«Default critical log needs to be implemented»)
-    else executes
-        #compiler(__optimize_out__)
-    end if
-end proc
+    // Think how to improve this kind of potential otimization,
+    // since it is not garanteed to be executed. The value may not be known at
+    // compile time.
+    #if #[try log-level < l.log-level] #executes
+        #optimize-out;
+    #end-if
+end-proc
 
 #module logger;
 #let io := #import «core::fmt::io.chaos»;

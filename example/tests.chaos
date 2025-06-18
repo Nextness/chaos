@@ -1,15 +1,15 @@
-test firstTestSuite with tearUp: TearUp, tearDown: TearDown executes
+test first-test-suite with tear-up as Tear-Up, tear-down as Tear-Down executes
 
-    proc firstTestName with t: &UnitTest executes
-        let something := run someConditionMustHappen with «abc»
-        assert something, «Expected something to have a value, but it doesn't...»
-    end proc
+    proc first-test-name with t as &Unit-Test executes
+        def something = run some-condition-must-happen with «abc»;
+        assert something, «Expected something to have a value, but it doesn't...»;
+    end-proc
 
-    proc secondTestName with t &UnitTest executes
-        if let somethingElse := run someConditionMustHappen «ab» catch error executes
-            assert error && «Expected an error, but found nothing»
-        end if
-    end proc
+    // This example is wrong
+    proc second-test-name with t as &Unit-Test executes
+        def something = run some-condition-must-happen «abc»;
+        assert (not somthing catch err), «Expected an error, but found nothing»;
+    end-proc
 
-end test
+end-test
 

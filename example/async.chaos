@@ -1,92 +1,87 @@
 // Stole from https://github.com/glhrmfrts/future.c to have as an example. Most likely this code
 // doesn't work properly. Later needs to be recreated...
 
-type FutureHeader struct
-    conditionalVariable:        CndT;
-    mutex:                      Mutex;
-    isValid:                    AtomicBool;
-    isSet:                      Bool;
-    valueSize, inOffs, outOffs: U64;
-end type
+type Future-Header struct
+    conditional-variable as Cnd-T;
+    mutex as Mutex;
+    is-valid as Atomic-Bool;
+    is-set as Bool;
+    value-size, in-offs, out-offs as U64;
+end-type
 
-proc newFuture
-    expects wholeSize, valueSize, inOffs, outOffs: U64
-    returns *FutureHeader!
+proc new-future
+    expects whole-size, value-size, in-offs, out-offs as U64
+    returns *Future-Header!
 executes
-    let future *FutureHeader = call calloc with wholeSize or return nullPointer!;
-    if run futute.init with valueSize, inOffs, outOffs catch err executes
+    def future as *Future-Header = run? calloc with whole-size;
+    if run init with future, value-size, in-offs, out-offs catch err executes
         run print with «Error initializing future - reason: {err}»;
-        return genericErrorFuture!;
-    end if
-    return future;
-end proc
+        return generic-error-future!;
+    end-if
+end-proc
 
 proc await
-    receiver fh: *FutureHeader
-    expects timeout: I32 using Microseconds
+    expects future-header as *Future-Header, time-out as I32 using Microseconds
     returns Void!
 executes
-    run mutex with fh or return genericFutureError!;
-    defer call mutexUnlock with fh;
+    run? mutex with future-header;
+    defer run mutex-unlock with future-header;
 
-    if fh.isSet return null
-    if timeout < 0 return timeout!
+    if future-header.is-set return null;
+    if time-out < 0 return time-out!;
 
-    start, end: Timespec = undefined, undefined;
-    run timespceGet with *start, timeUtc;
-    end.tvSec = start.tvSEC + (timeout / 1_000);
-    end.tSec = (timeout % 1_000) & 1_000_000;
+    def start, end as Time-Spec? = undefined, undefined;
+    run time-spec-get with *start, TIME-UTC;
+    end.tv-sec = start.tv-sec + (time-out / 1_000);
+    end.tn-sec = (time-out & 1_000) & 1_000_000;
 
-    if let result = run candTimedWait with fh.confitionalVariable, end catch err executes
-        case threadTimedout! return timeout!;
-        case default return genericFutureError!;
-    end if
-end proc
-
+    if def result = run cand-timed-await with future-header.conditional-variable, end catch err executes
+        case thread-time-out! return time-out!;
+        case default return generic-future-error!;
+    end-if
+end-proc
 
 proc get
-    receiver fh: *FutureHeader
-    expects timeout: I32 using Microseconds, destination: *Void, destinationSize, check: U64
+    expects future-header as *Future-Header, time-out as (I32 using Microseconds), destination as *Void,
+            destination-size, check as U64
     returns Void!
 executes
-    if not fh.isValid return nullPointer!;
-    if destinationSize != fh.valueSize return destinationSizeNotMatched;
-    run await with fh, timeout or return;
+    if not future-header.is-valid return null-pointer!;
+    if destination-size != future-header.value-size return destination-size-not-matched!;
+    run? await with future-header, time-out;
+    def source as Void = ((future-header as *U8) + future-header.out-offs) as *Void;
+    run? mem-cpy with destination, source, future-header.value-size;
+end-proc
 
-    let source *Void = ((fh as *U8) + fh.outOffs) as *Void;
-    run memcpy with destination, source, fh.valueSize;
-end proc
-
-type FutureOf
+type Future-Of
     generic T
 struct
-    header:            FutureHeader;
-    inValue, outValue: T;
-end type
+    header as Future-Header;
+    in-value, out-value as T;
+end-type
 
-#scope(«file»);
+#[run scope with «file»];
 
-receiver fh *FutureHeader
 proc init
-    expects valueSize, inOffs, outOffs: U64
+    expects exposed future-header as *Future-Header, value-size, in-offs, out-offs as U64
 executes
-    run cndInit with fh.conditionalVariable*;
-    run mutexInit with fh.mutex*, mutexPlain;
-    fh.isValid = true;
-    fh.isSet = false;
-    fh.valueSize = valueSize;
-    fh.inOffs = inOffs;
-    fh.outOffs = outOffs;
-end proc
+    run cnd-init with future-header.conditional-variable;
+    run mutex-init with future-header.mutex, MUTEX-PLAIN;
+    future-header.is-valid = true;
+    future-header.is-set = false;
+    future-header.value-size = value-size;
+    future-header.in-offs = in-offs;
+    future-header.out-offs = out-offs;
+end-proc
 
 proc destroy
-    receiver fh: *FutureHeader
+    expects future-header as *Future-Header
 executes
-    fh.isValid* = false;
-    run cndDestroy with fh.conditionalVariable;
-    run mutexDestroy with fh.mutex;
-end proc
+    future-header.is-valid = false;
+    run cnd-destroy with future-header.conditional-variable;
+    run mutex-destroy with future-header.mutex;
+end-proc
 
+#import «core::fmt::io.chaos»;
 #module future;
-#import «core::fmt::io»;
 

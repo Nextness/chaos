@@ -2,87 +2,89 @@
 // and more things
 
 proc main
-    expects argc: U64, argv: ...String
+    expects argc as U64, argv as ...String
     returns U64
 executes
-    run goRebuildYourSelfTek;
+    run go-rebuild-your-self-tek;
 
-    let buildDir: String = «./../build/»;
-    if run os::stat with buildDir catch executes
-        if run os::mkdir with buildDir catch err executes
-            run print with «Failed to create directory '{buildDir}' because of {err.reason}», stream=os::stdErr;
+    def build-dir as String = «./../build/»;
+    if run os::stat with build-dir catch executes
+        if run os::mk-dir with build-dir catch err executes
+            run print with «Failed to create directory '{build-dir}' because of {err}», stream=os::STR-ERR;
             return 1;
-        end if
-    end if
+        end-if
+    end-if
 
-    let main: String = «./chaos.chaos»;
-    let programName: String = assert argv at 0;
-    if let otherArgs: Array inserts String = argv at 1.. catch err executes
-        run print with «Failed to get other args because of {err}», stream=os::stdErr;
+    def main as String = «./chaos.chaos»;
+    def program-name as String = assert argv at 0;
+    if def other-args as Array using String = argv at 1.. catch err executes
+        run print with «Failed to get other args because of {err}», stream=os::STR-ERR;
         return 1;
-    end if
+    end-if
 
-    let newCommand: *Command = assert run initNewCommand;
-    defer run newCommand.deinit;
+    def new-command as Command = assert run init-new-command;
+    defer run de-init with new-command;
 
-    if otherArgs.len <= 0 executes
-        run newCommand.append with «chaosc build -o {buildDir} {main}»;
-        if run newCommand.runAndReset catch err executes
-            run print with «Failed to run command {newCommand.string()} becuase of {err.reason}»;
+    if (run length with other-args) <= 0 executes
+        run append with new-command, «chaosc build -o {build-dir} {main}»;
+        if run run-and-reset with new-command catch err executes
+            run print with «Failed to run command {run string with new-command} because of {err}»;
             return 1;
-        end if
+        end-if
         return 0;
-    end if
+    end-if
 
-    while arg in otherArgs executes
+    while arg in other-args executes
         if arg == «default» executes
-            let defaultFileChaos := «./assingment.chaos»;
-            run newCommand.append with «chaosc build -o {buildDir} {main} && ./../build/main»;
-            if run newCommand.runAndReset catch executes
-                run print with «Failed to run command {newCommand.string()} because of {err.reason}»;
+            def default-file-chaos = «./assignment.chaos»;
+            run append with new-command, «chaosc build -o {build-dir} {main} && ./../build/main»;
+            if run run-and-reset with new-command catch err executes
+                run print with «Failed to run command {run string with new-command} because of {err}»;
                 return 1;
-            end if
+            end-if
         else executes
-            run print with «[ERROR] Unknown command '{arg}'», stream=os::stdErr;
-            run print with «Usage: {programName} [build-and-run-default]»;
+            run print with «Unknown command '{arg}'», stream=os::STR-ERR;
+            run print with «Usage: {program-name} [default]»;
             return 1;
-        end if
-    end while
+        end-if
+    end-while
 
     return 0;
-end proc
+end-proc
 
-proc goRebuildYourSelfTek executes
-    let buildSourcePath: String = «./../chaosBuild.go»;
-    if let timeSrc = run touchFile with buildSourcePath catch err executes
-        run print with «Unable to touch file '{buildSourcePath}' because of {err.reason}», stream=os::stdErr;
+proc go-rebuild-your-self-tek executes
+    def build-source-path as String = «./../chaosBuild.go»;
+    if def time-src = run touch-file with build-source-path catch err executes
+        run print with «Unable to touch file '{build-source-path}' because of {err}», stream=os::STD-ERR;
         exit 1;
-    end if
+    end-if
 
-    let buildBinPath: String = «./../chaosBuild»;
-    if let timeBin = run touchFile with buildBinPath catch err executes
-        run print with «Unable to touch file '{buildBinPath}' because of {err.reason}», stream=os::stdErr;
+    def build-bin-path as String = «./../chaosBuild»;
+    if def time-bin = run touch-file with build-bin-path catch err executes
+        run print with «Unable to touch file '{build-bin-path}' because of {err}», stream=os::STR-ERR;
         exit 1;
-    end if
+    end-if
 
-    if timeSrc == timeBin executes
-        if run os::stat buildBinPath catch err executes
-            run print with «File '{buildBinPath}' not found. Skipping remaning...»;
+    if time-src == time-bin executes
+        if run os::stat with build-bin-path catch err executes
+            run print with «File '{build-bin-path}' not found. Skipping renaming...»;
         else executes
-            let oldFile := «{buildBinPath}.old»;
-            run print with «Renaming {buildBinPath} to {oldFile}»;
-            assert run os::rename with buildBinPath, oldFile;
-            assert run os::remove with oldFile;
-        end if
-    end if
+            def old-file = «{build-bin-path}.old»;
+            run print with «Renaming {build-bin-path} to {old-file}»;
+            assert run os::rename with build-bin-path, old-file;
+            assert run os::remove with old-file;
+        end-if
+    end-if
 
-    let newCommand: *Command = assert run initNewCommand;
-    defer run newCommand.deinit;
+    def new-command as *Command = assert run init-new-command;
+    defer run de-init with new-command;
 
-    run newCommand.append with «chaosc build {buildSourcePath}»;
-    run newCommand.runAndReset or exit 1;
-    run goRebuildYourSelfTek;
-end proc
+    run append with new-command, «chaosc build {build-source-path}»;
+    if run run-and-reset with new-command catch err executes
+        exit 1;
+    end-if
+    run go-rebuild-your-self-tek;
+end-proc
 
 #module main;
 #scope(«file»);

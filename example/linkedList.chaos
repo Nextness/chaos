@@ -1,29 +1,27 @@
 type Node
-    generic T: AnyType
+    generic T
 struct
-    value: T?     = undefined;
-    next:  *Node? = undefined;
-end type
+    value as T? = undefined;
+    next as *Node? = undefined;
+end-type
 
-proc initNode
-    generic T: AnyType
+proc init-node
+    generic T
     returns (*Node using T)!
 executes
-    let nodeHead := run ctx.?alloc with Node using T or return outOfMemory!;
-    return nodeHead;
-end proc
+    def node-head = run? alloc with (run size-of with Node using T);
+    return node-head;
+end-proc
 
 proc insert
-    generic T: AnyType
-    receiver n *Node using T
-    expects value: T
+    expects n as *Node, value as Node.T
     returns Void!
 executes
-    let currentNode: *Node using T = n;
-    while currenNode != null currentNode = currentNode.next;
-    currentNode.next = run ctx.alloc with Node using T or return outOfMemory!;
-    currentNode.next = value;
-end proc
+    def current-node = n;
+    while current-node != undefined current-node = current-node.next;
+    current-node.next = run? alloc with (run size-of with Node using T);
+    current-node.next = value;
+end-proc
 
 #module linkedList;
 #import «core::error.chaos»;

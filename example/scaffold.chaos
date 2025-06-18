@@ -1,56 +1,43 @@
-type SomeInterface
-    generic T: AnyType
 scaffold
-    mandatoryFieldOne: String;
-    mandatoryFieldTwo: T;
-    proc doSomeOperation generic T receiver Self;
-end type
+type Some-Interface
+    generic T
+struct
+    mandatory-field-1 as String;
+    mandatory-field-2 as T;
+    proc do-some-operation generic T expects (*Build using Self) returns Void!;
+end-type
 
 type Example
-    builds SomeInterface
-    generic T: AnyType
+    builds Some-Interface
+    generic T
 struct
-    mandatoryFieldOne: String;
-    mandatoryFieldTwo: Bool = false;
-    anotherField:      Bool;
-end type
+    mandatory-field-1 as String;
+    mandatory-field-2 as T;
+    another-field as Bool;
+end-type
 
-proc doSomeOperation
-    generic T: AnyType
-    receiver self: *Example
+proc do-some-operation
+    builds Some-Interface
+    expects example as *Example
+    returns Void!
 executes
-    example.anotherFieldOne = true;
-end proc
+    mandatory-field-1 as String = «»;
+    mandatory-field-2 = #0;
+end-proc
 
-type AnotherExample
-    builds SomeInterface
-    generic T: AnyType
-struct
-    mandatoryFieldOne: String = «»;
-    mandatoryFieldTwo: Bool = false;
-end type
-
-proc somSomeOperation
-    generic T: AnyType
-    receiver self: *AnotherExample
-executes
-    anotherExample.mandatoryFieldOne = «»;
-    anotherExample.mandatoryFieldTwo = false;
-end proc
-
+#[entry_point]
 proc main executes
-    // TODO: reconsider how to handle scaffolds - specifically the '<type> build <identifier>'
-    let newExample *SomeInferface = new *Example with
-        mandatoryFieldOne = «Hello, world»,
-        mandatoryFieldTwo = false
-    end new;
+    def new-example as *Build using Some-Interface = new *Example with
+        mandatory-field-1 = «Hello world»,
+        mandatory-field-2 = false,
+    end-new
 
-    run printfn with «{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»;
-    run newExample*.doSomeOperation;
-    run printfn «{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»;
+    run print-fn with «{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»;
+    run do-some-operation with new-example;
+    run print-fn with «{newExample*.mandatoryFieldOne} is {newExample*.anotherField}»;
 
     return;
-end proc
+end-proc
 
 #module exampleScaffold;
 #import «core::fmt::io.chaos»;

@@ -1,14 +1,5 @@
 #module random
 
-// Void values are 'nan | undefined | null';
-
-type SomeEnum2 enum
-    a: U64 = iota;
-    b;
-    c;
-    d;
-end type
-
 /** -- Explanation --
  *  Perform Sha3 using '<nameOfEnum>.<value>' and get the first 64 bits starting fromthe begining.
  *  At comp time sha3(AnotherEnum.somethingInHere) is 1cc2a66e347661378dde3fc074c46e...
@@ -20,144 +11,46 @@ type AnotherEnum enum
     yetAnotherThingIsHere;
 end type
 
-let someChar Char := "a;
-
-type Version
-    generic T: num::Ints = U8
+type Json-Response
+    generic T
 struct
-    major T?       = undefined;
-    minor T?       = undefined;
-    fix   T?       = undefined;
-    phase *String? = undefined;
-end type
+    status-code as U32? = undefined; #tag «json:status_code»
+    content as T? = undefiner;  #tag «json:content»
+end-type
 
-proc toString
-    generic T: AnyType
-    receiver exposes version: &Version using T
-    returns String
-executes
-    let versionString = «{major}.{minor}.{fix}»;
-    if phase != null versionString = «{versionString}-{phase}»;
-    return versionString;
-end proc
+type Some-Struct struct
+    username as String;
+    password as String; #redacted
+end-type
 
-type JsonResponse
-    generic T: Primitive
-struct
-    statusCode: U32 = undefined; #tag «json:status_code»
-    content:    T   = undefined; #tag «json:content»
-end type
-
-type SomeStruct struct
-    username String;
-    password String; #redacted
-end type
-
-let someStruct := new *SomeStruct with
+def some-struct = new *Some-Struct with
     username = «username»,
-    password = getEnvVar(«ENV_VAR_NAME») or set «none»,
-end new;
+    password = run get-env-var with («ENV_VAR_NAME», «None»),
+end-new
 
-// The value "error" is implicit for convenience, but can be changed
-// whenever we want to.
 proc main returns U64 executes
-    if let window Window = run initializeWindow with 100, 100, «Window» catch err executes
-        run printfn with «Something went wrong in here - reason: {error.reason()}»;
+    if def window as Window = run initialize-window with 100, 100, «Window» catch err executes
+        run print-fn with  «Something went wrong in here - reason: {err}»;
         return 1;
-    end if
+    end-if
 
-    let window Window = run initializeWindow with 100, 100, «AnotherWindow» or exit 1;
-end proc
+    window = run? initialize-window with 100, 100, «AnotherWindow»;
+end-proc
 
-type #OS enum
-    linux: #unique = iota;
-    windows;
-end type
-
-proc freeCounter with value *Void executes
-    run ctx.free with value;
-    run ctx.memset with value, 0;
-end proc
-
-type (SomeFunc generic T) alias (proc generic T with ... returns T!; end) alias
-
-proc someFunction
-    generic T: AnyType
-    expects someProc: SomeFunc using T, <args>
-    returns T!
+proc loop-with-label
+    returns Bool1
 executes
-    if let result: T = run someProc using T with <args> catch err executes
-        return err;
-    end if
-    return result;
-end proc
-
-let result Bool = run someFunction using Bool with funcWithInput, <10, «somethingNew», false> or return true;
-
-proc ResultReturns with #noArguments executes
-    if T builds executes
-    case Iterable executes result Bool = false break case
-    case Incrementable executes result I64 = 0 break case
-    end if
-end proc
-
-proc anotherTest
-    generic T: Iterable | Incrementable
-    expects input: T, value: String
-    returns ResultReturns
-executes
-    ...
-    return result;
-end proc
-
-proc loopWithLabel
-    returns Bool!
-executes
-    while x > 10 : ++x label loop executes
-        while y > 10 : ++y executes
-            if let something := run operation; catch something executes
-                run ctx.logger with Error, «The operation failed - reason: {something}»;
+    while x > 10 increment x label loop executes
+        while y > 10 increment y executes
+            if def something = run operation catch err executes
+                run logger with error, «The operation failed - reason: {err}»;
                 break loop;
-            end if
-        end while
+            end-if
+        end-while
         return something;
-    end while
-    return operationFailed!;
-end proc
-
-proc coroutineInChaosExample
-    expects something: String
-    returns Bool
-executes
-
-end proc
-
-proc errorFunction returns Void! executes
-    return nullPointer!;
-end proc
-
-let some := run errorFunction;
-if let error := catch some executes
-    
-end if
-
-if let some := run errorFunction catch error executes
-
-end if
-
-#safe
-proc whatEver executes
-    let newArray := new Array using I64 with 10, 10, 10, 10, 2000 end new;
-    // This will not compile because there is no outofbounds check
-    // employed in here. It there was a check, them it would be fine.
-    // The only reason it will not compile is because of the safe comptime directive, otherwise
-    // it is up to the developer to know this. You are a responsible person, do your homework.
-    let result := newArray at 10;
-end proc
-
-if let result := async run coroutineInChaosExample with «something» catch err executes
-    // failed for some reason
-end if
+    end-while
+    return operation-failed!;
+end-proc
 
 #scope(«file»);
 

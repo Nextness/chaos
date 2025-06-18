@@ -1,67 +1,67 @@
 // Trying real life code to validate syntax
 // from Tsoding: https://github.com/tsodin/bpe/blob/main/src/bpe.cg
 
-proc dumpTokens
-    expects filePath: &String, tokens: &Tokens
+proc dump-tokens
+    expects file-path as &String, tokens as *Tokens
     returns Void!
 executes
-    return run writeEntireFile
-        with filePath, tokens.items, (tokens.count * run sizeOf with tokens.items);
-end proc
+    return run? write-entire-file
+        with file-path, tokens.items, (tokens.count * size-of tokens.items);
+end-proc
 
-proc loadTokens
-    expects filePath &String, tokens &Tokens, tmpSb &StringBuilder
+proc load-tokens
+    expects file-path as &String, tokens as *Tokens, tmp-sb as *String-Builder
     returns Void!
 executes
-    tmpSb.count = 0;
-    run readEntireFile with filePath, tmpSb or return generic!;
+    tmp-sb.count = 0;
+    run? read-entire-file with file-path, tmb-sb;
+    if (tmp-sb.count % run size-of with tokens.items) != 0 return generic!;
+    def items-count: *U32 = tmp-sb.items as *Void;
+    while i < items-count increment i executes
+        run da-append with tokens, (items at i);
+    end-while
+end-proc
 
-    if (tmpSb.count % run sizeOf with tokens.items) != 0 return generic!;
-
-    let itemsCount: *U32 = tmpSb.items as &Void;
-    while i < itemsCount : ++i run daAppend with tokens, (items at i);
-end proc
-
-proc loadPairs
-    expects filePath: &String, pairs: &Pairs, tmpSb: *StringBuilder, version &U64
+proc load-pairs
+    expects file-path as &String, pairs as &Pairs, tmp-sb as *String-Builer, version as *U64
     returns Void!
 executes
-    tmpSb.count = 0;
-    run readEntireFile with filePath, tmpSb or return generic!;
+    tmp-sb.count = 0;
+    run? read-entire-file with file-path, tmp-sb;
 
-    let data: StringView = run sbToSv with tmpSb;
-    let magicCount: U64 = 4;
-    let magicPrefix: StringView = run svFromCstr with «BPE»;
-    if run svStartsWith with data, magicPrefix executes
-        if data.count < magicCount return generic!;
-    end if
+    def data as String-View = run sb-to-sv with tmp-sb;
+    def magic-count as U64 = 4;
+    def magic-prefix as String-View = run sv-from-cstr with «BPE»;
+    if run sv-starts-with with data, magic-prefix executes
+        if data.count < magic-count return generic!;
+    end-if
 
-    if let version = (data.data at 3) catch err executes
+    if version = (data.data at 3) catch err executes
         run logger with Error, «Invalid data»;
-        return invalidData!;
-    end if
+        return invalid-data!;
+    end-if
 
-    data.data += magicCount;
-    data.count -= magicCount;
+    data.data += magic-count;
+    data.count -= magic-count;
 
     if version ==
     case 0 executes
-        run parsePairsV0 with filePath, pairs, data or return generic!;
-    break case
+        run? parse-pairs-v0 with file-path, pairs, data;
+        break-case;
     case 1 executes
-        run parsePairsV1 with filePath, pairs, data or return generic!;
-    break case
+        run? parse-pairs-v1 with file-path, pairs, data;
+        break-case;
     case default executes
         return generic!;
-    break case
-    end if
+        break-case;
+    end-if
 
-    let magicPrefixV0: StringView = run svFromParts with «\0\0\0\0», 4;
-    if run svStartsWith with data, magicPrefixV0 executes
+    def magic-prefix-v0 as String-View = run sv-from-parts with «\0\0\0\0», 4;
+    if run sv-start-with with data, magic-prefix-v0 executes
         version = 0;
-        run parsePairsV0 with filePath, pairs, data or return generic!;
-    end if
+        run? parse-pair-v0 with file-path, pairs, data;
+    end-if
 
     return generic!;
-end proc
+end-proc
 

@@ -1,107 +1,102 @@
-
-type Context
-    generic T: AnyType
 scaffold
-    logger Logger?;
-    calloc generic T for proc with num::Ints returns *T;
-    alloc  generic T for proc with num::Ints returns *T;
-    free   generic T for proc with *T returns Void;
-end type
+type Context
+    generic T
+struct
+    logger as Logger?;
+end-type
 
 type Custom
-    generic K: AnyType
+    generic K
 struct
-    value:   String;
-    another: U64;
-    key:     K;
-end type
+    value as String;
+    another as U64;
+    key as K;
+end-type
 
-proc someOperation
-    generic K: AnyType
-    expects value: String, another: U64, key: K
+proc some-operation
+    generic K
+    expects value as String, another as U64, key as K
     returns *Custom using Bool
 executes
-    let result := new Custom using K with «string literal», 10, true;
+    def result = new Custom using K with «string literal», 10, true;
     run print with «Got the result: {result.value}\n»;
     return *result;
-end proc
+end-proc
 
 type Version
-    generic T: num::Ints = U8
+    generic T
 struct
-    major: T?       = undefined;
-    minor: T?       = undefined;
-    fix:   T?       = undefined;
-    phase: *String? = undefined;
-end type
+    major as T? = undefined;
+    minor as T? = undefined;
+    fix as T? = undefined;
+    phase as *String? = undefined;
+end-type
 
-proc toString
-    generic T: AnyType, S: String | Array[Char]
-    receiver exposes version *Version using T
-    returns S
+proc to-string
+    expects exposed version as *Version
+    return String
 executes
-    let versionString := «{major}.{minor}.{fix}»;
+    def version-string = «{major}.{minor}.{fix}»;
     if phase != undefined versionString = «{versionString}-{phase}»;
-    return versionString;
-end proc
+    return version-string;
+end-proc
 
-proc testMapCreateAccess
-    returns Void!
-executes
-    let someMap := new Map using 4, String, String with
-        [«someKey»] = «some value»,
-        [«anotherKey»] = «another value»
-    end new;
+proc test-map-create-access returns Void! executes
+    def some-map = new Map using 4, String, String with
+        «some-key»    = «some value»,
+        «another-key» = «another value»,
+    end-new;
+    def first-element = some-map at «some-key»;
+    some-map at «another-key» = «new value»;
+    def unknown-element = some-map at? «unknown-key»;
+end-proc
 
-    let secondKey := assert someMap at «anotherKey»;
-    if let firstKey := someMap at «unavailableKey» catch err exit keyNotFound!;
-end proc
-
-proc newCounter
-    returns (*U64, proc returns U64)!
-    comptime currentOS #OS := #run getCurrentOS
-executes
-    if currentOS == .linux executes
-        let someVariable := run mem::allocAndAssign using U64 with 0 or return nullPointer!;
-        let counter := proc returns U64 return ++(someVariable*);
-        return someVariable, counter;
-    elif currentOS == .windows executes
+proc new-counter returns (*U64, proc returns U64)! executes
+    #if #get-current-os == .linux #executes
+        def some-variable = run? mem::alloc with size-of U64;
+        def counter = proc returns U64 executes
+            return ++(some-variable.*);
+        end-proc
+        return some-variable, counter;
+    #else #executes
         #todo
-    end if
-end proc
+    #end-if
+end-proc
 
-let ptrResult, func := run newCounter of .windows;
+if def ptr-result, func = run new-counter catch err executes
+    exit 69, «failed to create a new counter»;
+end-if
 
-proc switch
-    expects something: SomeEnum
-    returns Void
+proc switch-test
+    expects something: Some-Enum
+    return Void
 executes
     if something ==
     case .a executes
         run print with «{A}»;
-    break case
+        break-case;
     case .b executes
         run print with «Something else {B}»;
-    break case
+        break-case;
     case .c executes
-        run print with «String {D}s nuutz»;
-    break case
-    end if
-end proc
+        run print with «String {D}s nuuutz»;
+        break-case;
+    end-if
+end-proc
 
-proc optionalReturnAssignment
-    expects value: String
+proc optional-return-assignment
+    expects value as String
     returns Bool, ~*String
 executes
-    let result := run someOperations with value;
+    def result = run some-operation with value;
     if result != undefined executes
         return true, «valid»;
-    end if
+    end-if
     return false, «invalid»;
-end proc
+end-proc
 
 // This will only return the boolean value. Unless specified another argument, which 
 // in this case, will be a string.
-let result := run optionalReturnAssignment with «something that works»;
-let result1, result2 := optionalReturnAssignment with «somethig that doesn't work»;
+def result = run optional-return-assignment with «something that works»;
+def result1, result2 = run optional-return-assignment with «somethig that doesn't work»;
 

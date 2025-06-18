@@ -1,7 +1,7 @@
 proc main
-    expects argc: I64, argv: String
+    expects argc as I64, argv as String
     returns Void
 executes
-
-end proc
+    exit 69;
+end-proc
 
