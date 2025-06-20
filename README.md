@@ -21,9 +21,10 @@ This is the basic. For more examples look at *examples*...
 ```chaos
 // ./build/main ./<file_name>.chaos
 // Hello world
+
 proc main executes
     run print with «Chaotic hello\n»;
-end proc
+end-proc
 
 #import «fmt.chaos»;
 ```
