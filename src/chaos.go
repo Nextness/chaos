@@ -39,9 +39,9 @@ func main() {
 				fmt.Printf("%s\n", val.String())
 			}
 
-			es := globalExecutionOrderChaos(ls)
-			typeCheckingChaos(es)
-			irChaos(es)
+			// es := globalExecutionOrderChaos(ls)
+			// typeCheckingChaos(es)
+			// irChaos(es)
 			// generateProgram(instructions)
 
 		} else {

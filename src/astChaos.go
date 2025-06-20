@@ -64,7 +64,7 @@ type Node interface {
 
 type NodeExit struct {
 	nodeType NodeType
-	value    *TokenLiteral
+	status   PtrAny
 	message  *TokenLiteral
 }
 
@@ -93,7 +93,9 @@ func (n *NodeExit) asBuffer(padSize int) bytes.Buffer {
 		tmp.WriteString(fmt.Sprintf("%smessage ['%s']", pad, message))
 		tmp.WriteByte('\n')
 	}
-	tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, n.value.value.(int)))
+	if t, ok := cast[*TokenLiteral](n.status); ok {
+		tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, t.value.(int)))
+	}
 	tmp.WriteByte('\n')
 	return tmp
 }
@@ -366,7 +368,7 @@ func lexExit(ts *TokenizerState) *NodeExit {
 	}
 
 	token = ts.consume()
-	node.value, _ = token.(*TokenLiteral)
+	node.status, _ = token.(*TokenLiteral)
 
 	if ts.matchAt(0, tokComma) {
 		ts.consumeAssert(tokComma)

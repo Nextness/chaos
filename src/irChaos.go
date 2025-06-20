@@ -29,7 +29,7 @@ func irChaos(es *ExecutionState) []Instruction {
 			if token := castAssert[*TokenLiteral](n.message); token != nil {
 				instructionExit.message = castAssert[string](token.value)
 			}
-			token := castAssert[*TokenLiteral](n.value)
+			token := castAssert[*TokenLiteral](n.status)
 			instructionExit.value = castAssert[int](token.value)
 			instructions = append(instructions, instructionExit)
 			continue
