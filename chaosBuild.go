@@ -99,6 +99,7 @@ func main() {
 				if err := runCommand(fmt.Sprintf("go build -o ./build/main %s && ./build/main %s", main, defaultFileChaos)); err != nil {
 					os.Exit(1)
 				}
+			} else if arg == "run" {
 				defaultAsmFile := "./testing.asm"
 				if _, err := touchFile(defaultAsmFile); err != nil {
 					panic(fmt.Sprintf("%s not found - cannot compile", defaultAsmFile))

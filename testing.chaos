@@ -2,6 +2,7 @@ proc main
     expects argc as I64, argv as String
     returns Void
 executes
+    def something-new: U64 = 10;
     exit 69;
 end-proc
 

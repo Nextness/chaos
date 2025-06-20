@@ -41,8 +41,8 @@ func main() {
 
 			es := globalExecutionOrderChaos(ls)
 			typeCheckingChaos(es)
-			instructions := irChaos(es)
-			generateProgram(instructions)
+			irChaos(es)
+			// generateProgram(instructions)
 
 		} else {
 			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
