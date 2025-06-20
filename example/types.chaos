@@ -1,72 +1,20 @@
 // Numbers
 
-def Ints = alias I8 | I16 | I32 | I64 | I128;
+def Ints = alias I8 or I16 or I32 or I64 or I128;
+def UInts = alias U8 or U16 or U32 or U64 or U128;
 
-type UInts alias
-    U8 | U16 | U32 | U64 | U128;
-end type
+def Floats = alias F16 or F32 or F64 or F128;
+def Complex = alias C64 or C128;
+def Quaternion = alias Q128 or Q256;
 
-type Floats alias
-    F16 | F32 | F64 | F128;
-end type
+def Natural = alias Ints or UInts;
+def Real = alias Ints or UInts or Floats;
 
-type Complex alias
-    C64 | C128;
-end type
+def AnyNumber = alias Real or Complex or Quaternion;
 
-type Quaternion alias
-    Q128 | Q256;
-end type
-
-type Natural alias
-    Ints | UInts;
-end type
-
-type Real alias
-    Ints | UInts | Floats;
-end type
-
-type AnyNumber alias
-    Natural | Real  | Complex | Quaternion;
-end type
-
-type Text alias
-    Char | String;
-end type
-
-type Vector
-    generic T: AnyNumber
-struct
-    x: T? = undefine;
-    y: T? = undefine;
-end type
-
-type Primitives alias
-    I8   | I16   | I32 | I64  | I128 |
-    U8   | U16   | U32 | U64  | U128 |
-    F16  | F32   | F64 | F128 |
-    C64  | C128  |
-    Q128 | Q256  |
-    Char | String;
-end type
-
-type TimeUnit enum
-    NanoSeconds: U64 = 1_000_000_000.0;
-    MicroSeconds = 1_000_000.0;
-    MiliSeconds = 1_000.0;
-    Seconds = 60.0;
-    Minutes = 60.0;
-    Hours = 24.0;
-end type
-
-#assert(TimeUnit.NanoSeconds.value == TimeUnit[0].value)
-
-type Time
-    generic Unit: TimeUnit = Seconds
-struct
-    date: U64;
-    time: F64;
-end type
+type Vector generic T struct
+    x, y as T;
+end-type
 
 #module types;
 

@@ -31,9 +31,9 @@ executes
     def HT as Type = alias Hash-Table using K, V;
     def E  as Type = alias Entry sing K, V;
 
-    def table as *HT = run? alloc with size-of HT);
+    def table as *HT = run? alloc with size-of HT;
     if entry.table = run calloc using E with table.capacity catch err executes
-        run logger with error, «Failed to allocate memory, buy more RAM»;
+        run logger with ERROR, «Failed to allocate memory, buy more RAM»;
         return null-pointer!;
     end-if
 
@@ -112,49 +112,49 @@ end-proc
 
 #[scope=«file»];
 
-#let fnvOffset := 14695981039346656037;
-#let fnvPrime  := 1099511628211;
+#def fnv-off-set = 14695981039346656037;
+#def fnv-prime  = 1099511628211;
 
-proc hasKey
-    generic K: AnyType, V: AnyType
-    expects key *K
+proc has-key
+    generic K, V
+    expects key as *K
     returns V
 executes
-    let hash := fnvOffset;
-    let tmp := key as String;
-    while i < tmp.length : ++i executes
-        let currenChar := assert tmp[i];
-        hash ^= currentChar as U64;
-        hash *= fnvPrime;
-    end while
+    def hash = fnt-off-set;
+    def tmp = key as String;
+    while i < run length with tmp increment i executes
+        def current-char = tmp at? i;
+        hash ^= current-char as U64;
+        hash *= fnv-prime;
+    end-while
     return hash;
-end proc
+end-proc
 
-proc setEntry
-    generic T: AnyType
-    expects entry *Entry inserts T, capacity U64, key *String, value *T, size *?U64
+proc set-entry
+    generic T
+    expects entry as Entry, capacity as U64, key as *String, value as *Entry.T, size as *U64?
     returns String
 executes
-    let i := (call hashKey with key) & (capacity - 1);
-    while curEntry = entry[i] or false : ++i executes
-        if curEntry.key == null executes break;
-        if curEntry.key == key executes
-            curEntry.value = value;
-            return curEntry.key;
-        end if
-    end while
+    def i = (run has-key with key) and (capaity - 1);
+    while not cur-entry = entry at i increment i executes
+        if cur-entry.key == undefined break;
+        if cur-entry.key == key executes
+            cur-entry.value = value;
+            return cur-entry.key;
+        end-if
+    end-while
 
     if size == undefined executes
-        let key = assert call strdup with key;
-        (size*)++;
-    end if
+        redef key = assert run strdup with key;
+        size.* += 1;
+    end-if
 
-    let curEntry := entry[i] or return outOfBounds!;
-    curEntry.key = key as String;
-    curEntry.value = value;
+    def cur-entry = entry at? i;
+    dur-entry.key = key as String;
+    cur-entry.value = value;
     return key;
-end proc
+end-proc
 
 #module hashTable;
-let mem := #import «core::allocators.chaos»;
+#def mem := #import «core::allocators.chaos»;
 

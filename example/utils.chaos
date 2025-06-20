@@ -60,7 +60,8 @@ executes
     assert example-len > 0;
 
     def pad = «    »;
-    def prefix = «({++lex.example-count})»;
+    lex.example-count += 1;
+    def prefix = «({lex.example-count})»;
     while idx, example in examples executes
         if idx == 0 executes
             def tmp = «{pad}{prefix} {example}»;

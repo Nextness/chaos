@@ -1,56 +1,59 @@
-type FlagType enumArray
-    bool;
-    uint64;
-    size;
-    str;
-end type
+type Flag-Type enum-array
+    BOOL;
+    UINT64;
+    SIZE;
+    STR;
+end-type
 
-#assert FlagType.length == 4 && «Exhaustive FlagValue definition»;
+#assert (#run length #with Flag-Type) == 4, «Exhaustive FlagValue definition»;
 
-type FlagValue union
-    asStr    *String;
-    asUint64 U64;
-    asBool   Bool;
-    asSize   Size;
-end type
+type Flag-Value union
+    as-str as *String;
+    as-uint64 as U64;
+    as-bool as Bool;
+    as-size as Size;
+end-type
 
 type Flag struct
-    flagType: FlagType;
-    name:     &String;
-    desc:     &String;
-    val:      FlagValue;
-    def:      FlagValue;
-end type
+    flag-type as Flag-Type;
+    name as *String;
+    description as *String;
+    value as Flag-Value;
+    definition as Flag-Value;
+end-type
 
-#let flagsCap := 256;
-type FlagContext struct
-    flags:       Array using Flag;
-    flagsCount:  U64;
-    flagError:   AnyError;
-    programName: &String;
-    restArgc:    I64;
-    restArgv:    Array using String;
-end type
+#def FLAG-CAP = 256;
 
-static let flagGlobalContext FlagContext;
+type Flag-Context struct
+    flags as Array using Flag;
+    flags-count as U64;
+    flag-error as AnyError;
+    program-name as &String;
+    rest-argc as I64;
+    rest-argv Array using String;
+end-type
 
-proc flagNew
-    expects flagType: FlagType, name: &String, des: &String
+def flag-global-context as Flag-Context;
+
+proc new-flag
+    expects flag-type as Flag-Type, name *Name, description: *String
     returns Flag
 executes
-    let ctx *FlagContext = *flagGlobalContext;
-    #assert ctx.flagsCount < flagCap && «Expected maximum of {flagCap} flags, but found {ctx.flagsCount}»;
-    let flag *Flag = ctx.flargs at ctx.flagsCount++ or return outOfBounds!;
-    run memset with flag, 0, (call sizeOf with flags*) or return nullPointer!;
-    flag.name = name;
-    flag.desc = desc;
-    return flag;
-end proc
+    def ctx as *Flag-Context = *flag-global-context;
+    #assert ctx.flags-count < FLAG-CAP, «Expected maximum of {FLAG-CAP} flags, but found {ctx.flags-count}»;
 
-proc flagName
-    expects val *String | U64 | Bool | Size
+    ctx.flags-count += 1;
+    def flag as *Flag = ctx.flags at? ctx.flags-count;
+    run? mem-set with flag, 0, size-of flags.*;
+    flag.name = name;
+    flag.description = description;
+    return flag;
+end-proc
+
+proc flag-name
+    expects val as *String or U64 or Bool or Size
     returns String
 executes
-
-end proc
+    ...;
+end-proc
 
