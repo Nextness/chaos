@@ -52,69 +52,101 @@ const (
 func (tokTyp TokenType) asString() string {
 	if tokTyp == tokInferType {
 		return "tokInferType"
-	} else if tokTyp == tokGlobal {
+	}
+	if tokTyp == tokGlobal {
 		return "tokGlobal"
-	} else if tokTyp == tokDef {
+	}
+	if tokTyp == tokDef {
 		return "tokDef"
-	} else if tokTyp == tokAssignment {
+	}
+	if tokTyp == tokAssignment {
 		return "tokAssignment"
-	} else if tokTyp == tokPlus {
+	}
+	if tokTyp == tokPlus {
 		return "tokPlus"
-	} else if tokTyp == tokMinus {
+	}
+	if tokTyp == tokMinus {
 		return "tokMinus"
-	} else if tokTyp == tokVarType {
+	}
+	if tokTyp == tokVarType {
 		return "tokVarType"
-	} else if tokTyp == tokIdentifier {
+	}
+	if tokTyp == tokIdentifier {
 		return "tokIdentifier"
-	} else if tokTyp == tokNewline {
+	}
+	if tokTyp == tokNewline {
 		return "tokNewline"
-	} else if tokTyp == tokExit {
+	}
+	if tokTyp == tokExit {
 		return "tokExit"
-	} else if tokTyp == tokComma {
+	}
+	if tokTyp == tokComma {
 		return "tokComma"
-	} else if tokTyp == tokLessThan {
+	}
+	if tokTyp == tokLessThan {
 		return "tokLessThan"
-	} else if tokTyp == tokGreaterThan {
+	}
+	if tokTyp == tokGreaterThan {
 		return "tokGreaterThan"
-	} else if tokTyp == tokExecutes {
+	}
+	if tokTyp == tokExecutes {
 		return "tokExecutes"
-	} else if tokTyp == tokIf {
+	}
+	if tokTyp == tokIf {
 		return "tokIf"
-	} else if tokTyp == tokEndOfFile {
+	}
+	if tokTyp == tokEndOfFile {
 		return "tokEndOfFile"
-	} else if tokTyp == tokProc {
+	}
+	if tokTyp == tokProc {
 		return "tokProc"
-	} else if tokTyp == tokEndProc {
+	}
+	if tokTyp == tokEndProc {
 		return "tokEndProc"
-	} else if tokTyp == tokReturns {
+	}
+	if tokTyp == tokReturns {
 		return "tokReturns"
-	} else if tokTyp == tokExpects {
+	}
+	if tokTyp == tokExpects {
 		return "tokExpects"
-	} else if tokTyp == tokOpenParen {
+	}
+	if tokTyp == tokOpenParen {
 		return "tokOpenParen"
-	} else if tokTyp == tokCloseParen {
+	}
+	if tokTyp == tokCloseParen {
 		return "tokCloseParen"
-	} else if tokTyp == tokEllipsis {
+	}
+	if tokTyp == tokEllipsis {
 		return "tokEllipsis"
-	} else if tokTyp == tokEquals {
+	}
+	if tokTyp == tokEquals {
 		return "tokEquals"
-	} else if tokTyp == tokElif {
+	}
+	if tokTyp == tokElif {
 		return "tokElif"
-	} else if tokTyp == tokElse {
+	}
+	if tokTyp == tokElse {
 		return "tokElse"
-	} else if tokTyp == tokSemicolon {
+	}
+	if tokTyp == tokSemicolon {
 		return "tokSemicolon"
-	} else if tokTyp == tokColon {
+	}
+	if tokTyp == tokColon {
 		return "tokColon"
-	} else if tokTyp == tokRun {
+	}
+	if tokTyp == tokRun {
 		return "tokRun"
-	} else if tokTyp == tokWith {
+	}
+	if tokTyp == tokWith {
 		return "tokWith"
-	} else if tokTyp == tokLiteral {
+	}
+	if tokTyp == tokLiteral {
 		return "tokLiteral"
-	} else if tokTyp == tokInferAssign {
+	}
+	if tokTyp == tokInferAssign {
 		return "tokInferAssign"
-	} else if tokTyp == tokAs {
+	}
+	if tokTyp == tokAs {
 		return "tokAs"
 	}
 	return "unknown-tokType"
@@ -155,60 +187,85 @@ const (
 func (t TokenKind) asString() string {
 	if t == kindAnyError {
 		return "Any-Error"
-	} else if t == kindAnyType {
+	}
+	if t == kindAnyType {
 		return "Any-Type"
-	} else if t == kindString {
+	}
+	if t == kindString {
 		return "String"
-	} else if t == kindChar {
+	}
+	if t == kindChar {
 		return "Char"
-	} else if t == kindBool {
+	}
+	if t == kindBool {
 		return "Bool"
-	} else if t == kindU8 {
+	}
+	if t == kindU8 {
 		return "U8"
-	} else if t == kindU16 {
+	}
+	if t == kindU16 {
 		return "U16"
-	} else if t == kindU32 {
+	}
+	if t == kindU32 {
 		return "U32"
-	} else if t == kindU64 {
+	}
+	if t == kindU64 {
 		return "U64"
-	} else if t == kindU128 {
+	}
+	if t == kindU128 {
 		return "U128"
-	} else if t == kindI8 {
+	}
+	if t == kindI8 {
 		return "I8"
-	} else if t == kindI16 {
+	}
+	if t == kindI16 {
 		return "I16"
-	} else if t == kindI32 {
+	}
+	if t == kindI32 {
 		return "I32"
-	} else if t == kindI64 {
+	}
+	if t == kindI64 {
 		return "I64"
-	} else if t == kindI128 {
+	}
+	if t == kindI128 {
 		return "I128"
-	} else if t == kindF16 {
+	}
+	if t == kindF16 {
 		return "F16"
-	} else if t == kindF32 {
+	}
+	if t == kindF32 {
 		return "F32"
-	} else if t == kindF64 {
+	}
+	if t == kindF64 {
 		return "F64"
-	} else if t == kindF128 {
+	}
+	if t == kindF128 {
 		return "F128"
-	} else if t == kindC64 {
+	}
+	if t == kindC64 {
 		return "C64"
-	} else if t == kindC128 {
+	}
+	if t == kindC128 {
 		return "C128"
-	} else if t == kindQ128 {
+	}
+	if t == kindQ128 {
 		return "Q128"
-	} else if t == kindQ256 {
+	}
+	if t == kindQ256 {
 		return "Q256"
-	} else if t == kindArray {
+	}
+	if t == kindArray {
 		return "Array"
-	} else if t == kindVoid {
+	}
+	if t == kindVoid {
 		return "Void"
-	} else if t == kindMap {
+	}
+	if t == kindMap {
 		return "Map"
-	} else if t == kindNone {
+	}
+	if t == kindNone {
 		return "None"
 	}
-
 	return "unknown-kind"
 }
 
