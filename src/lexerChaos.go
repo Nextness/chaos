@@ -117,8 +117,7 @@ func (tokTyp TokenType) asString() string {
 	} else if tokTyp == tokAs {
 		return "tokAs"
 	}
-	return "unknown tokType"
-	// panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
+	return "unknown-tokType"
 }
 
 type TokenKind int
@@ -210,7 +209,7 @@ func (t TokenKind) asString() string {
 		return "None"
 	}
 
-	panic(fmt.Sprintf("Unknown keyword '%v'", t))
+	return "unknown-kind"
 }
 
 type PtrAnyToken any
@@ -232,7 +231,8 @@ type TokenKeyword struct {
 }
 
 func (t *TokenKeyword) asString() string {
-	return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
+	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
+	return fmt.Sprintf("%s [%s]", preffix, t.tokType.asString())
 }
 
 func (t *TokenKeyword) getTokenType() TokenType {
@@ -252,7 +252,8 @@ type TokenVarType struct {
 }
 
 func (t *TokenVarType) asString() string {
-	return fmt.Sprintf("%03d:%03d [%s] %s", t.position.line, t.position.column, t.tokType.asString(), t.symbol)
+	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
+	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.asString(), t.symbol)
 }
 
 func (t *TokenVarType) getTokenType() TokenType {
@@ -269,7 +270,8 @@ type TokenOperator struct {
 }
 
 func (t *TokenOperator) asString() string {
-	return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
+	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
+	return fmt.Sprintf("%s [%s]", preffix, t.tokType.asString())
 }
 
 func (t *TokenOperator) getTokenType() TokenType {
@@ -288,19 +290,28 @@ type TokenLiteral struct {
 }
 
 func (t *TokenLiteral) asString() string {
+	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
+
 	curType := any(t.value)
 	if val, ok := cast[string](curType); ok {
 		if val != "" {
-			return fmt.Sprintf("%03d:%03d [%s] \"%s\"", t.position.line, t.position.column, t.tokType.asString(), val)
+			return fmt.Sprintf("%s [%s] \"%s\"", preffix, t.tokType.asString(), val)
 		}
-		return fmt.Sprintf("%03d:%03d [%s]", t.position.line, t.position.column, t.tokType.asString())
-	} else if val, ok := cast[int](curType); ok {
-		return fmt.Sprintf("%03d:%03d [%s] %d", t.position.line, t.position.column, t.tokType.asString(), val)
-	} else if val, ok := cast[bool](curType); ok {
-		return fmt.Sprintf("%03d:%03d [%s] %t", t.position.line, t.position.column, t.tokType.asString(), val)
-	} else if val, ok := cast[float64](curType); ok {
-		return fmt.Sprintf("%03d:%03d [%s] %f", t.position.line, t.position.column, t.tokType.asString(), val)
+		return fmt.Sprintf("%s [%s]", preffix, t.tokType.asString())
 	}
+
+	if val, ok := cast[int](curType); ok {
+		return fmt.Sprintf("%s [%s] %d", preffix, t.tokType.asString(), val)
+	}
+
+	if val, ok := cast[bool](curType); ok {
+		return fmt.Sprintf("%s [%s] %t", preffix, t.tokType.asString(), val)
+	}
+
+	if val, ok := cast[float64](curType); ok {
+		return fmt.Sprintf("%s [%s] %f", preffix, t.tokType.asString(), val)
+	}
+
 	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
 }
 
@@ -319,7 +330,8 @@ type TokenIdentifier struct {
 }
 
 func (t *TokenIdentifier) asString() string {
-	return fmt.Sprintf("%03d:%03d [%s] %s", t.position.line, t.position.column, t.tokType.asString(), t.symbol)
+	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
+	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.asString(), t.symbol)
 }
 
 func (t *TokenIdentifier) getTokenType() TokenType {
@@ -343,15 +355,27 @@ type ContentState struct {
 	line, column int
 }
 
-func (cs *ContentState) currentCharAsString() string {
+func (cs *ContentState) currentString() string {
 	return string(cs.data[cs.cursor])
 }
 
-func (cs *ContentState) currentChar() byte {
+func (cs *ContentState) matchStrAt(offset int, str string) bool {
+	if cs.cursor+offset > cs.count {
+		panic("Out of bounds while matchStrAt")
+	}
+	length := len(str)
+	result := true
+	for i := range length {
+		result = result && (cs.peakByte(i+offset) == str[i])
+	}
+	return result
+}
+
+func (cs *ContentState) currentByte() byte {
 	return cs.data[cs.cursor]
 }
 
-func (cs *ContentState) peakChar(offset int) (result byte) {
+func (cs *ContentState) peakByte(offset int) (result byte) {
 	result = byte(0)
 	if cs.cursor+offset < cs.count {
 		result = cs.data[cs.cursor+offset]
@@ -363,20 +387,8 @@ func (cs *ContentState) matchByteAt(offset int, b byte) bool {
 	if cs.cursor+offset > cs.count {
 		panic("Out of bounds while matchByteAt")
 	}
-	return cs.peakChar(offset) == b
+	return cs.peakByte(offset) == b
 
-}
-
-func (cs *ContentState) matchStrAt(offset int, str string) bool {
-	if cs.cursor+offset > cs.count {
-		panic("Out of bounds while matchStrAt")
-	}
-	length := len(str)
-	result := true
-	for i := range length {
-		result = result && (cs.peakChar(i+offset) == str[i])
-	}
-	return result
 }
 
 func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
@@ -431,7 +443,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 		}
 
 		// Empty characters
-		if unicode.IsSpace(rune(cs.currentChar())) {
+		if unicode.IsSpace(rune(cs.currentByte())) {
 			cs.column++
 			cs.cursor++
 			continue
@@ -447,7 +459,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			// TODO: Handle nested '«»'
 			// TODO: Handle multable strings «hello {some-printable-variable}»
 			for !cs.matchStrAt(0, "»") {
-				tmp.WriteString(cs.currentCharAsString())
+				tmp.WriteString(cs.currentString())
 				cs.cursor++
 			}
 
@@ -635,17 +647,17 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 		}
 
 		// Number literals (float or int)
-		if isNum(cs.currentChar()) {
+		if isNum(cs.currentByte()) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
 			isFloat := false
-			for isNum(cs.currentChar()) || cs.matchByteAt(0, '.') || cs.matchByteAt(0, '_') {
+			for isNum(cs.currentByte()) || cs.matchByteAt(0, '.') || cs.matchByteAt(0, '_') {
 				if cs.matchByteAt(0, '.') {
 					isFloat = true
 				}
 				if !cs.matchByteAt(0, '_') {
-					tmp.WriteByte(cs.currentChar())
+					tmp.WriteByte(cs.currentByte())
 				}
 				cs.column++
 				cs.cursor++
@@ -685,15 +697,15 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			}
 		}
 
-		if isAlpha(cs.currentChar()) {
+		if isAlpha(cs.currentByte()) {
 			// saveCursorPos := cs.cursor
 			// saveColumPos := cs.column
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
-			if isUppercase(cs.currentChar()) {
-				for isAlphanum(cs.currentChar()) || cs.matchByteAt(0, '-') {
-					tmp.WriteByte(cs.currentChar())
+			if isUppercase(cs.currentByte()) {
+				for isAlphanum(cs.currentByte()) || cs.matchByteAt(0, '-') {
+					tmp.WriteByte(cs.currentByte())
 					cs.column++
 					cs.cursor++
 				}
@@ -1064,8 +1076,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 					continue
 				}
 			} else {
-				for isAlphanum(cs.currentChar()) || cs.matchByteAt(0, '-') {
-					tmp.WriteByte(cs.currentChar())
+				for isAlphanum(cs.currentByte()) || cs.matchByteAt(0, '-') {
+					tmp.WriteByte(cs.currentByte())
 					cs.column++
 					cs.cursor++
 				}
@@ -1283,7 +1295,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(cs.currentChar()))
+		fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(cs.currentByte()))
 		panic("unrecheable")
 	}
 
