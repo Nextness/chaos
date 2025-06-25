@@ -25,7 +25,7 @@ executes
     mandatory-field-2 = #0;
 end-proc
 
-#[entry_point]
+#[entry-point]
 proc main executes
     def new-example as *Build using Some-Interface = new *Example with
         mandatory-field-1 = «Hello world»,

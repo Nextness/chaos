@@ -4,7 +4,7 @@ proc is-uppercase
     returns Bool
 executes
     def result = true;
-    if run internal::is-uppercase with val catch err executes
+    if run internal::is-uppercase with val catch-into err executes
         result = false;
     end-if
     return false;
@@ -16,7 +16,7 @@ proc is-uppercase
     returns Bool
 executes
     def result = true;
-    if run internal::is-uppercase with val catch err executes
+    if run internal::is-uppercase with val catch-into err executes
         result = false;
     end-if
     return false;
@@ -29,7 +29,7 @@ proc is-uppercase
     returns Bool
 executes
     def result = true;
-    if run internal::is-uppercase with val catch err executes
+    if run internal::is-uppercase with val catch-into err executes
         result = false;
     end-if
     return false;

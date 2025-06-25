@@ -17,6 +17,6 @@ proc main executes
     return
 end-proc
 
-#module exampleStructs;
+#module example-structs;
 #import «core::fmt:io.chaos»;
 

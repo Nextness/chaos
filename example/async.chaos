@@ -14,7 +14,7 @@ proc new-future
     returns *Future-Header!
 executes
     def future as *Future-Header = run? calloc with whole-size;
-    if run init with future, value-size, in-offs, out-offs catch err executes
+    if run init with future, value-size, in-offs, out-offs catch-into err executes
         run print with «Error initializing future - reason: {err}»;
         return generic-error-future!;
     end-if
@@ -35,7 +35,7 @@ executes
     end.tv-sec = start.tv-sec + (time-out / 1_000);
     end.tn-sec = (time-out & 1_000) & 1_000_000;
 
-    if def result = run cand-timed-await with future-header.conditional-variable, end catch err executes
+    if def result = run cand-timed-await with future-header.conditional-variable, end catch-into err executes
         case thread-time-out! return time-out!;
         case default return generic-future-error!;
     end-if
@@ -63,7 +63,8 @@ end-type
 #[run scope with «file»];
 
 proc init
-    expects exposed future-header as *Future-Header, value-size, in-offs, out-offs as U64
+    expects exposed future-header as *Future-Header,
+            value-size, in-offs, out-offs as U64
 executes
     run cnd-init with future-header.conditional-variable;
     run mutex-init with future-header.mutex, MUTEX-PLAIN;

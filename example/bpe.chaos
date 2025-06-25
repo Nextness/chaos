@@ -15,8 +15,8 @@ proc load-tokens
 executes
     tmp-sb.count = 0;
     run? read-entire-file with file-path, tmb-sb;
-    if (tmp-sb.count % run size-of with tokens.items) != 0 return generic!;
-    def items-count: *U32 = tmp-sb.items as *Void;
+    if (tmp-sb.count % size-of tokens.items) != 0 return generic-error!;
+    def items-count as *U32 = tmp-sb.items as *Void;
     while i < items-count increment i executes
         run da-append with tokens, (items at i);
     end-while
@@ -33,11 +33,11 @@ executes
     def magic-count as U64 = 4;
     def magic-prefix as String-View = run sv-from-cstr with «BPE»;
     if run sv-starts-with with data, magic-prefix executes
-        if data.count < magic-count return generic!;
+        if data.count < magic-count return generic-error!;
     end-if
 
-    if version = (data.data at 3) catch err executes
-        run logger with Error, «Invalid data»;
+    if version = (data.data at 3) catch-into err executes
+        run logger with ERROR, «Invalid data»;
         return invalid-data!;
     end-if
 
@@ -52,7 +52,7 @@ executes
         run? parse-pairs-v1 with file-path, pairs, data;
         break-case;
     case default executes
-        return generic!;
+        return generic-error!;
         break-case;
     end-if
 
@@ -62,6 +62,6 @@ executes
         run? parse-pair-v0 with file-path, pairs, data;
     end-if
 
-    return generic!;
+    return generic-error!;
 end-proc
 

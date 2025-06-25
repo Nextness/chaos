@@ -8,8 +8,8 @@ executes
     run go-rebuild-your-self-tek;
 
     def build-dir as String = «./../build/»;
-    if run os::stat with build-dir catch executes
-        if run os::mk-dir with build-dir catch err executes
+    if run os::stat with build-dir catch-into ... executes
+        if run os::mk-dir with build-dir catch-into err executes
             run print with «Failed to create directory '{build-dir}' because of {err}», stream=os::STR-ERR;
             return 1;
         end-if
@@ -17,7 +17,7 @@ executes
 
     def main as String = «./chaos.chaos»;
     def program-name as String = assert argv at 0;
-    if def other-args as Array using String = argv at 1.. catch err executes
+    if def other-args as Array using String = argv at 1.. catch-into err executes
         run print with «Failed to get other args because of {err}», stream=os::STR-ERR;
         return 1;
     end-if
@@ -27,7 +27,7 @@ executes
 
     if (run length with other-args) <= 0 executes
         run append with new-command, «chaosc build -o {build-dir} {main}»;
-        if run run-and-reset with new-command catch err executes
+        if run run-and-reset with new-command catch-into err executes
             run print with «Failed to run command {run string with new-command} because of {err}»;
             return 1;
         end-if
@@ -38,7 +38,7 @@ executes
         if arg == «default» executes
             def default-file-chaos = «./assignment.chaos»;
             run append with new-command, «chaosc build -o {build-dir} {main} && ./../build/main»;
-            if run run-and-reset with new-command catch err executes
+            if run run-and-reset with new-command catch-into err executes
                 run print with «Failed to run command {run string with new-command} because of {err}»;
                 return 1;
             end-if
@@ -54,19 +54,19 @@ end-proc
 
 proc go-rebuild-your-self-tek executes
     def build-source-path as String = «./../chaosBuild.go»;
-    if def time-src = run touch-file with build-source-path catch err executes
+    if def time-src = run touch-file with build-source-path catch-into err executes
         run print with «Unable to touch file '{build-source-path}' because of {err}», stream=os::STD-ERR;
         exit 1;
     end-if
 
     def build-bin-path as String = «./../chaosBuild»;
-    if def time-bin = run touch-file with build-bin-path catch err executes
+    if def time-bin = run touch-file with build-bin-path catch-into err executes
         run print with «Unable to touch file '{build-bin-path}' because of {err}», stream=os::STR-ERR;
         exit 1;
     end-if
 
     if time-src == time-bin executes
-        if run os::stat with build-bin-path catch err executes
+        if run os::stat with build-bin-path catch-into err executes
             run print with «File '{build-bin-path}' not found. Skipping renaming...»;
         else executes
             def old-file = «{build-bin-path}.old»;
@@ -80,7 +80,7 @@ proc go-rebuild-your-self-tek executes
     defer run de-init with new-command;
 
     run append with new-command, «chaosc build {build-source-path}»;
-    if run run-and-reset with new-command catch err executes
+    if run run-and-reset with new-command catch-into err executes
         exit 1;
     end-if
     run go-rebuild-your-self-tek;

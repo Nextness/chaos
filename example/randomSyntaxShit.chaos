@@ -11,11 +11,18 @@ type AnotherEnum enum
     yetAnotherThingIsHere;
 end type
 
+proc some-function
+    expects input1 as &String
+    returns Void!
+executes
+
+end-proc
+
 type Json-Response
     generic T
 struct
     status-code as U32? = undefined; #tag «json:status_code»
-    content as T? = undefiner;  #tag «json:content»
+    content as T? = undefined;  #tag «json:content»
 end-type
 
 type Some-Struct struct
@@ -25,11 +32,11 @@ end-type
 
 def some-struct = new *Some-Struct with
     username = «username»,
-    password = run get-env-var with («ENV_VAR_NAME», «None»),
-end-new
+    password = (run get-env-var with «ENV_VAR_NAME», «None»),
+end-new;
 
 proc main returns U64 executes
-    if def window as Window = run initialize-window with 100, 100, «Window» catch err executes
+    if def window as Window = run initialize-window with 100, 100, «Window» catch-into err executes
         run print-fn with  «Something went wrong in here - reason: {err}»;
         return 1;
     end-if
@@ -37,12 +44,10 @@ proc main returns U64 executes
     window = run? initialize-window with 100, 100, «AnotherWindow»;
 end-proc
 
-proc loop-with-label
-    returns Bool1
-executes
-    while x > 10 increment x label loop executes
-        while y > 10 increment y executes
-            if def something = run operation catch err executes
+proc loop-with-label returns Bool1 executes
+    while x > 10 evaluate x += 1 label loop executes
+        while y > 10 evaluate y += 1 executes
+            if def something = run operation catch-into err executes
                 run logger with error, «The operation failed - reason: {err}»;
                 break loop;
             end-if
@@ -50,6 +55,17 @@ executes
         return something;
     end-while
     return operation-failed!;
+end-proc
+
+def any-error as Any-Error? = #0;
+if run operation with input catch-into any-error executes
+
+end-if
+
+proc testing-while-loops executes
+    while i < 1 evaluate i = run? some-operation with some-input executes
+        
+    end-while
 end-proc
 
 #scope(«file»);

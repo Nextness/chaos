@@ -28,7 +28,7 @@ executes
     end-proc
 
     def current-user as AsyntTask = run asyncTask? with task;
-    if def user = run current-user.await catch err executes
+    if def user = run current-user.await catch-into err executes
         run logger with «Failed to get user {username}»;
         return err;
     end-if

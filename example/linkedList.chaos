@@ -18,8 +18,8 @@ proc insert
     returns Void!
 executes
     def current-node = n;
-    while current-node != undefined current-node = current-node.next;
-    current-node.next = run? alloc with (run size-of with Node using T);
+    while (current-node != undefined current-node = current-node.next;
+    current-node.next = run? alloc with size-of Node using T;
     current-node.next = value;
 end-proc
 

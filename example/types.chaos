@@ -1,14 +1,15 @@
 // Numbers
 
-def Ints = alias I8 or I16 or I32 or I64 or I128;
+def Ints  = alias I8 or I16 or I32 or I64 or I128;
 def UInts = alias U8 or U16 or U32 or U64 or U128;
 
 def Floats = alias F16 or F32 or F64 or F128;
-def Complex = alias C64 or C128;
+
+def Complex    = alias C64 or C128;
 def Quaternion = alias Q128 or Q256;
 
 def Natural = alias Ints or UInts;
-def Real = alias Ints or UInts or Floats;
+def Real    = alias Ints or UInts or Floats;
 
 def AnyNumber = alias Real or Complex or Quaternion;
 

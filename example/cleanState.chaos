@@ -1,86 +1,141 @@
 scaffold
-type Context
-    generic T
-struct
+type Context generic T struct
     logger as Logger?;
 end-type
 
-type Custom
-    generic K
-struct
+type Cusbem generic K struct
     value as String;
     another as U64;
     key as K;
 end-type
 
-proc some-operation
-    generic K
+proc some-operation generic K
     expects value as String, another as U64, key as K
-    returns *Custom using Bool
+    returns *Custom using K
 executes
-    def result = new Custom using K with «string literal», 10, true;
+    let result be new Custom using K with value, another, key;
     run print with «Got the result: {result.value}\n»;
     return *result;
 end-proc
 
-type Version
-    generic T
-struct
-    major as T? = undefined;
-    minor as T? = undefined;
-    fix as T? = undefined;
-    phase as *String? = undefined;
+proc some-operation generic K
+    expects value as String, another as U64, key as K
+    returns *Cusbem using K
+executes
+    let result = new Cusbem using K with value, another, key;
+    run print with «Got the result: {result.value}\n»;
+    return *result;
+end-proc
+
+type Version generic T struct
+    major as T?;
+    minor as T?;
+    fix as T?;
+    phase as *String?;
 end-type
 
-proc to-string
+proc be-string
     expects exposed version as *Version
     return String
 executes
-    def version-string = «{major}.{minor}.{fix}»;
+    let version-string = «{major}.{minor}.{fix}»;
     if phase != undefined versionString = «{versionString}-{phase}»;
     return version-string;
 end-proc
 
+proc to-string
+    expects exposed version as *Version
+    returns String
+executes
+    let version-string as String be «{major}.{minor}.{fix}»;
+    if (phase != undefined) version-string be «{version-string}-{phase}»;
+    return version-string;
+end-proc
+
 proc test-map-create-access returns Void! executes
-    def some-map = new Map using 4, String, String with
+    let some-map = new Map using 4, String, String with
         «some-key»    = «some value»,
         «another-key» = «another value»,
     end-new;
-    def first-element = some-map at «some-key»;
+    let first-element = some-map at «some-key»;
     some-map at «another-key» = «new value»;
-    def unknown-element = some-map at? «unknown-key»;
+    let unknown-element = some-map at? «unknown-key»;
+end-proc
+
+proc test-map-create-access-2 returns Void! executes
+    let some-map be new Map using 4, String, String with
+        «some-key» be «some value»,
+        «another-key» be «another value»,
+    end-new;
+    let first-element be some-map at «some-key»;
+    some-map at «another-key» be «new value»;
+    let unknown-element be some-map at? «unknown-key»;
 end-proc
 
 proc new-counter returns (*U64, proc returns U64)! executes
-    #if #get-current-os == .linux #executes
-        def some-variable = run? mem::alloc with size-of U64;
-        def counter = proc returns U64 executes
+    #if #run get-current-os == .linux
+        let some-variable be run? mem::aloc with size-of U64;
+        let counter be proc returns U64 executes
             return ++(some-variable.*);
         end-proc
         return some-variable, counter;
-    #else #executes
+    #else
         #todo
     #end-if
 end-proc
 
-if def ptr-result, func = run new-counter catch err executes
-    exit 69, «failed to create a new counter»;
+proc new-counter returns (*U64, proc returns U64)! executes
+    #if #run get-current-os == .linux #executes
+        let some-variable = run? mem::alloc with size-of U64;
+        let counter = proc returns U64 executes
+            return ++(some-variable.*);
+        end-proc
+        return some-variable, counter;
+    #else
+        #todo
+    #end-if
+end-proc
+
+let result as (*U64, proc returns U64)! be run new-counter;
+if let ptr-result, func be result catch-into err executes
+    exit 69, «failed be create a new counter»;
 end-if
+
+if let ptr-result-1, func-1 be run new-counter catch-into err executes
+    exit 69, «failed be create a new counter»;
+end-if
+
+proc switch-test-new
+    expects something as Some-Enum
+    returns Void!
+executes
+    label l-something if something equals
+    case .a executes
+        run print with «{A}»;
+        break-case l-something;
+    case .b executes
+        run print with «Something else {B}»;
+        break-case l-something;
+    case .c executes
+        run print with «String {D}s nuuutz»;
+        break-case l-something;
+    end-if
+end-proc
 
 proc switch-test
     expects something: Some-Enum
     return Void
 executes
-    if something ==
+    label l-something if something ==
     case .a executes
         run print with «{A}»;
-        break-case;
+        break-case l-something;
     case .b executes
         run print with «Something else {B}»;
-        break-case;
+        break-case l-something;
     case .c executes
         run print with «String {D}s nuuutz»;
-        break-case;
+        break-case l-something;
     end-if
 end-proc
 
@@ -88,7 +143,7 @@ proc optional-return-assignment
     expects value as String
     returns Bool, ~*String
 executes
-    def result = run some-operation with value;
+    let result = run some-operation with value;
     if result != undefined executes
         return true, «valid»;
     end-if
@@ -97,6 +152,6 @@ end-proc
 
 // This will only return the boolean value. Unless specified another argument, which 
 // in this case, will be a string.
-def result = run optional-return-assignment with «something that works»;
-def result1, result2 = run optional-return-assignment with «somethig that doesn't work»;
+let result be run optional-return-assignment with «something that works»;
+let result1, result2 be run optional-return-assignment with «somethig that doesn't work»;
 

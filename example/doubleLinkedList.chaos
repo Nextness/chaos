@@ -20,30 +20,27 @@ proc print
     expects dll as &Double-Linked-List
 executes
     def node as &Node = dll.head;
-    while i < dll.count increment i executes
+    while i < dll.count evaluate i++ executes
         def pad = i * 2;
         run io::print with «{pad:node.data}»;
         node = node.next;
     end-while
 end-proc
 
-type Duble-Linked-List
-    generic C, T
-    #if C #not #in num::Ints #execute
-        #stop-compilation «C is expected to be a number, but got {C.type}»;
-    #end-if
+type Double-Linked-List
+    generic C as num::Ints, T
 struct
     count as C = 0;
-    head as *Node? using T = undefined;
-    tail as *Node? using T = undefined;
+    head as *Node? using T;
+    tail as *Node? using T;
 end-type
 
 type Node
     generic T
 struct
     data as *T;
-    prev as *Node? using T = undefined;
-    next as *Node? using T = undefined;
+    prev as *Node? using T;
+    next as *Node? using T;
 end-type
 
 proc init-node
@@ -53,7 +50,7 @@ proc init-node
 executes
     def ND = alias Node using T;
 
-    if def new-node as *ND = run alloc with (run size-of with ND) catch err executes
+    if def new-node as *ND = run alloc with size-of ND catch-into err executes
         run logger with error, «Failed to allocate node - {err}»;
         return out-of-memory!;
     end-if
@@ -78,7 +75,7 @@ executes
         dll.head = newNode;
     end-if
 
-    dll.count += 1;
+    dll.count++;
 end-proc
 
 proc insert-node
@@ -96,9 +93,9 @@ executes
 
     def tmp as *Node using Node.T;
     if index <= (dll.count / 2) executes
-        while i < index - 1 increment i tmp = tmp.next;
+        while i < index - 1 evaluate i++ tmp = tmp.next;
     else executes
-        while i < dll.count increment i tmp = tmp.prev;
+        while i < dll.count evaluate i++ tmp = tmp.prev;
     end-if
 
     def new-node = run init-node with data or return null-pointer!;
@@ -106,7 +103,7 @@ executes
     new-node.next = tmp.next;
     tmp.next = new-node;
     new-node.prev = tmp;
-    dll.count += 1;
+    dll.count++;
 end-proc
 
 proc delete-head expects dll as *Double-Linked-List executes
