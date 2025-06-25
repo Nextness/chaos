@@ -1,8 +1,11 @@
-proc main
-    expects argc as I64, argv as String
-    returns Void
-executes
-    def something-new: U64 = 10;
+// Example comment
+/** Multiline Comments
+ *  /** Nested comment **/
+**/
+
+proc main returns Void executes
+    def something: String = «aiojdas»;
+    def another: F64 = 10.0;
     exit 69;
 end-proc
 

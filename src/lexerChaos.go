@@ -117,8 +117,8 @@ func (tokTyp TokenType) asString() string {
 	} else if tokTyp == tokAs {
 		return "tokAs"
 	}
-
-	panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
+	return "unknown tokType"
+	// panic(fmt.Sprintf("Unknown keyword '%v'", tokTyp))
 }
 
 type TokenKind int
@@ -155,9 +155,9 @@ const (
 
 func (t TokenKind) asString() string {
 	if t == kindAnyError {
-		return "AnyError"
+		return "Any-Error"
 	} else if t == kindAnyType {
-		return "AnyType"
+		return "Any-Type"
 	} else if t == kindString {
 		return "String"
 	} else if t == kindChar {
@@ -298,6 +298,8 @@ func (t *TokenLiteral) asString() string {
 		return fmt.Sprintf("%03d:%03d [%s] %d", t.position.line, t.position.column, t.tokType.asString(), val)
 	} else if val, ok := cast[bool](curType); ok {
 		return fmt.Sprintf("%03d:%03d [%s] %t", t.position.line, t.position.column, t.tokType.asString(), val)
+	} else if val, ok := cast[float64](curType); ok {
+		return fmt.Sprintf("%03d:%03d [%s] %f", t.position.line, t.position.column, t.tokType.asString(), val)
 	}
 	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
 }
@@ -349,14 +351,6 @@ func (cs *ContentState) currentChar() byte {
 	return cs.data[cs.cursor]
 }
 
-func (cs *ContentState) peakCharAsString(offset int) (result string) {
-	result = ""
-	if cs.cursor+offset < cs.count {
-		result = string(cs.data[cs.cursor+offset])
-	}
-	return
-}
-
 func (cs *ContentState) peakChar(offset int) (result byte) {
 	result = byte(0)
 	if cs.cursor+offset < cs.count {
@@ -365,366 +359,27 @@ func (cs *ContentState) peakChar(offset int) (result byte) {
 	return
 }
 
+func (cs *ContentState) matchByteAt(offset int, b byte) bool {
+	if cs.cursor+offset > cs.count {
+		panic("Out of bounds while matchByteAt")
+	}
+	return cs.peakChar(offset) == b
+
+}
+
 func (cs *ContentState) matchStrAt(offset int, str string) bool {
 	if cs.cursor+offset > cs.count {
 		panic("Out of bounds while matchStrAt")
 	}
 	length := len(str)
 	result := true
-	for i := 0; i < length; i++ {
+	for i := range length {
 		result = result && (cs.peakChar(i+offset) == str[i])
 	}
 	return result
 }
 
-func (cs *ContentState) handleSingleLineComments() bool {
-	if !cs.matchStrAt(0, "//") {
-		return false
-	}
-	for cs.currentChar() != '\n' {
-		cs.cursor++
-	}
-	return true
-}
-
-func (cs *ContentState) handleMultiLineComments() bool {
-	if !cs.matchStrAt(0, "/**") {
-		return false
-	}
-	nestedComment := 0
-	cs.cursor += 3
-	for true {
-		if cs.matchStrAt(0, "**/") && nestedComment > 0 {
-			nestedComment--
-			cs.cursor += 3
-			continue
-		}
-		if cs.matchStrAt(0, "**/") {
-			cs.cursor += 3
-			break
-		}
-		cs.cursor++
-		if cs.matchStrAt(0, "/**") {
-			nestedComment++
-			cs.cursor += 3
-			continue
-		}
-	}
-	return true
-}
-
-func (cs *ContentState) handleNewline() bool {
-	if cs.currentChar() != '\n' {
-		return false
-	}
-
-	cs.line++
-	cs.cursor++
-	cs.column = 0
-	return true
-}
-
-func (cs *ContentState) handleEmptyCharacters() bool {
-	if !unicode.IsSpace(rune(cs.currentChar())) && rune(cs.currentChar()) != rune("\x00"[0]) {
-		return false
-	}
-
-	cs.column++
-	cs.cursor++
-	return true
-}
-
-func (cs *ContentState) handleSingleCharacters() (bool, *TokenOperator) {
-	// TODO: Technically speaking, this is not only operators, but all single character tokens
-	// that are allowed in the language. Probably need to rename it, or handle it differently.
-	tokenOperator := TokenOperator{}
-	curByte := cs.currentChar()
-	if curByte == '=' {
-		tokenOperator.tokType = tokAssignment
-	} else if curByte == '+' {
-		tokenOperator.tokType = tokPlus
-	} else if curByte == '-' {
-		tokenOperator.tokType = tokMinus
-	} else if curByte == ',' {
-		tokenOperator.tokType = tokComma
-	} else if curByte == '<' {
-		tokenOperator.tokType = tokLessThan
-	} else if curByte == '>' {
-		tokenOperator.tokType = tokGreaterThan
-	} else if curByte == ';' {
-		tokenOperator.tokType = tokSemicolon
-	} else if curByte == ':' {
-		tokenOperator.tokType = tokColon
-	} else {
-		return false, nil
-	}
-	tokenOperator.position.line = cs.line
-	tokenOperator.position.column = cs.column
-	cs.column++
-	cs.cursor++
-	return true, &tokenOperator
-}
-
-func (cs *ContentState) handleNumberLiterals() (bool, *TokenLiteral) {
-	if !isNum(cs.currentChar()) {
-		return false, nil
-	}
-
-	tmp := bytes.Buffer{}
-	defer tmp.Reset()
-
-	for isNum(cs.currentChar()) {
-		tmp.WriteByte(cs.currentChar())
-		cs.column++
-		cs.cursor++
-	}
-
-	val, err := strconv.Atoi(tmp.String())
-	assert(err == nil, "Failed to convert string to number")
-
-	token := TokenLiteral{
-		value:   val,
-		tokType: tokLiteral,
-		tokKind: kindI64,
-		position: Position{
-			line:   cs.line,
-			column: cs.column,
-		},
-	}
-
-	return true, &token
-}
-
-func (cs *ContentState) handleVarTypes() (bool, *TokenVarType) {
-	if !isAlpha(cs.currentChar()) || !isUppercase(cs.currentChar()) || cs.currentChar() == "«"[0] {
-		return false, nil
-	}
-
-	tmp := bytes.Buffer{}
-	defer tmp.Reset()
-	for isAlphanum(cs.currentChar()) {
-		tmp.WriteByte(cs.currentChar())
-		cs.column++
-		cs.cursor++
-	}
-
-	sym := Symbol(tmp.String())
-	token := TokenVarType{
-		symbol:  sym,
-		tokType: tokVarType,
-		position: Position{
-			cs.line,
-			cs.column,
-		},
-	}
-
-	if sym == "AnyError" {
-		token.tokKind = kindAnyError
-	} else if sym == "AnyType" {
-		token.tokKind = kindAnyType
-	} else if sym == "String" {
-		token.tokKind = kindString
-	} else if sym == "Char" {
-		token.tokKind = kindChar
-	} else if sym == "Bool" {
-		token.tokKind = kindBool
-	} else if sym == "U8" {
-		token.tokKind = kindU8
-	} else if sym == "U16" {
-		token.tokKind = kindU16
-	} else if sym == "U32" {
-		token.tokKind = kindU32
-	} else if sym == "U64" {
-		token.tokKind = kindU64
-	} else if sym == "U128" {
-		token.tokKind = kindU128
-	} else if sym == "I8" {
-		token.tokKind = kindI8
-	} else if sym == "I16" {
-		token.tokKind = kindI16
-	} else if sym == "I32" {
-		token.tokKind = kindI32
-	} else if sym == "I64" {
-		token.tokKind = kindI64
-	} else if sym == "I128" {
-		token.tokKind = kindI128
-	} else if sym == "F16" {
-		token.tokKind = kindF16
-	} else if sym == "F32" {
-		token.tokKind = kindF32
-	} else if sym == "F64" {
-		token.tokKind = kindF64
-	} else if sym == "F128" {
-		token.tokKind = kindF128
-	} else if sym == "C64" {
-		token.tokKind = kindC64
-	} else if sym == "C128" {
-		token.tokKind = kindC128
-	} else if sym == "Q128" {
-		token.tokKind = kindQ128
-	} else if sym == "Q256" {
-		token.tokKind = kindQ256
-	} else if sym == "Array" {
-		token.tokKind = kindArray
-	} else if sym == "Void" {
-		token.tokKind = kindVoid
-	} else if sym == "Map" {
-		token.tokKind = kindMap
-	} else {
-		return false, nil
-	}
-	return true, &token
-}
-
-func (cs *ContentState) handleBoolean() (bool, *TokenLiteral) {
-	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
-		return false, nil
-	}
-
-	token := TokenLiteral{}
-	saveCursorPos := cs.cursor
-	saveColumPos := cs.column
-	tmp := bytes.Buffer{}
-	defer tmp.Reset()
-
-	for isAlpha(cs.currentChar()) {
-		tmp.WriteByte(cs.currentChar())
-		cs.column++
-		cs.cursor++
-	}
-
-	boolean := tmp.String()
-	if boolean == "true" {
-		token.value = true
-	} else if boolean == "false" {
-		token.value = false
-	} else {
-		cs.cursor = saveCursorPos
-		cs.column = saveColumPos
-		return false, nil
-	}
-
-	token.tokType = tokLiteral
-	token.position = Position{cs.line, cs.column}
-	return true, &token
-}
-
-func (cs *ContentState) handleKeywords() (bool, *TokenKeyword) {
-	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
-		return false, nil
-	}
-
-	token := TokenKeyword{}
-	saveCursorPos := cs.cursor
-	saveColumPos := cs.column
-	tmp := bytes.Buffer{}
-	defer tmp.Reset()
-
-	for isAlphanum(cs.currentChar()) || cs.currentChar() == '-' {
-		tmp.WriteByte(cs.currentChar())
-		cs.column++
-		cs.cursor++
-	}
-
-	keyword := tmp.String()
-	if keyword == "global" {
-		token.tokType = tokGlobal
-	} else if keyword == "def" {
-		token.tokType = tokDef
-	} else if keyword == "exit" {
-		token.tokType = tokExit
-	} else if keyword == "executes" {
-		token.tokType = tokExecutes
-	} else if keyword == "if" {
-		token.tokType = tokIf
-	} else if keyword == "elif" {
-		token.tokType = tokElif
-	} else if keyword == "else" {
-		token.tokType = tokElse
-	} else if keyword == "proc" {
-		token.tokType = tokProc
-	} else if keyword == "end-proc" {
-		token.tokType = tokEndProc
-	} else if keyword == "returns" {
-		token.tokType = tokReturns
-	} else if keyword == "expects" {
-		token.tokType = tokExpects
-	} else if keyword == "run" {
-		token.tokType = tokRun
-	} else if keyword == "with" {
-		token.tokType = tokWith
-	} else if keyword == "as" {
-		token.tokType = tokAs
-	} else {
-		cs.cursor = saveCursorPos
-		cs.column = saveColumPos
-		return false, nil
-	}
-
-	token.position = Position{cs.line, cs.column}
-	return true, &token
-}
-
-func (cs *ContentState) handleIdentifiers() (bool, *TokenIdentifier) {
-	if !isAlpha(cs.currentChar()) || cs.currentChar() == "«"[0] {
-		return false, nil
-	}
-
-	tmp := bytes.Buffer{}
-	defer tmp.Reset()
-
-	for isAlphanum(cs.currentChar()) || cs.currentChar() == '-' {
-		tmp.WriteByte(cs.currentChar())
-		cs.column++
-		cs.cursor++
-	}
-
-	token := TokenIdentifier{
-		symbol:  Symbol(tmp.String()),
-		tokType: tokIdentifier,
-		position: Position{
-			line:   cs.line,
-			column: cs.column,
-		},
-	}
-
-	return true, &token
-}
-
-func (cs *ContentState) handleStringLiterals() (bool, *TokenLiteral) {
-	if cs.currentChar() != "«"[0] {
-		return false, nil
-	}
-
-	tmp := bytes.Buffer{}
-	defer tmp.Reset()
-	cs.cursor += 2
-
-	for cs.peakCharAsString(1) != "»" {
-		tmp.WriteString(cs.currentCharAsString())
-		cs.cursor++
-	}
-
-	token := TokenLiteral{
-		value:   tmp.String(),
-		tokType: tokLiteral,
-		tokKind: kindString,
-		position: Position{
-			line:   cs.line,
-			column: cs.column,
-		},
-	}
-
-	cs.cursor += 2
-	return true, &token
-}
-
-// TODO: Improve how characters are handled. Probably move to a byte or uint32 type of char
-// I want to avoid this kind of shit '"«"[0]', which is super annoying - also it will probaly
-// make it easier to handle other things in the lexer
-// TODO: Handle how we use tokens. A lot of duplication using 'value' for all tokens, when
-// in reality most of the tokens don't have values.
-func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
+func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 	cs := &ContentState{
 		data:   fileContent.String(),
 		count:  fileContent.Len(),
@@ -733,26 +388,221 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 		column: 1,
 	}
 
-	ts := &TokenizerState{
-		data:   []Token{},
-		count:  0,
-		cursor: 0,
-	}
-
+	tokens := []Token{}
 	for cs.cursor < cs.count {
-		if cs.handleSingleLineComments() {
+		// Singleline comment
+		if cs.matchStrAt(0, "//") {
+			for !cs.matchByteAt(0, '\n') {
+				cs.cursor++
+			}
 			continue
 		}
 
-		if cs.handleMultiLineComments() {
+		// Multiline comment
+		if cs.matchStrAt(0, "/**") {
+			nestedComment := 0
+			cs.cursor += 3
+			for true {
+				if cs.matchStrAt(0, "**/") && nestedComment > 0 {
+					nestedComment--
+					cs.cursor += 3
+					continue
+				}
+				if cs.matchStrAt(0, "**/") {
+					cs.cursor += 3
+					break
+				}
+				cs.cursor++
+				if cs.matchStrAt(0, "/**") {
+					nestedComment++
+					cs.cursor += 3
+					continue
+				}
+			}
 			continue
 		}
 
-		if cs.handleNewline() {
+		// Newline
+		if cs.matchByteAt(0, '\n') {
+			cs.line++
+			cs.cursor++
+			cs.column = 0
 			continue
 		}
 
-		if cs.handleEmptyCharacters() {
+		// Empty characters
+		if unicode.IsSpace(rune(cs.currentChar())) {
+			cs.column++
+			cs.cursor++
+			continue
+		}
+
+		// Strings
+		if cs.matchStrAt(0, "«") {
+
+			tmp := bytes.Buffer{}
+			defer tmp.Reset()
+			cs.cursor += 2
+
+			// TODO: Handle nested '«»'
+			// TODO: Handle multable strings «hello {some-printable-variable}»
+			for !cs.matchStrAt(0, "»") {
+				tmp.WriteString(cs.currentCharAsString())
+				cs.cursor++
+			}
+
+			token := &TokenLiteral{
+				value:   tmp.String(),
+				tokType: tokLiteral,
+				tokKind: kindString,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+
+			cs.cursor += 2
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchStrAt(0, "==") {
+			tok := &TokenOperator{
+				tokType: tokEquals,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column += 2
+			cs.cursor += 2
+			tokens = append(tokens, tok)
+			continue
+		}
+
+		if cs.matchStrAt(0, "...") {
+			tok := &TokenKeyword{
+				tokType: tokEllipsis,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column += 3
+			cs.cursor += 3
+			tokens = append(tokens, tok)
+			continue
+		}
+
+		if cs.matchByteAt(0, '=') {
+			token := &TokenOperator{
+				tokType: tokAssignment,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchByteAt(0, '+') {
+			token := &TokenOperator{
+				tokType: tokPlus,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchByteAt(0, '-') {
+			token := &TokenOperator{
+				tokType: tokMinus,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchByteAt(0, ',') {
+			token := &TokenOperator{
+				tokType: tokComma,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchByteAt(0, '<') {
+			token := &TokenOperator{
+				tokType: tokLessThan,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchByteAt(0, '>') {
+			token := &TokenOperator{
+				tokType: tokGreaterThan,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchByteAt(0, ';') {
+			token := &TokenOperator{
+				tokType: tokSemicolon,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if cs.matchByteAt(0, ':') {
+			token := &TokenOperator{
+				tokType: tokColon,
+				position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
 			continue
 		}
 
@@ -766,7 +616,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			}
 			cs.column++
 			cs.cursor++
-			ts.data = append(ts.data, tok)
+			tokens = append(tokens, tok)
 			continue
 		}
 
@@ -780,84 +630,657 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			}
 			cs.column++
 			cs.cursor++
-			ts.data = append(ts.data, tok)
+			tokens = append(tokens, tok)
 			continue
 		}
 
-		// TODO: Improve how to handle two character tokens
-		if cs.matchStrAt(0, "==") {
-			tok := &TokenOperator{
-				tokType:  tokEquals,
-				position: Position{cs.line, cs.column},
+		// Number literals (float or int)
+		if isNum(cs.currentChar()) {
+			tmp := bytes.Buffer{}
+			defer tmp.Reset()
+
+			isFloat := false
+			for isNum(cs.currentChar()) || cs.matchByteAt(0, '.') || cs.matchByteAt(0, '_') {
+				if cs.matchByteAt(0, '.') {
+					isFloat = true
+				}
+				if !cs.matchByteAt(0, '_') {
+					tmp.WriteByte(cs.currentChar())
+				}
+				cs.column++
+				cs.cursor++
 			}
-			cs.column += 2
-			cs.cursor += 2
-			ts.data = append(ts.data, tok)
-			continue
-		}
 
-		if cs.matchStrAt(0, ":=") {
-			tok := &TokenKeyword{
-				tokType: tokInferAssign,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
+			number := tmp.String()
+			if isFloat {
+				val, err := strconv.ParseFloat(number, 64)
+				assert(err == nil, "Failed to convert string to float")
+
+				token := &TokenLiteral{
+					value:   val,
+					tokType: tokLiteral,
+					tokKind: kindF64,
+					position: Position{
+						line:   cs.line,
+						column: cs.column,
+					},
+				}
+				tokens = append(tokens, token)
+				continue
+			} else {
+				val, err := strconv.Atoi(tmp.String())
+				assert(err == nil, "Failed to convert string to number")
+
+				token := &TokenLiteral{
+					value:   val,
+					tokType: tokLiteral,
+					tokKind: kindI64,
+					position: Position{
+						line:   cs.line,
+						column: cs.column,
+					},
+				}
+				tokens = append(tokens, token)
+				continue
 			}
-			cs.column += 2
-			cs.cursor += 2
-			ts.data = append(ts.data, tok)
-			continue
 		}
 
-		// TODO: Improve how to handle three character tokens
-		if cs.matchStrAt(0, "...") {
-			tok := &TokenKeyword{
-				tokType: tokEllipsis,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
+		if isAlpha(cs.currentChar()) {
+			// saveCursorPos := cs.cursor
+			// saveColumPos := cs.column
+			tmp := bytes.Buffer{}
+			defer tmp.Reset()
+
+			if isUppercase(cs.currentChar()) {
+				for isAlphanum(cs.currentChar()) || cs.matchByteAt(0, '-') {
+					tmp.WriteByte(cs.currentChar())
+					cs.column++
+					cs.cursor++
+				}
+
+				varString := tmp.String()
+
+				if varString == "Any-Error" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindAnyError,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Any-Type" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindAnyType,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "String" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindString,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Char" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindChar,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Bool" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindBool,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "U8" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindU8,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "U16" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindU16,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "U32" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindU32,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "U64" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindU64,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "U128" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindU128,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "I8" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindI8,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "I16" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindI16,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "I32" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindI32,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "I64" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindI64,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "I128" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindI128,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "F16" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindF16,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "F32" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindF32,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "F64" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindF64,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "F128" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindF128,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "C64" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindC64,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "C128" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindC128,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Q128" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindQ128,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Q256" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindQ256,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Array" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindArray,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Void" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindVoid,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if varString == "Map" {
+					token := &TokenVarType{
+						symbol:  Symbol(varString),
+						tokType: tokVarType,
+						tokKind: kindMap,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+			} else {
+				for isAlphanum(cs.currentChar()) || cs.matchByteAt(0, '-') {
+					tmp.WriteByte(cs.currentChar())
+					cs.column++
+					cs.cursor++
+				}
+
+				string := tmp.String()
+
+				// Keywords
+				if string == "true" {
+					token := &TokenLiteral{
+						value:   true,
+						tokType: tokLiteral,
+						tokKind: kindBool,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "false" {
+					token := &TokenLiteral{
+						value:   false,
+						tokType: tokLiteral,
+						tokKind: kindBool,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "global" {
+					token := &TokenKeyword{
+						tokType: tokGlobal,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "def" {
+					token := &TokenKeyword{
+						tokType: tokDef,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "exit" {
+					token := &TokenKeyword{
+						tokType: tokExit,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "executes" {
+					token := &TokenKeyword{
+						tokType: tokExecutes,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "if" {
+					token := &TokenKeyword{
+						tokType: tokIf,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "elif" {
+					token := &TokenKeyword{
+						tokType: tokElif,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "else" {
+					token := &TokenKeyword{
+						tokType: tokElse,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "proc" {
+					token := &TokenKeyword{
+						tokType: tokProc,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "end-proc" {
+					token := &TokenKeyword{
+						tokType: tokEndProc,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "returns" {
+					token := &TokenKeyword{
+						tokType: tokReturns,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "expects" {
+					token := &TokenKeyword{
+						tokType: tokExpects,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "run" {
+					token := &TokenKeyword{
+						tokType: tokRun,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "with" {
+					token := &TokenKeyword{
+						tokType: tokWith,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "as" {
+					token := &TokenKeyword{
+						tokType: tokAs,
+						position: Position{
+							line:   cs.line,
+							column: cs.column,
+						},
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				// Identifiers
+				token := &TokenIdentifier{
+					symbol:  Symbol(string),
+					tokType: tokIdentifier,
+					position: Position{
+						line:   cs.line,
+						column: cs.column,
+					},
+				}
+				tokens = append(tokens, token)
+				continue
 			}
-			cs.column += 3
-			cs.cursor += 3
-			ts.data = append(ts.data, tok)
-			continue
-		}
-
-		if ok, token := cs.handleSingleCharacters(); ok {
-			ts.data = append(ts.data, token)
-			continue
-		}
-
-		if ok, token := cs.handleStringLiterals(); ok {
-			ts.data = append(ts.data, token)
-			continue
-		}
-
-		if ok, token := cs.handleNumberLiterals(); ok {
-			ts.data = append(ts.data, token)
-			continue
-		}
-
-		if ok, token := cs.handleBoolean(); ok {
-			ts.data = append(ts.data, token)
-			continue
-		}
-
-		if ok, token := cs.handleVarTypes(); ok {
-			ts.data = append(ts.data, token)
-			continue
-		}
-
-		if ok, token := cs.handleKeywords(); ok {
-			ts.data = append(ts.data, token)
-			continue
-		}
-
-		if ok, token := cs.handleIdentifiers(); ok {
-			ts.data = append(ts.data, token)
-			continue
 		}
 
 		fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(cs.currentChar()))
@@ -872,9 +1295,9 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) *TokenizerState {
 			column: cs.column,
 		},
 	}
-	ts.data = append(ts.data, eof)
-	ts.count = len(ts.data)
-	return ts
+
+	tokens = append(tokens, eof)
+	return tokens
 }
 
 type TokenizerState struct {
@@ -910,21 +1333,6 @@ func (ts *TokenizerState) currentTokenType() TokenType {
 
 func (ts *TokenizerState) currentTokenTypeAsString() string {
 	return ts.currentTokenType().asString()
-}
-
-func (ts *TokenizerState) matchAllAt(offset int, tokTypes []TokenType) (result bool) {
-	result = false
-	for i, tok := range tokTypes {
-		pos := ts.cursor + i + offset
-		if pos > ts.count {
-			panic(fmt.Sprintf("out of bounds operation while checking for %v", tokTypes))
-		}
-		curTok := ts.data[pos]
-		if curTok.getTokenType() == tok {
-			result = true
-		}
-	}
-	return result
 }
 
 func (tok *TokenKind) matchAt(offset int, tokKinds ...TokenKind) (result bool) {
