@@ -33,6 +33,7 @@ func main() {
 			ts := &TokenizerState{
 				data:               tokens,
 				allocatedVariables: []Symbol{},
+				allocatedProcs:     []Symbol{},
 				filepath:           arg,
 				count:              len(tokens),
 				cursor:             0,
@@ -41,7 +42,7 @@ func main() {
 			fmt.Print("\n")
 
 			ls := lexerChaos(ts)
-			for _, ls := range ls.data {
+			for _, ls := range ls {
 				val := ls.asBuffer(0)
 				fmt.Printf("%s\n", val.String())
 			}
