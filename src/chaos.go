@@ -31,9 +31,11 @@ func main() {
 			fileContent := bytes.NewBuffer(file)
 			tokens := tokenizeChaos(arg, fileContent)
 			ts := &TokenizerState{
-				data:   tokens,
-				count:  len(tokens),
-				cursor: 0,
+				data:               tokens,
+				allocatedVariables: []Symbol{},
+				filepath:           arg,
+				count:              len(tokens),
+				cursor:             0,
 			}
 			ts.print()
 			fmt.Print("\n")

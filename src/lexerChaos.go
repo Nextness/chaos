@@ -463,6 +463,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 		if cs.matchStrAt(0, "//") {
 			for !cs.matchByteAt(0, '\n') {
 				cs.cursor++
+				cs.column++
 			}
 			continue
 		}
@@ -472,19 +473,28 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			nestedComment := 0
 			cs.cursor += 3
 			for true {
+				if cs.matchByteAt(0, '\n') {
+					cs.line++
+					cs.cursor++
+					cs.column = 0
+					continue
+				}
 				if cs.matchStrAt(0, "**/") && nestedComment > 0 {
 					nestedComment--
 					cs.cursor += 3
+					cs.column += 3
 					continue
 				}
 				if cs.matchStrAt(0, "**/") {
 					cs.cursor += 3
+					cs.column += 3
 					break
 				}
 				cs.cursor++
 				if cs.matchStrAt(0, "/**") {
 					nestedComment++
 					cs.cursor += 3
+					cs.column += 3
 					continue
 				}
 			}
@@ -1370,9 +1380,12 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 }
 
 type TokenizerState struct {
-	data   []Token
-	count  int
-	cursor int
+	data               []Token
+	allocatedProcs     []Symbol
+	allocatedVariables []Symbol
+	filepath           string
+	count              int
+	cursor             int
 }
 
 func (tokens TokenizerState) print() {
@@ -1466,4 +1479,19 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 		ts.cursor++
 	}
 	return
+}
+
+func (ts *TokenizerState) allocateVariable(sym Symbol) {
+	ts.allocatedVariables = append(ts.allocatedVariables, sym)
+}
+
+func (ts *TokenizerState) allocateProc(sym Symbol) {
+	ts.allocatedProcs = append(ts.allocatedProcs, sym)
+}
+
+func (ts *TokenizerState) PrintError(format string, a ...any) {
+	t := ts.current()
+	preffix := fmt.Sprintf("[ERROR] %s:%02d:%02d", ts.filepath, t.getPosition().line, t.getPosition().column)
+	errorMsg := fmt.Sprintf(format, a...)
+	fmt.Fprintf(os.Stderr, "%s %s", preffix, errorMsg)
 }

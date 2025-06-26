@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"os"
 )
 
 const PADNUMBER int = 2
@@ -361,48 +362,22 @@ func lexExit(ts *TokenizerState) *NodeExit {
 
 	ts.consumeAssert(tokExit)
 	if !ts.matchAt(0, tokLiteral) {
-		// TODO: Better handle errors
-		errMsg := fmt.Sprintf("Expected a number but found %s\n", ts.currentTokenTypeAsString())
-		config := newLexerErroConfig(errMsg)
-		config.printAndExitLexerError(ts)
+		ts.PrintError("Expected a number but found %s\n", ts.currentTokenTypeAsString())
+		os.Exit(1)
 	}
 
 	token = ts.consume()
-	node.status, _ = token.(*TokenLiteral)
+	node.status, _ = cast[*TokenLiteral](token)
 
 	if ts.matchAt(0, tokComma) {
 		ts.consumeAssert(tokComma)
 		if !ts.matchAt(0, tokLiteral) {
-			errMsg := fmt.Sprintf("Expected a string but found %s\n", ts.currentTokenTypeAsString())
-			config := newLexerErroConfig(errMsg)
-			config.printAndExitLexerError(ts)
+			ts.PrintError("Expected a string but found %s\n", ts.currentTokenTypeAsString())
+			os.Exit(1)
 		}
 		token = ts.consume()
-		node.message = token.(*TokenLiteral)
+		node.message, _ = cast[*TokenLiteral](token)
 	}
-
-	ts.consumeAssert(tokSemicolon)
-
-	return &node
-}
-
-func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
-	var token Token
-	node := NodeIdentifier{state: nodeReassigned, nodeType: nodeIdentifier}
-
-	token = ts.consumeAssert(tokIdentifier)
-	node.identifier = token.(*TokenIdentifier)
-
-	ts.consumeAssert(tokAssignment)
-
-	if !ts.matchAt(0, tokLiteral) {
-		errMsg := fmt.Sprintf("Expected a number while reassigning but found %s\n", ts.currentTokenTypeAsString())
-		config := newLexerErroConfig(errMsg)
-		config.printAndExitLexerError(ts)
-	}
-	value := ts.consume()
-	node.value = value.(*TokenLiteral)
-	node.varType = nodeInfer(tokInferType)
 
 	ts.consumeAssert(tokSemicolon)
 
@@ -412,159 +387,78 @@ func lexChaosReassignment(ts *TokenizerState) *NodeIdentifier {
 func lexChaosDef(ts *TokenizerState) *NodeIdentifier {
 	var token Token
 	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
-	if ts.currentTokenType() == tokGlobal {
-		// TODO: Handle differently the global variables depending on scope
-		ts.consumeAssert(tokGlobal)
-	}
+
 	ts.consumeAssert(tokDef)
 
 	if !ts.matchAt(0, tokIdentifier) {
-		// TODO: Improve error handling
-		errMsg := fmt.Sprintf("Expected an identifier but found %s\n", ts.currentTokenTypeAsString())
-		config := newLexerErroConfig(errMsg)
-		config.newExample("def something U64")
-		config.newExample("def something U64 = 1")
-		config.printAndExitLexerError(ts)
+		ts.PrintError("Expected an identifier but found %s.\n", ts.currentTokenTypeAsString())
+		os.Exit(1)
 	}
-
 	token = ts.consume()
 	node.identifier = castAssert[*TokenIdentifier](token)
 
-	if ts.currentTokenType() == tokInferAssign {
-		// TODO: Handle identifier type inference.
-		// For now it only works for literals
-		ts.consumeAssert(tokInferAssign)
-		if _, ok := cast[*TokenIdentifier](ts.current()); ok {
-			panic("Type inference for token identifier is not supported yet")
-		} else {
-			token := castAssert[*TokenLiteral](ts.current())
-			node.varType = nodeInfer(token.tokKind)
-		}
-	} else if ts.currentTokenType() == tokColon {
-		ts.consumeAssert(tokColon)
+	if ts.currentTokenType() == tokAs {
 
-		if !ts.matchAt(0, tokVarType, tokAssignment) {
-			// TODO: Improve error handling
-			errMsg := fmt.Sprintf("Expected a type or assignment but found %s\n", ts.currentTokenTypeAsString())
-			config := newLexerErroConfig(errMsg)
-			config.newExample("def something U64")
-			config.newExample("def something U64 = 1")
-			config.printAndExitLexerError(ts)
-		}
+		ts.consumeAssert(tokAs)
 
-		// TODO: Fix case where we only have the identifier, but no type or assignment.
-		// This behavior is not allowed. It should be either infer type by assignment or
-		// identifier uninitialized with a type.
+		if !ts.matchAt(0, tokVarType) {
+			ts.PrintError("Expected a type or assignment but found %s.\n", ts.currentTokenTypeAsString())
+			os.Exit(1)
+		}
 		token = ts.consumeAssert(tokVarType)
 		node.varType = castAssert[*TokenVarType](token)
+	} else {
+		node.varType = nodeInfer(kindNone)
+	}
 
-		if ts.matchAt(0, tokAssignment) {
-			ts.consumeAssert(tokAssignment)
-			if !ts.matchAt(0, tokLiteral, tokIdentifier) {
-				errMsg := fmt.Sprintf("Expected a string, or number but found %s\n", ts.currentTokenTypeAsString())
-				config := newLexerErroConfig(errMsg)
-				config.printAndExitLexerError(ts)
-			}
+	if ts.matchAt(0, tokAssignment) {
+
+		ts.consumeAssert(tokAssignment)
+
+		node.state = nodeInitialized
+		if ts.matchAt(0, tokLiteral) {
+			token = ts.consume()
+			node.value = castAssert[*TokenLiteral](token)
+		} else if ts.matchAt(0, tokIdentifier) {
+			token = ts.consume()
+			node.value = castAssert[*TokenIdentifier](token)
 		}
-	}
-
-	node.state = nodeInitialized
-	if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokSemicolon) {
-		token = ts.consume()
-		node.value = castAssert[*TokenLiteral](token)
-	} else if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokSemicolon) {
-		token = ts.consume()
-		node.value = castAssert[*TokenIdentifier](token)
-	}
-
-	if ts.matchAt(0, tokLiteral) && ts.matchAt(1, tokEquals, tokGreaterThan, tokLessThan, tokPlus, tokMinus) {
-		binOp := NodeBinOp{nodeType: nodeBinOp, state: nodeInitialized}
-		token = ts.consumeAssert(tokLiteral)
-		binOp.lhs = castAssert[*TokenLiteral](token)
-
-		token = ts.consume()
-		binOp.operation = castAssert[*TokenOperator](token)
-
-		token = ts.consumeAssert(tokLiteral)
-		binOp.rhs = castAssert[*TokenLiteral](token)
-
-		node.value = &binOp
 	}
 
 	ts.consumeAssert(tokSemicolon)
-	return &node
-}
 
-func lexProcCall(ts *TokenizerState) *NodeProcCall {
-	var token Token
-	node := NodeProcCall{nodeType: nodeProcCall, state: nodeInitialized}
-	ts.consumeAssert(tokRun)
-	if !ts.matchAt(0, tokIdentifier) {
-		errMsg := fmt.Sprintf("Expected proc name a but found %s\n", ts.currentTokenTypeAsString())
-		config := newLexerErroConfig(errMsg)
-		config.printAndExitLexerError(ts)
+	if node.varType.tokType == tokInferType && node.state == nodeUninitialized {
+		ts.PrintError("Expected uninitialized variable or assignment for '%s'.\n", node.identifier.symbol)
+		os.Exit(1)
 	}
 
-	token = ts.consume()
-	node.identifier = castAssert[*TokenIdentifier](token)
-
-	if !ts.matchAt(0, tokWith) {
-		errMsg := fmt.Sprintf("Expected 'with' but found %s\n", ts.currentTokenTypeAsString())
-		config := newLexerErroConfig(errMsg)
-		config.printAndExitLexerError(ts)
-	}
-
-	token = ts.consumeAssert(tokWith)
-
-	for ts.currentTokenType() != tokSemicolon {
-		n := NodeIdentifier{
-			nodeType:   nodeIdentifier,
-			state:      nodeInitialized,
-			identifier: &TokenIdentifier{},
-			varType:    &TokenVarType{},
-		}
-
-		if !ts.matchAt(0, tokLiteral) {
-			errMsg := fmt.Sprintf("Expected a literal as argument to proc but found %s\n", ts.currentTokenTypeAsString())
-			config := newLexerErroConfig(errMsg)
-			config.printAndExitLexerError(ts)
-		}
-		n.value = castAssert[*TokenLiteral](ts.consume())
-
-		if ts.matchAt(0, tokComma) {
-			ts.consume()
-		}
-		node.args = append(node.args, n)
-	}
-	ts.consumeAssert(tokSemicolon)
-
+	ts.allocateVariable(node.identifier.symbol)
 	return &node
 }
 
 func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 	var token Token
 	node := NodeProcDef{nodeType: nodeProc, state: nodeInitialized}
+
 	ts.consumeAssert(tokProc)
 
 	if !ts.matchAt(0, tokIdentifier) {
-		errMsg := fmt.Sprintf("Expected an identifier to name a proc but found %s\n", ts.currentTokenTypeAsString())
-		config := newLexerErroConfig(errMsg)
-		config.printAndExitLexerError(ts)
+		ts.PrintError("Expected an identifier to name a proc but found '%s'\n", ts.currentTokenTypeAsString())
+		os.Exit(1)
 	}
 	token = ts.consume()
 	node.identifier = castAssert[*TokenIdentifier](token)
 
 	if ts.matchAt(0, tokExpects) {
 		ts.consumeAssert(tokExpects)
-		for ts.current().getTokenType() != tokReturns {
-			n := NodeIdentifier{nodeType: nodeIdentifier}
+		for ts.currentTokenType() != tokReturns {
+			nIdent := NodeIdentifier{nodeType: nodeIdentifier}
 			if !ts.matchAt(0, tokIdentifier) {
-				errMsg := fmt.Sprintf("Expected an identifier as argument to proc but found %s\n", ts.currentTokenTypeAsString())
-				config := newLexerErroConfig(errMsg)
-				config.printAndExitLexerError(ts)
+				ts.PrintError("Expected identifier for 'proc %s' but found '%s'\n", node.identifier.symbol, ts.currentTokenTypeAsString())
+				os.Exit(1)
 			}
 			token = ts.consume()
-			n.identifier = castAssert[*TokenIdentifier](token)
+			nIdent.identifier = castAssert[*TokenIdentifier](token)
 
 			ts.consumeAssert(tokAs)
 
@@ -574,23 +468,27 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 				isVariadic = true
 			}
 
-			if !ts.matchAt(0, tokVarType) {
-				errMsg := fmt.Sprintf("Expected a var type as part of argument to proc but found %s\n", ts.currentTokenTypeAsString())
-				config := newLexerErroConfig(errMsg)
-				config.printAndExitLexerError(ts)
-			}
-			token = ts.consume()
-			n.varType = castAssert[*TokenVarType](token)
-			n.varType.variadic = isVariadic
 			// TODO: For now we don't allow default values, so all the identifiers should be
 			// uninitialized.
-			n.state = nodeUninitialized
+			if !ts.matchAt(0, tokVarType) {
+				ts.PrintError("Expected identifier type for 'proc %s' but found '%s'\n", node.identifier.symbol, ts.currentTokenTypeAsString())
+				os.Exit(1)
+			}
+			token = ts.consume()
+			nIdent.varType = castAssert[*TokenVarType](token)
+			nIdent.varType.variadic = isVariadic
+			nIdent.state = nodeUninitialized
 
 			if ts.matchAt(0, tokComma) {
 				ts.consume()
 			}
 
-			node.args = append(node.args, n)
+			node.args = append(node.args, nIdent)
+		}
+
+		if len(node.args) == 0 {
+			ts.PrintError("Arguments are expected for %s, but no arguments were provided.\n", node.identifier.symbol)
+			os.Exit(1)
 		}
 	}
 
@@ -602,7 +500,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			// for return types
 			n := NodeIdentifier{nodeType: nodeIdentifier}
 			if !ts.matchAt(0, tokVarType) {
-				errMsg := fmt.Sprintf("Expected a return type as part of proc but found %s\n", ts.currentTokenTypeAsString())
+				errMsg := fmt.Sprintf("Expected a return type as part of proc but found %s.\n", ts.currentTokenTypeAsString())
 				config := newLexerErroConfig(errMsg)
 				config.printAndExitLexerError(ts)
 			}
@@ -612,6 +510,11 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 			n.state = nodeUninitialized
 
 			node.rets = append(node.rets, n)
+		}
+
+		if len(node.rets) == 0 {
+			ts.PrintError("Returns are expected for %s, but no return arguments were provided.\n", node.identifier.symbol)
+			os.Exit(1)
 		}
 	}
 
@@ -626,26 +529,13 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 
 	ts.consumeAssert(tokEndProc)
 
+	ts.allocateProc(node.identifier.symbol)
 	return &node, true
 }
 
 func lexChaosStatement(ts *TokenizerState) (Node, bool) {
-	if ts.matchAt(0, tokRun) {
-		node := lexProcCall(ts)
-		if node == nil {
-			return nil, false
-		}
-		return node, true
-	}
 	if ts.matchAt(0, tokDef, tokGlobal) {
 		node := lexChaosDef(ts)
-		if node == nil {
-			return nil, false
-		}
-		return node, true
-	}
-	if ts.matchAt(0, tokIdentifier) && ts.matchAt(1, tokAssignment) {
-		node := lexChaosReassignment(ts)
 		if node == nil {
 			return nil, false
 		}
@@ -661,13 +551,9 @@ func lexChaosStatement(ts *TokenizerState) (Node, bool) {
 	return nil, false
 }
 
-func lexerChaos(ts *TokenizerState) *LexerState {
+func lexerChaos(ts *TokenizerState) []Node {
 	assert(ts.cursor == 0, "Cursor is not 0")
-	lexerState := LexerState{
-		data:   []Node{},
-		count:  0,
-		cursor: 0,
-	}
+	nodes := []Node{}
 
 	for ts.cursor < ts.count {
 		if ts.matchAt(0, tokEndOfFile) {
@@ -676,7 +562,7 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 
 		if ts.matchAt(0, tokProc) {
 			if node, ok := lexProcDefinition(ts); ok {
-				lexerState.data = append(lexerState.data, node)
+				nodes = append(nodes, node)
 				continue
 			}
 			panic("Failed to lex proc definition")
@@ -685,7 +571,7 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 		// TODO: handle def and global def separetely
 		if ts.matchAt(0, tokGlobal, tokDef, tokExit, tokIdentifier) {
 			if node, ok := lexChaosStatement(ts); ok {
-				lexerState.data = append(lexerState.data, node)
+				nodes = append(nodes, node)
 				continue
 			}
 			panic("Failed to lex chaos statement")
@@ -693,6 +579,5 @@ func lexerChaos(ts *TokenizerState) *LexerState {
 
 		panic("Unrecheable")
 	}
-	lexerState.count = len(lexerState.data)
-	return &lexerState
+	return nodes
 }

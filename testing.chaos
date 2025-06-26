@@ -3,9 +3,12 @@
  *  /** Nested comment **/
 **/
 
+proc another-operation returns Void executes
+    exit 1;
+end-proc
+
 proc main returns Void executes
-    def something: String = «aiojdas»;
-    def another: F64 = 10.0;
+    def something = 10;
     exit 69;
 end-proc
 
