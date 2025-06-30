@@ -40,16 +40,20 @@ const (
 func (n NodeType) asString() string {
 	if n == nodeIdentifier {
 		return "NodeIdentifier"
-	} else if n == nodeExit {
+	}
+	if n == nodeExit {
 		return "NodeExit"
-	} else if n == nodeProc {
+	}
+	if n == nodeProc {
 		return "NodeProc"
-	} else if n == nodeBinOp {
+	}
+	if n == nodeBinOp {
 		return "NodeBinOp"
-	} else if n == nodeProcCall {
+	}
+	if n == nodeProcCall {
 		return "NodeProcCall"
 	}
-	panic(fmt.Sprintf("Unexpected NodeType '%d'", n))
+	return "UnknownNode"
 }
 
 // In this context, this is basically either a Node or a Token, depending on
@@ -137,7 +141,7 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	} else if n.state == nodeReassigned {
 		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]", pad))
 	} else {
-		panic(fmt.Sprintf("Unknown NodeState found: '%d'", n.state))
+		tmp.WriteString(fmt.Sprintf("%sstate [Unknown]"))
 	}
 	tmp.WriteByte('\n')
 
@@ -158,21 +162,23 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 
 	if value, ok := cast[*TokenLiteral](n.value); ok {
 		if val, ok := cast[string](value.value); ok {
-			tmp.WriteString(fmt.Sprintf("%svalue ['%s']", pad, val))
+			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value ['%s']", pad, val))
 		} else if val, ok := cast[int](value.value); ok {
-			tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, val))
+			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [%d]", pad, val))
 		} else if val, ok := cast[bool](value.value); ok {
-			tmp.WriteString(fmt.Sprintf("%svalue [%t]", pad, val))
+			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [%t]", pad, val))
+		} else if val, ok := cast[float64](value.value); ok {
+			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [%.02f]", pad, val))
 		} else {
-			panic(fmt.Sprintf("Unsuported type %T in asBuffer for NodeIdentifier", val))
+			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [Unsuported type %T]", pad, val))
 		}
 	} else if value, ok := cast[*TokenIdentifier](n.value); ok {
-		tmp.WriteString(fmt.Sprintf("%svalue [%s]", pad, value.symbol))
+		tmp.WriteString(fmt.Sprintf("%sTokenIdentifier value [%s]", pad, value.symbol))
 	} else if value, ok := cast[*NodeBinOp](n.value); ok {
 		buf := value.asBuffer(padSize)
 		tmp.Write(buf.Bytes())
 	} else {
-		panic(fmt.Sprintf("Unsuported type %T in asBuffer for NodeIdentifier", value))
+		tmp.WriteString(fmt.Sprintf("%sUnknownToken value [Unsuported type %T]", pad, value))
 	}
 	tmp.WriteByte('\n')
 
