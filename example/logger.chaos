@@ -14,12 +14,10 @@ type Log struct
     output as Array using Stream = new with STD-OUT end-new;
     include-os-name as Bool = false;
     log-level as EnumArray? using U64 = undefined;
-
-    proc log expects log-level as Logger-Level, logger as (Build using Self), message as ...String returns Void;
 end-type
 
-type Log
-    builds Logger
+type Logger
+    builds Log
 struct
     date-format = default;
     output = default;
@@ -28,8 +26,7 @@ struct
 end-type
 
 proc log
-    builds Logger
-    expects log-level as Logger-Level, l as Log, message as ...String
+    expects l as Logger, log-level as Logger-Level, message as String
     returns Void
 executes
     // Think how to improve this kind of potential otimization,
@@ -38,8 +35,8 @@ executes
     #if #[try log-level < l.log-level] #executes
         #optimize-out;
     #end-if
-end-proc
+end-proc;
 
 #module logger;
-#let io := #import «core::fmt::io.chaos»;
+#let io = #import «core::fmt::io.chaos»;
 

@@ -1,17 +1,16 @@
 #let MAX-LEN := 4096;
 
 proc length
-    generic T
     expects str as *String, max-length as U64? = MAX-LEN
 executes
     def init-pos as *String = str;
-    while str != «\0» increment str executes
-        if max-length != undefined executes
+    while str != «\0» evaluate str++ executes
+        #if max-length != undefined #executes
             if not max-length return max-length-hit!;
             max-length--;
-        end-if
+        #end-if
     end-while
-    return (str as T) - (init-pos as T);
+    return str - init-pos;
 end-proc
 
 proc copy
@@ -21,10 +20,10 @@ executes
     def tmp as *String;
     while str != «\0» executes
         tmp++ = str++;
-        if max-length != undefined executes
+        #if max-length != undefined #executes
             if not max-length return max-length-hit!;
             max-length--;
-        end-if
+        #end-if
     end-while
     return tmp;
 end-proc

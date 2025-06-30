@@ -9,14 +9,7 @@ type AnotherEnum enum
     somethingInHere: #unique = iota;
     anotherThingInHere;
     yetAnotherThingIsHere;
-end type
-
-proc some-function
-    expects input1 as &String
-    returns Void!
-executes
-
-end-proc
+end-type
 
 type Json-Response
     generic T
@@ -68,7 +61,23 @@ proc testing-while-loops executes
     end-while
 end-proc
 
-#scope(«file»);
+proc trying-things-out returns Void! executes
+    if def result =
+        run some-operation with «»
+        |> run another-operation with 100
+        |> run yet-another-operation with false
+        catch-into err
+    executes
+        if err == generic-error! executes
+            run logger with ERROR, «Failed at some-operation because of {err}»;
+        else executes
+            run logger with ERROR, «Unknown error: {err}»;
+        end-if
+        return err;
+    end-if
+end-proc
+
+#[scope=«file»]
 
 #import «core::allocator.chaos»;
 #import «core::logger.chaos»;

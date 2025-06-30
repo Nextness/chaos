@@ -1,12 +1,5 @@
 // Copyright
 
-proc getUserByUsername :: username: String, session: Session -> Async[User]! {
-    if username.len >= 4096 return largeText!;
-    def getUserQuery :: «SELECT username FROM user_database WHERE username={username}»;
-    def user :: performQuery(session, getUserQuery);
-    return user;
-}
-
 proc get-user-by-username
     expects username as String, session as Session
     returns (Async using User)!

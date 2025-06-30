@@ -1,0 +1,312 @@
+def Symbol = distinct String;
+
+type TokenType enum
+    TOK-INFER-TYPE as I64 = -1;
+    TOK-GLOBAL;
+    TOK-DEF;
+    TOK-ASSIGNMENT;
+    TOK-PLUS;
+    TOK-MINUS;
+    TOK-VARTYPE;
+    TOK-IDENTIFIER;
+    TOK-NEWLINE;
+    TOK-END-OF-FILE;
+    TOK-EXIT;
+    TOK-COMMA;
+    TOK-LESS-THAN;
+    TOK-GREATER-THAN;
+    TOK-EQUALS;
+    TOK-EXECUTES;
+    TOK-IF;
+    TOK-ELIF;
+    TOK-ELSE;
+    TOK-PROC;
+    TOK-END-PROC;
+    TOK-RETURNS;
+    TOK-EXPECTS;
+    TOK-OPEN-PAREN;
+    TOK-CLOSE-PAREN;
+    TOK-ELLIPSIS;
+    TOK-SEMICOLON;
+    TOK-COLON;
+    TOK-RUN;
+    TOK-WITH;
+    TOK-LITERAL;
+    TOK-INFER-ASSIGN;
+    TOK-AS;
+end-type
+
+#[overload]
+proc as-string
+    expects token as Token-Type
+    returns String
+executes
+    if token ==
+    case .TOKEN-INFER-TYPE return «TOK-INFER-TYPE»;
+    case .TOK-GLOBAL return «TOK-GLOBAL»;
+    case .TOK-DEF return «TOK-DEF»;
+    case .TOK-ASSIGNMENT return «TOK-ASSIGNMENT»;
+    case .TOK-PLUS return «TOK-PLUS»;
+    case .TOK-MINUS return «TOK-MINUS»;
+    case .TOK-VARTYPE return «TOK-VARTYPE»;
+    case .TOK-IDENTIFIER return «TOK-IDENTIFIER»;
+    case .TOK-NEWLINE return «TOK-NEWLINE»;
+    case .TOK-END-OF-FILE return «TOK-END-OF-FILE»;
+    case .TOK-EXIT return «TOK-EXIT»;
+    case .TOK-COMMA return «TOK-COMMA»;
+    case .TOK-LESS-THAN return «TOK-LESS-THAN»;
+    case .TOK-GREATER-THAN return «TOK-GREATER-THAN»;
+    case .TOK-EQUALS return «TOK-EQUALS»;
+    case .TOK-EXECUTES return «TOK-EXECUTES»;
+    case .TOK-IF return «TOK-IF»;
+    case .TOK-ELIF return «TOK-ELIF»;
+    case .TOK-ELSE return «TOK-ELSE»;
+    case .TOK-PROC return «TOK-PROC»;
+    case .TOK-END-PROC return «TOK-END-PROC»;
+    case .TOK-RETURNS return «TOK-RETURNS»;
+    case .TOK-EXPECTS return «TOK-EXPECTS»;
+    case .TOK-OPEN-PAREN return «TOK-OPEN-PAREN»;
+    case .TOK-CLOSE-PAREN return «TOK-CLOSE-PAREN»;
+    case .TOK-ELLIPSIS return «TOK-ELLIPSIS»;
+    case .TOK-SEMICOLON return «TOK-SEMICOLON»;
+    case .TOK-COLON return «TOK-COLON»;
+    case .TOK-RUN return «TOK-RUN»;
+    case .TOK-WITH return «TOK-WITH»;
+    case .TOK-LITERAL return «TOK-LITERAL»;
+    case .TOK-INFER-ASSIGN return «TOK-INFER-ASSIGN»;
+    case .TOK-AS return «TOK-AS»;
+    end-if
+    exit 1, «TOK-UNKNOWN»;
+end-proc
+
+scaffold
+type Token struct
+    token-type as Token-Type;
+    position as Position;
+end-type
+
+type Position struct
+    line, column as I64;
+end-type
+
+type Token-Keyword builds Token struct
+    token-type as Token-Type;
+    position as Position;
+end-type
+
+type Token-Var-Type builds Token struct
+    symbol as Symbol;
+    variadic as Bool;
+    token-type as Token-Type;
+    token-kind as Token-Kind;
+    position as Position;
+end-type
+
+#[overload]
+proc as-string
+    expects token as Token
+    returns String
+executes
+    def preffix as String = «{t.position.line:03}:{t.position.column:03}»;
+    return «{preffix} [{run as-string with token.token-type}]»;
+end-proc
+
+
+#[overload]
+proc as-string
+    expects token as Token-Literal
+    returns String
+executes
+    def preffix as String = «{t.position.line:03}:{t.position.column:03}»;
+
+    if value = token.value as?
+    case String executes
+        if (value != #0) return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
+        return «{preffix} [{run as-string with token.toke-type}]»;
+    case I64 executes
+        return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
+    case Bool executes
+        return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
+    case F64 executes
+        return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
+    end-if
+
+    exit 1, «Unexpected token literal found: {token.value}»;
+end-proc
+
+type Content-State struct
+    data as String;
+    count, cursor, line, column as I64;
+end-type
+
+#[overload]
+proc match-at
+    expects content-state as *Content-State, offset as I64, string as String
+    returns Bool!
+executes
+    if content-state.cursor + offset > content-state.count executes
+        return out-of-bounds!;
+    end-if
+
+    def length as I64 = run length with string;
+    def result as Bool = true;
+
+    while i in range length executes
+        result = result && (run peak with content-state, i + offset) == string at? i
+    end-while
+
+    return result;
+end-proc
+
+#[overload]
+proc match-at
+    expects content-state as *Content-State, offset as I64, byte as Byte
+    returns Bool!
+executes
+    if content-state.cursor + offset > content-state.count executes
+        return out-of-bounds!;
+    end-if
+    return (run peek-byte with content-state) == byte;
+end-proc
+
+proc tokenize-chaos
+    expects file-name as String, file-content as *bytes::Buffer
+    returns dyn Array using Token
+executes
+    def cs as *Content-State = new with
+        data = run? string with file-content,
+        count = run? length with file-content,
+        cursor = 0,
+        line = 1,
+        column = 1,
+    end-new;
+
+    def tokens = new dyn Array using Token;
+    while content-state.cursor < content-state.count executes
+        // Singleline comment
+        if run? match-at with content-state, 0, «//» executes
+            while not run match-at with content-state, 0, "\0" executes
+                content-state.cursor++;
+                content-state.column++;
+            end-while
+            continue;
+        end-if
+
+        // Multiline comment
+        if run? match-at with content-state, 0, «/**» executes
+            def nested-comment as I64 = 0;
+            content-state.cursor += 3;
+            while true executes
+                if run match-at with content-state, 0, "\n" executes
+                    content-state.line++;
+                    content-state.cursor++;
+                    content-state.column = 0;
+                    continue;
+                end-if
+                if (run match-at with content-state, 0, «**/») and nested-comment > 0 executes
+                    nested-comment--;
+                    content-state.cursor += 3;
+                    content-state.column += 3;
+                    continue;
+                end-if
+                if run? match-at with content-state, 0, «**/» executes
+                    content-state.cursor += 3;
+                    content-state.column += 3;
+                    break;
+                end-if
+                content-state.cursor++;
+                if run? match-at with content-state, 0, «/**» executes
+                    nested-comment++;
+                    content-state.cursor += 3;
+                    content-state.column += 3;
+                    continue;
+                end-if
+            end-while
+            continue;
+        end-if
+
+    // Newline
+    if run? match-at with content-state, 0, «\0» executes
+        content-state.line++;
+        content-state.cursor++;
+        content-state.column = 0;
+        continue;
+    end-if
+
+    if run? unicode::is-space with (run? current with content-state) executes
+        content-state.column++;
+        content-state.cursor++;
+        continue;
+    end-if
+
+    // Strings
+    if run? match-at with content-state, 0, «\«» executes
+        def tmp = new bytes::Buffer;
+        defer run reset with tmp;
+        content-state.cursor += 2;
+
+        while run? match-at with content-state, 0, «\»» executes
+            run? write-string with tmp, (run? current with content-state);
+            content-state++;
+        end-while
+
+        def token = new Token-Literal with
+            value = run? string with tmp,
+            token-type = .TOKEN-LITERAL,
+            token-kind = .KIND-STRING,
+            position = new Position with
+                line = content-state.line,
+                column = content-state.column,
+            end-new,
+        end-new;
+
+        content-state.cursor += 2;
+        run? append with tokens, token;
+        continue;
+    end-if
+
+    if run? match at content-state, 0, «==» executes
+        def token = new Token-Operator with
+            token-type = .TOKEN-EQUALS,
+            position = new Position with
+                line = content-state.line,
+                column = content-state.column,
+            end-new;
+            content-state.column += 2;
+            content-state.cursor += 2;
+            run? append with tokens, token;
+            continue;
+        end-new;
+    end-if
+
+    if run? match at content-state, 0, «...» executes
+        def token = new Token-Operator with
+            token-type = .TOKEN-ELLIPSIS,
+            position = new Position with
+                line = content-state.line,
+                column = content-state.column,
+            end-new;
+            content-state.column += 3;
+            content-state.cursor += 3;
+            run? append with tokens, token;
+            continue;
+        end-new;
+    end-if
+
+    if run? match at content-state, 0, «=» executes
+        def token = new Token-Operator with
+            token-type = .TOKEN-ASSIGNMENT,
+            position = new Position with
+                line = content-state.line,
+                column = content-state.column,
+            end-new;
+            content-state.column += 3;
+            content-state.cursor += 3;
+            run? append with tokens, token;
+            continue;
+        end-new;
+    end-if
+
+    end-while
+end-proc
+
