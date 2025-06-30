@@ -463,8 +463,15 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 		if cs.matchStrAt(0, "//") {
 			for !cs.matchByteAt(0, '\n') {
 				cs.cursor++
-				cs.column++
 			}
+			continue
+		}
+
+		// Newline
+		if cs.matchByteAt(0, '\n') {
+			cs.line++
+			cs.cursor++
+			cs.column = 0
 			continue
 		}
 
@@ -501,14 +508,6 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		// Newline
-		if cs.matchByteAt(0, '\n') {
-			cs.line++
-			cs.cursor++
-			cs.column = 0
-			continue
-		}
-
 		// Empty characters
 		if unicode.IsSpace(rune(cs.currentByte())) {
 			cs.column++
@@ -523,6 +522,11 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			defer tmp.Reset()
 			cs.cursor += 2
 
+			position := Position{
+				line:   cs.line,
+				column: cs.column,
+			}
+
 			// TODO: Handle nested '«»'
 			// TODO: Handle multable strings «hello {some-printable-variable}»
 			for !cs.matchStrAt(0, "»") {
@@ -531,13 +535,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			}
 
 			token := &TokenLiteral{
-				value:   tmp.String(),
-				tokType: tokLiteral,
-				tokKind: kindString,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
+				value:    tmp.String(),
+				tokType:  tokLiteral,
+				tokKind:  kindString,
+				position: position,
 			}
 
 			cs.cursor += 2
@@ -573,7 +574,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, '=') {
+		if cs.matchStrAt(0, "=") {
 			token := &TokenOperator{
 				tokType: tokAssignment,
 				position: Position{
@@ -587,7 +588,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, '+') {
+		if cs.matchStrAt(0, "+") {
 			token := &TokenOperator{
 				tokType: tokPlus,
 				position: Position{
@@ -601,7 +602,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, '-') {
+		if cs.matchStrAt(0, "-") {
 			token := &TokenOperator{
 				tokType: tokMinus,
 				position: Position{
@@ -615,7 +616,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, ',') {
+		if cs.matchStrAt(0, ",") {
 			token := &TokenOperator{
 				tokType: tokComma,
 				position: Position{
@@ -629,7 +630,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, '<') {
+		if cs.matchStrAt(0, "<") {
 			token := &TokenOperator{
 				tokType: tokLessThan,
 				position: Position{
@@ -643,7 +644,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, '>') {
+		if cs.matchStrAt(0, ">") {
 			token := &TokenOperator{
 				tokType: tokGreaterThan,
 				position: Position{
@@ -657,7 +658,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, ';') {
+		if cs.matchStrAt(0, ";") {
 			token := &TokenOperator{
 				tokType: tokSemicolon,
 				position: Position{
@@ -671,7 +672,7 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.matchByteAt(0, ':') {
+		if cs.matchStrAt(0, ":") {
 			token := &TokenOperator{
 				tokType: tokColon,
 				position: Position{
@@ -718,6 +719,11 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
+			position := Position{
+				line:   cs.line,
+				column: cs.column,
+			}
+
 			isFloat := false
 			for isNum(cs.currentByte()) || cs.matchByteAt(0, '.') || cs.matchByteAt(0, '_') {
 				if cs.matchByteAt(0, '.') {
@@ -736,13 +742,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 				assert(err == nil, "Failed to convert string to float")
 
 				token := &TokenLiteral{
-					value:   val,
-					tokType: tokLiteral,
-					tokKind: kindF64,
-					position: Position{
-						line:   cs.line,
-						column: cs.column,
-					},
+					value:    val,
+					tokType:  tokLiteral,
+					tokKind:  kindF64,
+					position: position,
 				}
 				tokens = append(tokens, token)
 				continue
@@ -751,13 +754,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 				assert(err == nil, "Failed to convert string to number")
 
 				token := &TokenLiteral{
-					value:   val,
-					tokType: tokLiteral,
-					tokKind: kindI64,
-					position: Position{
-						line:   cs.line,
-						column: cs.column,
-					},
+					value:    val,
+					tokType:  tokLiteral,
+					tokKind:  kindI64,
+					position: position,
 				}
 				tokens = append(tokens, token)
 				continue
@@ -770,7 +770,13 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
+			position := Position{
+				line:   cs.line,
+				column: cs.column,
+			}
+
 			if isUppercase(cs.currentByte()) {
+
 				for isAlphanum(cs.currentByte()) || cs.matchByteAt(0, '-') {
 					tmp.WriteByte(cs.currentByte())
 					cs.column++
@@ -781,13 +787,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Any-Error" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindAnyError,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindAnyError,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -795,13 +798,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Any-Type" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindAnyType,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindAnyType,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -809,13 +809,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "String" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindString,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindString,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -823,13 +820,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Char" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindChar,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindChar,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -837,13 +831,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Bool" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindBool,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindBool,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -851,13 +842,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "U8" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindU8,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindU8,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -865,13 +853,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "U16" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindU16,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindU16,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -879,13 +864,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "U32" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindU32,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindU32,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -893,13 +875,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "U64" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindU64,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindU64,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -907,13 +886,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "U128" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindU128,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindU128,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -921,13 +897,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "I8" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindI8,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindI8,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -935,13 +908,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "I16" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindI16,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindI16,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -949,13 +919,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "I32" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindI32,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindI32,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -963,13 +930,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "I64" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindI64,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindI64,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -977,13 +941,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "I128" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindI128,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindI128,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -991,13 +952,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "F16" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindF16,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindF16,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1005,13 +963,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "F32" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindF32,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindF32,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1019,13 +974,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "F64" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindF64,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindF64,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1033,13 +985,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "F128" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindF128,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindF128,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1047,13 +996,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "C64" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindC64,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindC64,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1061,13 +1007,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "C128" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindC128,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindC128,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1075,13 +1018,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Q128" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindQ128,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindQ128,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1089,13 +1029,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Q256" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindQ256,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindQ256,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1103,13 +1040,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Array" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindArray,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindArray,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1117,13 +1051,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Void" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindVoid,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindVoid,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1131,13 +1062,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if varString == "Map" {
 					token := &TokenVarType{
-						symbol:  Symbol(varString),
-						tokType: tokVarType,
-						tokKind: kindMap,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						symbol:   Symbol(varString),
+						tokType:  tokVarType,
+						tokKind:  kindMap,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1154,13 +1082,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 				// Keywords
 				if string == "true" {
 					token := &TokenLiteral{
-						value:   true,
-						tokType: tokLiteral,
-						tokKind: kindBool,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						value:    true,
+						tokType:  tokLiteral,
+						tokKind:  kindBool,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1168,13 +1093,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "false" {
 					token := &TokenLiteral{
-						value:   false,
-						tokType: tokLiteral,
-						tokKind: kindBool,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						value:    false,
+						tokType:  tokLiteral,
+						tokKind:  kindBool,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1182,11 +1104,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "global" {
 					token := &TokenKeyword{
-						tokType: tokGlobal,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokGlobal,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1194,11 +1113,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "def" {
 					token := &TokenKeyword{
-						tokType: tokDef,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokDef,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1206,11 +1122,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "exit" {
 					token := &TokenKeyword{
-						tokType: tokExit,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokExit,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1218,11 +1131,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "executes" {
 					token := &TokenKeyword{
-						tokType: tokExecutes,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokExecutes,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1230,11 +1140,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "if" {
 					token := &TokenKeyword{
-						tokType: tokIf,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokIf,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1242,11 +1149,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "elif" {
 					token := &TokenKeyword{
-						tokType: tokElif,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokElif,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1254,11 +1158,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "else" {
 					token := &TokenKeyword{
-						tokType: tokElse,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokElse,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1266,11 +1167,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "proc" {
 					token := &TokenKeyword{
-						tokType: tokProc,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokProc,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1278,11 +1176,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "end-proc" {
 					token := &TokenKeyword{
-						tokType: tokEndProc,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokEndProc,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1290,11 +1185,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "returns" {
 					token := &TokenKeyword{
-						tokType: tokReturns,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokReturns,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1302,11 +1194,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "expects" {
 					token := &TokenKeyword{
-						tokType: tokExpects,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokExpects,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1314,11 +1203,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "run" {
 					token := &TokenKeyword{
-						tokType: tokRun,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokRun,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1326,11 +1212,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "with" {
 					token := &TokenKeyword{
-						tokType: tokWith,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokWith,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1338,11 +1221,8 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				if string == "as" {
 					token := &TokenKeyword{
-						tokType: tokAs,
-						position: Position{
-							line:   cs.line,
-							column: cs.column,
-						},
+						tokType:  tokAs,
+						position: position,
 					}
 					tokens = append(tokens, token)
 					continue
@@ -1350,12 +1230,9 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 
 				// Identifiers
 				token := &TokenIdentifier{
-					symbol:  Symbol(string),
-					tokType: tokIdentifier,
-					position: Position{
-						line:   cs.line,
-						column: cs.column,
-					},
+					symbol:   Symbol(string),
+					tokType:  tokIdentifier,
+					position: position,
 				}
 				tokens = append(tokens, token)
 				continue
