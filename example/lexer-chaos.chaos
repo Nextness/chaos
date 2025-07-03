@@ -152,7 +152,7 @@ executes
     def result as Bool = true;
 
     while i in range length executes
-        result = result && (run peak with content-state, i + offset) == string at? i
+        result = result and (run peak with content-state, i + offset) == string at? i
     end-while
 
     return result;

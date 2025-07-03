@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 )
@@ -11,6 +12,32 @@ const PADNUMBER int = 2
 func nodeInfer(tokKind TokenKind) *TokenVarType {
 	result := &TokenVarType{symbol: "infer", tokType: tokInferType, tokKind: tokKind}
 	return result
+}
+
+type Program struct {
+	node                     []Node
+	globalAllocatedVariables []Symbol
+	globalAllocatedProcs     []Symbol
+}
+
+func (p *Program) allocateVariable(symbol Symbol) error {
+	for _, s := range p.globalAllocatedVariables {
+		if s == symbol {
+			return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
+		}
+	}
+	p.globalAllocatedVariables = append(p.globalAllocatedVariables, symbol)
+	return nil
+}
+
+func (p *Program) allocateProc(symbol Symbol) error {
+	for _, s := range p.globalAllocatedProcs {
+		if s == symbol {
+			return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
+		}
+	}
+	p.globalAllocatedProcs = append(p.globalAllocatedProcs, symbol)
+	return nil
 }
 
 type LexerState struct {
@@ -57,7 +84,7 @@ func (n NodeType) asString() string {
 }
 
 // In this context, this is basically either a Node or a Token, depending on
-// what is on the rhs. If it is a literal for instace, it is a *TokenLiteral.
+// what is on the rhs. If it is a literal for instance, it is a *TokenLiteral.
 // If it is a binary operation of function call, then it should be a *NodeBinOp.
 type PtrAny any
 
@@ -81,27 +108,23 @@ func (n *NodeExit) asBuffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%s%s\n", pad, n.nodeType.asString()))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
-	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
 	if n.message != nil {
 		message := n.message.value.(string)
-		tmp.WriteString(fmt.Sprintf("%smessage ['%s']", pad, message))
-		tmp.WriteByte('\n')
+		tmp.WriteString(fmt.Sprintf("%smessage ['%s']\n", pad, message))
 	}
 	if t, ok := cast[*TokenLiteral](n.status); ok {
 		tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, t.value.(int)))
 	}
-	tmp.WriteByte('\n')
 	return tmp
 }
 
@@ -125,39 +148,33 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%s%s\n", pad, n.nodeType.asString()))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
-	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]\n", pad, n.identifier.symbol))
 
 	if n.state == nodeInitialized {
-		tmp.WriteString(fmt.Sprintf("%sstate [initialized]", pad))
+		tmp.WriteString(fmt.Sprintf("%sstate [initialized]\n", pad))
 	} else if n.state == nodeUninitialized {
-		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]", pad))
+		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]\n", pad))
 	} else if n.state == nodeReassigned {
-		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]", pad))
+		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]\n", pad))
 	} else {
-		tmp.WriteString(fmt.Sprintf("%sstate [Unknown]"))
+		tmp.WriteString(fmt.Sprintf("%sstate [Unknown]\n"))
 	}
-	tmp.WriteByte('\n')
 
-	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
 	if any(n.value) == nil {
 		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
-		tmp.WriteByte('\n')
 		return tmp
 	} else {
-		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.tokKind.asString()))
-		tmp.WriteByte('\n')
+		tmp.WriteString(fmt.Sprintf("%stype [%s]\n", pad, n.varType.tokKind.asString()))
 	}
 
 	if value, ok := cast[*TokenLiteral](n.value); ok {
@@ -180,7 +197,6 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	} else {
 		tmp.WriteString(fmt.Sprintf("%sUnknownToken value [Unsuported type %T]", pad, value))
 	}
-	tmp.WriteByte('\n')
 
 	return tmp
 }
@@ -206,23 +222,19 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%s%s\n", pad, n.nodeType.asString()))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
-	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]\n", pad, n.identifier.symbol))
 
-	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 
-	tmp.WriteString(fmt.Sprintf("%sinput", pad))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sinput\n", pad))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
@@ -235,8 +247,7 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 
 	padSize -= PADNUMBER
 	pad = makePad(padSize)
-	tmp.WriteString(fmt.Sprintf("%soutput", pad))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%soutput\n", pad))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
@@ -248,8 +259,7 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 
 	padSize -= PADNUMBER
 	pad = makePad(padSize)
-	tmp.WriteString(fmt.Sprintf("%sbody", pad))
-	tmp.WriteByte('\n')
+	tmp.WriteString(fmt.Sprintf("%sbody\n", pad))
 
 	padSize += PADNUMBER
 	pad = makePad(padSize)
@@ -362,7 +372,7 @@ var _ Node = &NodeProcDef{}
 var _ Node = &NodeProcCall{}
 var _ Node = &NodeBinOp{}
 
-func lexExit(ts *TokenizerState) *NodeExit {
+func lexExit(ts *TokenizerState, program *Program) bool {
 	var token Token
 	node := NodeExit{nodeType: nodeExit}
 
@@ -387,10 +397,11 @@ func lexExit(ts *TokenizerState) *NodeExit {
 
 	ts.consumeAssert(tokSemicolon)
 
-	return &node
+	program.node = append(program.node, &node)
+	return true
 }
 
-func lexChaosDef(ts *TokenizerState) *NodeIdentifier {
+func lexChaosDef(ts *TokenizerState, program *Program) bool {
 	var token Token
 	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
 
@@ -438,11 +449,16 @@ func lexChaosDef(ts *TokenizerState) *NodeIdentifier {
 		os.Exit(1)
 	}
 
-	ts.allocateVariable(node.identifier.symbol)
-	return &node
+	if err := program.allocateVariable(node.identifier.symbol); err != nil {
+		ts.PrintError("The variable `%s` already exists and cannot be defined twice.\n", node.identifier.symbol)
+		return false
+	}
+	program.node = append(program.node, &node)
+	return true
 }
 
-func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
+func lexProcDefinition(ts *TokenizerState, program *Program) bool {
+
 	var token Token
 	node := NodeProcDef{nodeType: nodeProc, state: nodeInitialized}
 
@@ -501,7 +517,7 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 	if ts.matchAt(0, tokReturns) {
 		ts.consumeAssert(tokReturns)
 		for ts.current().getTokenType() != tokExecutes {
-			// TODO: For now we only allow a single return type. In the future we should not only
+			// TO-DO: For now we only allow a single return type. In the future we should not only
 			// allow multiple return types, but also named return types, and default values
 			// for return types
 			n := NodeIdentifier{nodeType: nodeIdentifier}
@@ -526,40 +542,51 @@ func lexProcDefinition(ts *TokenizerState) (*NodeProcDef, bool) {
 
 	ts.consumeAssert(tokExecutes)
 	for !ts.matchAt(0, tokEndProc) {
-		n, ok := lexChaosStatement(ts)
-		if !ok {
-			return nil, false
+		if ok := lexChaosStatement(ts, program); !ok {
+			return false
 		}
-		node.statements = append(node.statements, n)
 	}
 
 	ts.consumeAssert(tokEndProc)
 
-	ts.allocateProc(node.identifier.symbol)
-	return &node, true
+	// TODO: This should take into account overloading and mangling, but I'm too lazy to do it now.
+	if err := program.allocateProc(node.identifier.symbol); err != nil {
+		ts.PrintError("The proc `%s` already exists and cannot be defined twice.\n", node.identifier.symbol)
+		return false
+	}
+
+	program.node = append(program.node, &node)
+	return true
 }
 
-func lexChaosStatement(ts *TokenizerState) (Node, bool) {
+func lexChaosStatement(ts *TokenizerState, program *Program) bool {
 	if ts.matchAt(0, tokDef, tokGlobal) {
-		node := lexChaosDef(ts)
-		if node == nil {
-			return nil, false
+		if ok := lexChaosDef(ts, program); ok {
+			return true
 		}
-		return node, true
 	}
+	// if ts.matchAt(0, tokRun) {
+	// 	node := lexProcCall(ts)
+	// 	if node == nil {
+	// 		return nil, false
+	// 	}
+	// 	return node, true
+	// }
 	if ts.matchAt(0, tokExit) {
-		node := lexExit(ts)
-		if node == nil {
-			return nil, false
+		if ok := lexExit(ts, program); ok {
+			return true
 		}
-		return node, true
 	}
-	return nil, false
+	return false
 }
 
-func lexerChaos(ts *TokenizerState) []Node {
+func lexerChaos(ts *TokenizerState) Program {
 	assert(ts.cursor == 0, "Cursor is not 0")
-	nodes := []Node{}
+	program := Program{
+		node:                     []Node{},
+		globalAllocatedVariables: []Symbol{},
+		globalAllocatedProcs:     []Symbol{},
+	}
 
 	for ts.cursor < ts.count {
 		if ts.matchAt(0, tokEndOfFile) {
@@ -567,17 +594,15 @@ func lexerChaos(ts *TokenizerState) []Node {
 		}
 
 		if ts.matchAt(0, tokProc) {
-			if node, ok := lexProcDefinition(ts); ok {
-				nodes = append(nodes, node)
+			if ok := lexProcDefinition(ts, &program); ok {
 				continue
 			}
 			panic("Failed to lex proc definition")
 		}
 
 		// TODO: handle def and global def separetely
-		if ts.matchAt(0, tokGlobal, tokDef, tokExit, tokIdentifier) {
-			if node, ok := lexChaosStatement(ts); ok {
-				nodes = append(nodes, node)
+		if ts.matchAt(0, tokGlobal, tokDef, tokExit, tokIdentifier, tokRun) {
+			if ok := lexChaosStatement(ts, &program); ok {
 				continue
 			}
 			panic("Failed to lex chaos statement")
@@ -585,5 +610,5 @@ func lexerChaos(ts *TokenizerState) []Node {
 
 		panic("Unrecheable")
 	}
-	return nodes
+	return program
 }

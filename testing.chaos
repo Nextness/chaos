@@ -9,6 +9,10 @@ end-proc
 
 proc main returns Void executes
     def something = 10.1;
+    def something-1 as String = «adiasjda»;
+    def something-2 as I64= 10;
+    def something-3 as Bool = true;
+    // run another-operation;
     exit 69;
 end-proc
 

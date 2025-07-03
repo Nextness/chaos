@@ -1257,12 +1257,10 @@ func tokenizeChaos(fileName string, fileContent *bytes.Buffer) []Token {
 }
 
 type TokenizerState struct {
-	data               []Token
-	allocatedProcs     []Symbol
-	allocatedVariables []Symbol
-	filepath           string
-	count              int
-	cursor             int
+	data     []Token
+	filepath string
+	count    int
+	cursor   int
 }
 
 func (tokens TokenizerState) print() {
@@ -1356,14 +1354,6 @@ func (ts *TokenizerState) consume(count ...int) (result Token) {
 		ts.cursor++
 	}
 	return
-}
-
-func (ts *TokenizerState) allocateVariable(sym Symbol) {
-	ts.allocatedVariables = append(ts.allocatedVariables, sym)
-}
-
-func (ts *TokenizerState) allocateProc(sym Symbol) {
-	ts.allocatedProcs = append(ts.allocatedProcs, sym)
 }
 
 func (ts *TokenizerState) PrintError(format string, a ...any) {

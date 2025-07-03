@@ -31,23 +31,25 @@ func main() {
 			fileContent := bytes.NewBuffer(file)
 			tokens := tokenizeChaos(arg, fileContent)
 			ts := &TokenizerState{
-				data:               tokens,
-				allocatedVariables: []Symbol{},
-				allocatedProcs:     []Symbol{},
-				filepath:           arg,
-				count:              len(tokens),
-				cursor:             0,
+				data:     tokens,
+				filepath: arg,
+				count:    len(tokens),
+				cursor:   0,
 			}
 			ts.print()
 			fmt.Print("\n")
 
-			ls := lexerChaos(ts)
-			for _, ls := range ls {
-				val := ls.asBuffer(0)
+			program := lexerChaos(ts)
+			for _, program := range program.node {
+				val := program.asBuffer(0)
 				fmt.Printf("%s\n", val.String())
 			}
 
-			// es := globalExecutionOrderChaos(ls)
+			for _, proc := range program.globalAllocatedProcs {
+				fmt.Printf("proc %s\n", proc)
+			}
+
+			// es := globalExecutionOrderChaos(program)
 			// typeCheckingChaos(es)
 			// irChaos(es)
 			// generateProgram(instructions)
