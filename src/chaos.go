@@ -40,6 +40,7 @@ func main() {
 			fmt.Print("\n")
 
 			program := lexerChaos(ts)
+
 			for _, program := range program.node {
 				val := program.asBuffer(0)
 				fmt.Printf("%s\n", val.String())
@@ -47,6 +48,10 @@ func main() {
 
 			for _, proc := range program.globalAllocatedProcs {
 				fmt.Printf("proc %s\n", proc)
+			}
+
+			for _, vars := range program.globalAllocatedVariables {
+				fmt.Printf("global def %s\n", vars)
 			}
 
 			// es := globalExecutionOrderChaos(program)

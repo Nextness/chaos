@@ -3,8 +3,13 @@
  *  /** Nested comment **/
 **/
 
-proc another-operation returns Void executes
-    exit 1;
+global def new-variable = 10;
+
+proc another-operation
+    expects input as I64
+    returns Void
+executes
+    exit input;
 end-proc
 
 proc main returns Void executes
@@ -12,7 +17,11 @@ proc main returns Void executes
     def something-1 as String = «adiasjda»;
     def something-2 as I64= 10;
     def something-3 as Bool = true;
-    // run another-operation;
+    run another-operation with 1;
+    run another-operation with 1;
+    run another-operation with 1;
+    run another-operation with 1;
+    run another-operation with 1;
     exit 69;
 end-proc
 

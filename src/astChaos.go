@@ -377,13 +377,17 @@ func lexExit(ts *TokenizerState, program *Program) bool {
 	node := NodeExit{nodeType: nodeExit}
 
 	ts.consumeAssert(tokExit)
-	if !ts.matchAt(0, tokLiteral) {
-		ts.PrintError("Expected a number but found %s\n", ts.currentTokenTypeAsString())
+	if !ts.matchAt(0, tokLiteral, tokIdentifier) {
+		ts.PrintError("Expected a number or identifier but found %s\n", ts.currentTokenTypeAsString())
 		os.Exit(1)
 	}
 
 	token = ts.consume()
-	node.status, _ = cast[*TokenLiteral](token)
+	if value, ok := cast[*TokenLiteral](token); ok {
+		node.status = value
+	} else {
+		node.status = 420
+	}
 
 	if ts.matchAt(0, tokComma) {
 		ts.consumeAssert(tokComma)
@@ -397,6 +401,63 @@ func lexExit(ts *TokenizerState, program *Program) bool {
 
 	ts.consumeAssert(tokSemicolon)
 
+	program.node = append(program.node, &node)
+	return true
+}
+
+func lexChaosGlobalDef(ts *TokenizerState, program *Program) bool {
+	var token Token
+	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
+
+	ts.consumeAssert(tokGlobal)
+	ts.consumeAssert(tokDef)
+
+	if !ts.matchAt(0, tokIdentifier) {
+		ts.PrintError("Expected an identifier but found %s.\n", ts.currentTokenTypeAsString())
+		os.Exit(1)
+	}
+	token = ts.consume()
+	node.identifier = castAssert[*TokenIdentifier](token)
+
+	if ts.currentTokenType() == tokAs {
+
+		ts.consumeAssert(tokAs)
+
+		if !ts.matchAt(0, tokVarType) {
+			ts.PrintError("Expected a type or assignment but found %s.\n", ts.currentTokenTypeAsString())
+			os.Exit(1)
+		}
+		token = ts.consumeAssert(tokVarType)
+		node.varType = castAssert[*TokenVarType](token)
+	} else {
+		node.varType = nodeInfer(kindNone)
+	}
+
+	if ts.matchAt(0, tokAssignment) {
+
+		ts.consumeAssert(tokAssignment)
+
+		node.state = nodeInitialized
+		if ts.matchAt(0, tokLiteral) {
+			token = ts.consume()
+			node.value = castAssert[*TokenLiteral](token)
+		} else if ts.matchAt(0, tokIdentifier) {
+			token = ts.consume()
+			node.value = castAssert[*TokenIdentifier](token)
+		}
+	}
+
+	ts.consumeAssert(tokSemicolon)
+
+	if node.varType.tokType == tokInferType && node.state == nodeUninitialized {
+		ts.PrintError("Expected uninitialized variable or assignment for '%s'.\n", node.identifier.symbol)
+		os.Exit(1)
+	}
+
+	if err := program.allocateVariable(node.identifier.symbol); err != nil {
+		ts.PrintError("The variable `%s` already exists and cannot be defined twice.\n", node.identifier.symbol)
+		return false
+	}
 	program.node = append(program.node, &node)
 	return true
 }
@@ -449,10 +510,6 @@ func lexChaosDef(ts *TokenizerState, program *Program) bool {
 		os.Exit(1)
 	}
 
-	if err := program.allocateVariable(node.identifier.symbol); err != nil {
-		ts.PrintError("The variable `%s` already exists and cannot be defined twice.\n", node.identifier.symbol)
-		return false
-	}
 	program.node = append(program.node, &node)
 	return true
 }
@@ -542,6 +599,9 @@ func lexProcDefinition(ts *TokenizerState, program *Program) bool {
 
 	ts.consumeAssert(tokExecutes)
 	for !ts.matchAt(0, tokEndProc) {
+		// TODO: Handle allocating variables to a local scope.
+		// Variables are basically skipped in allocation since they are not considered
+		// global variables.
 		if ok := lexChaosStatement(ts, program); !ok {
 			return false
 		}
@@ -559,19 +619,52 @@ func lexProcDefinition(ts *TokenizerState, program *Program) bool {
 	return true
 }
 
+func lexProcCall(ts *TokenizerState, program *Program) bool {
+
+	var token Token
+	node := NodeProcCall{state: nodeInitialized, nodeType: nodeProcCall}
+
+	ts.consumeAssert(tokRun)
+
+	if !ts.matchAt(0, tokIdentifier) {
+		ts.PrintError("Expected an identifier, but found `%s`\n", ts.currentTokenTypeAsString())
+		return false
+	}
+	token = ts.consume()
+	node.identifier = castAssert[*TokenIdentifier](token)
+
+	if !ts.matchAt(0, tokWith) {
+		ts.PrintError("Expected `with`, but found `%s`\n", ts.currentTokenTypeAsString())
+		return false
+	}
+	ts.consumeAssert(tokWith)
+
+	for ts.current().getTokenType() != tokSemicolon {
+		// Skipping for now
+		ts.consume()
+	}
+
+	ts.consumeAssert(tokSemicolon)
+	program.node = append(program.node, &node)
+	return true
+}
+
 func lexChaosStatement(ts *TokenizerState, program *Program) bool {
-	if ts.matchAt(0, tokDef, tokGlobal) {
+	if ts.matchAt(0, tokDef) {
 		if ok := lexChaosDef(ts, program); ok {
 			return true
 		}
 	}
-	// if ts.matchAt(0, tokRun) {
-	// 	node := lexProcCall(ts)
-	// 	if node == nil {
-	// 		return nil, false
-	// 	}
-	// 	return node, true
-	// }
+	if ts.matchAt(0, tokGlobal) {
+		if ok := lexChaosGlobalDef(ts, program); ok {
+			return true
+		}
+	}
+	if ts.matchAt(0, tokRun) {
+		if ok := lexProcCall(ts, program); ok {
+			return true
+		}
+	}
 	if ts.matchAt(0, tokExit) {
 		if ok := lexExit(ts, program); ok {
 			return true
