@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 )
 
 const PADNUMBER int = 2
@@ -21,20 +22,16 @@ type Program struct {
 }
 
 func (p *Program) allocateVariable(symbol Symbol) error {
-	for _, s := range p.globalAllocatedVariables {
-		if s == symbol {
-			return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
-		}
+	if slices.Contains(p.globalAllocatedVariables, symbol) {
+		return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
 	}
 	p.globalAllocatedVariables = append(p.globalAllocatedVariables, symbol)
 	return nil
 }
 
 func (p *Program) allocateProc(symbol Symbol) error {
-	for _, s := range p.globalAllocatedProcs {
-		if s == symbol {
-			return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
-		}
+	if slices.Contains(p.globalAllocatedProcs, symbol) {
+		return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
 	}
 	p.globalAllocatedProcs = append(p.globalAllocatedProcs, symbol)
 	return nil
@@ -162,7 +159,7 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	} else if n.state == nodeReassigned {
 		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]\n", pad))
 	} else {
-		tmp.WriteString(fmt.Sprintf("%sstate [Unknown]\n"))
+		tmp.WriteString(fmt.Sprintf("%sstate [Unknown]\n", pad))
 	}
 
 	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
@@ -693,7 +690,7 @@ func lexerChaos(ts *TokenizerState) Program {
 			panic("Failed to lex proc definition")
 		}
 
-		// TODO: handle def and global def separetely
+		// TODO: handle def and global def separately
 		if ts.matchAt(0, tokGlobal, tokDef, tokExit, tokIdentifier, tokRun) {
 			if ok := lexChaosStatement(ts, &program); ok {
 				continue
