@@ -29,8 +29,8 @@ func main() {
 			}
 
 			fileContent := bytes.NewBuffer(file)
-			tokens := tokenizeChaos(arg, fileContent)
-			ts := &TokenizerState{
+			tokens := TokenizeChaos(fileContent)
+			ts := &LexerState{
 				data:     tokens,
 				filepath: arg,
 				count:    len(tokens),
@@ -39,7 +39,7 @@ func main() {
 			ts.print()
 			fmt.Print("\n")
 
-			program := lexerChaos(ts)
+			program := ASTCreateChaosProgram(ts)
 
 			for _, program := range program.node {
 				val := program.asBuffer(0)

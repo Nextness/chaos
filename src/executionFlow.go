@@ -13,27 +13,27 @@ func globalExecutionOrderChaos(ls *LexerState) *ExecutionState {
 		procDefinition: map[Symbol]*NodeProcDef{},
 	}
 	for ls.cursor < ls.count {
-		if ls.data[ls.cursor].getNodeType() == nodeIdentifier {
-			sym := Symbol("")
-			if val := ls.data[ls.cursor].(*NodeIdentifier).identifier.symbol; val != Symbol("") {
-				sym = val
-				es.identifiers[sym] = ls.data[ls.cursor].(*NodeIdentifier)
-			}
-		}
-		if ls.data[ls.cursor].getNodeType() == nodeProc {
-			sym := Symbol("")
-			if val := ls.data[ls.cursor].(*NodeProcDef).identifier.symbol; val == "main" {
-				sym = val
-				es.entryPoint = ls.data[ls.cursor].(*NodeProcDef)
-				ls.cursor++
-				continue
-			}
-			if val := ls.data[ls.cursor].(*NodeProcDef).identifier.symbol; val != Symbol("") {
-				sym = val
-				es.procDefinition[sym] = ls.data[ls.cursor].(*NodeProcDef)
-			}
-		}
-		ls.cursor++
+		// if ls.data[ls.cursor].getNodeType() == nodeIdentifier {
+		// 	sym := Symbol("")
+		// 	if val := ls.data[ls.cursor].(*NodeIdentifier).identifier.symbol; val != Symbol("") {
+		// 		sym = val
+		// 		es.identifiers[sym] = ls.data[ls.cursor].(*NodeIdentifier)
+		// 	}
+		// }
+		// if ls.data[ls.cursor].getNodeType() == nodeProc {
+		// 	sym := Symbol("")
+		// 	if val := ls.data[ls.cursor].(*NodeProcDef).identifier.symbol; val == "main" {
+		// 		sym = val
+		// 		es.entryPoint = ls.data[ls.cursor].(*NodeProcDef)
+		// 		ls.cursor++
+		// 		continue
+		// 	}
+		// 	if val := ls.data[ls.cursor].(*NodeProcDef).identifier.symbol; val != Symbol("") {
+		// 		sym = val
+		// 		es.procDefinition[sym] = ls.data[ls.cursor].(*NodeProcDef)
+		// 	}
+		// }
+		// ls.cursor++
 	}
 	return &es
 }

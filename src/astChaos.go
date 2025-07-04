@@ -37,7 +37,7 @@ func (p *Program) allocateProc(symbol Symbol) error {
 	return nil
 }
 
-type LexerState struct {
+type ASTState struct {
 	data   []Node
 	count  int
 	cursor int
@@ -369,82 +369,82 @@ var _ Node = &NodeProcDef{}
 var _ Node = &NodeProcCall{}
 var _ Node = &NodeBinOp{}
 
-func lexExit(ts *TokenizerState, program *Program) bool {
+func ASTCreateExit(ts *LexerState, program *Program) bool {
 	var token Token
 	node := NodeExit{nodeType: nodeExit}
 
-	ts.consumeAssert(tokExit)
-	if !ts.matchAt(0, tokLiteral, tokIdentifier) {
+	ts.ConsumeAssert(tokExit)
+	if !ts.MatchAt(0, tokLiteral, tokIdentifier) {
 		ts.PrintError("Expected a number or identifier but found %s\n", ts.currentTokenTypeAsString())
 		os.Exit(1)
 	}
 
-	token = ts.consume()
+	token = ts.Consume()
 	if value, ok := cast[*TokenLiteral](token); ok {
 		node.status = value
 	} else {
 		node.status = 420
 	}
 
-	if ts.matchAt(0, tokComma) {
-		ts.consumeAssert(tokComma)
-		if !ts.matchAt(0, tokLiteral) {
+	if ts.MatchAt(0, tokComma) {
+		ts.ConsumeAssert(tokComma)
+		if !ts.MatchAt(0, tokLiteral) {
 			ts.PrintError("Expected a string but found %s\n", ts.currentTokenTypeAsString())
 			os.Exit(1)
 		}
-		token = ts.consume()
+		token = ts.Consume()
 		node.message, _ = cast[*TokenLiteral](token)
 	}
 
-	ts.consumeAssert(tokSemicolon)
+	ts.ConsumeAssert(tokSemicolon)
 
 	program.node = append(program.node, &node)
 	return true
 }
 
-func lexChaosGlobalDef(ts *TokenizerState, program *Program) bool {
+func ASTCreateChaosGlobalDef(ts *LexerState, program *Program) bool {
 	var token Token
 	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
 
-	ts.consumeAssert(tokGlobal)
-	ts.consumeAssert(tokDef)
+	ts.ConsumeAssert(tokGlobal)
+	ts.ConsumeAssert(tokDef)
 
-	if !ts.matchAt(0, tokIdentifier) {
+	if !ts.MatchAt(0, tokIdentifier) {
 		ts.PrintError("Expected an identifier but found %s.\n", ts.currentTokenTypeAsString())
 		os.Exit(1)
 	}
-	token = ts.consume()
+	token = ts.Consume()
 	node.identifier = castAssert[*TokenIdentifier](token)
 
-	if ts.currentTokenType() == tokAs {
+	if ts.Current().TokenType() == tokAs {
 
-		ts.consumeAssert(tokAs)
+		ts.ConsumeAssert(tokAs)
 
-		if !ts.matchAt(0, tokVarType) {
+		if !ts.MatchAt(0, tokVarType) {
 			ts.PrintError("Expected a type or assignment but found %s.\n", ts.currentTokenTypeAsString())
 			os.Exit(1)
 		}
-		token = ts.consumeAssert(tokVarType)
+		token = ts.ConsumeAssert(tokVarType)
 		node.varType = castAssert[*TokenVarType](token)
 	} else {
 		node.varType = nodeInfer(kindNone)
 	}
 
-	if ts.matchAt(0, tokAssignment) {
+	if ts.MatchAt(0, tokAssignment) {
 
-		ts.consumeAssert(tokAssignment)
+		ts.ConsumeAssert(tokAssignment)
 
 		node.state = nodeInitialized
-		if ts.matchAt(0, tokLiteral) {
-			token = ts.consume()
+		if ts.MatchAt(0, tokLiteral) {
+			token = ts.Consume()
 			node.value = castAssert[*TokenLiteral](token)
-		} else if ts.matchAt(0, tokIdentifier) {
-			token = ts.consume()
+		} else if ts.MatchAt(0, tokIdentifier) {
+			token = ts.Consume()
 			node.value = castAssert[*TokenIdentifier](token)
 		}
 	}
 
-	ts.consumeAssert(tokSemicolon)
+	ts.ConsumeAssert(tokSemicolon)
 
 	if node.varType.tokType == tokInferType && node.state == nodeUninitialized {
 		ts.PrintError("Expected uninitialized variable or assignment for '%s'.\n", node.identifier.symbol)
@@ -459,48 +459,48 @@ func lexChaosGlobalDef(ts *TokenizerState, program *Program) bool {
 	return true
 }
 
-func lexChaosDef(ts *TokenizerState, program *Program) bool {
+func ASTCreateChaosDef(ts *LexerState, program *Program) bool {
 	var token Token
 	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
 
-	ts.consumeAssert(tokDef)
+	ts.ConsumeAssert(tokDef)
 
-	if !ts.matchAt(0, tokIdentifier) {
+	if !ts.MatchAt(0, tokIdentifier) {
 		ts.PrintError("Expected an identifier but found %s.\n", ts.currentTokenTypeAsString())
 		os.Exit(1)
 	}
-	token = ts.consume()
+	token = ts.Consume()
 	node.identifier = castAssert[*TokenIdentifier](token)
 
-	if ts.currentTokenType() == tokAs {
+	if ts.Current().TokenType() == tokAs {
 
-		ts.consumeAssert(tokAs)
+		ts.ConsumeAssert(tokAs)
 
-		if !ts.matchAt(0, tokVarType) {
+		if !ts.MatchAt(0, tokVarType) {
 			ts.PrintError("Expected a type or assignment but found %s.\n", ts.currentTokenTypeAsString())
 			os.Exit(1)
 		}
-		token = ts.consumeAssert(tokVarType)
+		token = ts.ConsumeAssert(tokVarType)
 		node.varType = castAssert[*TokenVarType](token)
 	} else {
 		node.varType = nodeInfer(kindNone)
 	}
 
-	if ts.matchAt(0, tokAssignment) {
+	if ts.MatchAt(0, tokAssignment) {
 
-		ts.consumeAssert(tokAssignment)
+		ts.ConsumeAssert(tokAssignment)
 
 		node.state = nodeInitialized
-		if ts.matchAt(0, tokLiteral) {
-			token = ts.consume()
+		if ts.MatchAt(0, tokLiteral) {
+			token = ts.Consume()
 			node.value = castAssert[*TokenLiteral](token)
-		} else if ts.matchAt(0, tokIdentifier) {
-			token = ts.consume()
+		} else if ts.MatchAt(0, tokIdentifier) {
+			token = ts.Consume()
 			node.value = castAssert[*TokenIdentifier](token)
 		}
 	}
 
-	ts.consumeAssert(tokSemicolon)
+	ts.ConsumeAssert(tokSemicolon)
 
 	if node.varType.tokType == tokInferType && node.state == nodeUninitialized {
 		ts.PrintError("Expected uninitialized variable or assignment for '%s'.\n", node.identifier.symbol)
@@ -511,52 +511,52 @@ func lexChaosDef(ts *TokenizerState, program *Program) bool {
 	return true
 }
 
-func lexProcDefinition(ts *TokenizerState, program *Program) bool {
+func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 
 	var token Token
 	node := NodeProcDef{nodeType: nodeProc, state: nodeInitialized}
 
-	ts.consumeAssert(tokProc)
+	ts.ConsumeAssert(tokProc)
 
-	if !ts.matchAt(0, tokIdentifier) {
+	if !ts.MatchAt(0, tokIdentifier) {
 		ts.PrintError("Expected an identifier to name a proc but found '%s'\n", ts.currentTokenTypeAsString())
 		os.Exit(1)
 	}
-	token = ts.consume()
+	token = ts.Consume()
 	node.identifier = castAssert[*TokenIdentifier](token)
 
-	if ts.matchAt(0, tokExpects) {
-		ts.consumeAssert(tokExpects)
-		for ts.currentTokenType() != tokReturns {
+	if ts.MatchAt(0, tokExpects) {
+		ts.ConsumeAssert(tokExpects)
+		for ts.Current().TokenType() != tokReturns {
 			nIdent := NodeIdentifier{nodeType: nodeIdentifier}
-			if !ts.matchAt(0, tokIdentifier) {
+			if !ts.MatchAt(0, tokIdentifier) {
 				ts.PrintError("Expected identifier for 'proc %s' but found '%s'\n", node.identifier.symbol, ts.currentTokenTypeAsString())
 				os.Exit(1)
 			}
-			token = ts.consume()
+			token = ts.Consume()
 			nIdent.identifier = castAssert[*TokenIdentifier](token)
 
-			ts.consumeAssert(tokAs)
+			ts.ConsumeAssert(tokAs)
 
 			isVariadic := false
-			if ts.matchAt(0, tokEllipsis) {
-				ts.consumeAssert(tokEllipsis)
+			if ts.MatchAt(0, tokEllipsis) {
+				ts.ConsumeAssert(tokEllipsis)
 				isVariadic = true
 			}
 
 			// TODO: For now we don't allow default values, so all the identifiers should be
 			// uninitialized.
-			if !ts.matchAt(0, tokVarType) {
+			if !ts.MatchAt(0, tokVarType) {
 				ts.PrintError("Expected identifier type for 'proc %s' but found '%s'\n", node.identifier.symbol, ts.currentTokenTypeAsString())
 				os.Exit(1)
 			}
-			token = ts.consume()
+			token = ts.Consume()
 			nIdent.varType = castAssert[*TokenVarType](token)
 			nIdent.varType.variadic = isVariadic
 			nIdent.state = nodeUninitialized
 
-			if ts.matchAt(0, tokComma) {
-				ts.consume()
+			if ts.MatchAt(0, tokComma) {
+				ts.Consume()
 			}
 
 			node.args = append(node.args, nIdent)
@@ -568,19 +568,18 @@ func lexProcDefinition(ts *TokenizerState, program *Program) bool {
 		}
 	}
 
-	if ts.matchAt(0, tokReturns) {
-		ts.consumeAssert(tokReturns)
-		for ts.current().getTokenType() != tokExecutes {
+	if ts.MatchAt(0, tokReturns) {
+		ts.ConsumeAssert(tokReturns)
+		for ts.Current().TokenType() != tokExecutes {
 			// TO-DO: For now we only allow a single return type. In the future we should not only
 			// allow multiple return types, but also named return types, and default values
 			// for return types
 			n := NodeIdentifier{nodeType: nodeIdentifier}
-			if !ts.matchAt(0, tokVarType) {
-				errMsg := fmt.Sprintf("Expected a return type as part of proc but found %s.\n", ts.currentTokenTypeAsString())
-				config := newLexerErroConfig(errMsg)
-				config.printAndExitLexerError(ts)
+			if !ts.MatchAt(0, tokVarType) {
+				ts.PrintError("Expected a return type as part of proc but found %s.\n", ts.currentTokenTypeAsString())
+				return false
 			}
-			token = ts.consume()
+			token = ts.Consume()
 			n.identifier = &TokenIdentifier{}
 			n.varType = castAssert[*TokenVarType](token)
 			n.state = nodeUninitialized
@@ -594,17 +593,17 @@ func lexProcDefinition(ts *TokenizerState, program *Program) bool {
 		}
 	}
 
-	ts.consumeAssert(tokExecutes)
-	for !ts.matchAt(0, tokEndProc) {
+	ts.ConsumeAssert(tokExecutes)
+	for !ts.MatchAt(0, tokEndProc) {
 		// TODO: Handle allocating variables to a local scope.
 		// Variables are basically skipped in allocation since they are not considered
 		// global variables.
-		if ok := lexChaosStatement(ts, program); !ok {
+		if ok := ASTCreateChaosStatement(ts, program); !ok {
 			return false
 		}
 	}
 
-	ts.consumeAssert(tokEndProc)
+	ts.ConsumeAssert(tokEndProc)
 
 	// TODO: This should take into account overloading and mangling, but I'm too lazy to do it now.
 	if err := program.allocateProc(node.identifier.symbol); err != nil {
@@ -616,61 +615,61 @@ func lexProcDefinition(ts *TokenizerState, program *Program) bool {
 	return true
 }
 
-func lexProcCall(ts *TokenizerState, program *Program) bool {
+func ASTCreateProcCall(ts *LexerState, program *Program) bool {
 
 	var token Token
 	node := NodeProcCall{state: nodeInitialized, nodeType: nodeProcCall}
 
-	ts.consumeAssert(tokRun)
+	ts.ConsumeAssert(tokRun)
 
-	if !ts.matchAt(0, tokIdentifier) {
+	if !ts.MatchAt(0, tokIdentifier) {
 		ts.PrintError("Expected an identifier, but found `%s`\n", ts.currentTokenTypeAsString())
 		return false
 	}
-	token = ts.consume()
+	token = ts.Consume()
 	node.identifier = castAssert[*TokenIdentifier](token)
 
-	if !ts.matchAt(0, tokWith) {
+	if !ts.MatchAt(0, tokWith) {
 		ts.PrintError("Expected `with`, but found `%s`\n", ts.currentTokenTypeAsString())
 		return false
 	}
-	ts.consumeAssert(tokWith)
+	ts.ConsumeAssert(tokWith)
 
-	for ts.current().getTokenType() != tokSemicolon {
+	for ts.Current().TokenType() != tokSemicolon {
 		// Skipping for now
-		ts.consume()
+		ts.Consume()
 	}
 
-	ts.consumeAssert(tokSemicolon)
+	ts.ConsumeAssert(tokSemicolon)
 	program.node = append(program.node, &node)
 	return true
 }
 
-func lexChaosStatement(ts *TokenizerState, program *Program) bool {
-	if ts.matchAt(0, tokDef) {
-		if ok := lexChaosDef(ts, program); ok {
+func ASTCreateChaosStatement(ts *LexerState, program *Program) bool {
+	if ts.MatchAt(0, tokDef) {
+		if ok := ASTCreateChaosDef(ts, program); ok {
 			return true
 		}
 	}
-	if ts.matchAt(0, tokGlobal) {
-		if ok := lexChaosGlobalDef(ts, program); ok {
+	if ts.MatchAt(0, tokGlobal) {
+		if ok := ASTCreateChaosGlobalDef(ts, program); ok {
 			return true
 		}
 	}
-	if ts.matchAt(0, tokRun) {
-		if ok := lexProcCall(ts, program); ok {
+	if ts.MatchAt(0, tokRun) {
+		if ok := ASTCreateProcCall(ts, program); ok {
 			return true
 		}
 	}
-	if ts.matchAt(0, tokExit) {
-		if ok := lexExit(ts, program); ok {
+	if ts.MatchAt(0, tokExit) {
+		if ok := ASTCreateExit(ts, program); ok {
 			return true
 		}
 	}
 	return false
 }
 
-func lexerChaos(ts *TokenizerState) Program {
+func ASTCreateChaosProgram(ts *LexerState) Program {
 	assert(ts.cursor == 0, "Cursor is not 0")
 	program := Program{
 		node:                     []Node{},
@@ -679,20 +678,20 @@ func lexerChaos(ts *TokenizerState) Program {
 	}
 
 	for ts.cursor < ts.count {
-		if ts.matchAt(0, tokEndOfFile) {
+		if ts.MatchAt(0, tokEndOfFile) {
 			break
 		}
 
-		if ts.matchAt(0, tokProc) {
-			if ok := lexProcDefinition(ts, &program); ok {
+		if ts.MatchAt(0, tokProc) {
+			if ok := ASTCreateProcDefinition(ts, &program); ok {
 				continue
 			}
 			panic("Failed to lex proc definition")
 		}
 
 		// TODO: handle def and global def separately
-		if ts.matchAt(0, tokGlobal, tokDef, tokExit, tokIdentifier, tokRun) {
-			if ok := lexChaosStatement(ts, &program); ok {
+		if ts.MatchAt(0, tokGlobal, tokDef, tokExit, tokIdentifier, tokRun) {
+			if ok := ASTCreateChaosStatement(ts, &program); ok {
 				continue
 			}
 			panic("Failed to lex chaos statement")
