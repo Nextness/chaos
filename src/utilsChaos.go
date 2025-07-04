@@ -7,6 +7,8 @@ import (
 	"unicode"
 )
 
+const PAD_WIDTH = 2
+
 func isUppercase(b byte) bool {
 	s := rune(b)
 	return unicode.IsUpper(s) && unicode.IsLetter(s)
@@ -43,8 +45,8 @@ func assert(ok bool, reason string) {
 	}
 }
 
-func makePad(padSize int) string {
-	return strings.Repeat(" ", padSize)
+func makePad(padCount int) string {
+	return strings.Repeat(" ", padCount*PAD_WIDTH)
 }
 
 func chaosDebug(format string, args ...any) {
@@ -65,4 +67,3 @@ func castAssert[V any](value any) V {
 	assert(ok, fmt.Sprintf("failed to cast %T into %T", value, new(V)))
 	return result
 }
-

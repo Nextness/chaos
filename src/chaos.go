@@ -41,16 +41,25 @@ func main() {
 
 			program := ASTCreateChaosProgram(ts)
 
-			for _, program := range program.node {
-				val := program.Buffer(0)
-				fmt.Printf("%s\n", val.String())
+			pp := PrettyPrint{
+				padCount:       0,
+				includeNewline: true,
 			}
+			size := len(program.nodes)
+			fmt.Print("----------------------------------------------------------------------------------\n")
+			for idx, program := range program.nodes {
+				program.Print(pp)
+				if idx+1 != size {
+					fmt.Print("----------------------------------------------------------------------------------\n")
+				}
+			}
+			fmt.Print("----------------------------------------------------------------------------------\n")
 
-			for _, proc := range program.globalAllocatedProcs {
+			for _, proc := range program.allocatedProcs {
 				fmt.Printf("proc %s\n", proc)
 			}
 
-			for _, vars := range program.globalAllocatedVariables {
+			for _, vars := range program.allocatedVariables {
 				fmt.Printf("global def %s\n", vars)
 			}
 

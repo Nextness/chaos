@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -10,30 +9,30 @@ import (
 
 const PADNUMBER int = 2
 
-func nodeInfer(tokKind TokenKind) *TokenVarType {
+func NodeInfer(tokKind TokenKind) *TokenVarType {
 	result := &TokenVarType{symbol: "infer", tokType: tokInferType, tokKind: tokKind}
 	return result
 }
 
-type Program struct {
-	node                     []Node
-	globalAllocatedVariables []Symbol
-	globalAllocatedProcs     []Symbol
+type Scope struct {
+	nodes              []Node
+	allocatedVariables []Symbol
+	allocatedProcs     []Symbol
 }
 
-func (p *Program) allocateVariable(symbol Symbol) error {
-	if slices.Contains(p.globalAllocatedVariables, symbol) {
+func (p *Scope) AllocateVariable(symbol Symbol) error {
+	if slices.Contains(p.allocatedVariables, symbol) {
 		return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
 	}
-	p.globalAllocatedVariables = append(p.globalAllocatedVariables, symbol)
+	p.allocatedVariables = append(p.allocatedVariables, symbol)
 	return nil
 }
 
-func (p *Program) allocateProc(symbol Symbol) error {
-	if slices.Contains(p.globalAllocatedProcs, symbol) {
+func (p *Scope) AllocateProc(symbol Symbol) error {
+	if slices.Contains(p.allocatedProcs, symbol) {
 		return errors.New(fmt.Sprintf("symbol %s is already defined", symbol))
 	}
-	p.globalAllocatedProcs = append(p.globalAllocatedProcs, symbol)
+	p.allocatedProcs = append(p.allocatedProcs, symbol)
 	return nil
 }
 
@@ -55,7 +54,7 @@ const (
 
 type NodeState int
 
-func (n NodeType) asString() string {
+func (n NodeType) String() string {
 	if n == nodeIdentifier {
 		return "NodeIdentifier"
 	}
@@ -74,14 +73,18 @@ func (n NodeType) asString() string {
 	return "UnknownNode"
 }
 
+type PrettyPrint struct {
+	padCount       int
+	includeNewline bool
+}
+
 // In this context, this is basically either a Node or a Token, depending on
 // what is on the rhs. If it is a literal for instance, it is a *TokenLiteral.
 // If it is a binary operation of function call, then it should be a *NodeBinOp.
 type PtrAny any
 
 type Node interface {
-	String() string
-	Buffer(padSize int) bytes.Buffer
+	Print(pp PrettyPrint)
 	NodeType() NodeType
 }
 
@@ -91,32 +94,28 @@ type NodeExit struct {
 	message  *TokenLiteral
 }
 
-func (n *NodeExit) String() string {
-	return todo[string]()
-}
+func (node *NodeExit) Print(pp PrettyPrint) {
+	pad := makePad(pp.padCount)
 
-func (n *NodeExit) Buffer(padSize int) bytes.Buffer {
-	pad := makePad(padSize)
+	pad = makePad(pp.padCount)
+	fmt.Printf("%stype [%s]\n", pad, node.NodeType().String())
+	fmt.Printf("%ssymbol [exit]\n", pad)
+	fmt.Printf("%sdefinition\n", pad)
 
-	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s\n", pad, n.nodeType.asString()))
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	if n.message != nil {
-		message := n.message.value.(string)
-		tmp.WriteString(fmt.Sprintf("%smessage ['%s']\n", pad, message))
+	pp.padCount++
+	pad = makePad(pp.padCount)
+	if node.message != nil {
+		message := node.message.value.(string)
+		fmt.Printf("%smessage ['%s']\n", pad, message)
 	}
-	if t, ok := cast[*TokenLiteral](n.status); ok {
-		tmp.WriteString(fmt.Sprintf("%svalue [%d]", pad, t.value.(int)))
+
+	if t, ok := cast[*TokenLiteral](node.status); ok {
+		fmt.Printf("%svalue [%d]", pad, t.value.(int))
 	}
-	return tmp
+
+	if pp.includeNewline {
+		fmt.Print("\n")
+	}
 }
 
 func (n *NodeExit) NodeType() NodeType {
@@ -130,60 +129,62 @@ type NodeIdentifier struct {
 	value      PtrAny
 }
 
-func (n *NodeIdentifier) String() string {
-	return todo[string]()
-}
+func (node *NodeIdentifier) Print(pp PrettyPrint) {
+	pad := makePad(pp.padCount)
 
-func (n *NodeIdentifier) Buffer(padSize int) bytes.Buffer {
-	pad := makePad(padSize)
+	pad = makePad(pp.padCount)
+	fmt.Printf("%stype [%s]\n", pad, node.NodeType().String())
+	fmt.Printf("%ssymbol [%s]\n", pad, node.identifier.symbol)
 
-	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s\n", pad, n.nodeType.asString()))
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]\n", pad, n.identifier.symbol))
-
-	if n.value != nil {
-		tmp.WriteString(fmt.Sprintf("%sstate [initialized]\n", pad))
+	if node.value != nil {
+		fmt.Printf("%sstate [initialized]\n", pad)
 	} else {
-		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]\n", pad))
-	}
-	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	if any(n.value) == nil {
-		tmp.WriteString(fmt.Sprintf("%stype [%s]", pad, n.varType.symbol))
-		return tmp
-	} else {
-		tmp.WriteString(fmt.Sprintf("%stype [%s]\n", pad, n.varType.tokKind.String()))
+		fmt.Printf("%sstate [unitialized]\n", pad)
 	}
 
-	if value, ok := cast[*TokenLiteral](n.value); ok {
-		if val, ok := cast[string](value.value); ok {
-			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value ['%s']", pad, val))
-		} else if val, ok := cast[int](value.value); ok {
-			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [%d]", pad, val))
-		} else if val, ok := cast[bool](value.value); ok {
-			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [%t]", pad, val))
-		} else if val, ok := cast[float64](value.value); ok {
-			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [%.02f]", pad, val))
-		} else {
-			tmp.WriteString(fmt.Sprintf("%sTokenLiteral value [Unsuported type %T]", pad, val))
+	fmt.Printf("%sdefinition\n", pad)
+
+	pp.padCount++
+	pad = makePad(pp.padCount)
+	if node.value == nil {
+		fmt.Printf("%stype [%s]", pad, node.varType.symbol)
+		if pp.includeNewline {
+			fmt.Print("\n")
 		}
-	} else if value, ok := cast[*TokenIdentifier](n.value); ok {
-		tmp.WriteString(fmt.Sprintf("%sTokenIdentifier value [%s]", pad, value.symbol))
-	} else if value, ok := cast[*NodeBinOp](n.value); ok {
-		buf := value.Buffer(padSize)
-		tmp.Write(buf.Bytes())
+		return
 	} else {
-		tmp.WriteString(fmt.Sprintf("%sUnknownToken value [Unsuported type %T]", pad, value))
+		if node.varType.TokenType() == tokInferType {
+			fmt.Printf("%stype [infer]\n", pad)
+		} else {
+			fmt.Printf("%stype [%s]\n", pad, node.varType.tokKind.String())
+		}
 	}
 
-	return tmp
+	if value, ok := cast[*TokenLiteral](node.value); ok {
+		fmt.Printf("%stoken [TokenLiteral]\n", pad)
+		if val, ok := cast[string](value.value); ok {
+			fmt.Printf("%svalue ['%s']", pad, val)
+		} else if val, ok := cast[int](value.value); ok {
+			fmt.Printf("%svalue [%d]", pad, val)
+		} else if val, ok := cast[bool](value.value); ok {
+			fmt.Printf("%svalue [%t]", pad, val)
+		} else if val, ok := cast[float64](value.value); ok {
+			fmt.Printf("%svalue [%.02f]", pad, val)
+		} else {
+			fmt.Printf("%svalue [Unsuported type %T]", pad, val)
+		}
+	} else if value, ok := cast[*TokenIdentifier](node.value); ok {
+		fmt.Printf("%sTokenIdentifier value [%s]", pad, value.symbol)
+	} else if value, ok := cast[*NodeBinOp](node.value); ok {
+		pp.padCount++
+		pad = makePad(pp.padCount)
+		value.Print(pp)
+	} else {
+		fmt.Printf("%sUnknownToken value [Unsuported type %T]", pad, value)
+	}
+	if pp.includeNewline {
+		fmt.Print("\n")
+	}
 }
 
 func (n *NodeIdentifier) NodeType() NodeType {
@@ -196,65 +197,55 @@ type NodeProcDef struct {
 	identifier *TokenIdentifier
 	args       []NodeIdentifier
 	rets       []NodeIdentifier
-	statements []Node
+	scope      Scope
 }
 
-func (n *NodeProcDef) String() string {
-	return todo[string]()
-}
+func (node *NodeProcDef) Print(pp PrettyPrint) {
+	pad := makePad(pp.padCount)
 
-func (n *NodeProcDef) Buffer(padSize int) bytes.Buffer {
-	pad := makePad(padSize)
+	pad = makePad(pp.padCount)
+	fmt.Printf("%stype [%s]\n", pad, node.NodeType().String())
+	fmt.Printf("%ssymbol [%s]\n", pad, node.identifier.symbol)
+	fmt.Printf("%sdefinition\n", pad)
 
-	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s\n", pad, n.nodeType.asString()))
+	pp.padCount++
+	pad = makePad(pp.padCount)
+	fmt.Printf("%sinput\n", pad)
 
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]\n", pad, n.identifier.symbol))
-
-	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	tmp.WriteString(fmt.Sprintf("%sinput\n", pad))
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	for _, arg := range n.args {
-		a := arg.Buffer(padSize)
-		tmp.Write(a.Bytes())
-		tmp.WriteByte('\n')
+	pp.padCount++
+	pad = makePad(pp.padCount)
+	for _, arg := range node.args {
+		arg.Print(pp)
 	}
 
-	padSize -= PADNUMBER
-	pad = makePad(padSize)
-	tmp.WriteString(fmt.Sprintf("%soutput\n", pad))
+	pp.padCount--
+	pad = makePad(pp.padCount)
+	fmt.Printf("%soutput\n", pad)
 
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-	for _, arg := range n.rets {
-		a := arg.Buffer(padSize)
-		tmp.Write(a.Bytes())
-		tmp.WriteByte('\n')
+	pp.padCount++
+	pad = makePad(pp.padCount)
+	for _, ret := range node.rets {
+		ret.Print(pp)
 	}
 
-	padSize -= PADNUMBER
-	pad = makePad(padSize)
-	tmp.WriteString(fmt.Sprintf("%sbody\n", pad))
+	pp.padCount--
+	pad = makePad(pp.padCount)
+	fmt.Printf("%sbody\n", pad)
 
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-	for _, arg := range n.statements {
-		a := arg.Buffer(padSize)
-		tmp.Write(a.Bytes())
-		tmp.WriteByte('\n')
+	pp.padCount++
+	saveState := pp.includeNewline
+	length := len(node.scope.nodes)
+	for idx, stmt := range node.scope.nodes {
+		if length == idx+1 {
+			pp.includeNewline = false
+		}
+		stmt.Print(pp)
 	}
+	pp.includeNewline = saveState
 
-	return tmp
+	if pp.includeNewline {
+		fmt.Print("\n")
+	}
 }
 
 func (n *NodeProcDef) NodeType() NodeType {
@@ -269,41 +260,28 @@ type NodeBinOp struct {
 	operation *TokenOperator
 }
 
-func (n *NodeBinOp) String() string {
-	return todo[string]()
-}
+func (node *NodeBinOp) Print(pp PrettyPrint) {
+	pad := makePad(pp.padCount)
 
-func (n *NodeBinOp) Buffer(padSize int) bytes.Buffer {
-	pad := makePad(padSize)
+	pad = makePad(pp.padCount)
+	fmt.Printf("%sdefinition\n", pad)
 
-	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
-	tmp.WriteByte('\n')
+	pp.padCount++
+	pad = makePad(pp.padCount)
+	op := node.operation.tokType.String()
+	fmt.Printf("%soperation [%s]\n", pad, op)
 
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	tmp.WriteString(fmt.Sprintf("%sdefinition", pad))
-	tmp.WriteByte('\n')
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-
-	op := n.operation.tokType.String()
-	tmp.WriteString(fmt.Sprintf("%soperation [%s]", pad, op))
-	tmp.WriteByte('\n')
-
-	token := castAssert[*TokenLiteral](n.lhs)
+	token := castAssert[*TokenLiteral](node.lhs)
 	lhs := castAssert[int](token.value)
-	tmp.WriteString(fmt.Sprintf("%slhs [%d]", pad, lhs))
-	tmp.WriteByte('\n')
+	fmt.Printf("%slhs [%d]\n", pad, lhs)
 
-	token = castAssert[*TokenLiteral](n.rhs)
+	token = castAssert[*TokenLiteral](node.rhs)
 	rhs := castAssert[int](token.value)
-	tmp.WriteString(fmt.Sprintf("%srhs [%d]", pad, rhs))
-	tmp.WriteByte('\n')
+	fmt.Printf("%srhs [%d]\n", pad, rhs)
 
-	return tmp
+	if pp.includeNewline {
+		fmt.Print("\n")
+	}
 }
 
 func (n *NodeBinOp) NodeType() NodeType {
@@ -317,34 +295,20 @@ type NodeProcCall struct {
 	args       []NodeIdentifier
 }
 
-func (n *NodeProcCall) String() string {
-	return todo[string]()
-}
+func (node *NodeProcCall) Print(pp PrettyPrint) {
+	pad := makePad(pp.padCount)
 
-func (n *NodeProcCall) Buffer(padSize int) bytes.Buffer {
-	pad := makePad(padSize)
+	pad = makePad(pp.padCount)
+	fmt.Printf("%ssymbol [%s]\n", pad, node.identifier.symbol)
+	fmt.Printf("%sinput\n", pad)
 
-	tmp := bytes.Buffer{}
-	tmp.WriteString(fmt.Sprintf("%s%s", pad, n.nodeType.asString()))
-	tmp.WriteByte('\n')
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]", pad, n.identifier.symbol))
-	tmp.WriteByte('\n')
-
-	tmp.WriteString(fmt.Sprintf("%sinput", pad))
-	tmp.WriteByte('\n')
-
-	padSize += PADNUMBER
-	pad = makePad(padSize)
-	for _, node := range n.args {
-		n := node.Buffer(padSize)
-		tmp.Write(n.Bytes())
-		tmp.WriteByte('\n')
+	pp.padCount++
+	for _, arg := range node.args {
+		arg.Print(pp)
 	}
-
-	return tmp
+	if pp.includeNewline {
+		fmt.Print("\n")
+	}
 }
 
 func (n *NodeProcCall) NodeType() NodeType {
@@ -357,7 +321,7 @@ var _ Node = &NodeProcDef{}
 var _ Node = &NodeProcCall{}
 var _ Node = &NodeBinOp{}
 
-func ASTCreateExit(ls *LexerState, program *Program) bool {
+func ASTCreateChaosExit(ls *LexerState, program *Scope) bool {
 	var token Token
 	node := NodeExit{nodeType: nodeExit}
 
@@ -386,11 +350,11 @@ func ASTCreateExit(ls *LexerState, program *Program) bool {
 
 	ls.ConsumeAssert(tokSemicolon)
 
-	program.node = append(program.node, &node)
+	program.nodes = append(program.nodes, &node)
 	return true
 }
 
-func ASTCreateChaosGlobalDef(ls *LexerState, program *Program) bool {
+func ASTCreateChaosGlobalDef(ls *LexerState, program *Scope) bool {
 	var token Token
 	node := NodeIdentifier{nodeType: nodeIdentifier}
 
@@ -415,7 +379,7 @@ func ASTCreateChaosGlobalDef(ls *LexerState, program *Program) bool {
 		token = ls.ConsumeAssert(tokVarType)
 		node.varType = castAssert[*TokenVarType](token)
 	} else {
-		node.varType = nodeInfer(kindNone)
+		node.varType = NodeInfer(kindNone)
 	}
 
 	if ls.MatchAt(0, tokAssignment) {
@@ -438,15 +402,15 @@ func ASTCreateChaosGlobalDef(ls *LexerState, program *Program) bool {
 		os.Exit(1)
 	}
 
-	if err := program.allocateVariable(node.identifier.symbol); err != nil {
+	if err := program.AllocateVariable(node.identifier.symbol); err != nil {
 		ls.PrintError("The variable `%s` already exists and cannot be defined twice.\n", node.identifier.symbol)
 		return false
 	}
-	program.node = append(program.node, &node)
+	program.nodes = append(program.nodes, &node)
 	return true
 }
 
-func ASTCreateChaosDef(ls *LexerState, program *Program) bool {
+func ASTCreateChaosDef(ls *LexerState, program *Scope) bool {
 	var token Token
 	node := NodeIdentifier{nodeType: nodeIdentifier}
 
@@ -470,7 +434,7 @@ func ASTCreateChaosDef(ls *LexerState, program *Program) bool {
 		token = ls.ConsumeAssert(tokVarType)
 		node.varType = castAssert[*TokenVarType](token)
 	} else {
-		node.varType = nodeInfer(kindNone)
+		node.varType = NodeInfer(kindNone)
 	}
 
 	if ls.MatchAt(0, tokAssignment) {
@@ -493,11 +457,11 @@ func ASTCreateChaosDef(ls *LexerState, program *Program) bool {
 		os.Exit(1)
 	}
 
-	program.node = append(program.node, &node)
+	program.nodes = append(program.nodes, &node)
 	return true
 }
 
-func ASTCreateProcDefinition(ls *LexerState, program *Program) bool {
+func ASTCreateChaosProcDefinition(ls *LexerState, program *Scope) bool {
 
 	var token Token
 	node := NodeProcDef{nodeType: nodeProc}
@@ -582,7 +546,7 @@ func ASTCreateProcDefinition(ls *LexerState, program *Program) bool {
 		// TO-DO: Handle allocating variables to a local scope.
 		// Variables are basically skipped in allocation since they are not considered
 		// global variables.
-		if ok := ASTCreateChaosStatement(ls, program); !ok {
+		if ok := ASTCreateChaosStatement(ls, &node.scope); !ok {
 			return false
 		}
 	}
@@ -590,16 +554,16 @@ func ASTCreateProcDefinition(ls *LexerState, program *Program) bool {
 	ls.ConsumeAssert(tokEndProc)
 
 	// TO-DO: This should take into account overloading and mangling, but I'm too lazy to do it now.
-	if err := program.allocateProc(node.identifier.symbol); err != nil {
+	if err := program.AllocateProc(node.identifier.symbol); err != nil {
 		ls.PrintError("The proc `%s` already exists and cannot be defined twice.\n", node.identifier.symbol)
 		return false
 	}
 
-	program.node = append(program.node, &node)
+	program.nodes = append(program.nodes, &node)
 	return true
 }
 
-func ASTCreateProcCall(ls *LexerState, program *Program) bool {
+func ASTCreateChaosProcCall(ls *LexerState, program *Scope) bool {
 
 	var token Token
 	node := NodeProcCall{nodeType: nodeProcCall}
@@ -625,11 +589,11 @@ func ASTCreateProcCall(ls *LexerState, program *Program) bool {
 	}
 
 	ls.ConsumeAssert(tokSemicolon)
-	program.node = append(program.node, &node)
+	program.nodes = append(program.nodes, &node)
 	return true
 }
 
-func ASTCreateChaosStatement(ls *LexerState, program *Program) bool {
+func ASTCreateChaosStatement(ls *LexerState, program *Scope) bool {
 	if ls.MatchAt(0, tokDef) {
 		if ok := ASTCreateChaosDef(ls, program); ok {
 			return true
@@ -641,24 +605,24 @@ func ASTCreateChaosStatement(ls *LexerState, program *Program) bool {
 		}
 	}
 	if ls.MatchAt(0, tokRun) {
-		if ok := ASTCreateProcCall(ls, program); ok {
+		if ok := ASTCreateChaosProcCall(ls, program); ok {
 			return true
 		}
 	}
 	if ls.MatchAt(0, tokExit) {
-		if ok := ASTCreateExit(ls, program); ok {
+		if ok := ASTCreateChaosExit(ls, program); ok {
 			return true
 		}
 	}
 	return false
 }
 
-func ASTCreateChaosProgram(ls *LexerState) Program {
+func ASTCreateChaosProgram(ls *LexerState) Scope {
 	assert(ls.cursor == 0, "Cursor is not 0")
-	program := Program{
-		node:                     []Node{},
-		globalAllocatedVariables: []Symbol{},
-		globalAllocatedProcs:     []Symbol{},
+	program := Scope{
+		nodes:              []Node{},
+		allocatedVariables: []Symbol{},
+		allocatedProcs:     []Symbol{},
 	}
 
 	for ls.cursor < ls.count {
@@ -667,7 +631,7 @@ func ASTCreateChaosProgram(ls *LexerState) Program {
 		}
 
 		if ls.MatchAt(0, tokProc) {
-			if ok := ASTCreateProcDefinition(ls, &program); ok {
+			if ok := ASTCreateChaosProcDefinition(ls, &program); ok {
 				continue
 			}
 			panic("Failed to lex proc definition")

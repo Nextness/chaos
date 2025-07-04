@@ -22,19 +22,19 @@ func writeStringf(stream *bytes.Buffer, format string, args ...any) {
 func irChaos(es *ExecutionState) []Instruction {
 	instructions := []Instruction{}
 
-	for _, node := range es.entryPoint.statements {
-		if node.NodeType() == nodeExit {
-			instructionExit := &InstructionExit{}
-			n := castAssert[*NodeExit](node)
-			if token := castAssert[*TokenLiteral](n.message); token != nil {
-				instructionExit.message = castAssert[string](token.value)
-			}
-			token := castAssert[*TokenLiteral](n.status)
-			instructionExit.value = castAssert[int](token.value)
-			instructions = append(instructions, instructionExit)
-			continue
-		}
-	}
+	// for _, node := range es.entryPoint.statements {
+	// 	if node.NodeType() == nodeExit {
+	// 		instructionExit := &InstructionExit{}
+	// 		n := castAssert[*NodeExit](node)
+	// 		if token := castAssert[*TokenLiteral](n.message); token != nil {
+	// 			instructionExit.message = castAssert[string](token.value)
+	// 		}
+	// 		token := castAssert[*TokenLiteral](n.status)
+	// 		instructionExit.value = castAssert[int](token.value)
+	// 		instructions = append(instructions, instructionExit)
+	// 		continue
+	// 	}
+	// }
 
 	return instructions
 }
