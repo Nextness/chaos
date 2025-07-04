@@ -80,9 +80,9 @@ func (n NodeType) asString() string {
 type PtrAny any
 
 type Node interface {
-	asString() string
-	asBuffer(padSize int) bytes.Buffer
-	getNodeType() NodeType
+	String() string
+	Buffer(padSize int) bytes.Buffer
+	NodeType() NodeType
 }
 
 type NodeExit struct {
@@ -91,11 +91,11 @@ type NodeExit struct {
 	message  *TokenLiteral
 }
 
-func (n *NodeExit) asString() string {
+func (n *NodeExit) String() string {
 	return todo[string]()
 }
 
-func (n *NodeExit) asBuffer(padSize int) bytes.Buffer {
+func (n *NodeExit) Buffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
@@ -119,7 +119,7 @@ func (n *NodeExit) asBuffer(padSize int) bytes.Buffer {
 	return tmp
 }
 
-func (n *NodeExit) getNodeType() NodeType {
+func (n *NodeExit) NodeType() NodeType {
 	return n.nodeType
 }
 
@@ -130,11 +130,11 @@ type NodeIdentifier struct {
 	value      PtrAny
 }
 
-func (n *NodeIdentifier) asString() string {
+func (n *NodeIdentifier) String() string {
 	return todo[string]()
 }
 
-func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
+func (n *NodeIdentifier) Buffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
@@ -177,7 +177,7 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	} else if value, ok := cast[*TokenIdentifier](n.value); ok {
 		tmp.WriteString(fmt.Sprintf("%sTokenIdentifier value [%s]", pad, value.symbol))
 	} else if value, ok := cast[*NodeBinOp](n.value); ok {
-		buf := value.asBuffer(padSize)
+		buf := value.Buffer(padSize)
 		tmp.Write(buf.Bytes())
 	} else {
 		tmp.WriteString(fmt.Sprintf("%sUnknownToken value [Unsuported type %T]", pad, value))
@@ -186,7 +186,7 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 	return tmp
 }
 
-func (n *NodeIdentifier) getNodeType() NodeType {
+func (n *NodeIdentifier) NodeType() NodeType {
 	return n.nodeType
 }
 
@@ -199,11 +199,11 @@ type NodeProcDef struct {
 	statements []Node
 }
 
-func (n *NodeProcDef) asString() string {
+func (n *NodeProcDef) String() string {
 	return todo[string]()
 }
 
-func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
+func (n *NodeProcDef) Buffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
@@ -225,7 +225,7 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 	pad = makePad(padSize)
 
 	for _, arg := range n.args {
-		a := arg.asBuffer(padSize)
+		a := arg.Buffer(padSize)
 		tmp.Write(a.Bytes())
 		tmp.WriteByte('\n')
 	}
@@ -237,7 +237,7 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 	for _, arg := range n.rets {
-		a := arg.asBuffer(padSize)
+		a := arg.Buffer(padSize)
 		tmp.Write(a.Bytes())
 		tmp.WriteByte('\n')
 	}
@@ -249,7 +249,7 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 	for _, arg := range n.statements {
-		a := arg.asBuffer(padSize)
+		a := arg.Buffer(padSize)
 		tmp.Write(a.Bytes())
 		tmp.WriteByte('\n')
 	}
@@ -257,7 +257,7 @@ func (n *NodeProcDef) asBuffer(padSize int) bytes.Buffer {
 	return tmp
 }
 
-func (n *NodeProcDef) getNodeType() NodeType {
+func (n *NodeProcDef) NodeType() NodeType {
 	return n.nodeType
 }
 
@@ -269,11 +269,11 @@ type NodeBinOp struct {
 	operation *TokenOperator
 }
 
-func (n *NodeBinOp) asString() string {
+func (n *NodeBinOp) String() string {
 	return todo[string]()
 }
 
-func (n *NodeBinOp) asBuffer(padSize int) bytes.Buffer {
+func (n *NodeBinOp) Buffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
@@ -306,7 +306,7 @@ func (n *NodeBinOp) asBuffer(padSize int) bytes.Buffer {
 	return tmp
 }
 
-func (n *NodeBinOp) getNodeType() NodeType {
+func (n *NodeBinOp) NodeType() NodeType {
 	return n.nodeType
 }
 
@@ -317,11 +317,11 @@ type NodeProcCall struct {
 	args       []NodeIdentifier
 }
 
-func (n *NodeProcCall) asString() string {
+func (n *NodeProcCall) String() string {
 	return todo[string]()
 }
 
-func (n *NodeProcCall) asBuffer(padSize int) bytes.Buffer {
+func (n *NodeProcCall) Buffer(padSize int) bytes.Buffer {
 	pad := makePad(padSize)
 
 	tmp := bytes.Buffer{}
@@ -339,7 +339,7 @@ func (n *NodeProcCall) asBuffer(padSize int) bytes.Buffer {
 	padSize += PADNUMBER
 	pad = makePad(padSize)
 	for _, node := range n.args {
-		n := node.asBuffer(padSize)
+		n := node.Buffer(padSize)
 		tmp.Write(n.Bytes())
 		tmp.WriteByte('\n')
 	}
@@ -347,7 +347,7 @@ func (n *NodeProcCall) asBuffer(padSize int) bytes.Buffer {
 	return tmp
 }
 
-func (n *NodeProcCall) getNodeType() NodeType {
+func (n *NodeProcCall) NodeType() NodeType {
 	return n.nodeType
 }
 

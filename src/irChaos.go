@@ -23,7 +23,7 @@ func irChaos(es *ExecutionState) []Instruction {
 	instructions := []Instruction{}
 
 	for _, node := range es.entryPoint.statements {
-		if node.getNodeType() == nodeExit {
+		if node.NodeType() == nodeExit {
 			instructionExit := &InstructionExit{}
 			n := castAssert[*NodeExit](node)
 			if token := castAssert[*TokenLiteral](n.message); token != nil {

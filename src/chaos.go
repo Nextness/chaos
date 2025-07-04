@@ -42,7 +42,7 @@ func main() {
 			program := ASTCreateChaosProgram(ts)
 
 			for _, program := range program.node {
-				val := program.asBuffer(0)
+				val := program.Buffer(0)
 				fmt.Printf("%s\n", val.String())
 			}
 
