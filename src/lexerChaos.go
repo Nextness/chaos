@@ -459,7 +459,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 
 	tokens := []Token{}
 	for cs.cursor < cs.count {
-		// Singleline comment
+		// Single-line comment
 		if cs.MatchStrAt(0, "//") {
 			for !cs.MatchByteAt(0, '\n') {
 				cs.cursor++
@@ -475,7 +475,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		// Multiline comment
+		// Multi-line comment
 		if cs.MatchStrAt(0, "/**") {
 			nestedComment := 0
 			cs.cursor += 3
@@ -520,15 +520,15 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
-			cs.cursor += 2
 
 			position := Position{
 				line:   cs.line,
 				column: cs.column,
 			}
+			cs.cursor += 2
 
-			// TODO: Handle nested '«»'
-			// TODO: Handle multable strings «hello {some-printable-variable}»
+			// TO-DO: Handle nested '«»'
+			// TO-DO: Handle interpolated strings like «hello {some-printable-variable}»
 			for !cs.MatchStrAt(0, "»") {
 				tmp.WriteString(cs.CurrentString())
 				cs.cursor++
@@ -765,8 +765,6 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 		}
 
 		if isAlpha(cs.CurrentByte()) {
-			// saveCursorPos := cs.cursor
-			// saveColumPos := cs.column
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 

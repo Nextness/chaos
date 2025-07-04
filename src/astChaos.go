@@ -530,7 +530,7 @@ func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 				isVariadic = true
 			}
 
-			// TODO: For now we don't allow default values, so all the identifiers should be
+			// TO-DO: For now we don't allow default values, so all the identifiers should be
 			// uninitialized.
 			if !ts.MatchAt(0, tokVarType) {
 				ts.PrintError("Expected identifier type for 'proc %s' but found '%s'\n", node.identifier.symbol, ts.currentTokenTypeAsString())
@@ -579,7 +579,7 @@ func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 
 	ts.ConsumeAssert(tokExecutes)
 	for !ts.MatchAt(0, tokEndProc) {
-		// TODO: Handle allocating variables to a local scope.
+		// TO-DO: Handle allocating variables to a local scope.
 		// Variables are basically skipped in allocation since they are not considered
 		// global variables.
 		if ok := ASTCreateChaosStatement(ts, program); !ok {
@@ -589,7 +589,7 @@ func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 
 	ts.ConsumeAssert(tokEndProc)
 
-	// TODO: This should take into account overloading and mangling, but I'm too lazy to do it now.
+	// TO-DO: This should take into account overloading and mangling, but I'm too lazy to do it now.
 	if err := program.allocateProc(node.identifier.symbol); err != nil {
 		ts.PrintError("The proc `%s` already exists and cannot be defined twice.\n", node.identifier.symbol)
 		return false
@@ -673,7 +673,7 @@ func ASTCreateChaosProgram(ts *LexerState) Program {
 			panic("Failed to lex proc definition")
 		}
 
-		// TODO: handle def and global def separately
+		// TO-DO: handle def and global def separately
 		if ts.MatchAt(0, tokGlobal, tokDef, tokExit, tokIdentifier, tokRun) {
 			if ok := ASTCreateChaosStatement(ts, &program); ok {
 				continue
