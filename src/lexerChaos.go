@@ -44,12 +44,111 @@ const (
 	tokRun
 	tokWith
 	tokLiteral
-	tokInferAssign
 	tokAs
 	tokCount
 )
 
-func (tokTyp TokenType) asString() string {
+func (tokTyp TokenType) HumanReadableString() string {
+	if tokTyp == tokInferType {
+		return "infered-type"
+	}
+	if tokTyp == tokGlobal {
+		return "global"
+	}
+	if tokTyp == tokDef {
+		return "def"
+	}
+	if tokTyp == tokAssignment {
+		return "="
+	}
+	if tokTyp == tokPlus {
+		return "+"
+	}
+	if tokTyp == tokMinus {
+		return "-"
+	}
+	if tokTyp == tokVarType {
+		return "type"
+	}
+	if tokTyp == tokIdentifier {
+		return "identifier"
+	}
+	if tokTyp == tokNewline {
+		return "newline"
+	}
+	if tokTyp == tokExit {
+		return "exit"
+	}
+	if tokTyp == tokComma {
+		return ","
+	}
+	if tokTyp == tokLessThan {
+		return "<"
+	}
+	if tokTyp == tokGreaterThan {
+		return ">"
+	}
+	if tokTyp == tokExecutes {
+		return "executes"
+	}
+	if tokTyp == tokIf {
+		return "if"
+	}
+	if tokTyp == tokEndOfFile {
+		return "eof"
+	}
+	if tokTyp == tokProc {
+		return "proc"
+	}
+	if tokTyp == tokEndProc {
+		return "end-proc"
+	}
+	if tokTyp == tokReturns {
+		return "returns"
+	}
+	if tokTyp == tokExpects {
+		return "expects"
+	}
+	if tokTyp == tokOpenParen {
+		return "("
+	}
+	if tokTyp == tokCloseParen {
+		return ")"
+	}
+	if tokTyp == tokEllipsis {
+		return "..."
+	}
+	if tokTyp == tokEquals {
+		return "=="
+	}
+	if tokTyp == tokElif {
+		return "elif"
+	}
+	if tokTyp == tokElse {
+		return "else"
+	}
+	if tokTyp == tokSemicolon {
+		return ";"
+	}
+	if tokTyp == tokColon {
+		return ":"
+	}
+	if tokTyp == tokRun {
+		return "run"
+	}
+	if tokTyp == tokWith {
+		return "with"
+	}
+	if tokTyp == tokLiteral {
+		return "literal"
+	}
+	if tokTyp == tokAs {
+		return "as"
+	}
+	return "unknown-token"
+}
+
+func (tokTyp TokenType) String() string {
 	if tokTyp == tokInferType {
 		return "tokInferType"
 	}
@@ -143,9 +242,6 @@ func (tokTyp TokenType) asString() string {
 	if tokTyp == tokLiteral {
 		return "tokLiteral"
 	}
-	if tokTyp == tokInferAssign {
-		return "tokInferAssign"
-	}
 	if tokTyp == tokAs {
 		return "tokAs"
 	}
@@ -184,7 +280,7 @@ const (
 	kindNone
 )
 
-func (t TokenKind) asString() string {
+func (t TokenKind) String() string {
 	if t == kindAnyError {
 		return "Any-Error"
 	}
@@ -289,7 +385,7 @@ type TokenKeyword struct {
 
 func (t *TokenKeyword) String() string {
 	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s]", preffix, t.tokType.asString())
+	return fmt.Sprintf("%s [%s]", preffix, t.tokType.String())
 }
 
 func (t *TokenKeyword) TokenType() TokenType {
@@ -310,7 +406,7 @@ type TokenVarType struct {
 
 func (t *TokenVarType) String() string {
 	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.asString(), t.symbol)
+	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.String(), t.symbol)
 }
 
 func (t *TokenVarType) TokenType() TokenType {
@@ -328,7 +424,7 @@ type TokenOperator struct {
 
 func (t *TokenOperator) String() string {
 	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s]", preffix, t.tokType.asString())
+	return fmt.Sprintf("%s [%s]", preffix, t.tokType.String())
 }
 
 func (t *TokenOperator) TokenType() TokenType {
@@ -352,21 +448,21 @@ func (t *TokenLiteral) String() string {
 	curType := any(t.value)
 	if val, ok := cast[string](curType); ok {
 		if val != "" {
-			return fmt.Sprintf("%s [%s] \"%s\"", preffix, t.tokType.asString(), val)
+			return fmt.Sprintf("%s [%s] \"%s\"", preffix, t.tokType.String(), val)
 		}
-		return fmt.Sprintf("%s [%s]", preffix, t.tokType.asString())
+		return fmt.Sprintf("%s [%s]", preffix, t.tokType.String())
 	}
 
 	if val, ok := cast[int](curType); ok {
-		return fmt.Sprintf("%s [%s] %d", preffix, t.tokType.asString(), val)
+		return fmt.Sprintf("%s [%s] %d", preffix, t.tokType.String(), val)
 	}
 
 	if val, ok := cast[bool](curType); ok {
-		return fmt.Sprintf("%s [%s] %t", preffix, t.tokType.asString(), val)
+		return fmt.Sprintf("%s [%s] %t", preffix, t.tokType.String(), val)
 	}
 
 	if val, ok := cast[float64](curType); ok {
-		return fmt.Sprintf("%s [%s] %f", preffix, t.tokType.asString(), val)
+		return fmt.Sprintf("%s [%s] %f", preffix, t.tokType.String(), val)
 	}
 
 	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
@@ -388,7 +484,7 @@ type TokenIdentifier struct {
 
 func (t *TokenIdentifier) String() string {
 	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.asString(), t.symbol)
+	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.String(), t.symbol)
 }
 
 func (t *TokenIdentifier) TokenType() TokenType {
@@ -1237,7 +1333,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "[ERROR] Failed while tokenizing - unknown character '%s'\n", string(cs.CurrentByte()))
+		fmt.Fprintf(
+			os.Stderr,
+			"[ERROR] Failed while tokenizing - unknown character '%s' at position %03d:%03d\n",
+			cs.CurrentString(), cs.line, cs.column,
+		)
 		panic("unrecheable")
 	}
 
@@ -1283,7 +1383,7 @@ func (ts *LexerState) Current() Token {
 }
 
 func (ts *LexerState) currentTokenTypeAsString() string {
-	return ts.Current().TokenType().asString()
+	return ts.Current().TokenType().String()
 }
 
 func (tok *TokenKind) MatchAt(offset int, tokKinds ...TokenKind) (result bool) {
@@ -1325,7 +1425,10 @@ func (ts *LexerState) Peek(offset int) (result Token) {
 }
 
 func (ts *LexerState) ConsumeAssert(tokType TokenType) Token {
-	assert(ts.Current().TokenType() == tokType, fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.asString(), ts.currentTokenTypeAsString()))
+	assert(
+		ts.Current().TokenType() == tokType,
+		fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), ts.currentTokenTypeAsString()),
+	)
 	result := ts.Current()
 	if ts.cursor < ts.count {
 		ts.cursor++
