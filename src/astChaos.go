@@ -55,12 +55,6 @@ const (
 
 type NodeState int
 
-const (
-	nodeUninitialized NodeState = iota
-	nodeInitialized
-	nodeReassigned
-)
-
 func (n NodeType) asString() string {
 	if n == nodeIdentifier {
 		return "NodeIdentifier"
@@ -131,7 +125,6 @@ func (n *NodeExit) getNodeType() NodeType {
 
 type NodeIdentifier struct {
 	nodeType   NodeType
-	state      NodeState
 	identifier *TokenIdentifier
 	varType    *TokenVarType
 	value      PtrAny
@@ -152,16 +145,11 @@ func (n *NodeIdentifier) asBuffer(padSize int) bytes.Buffer {
 
 	tmp.WriteString(fmt.Sprintf("%ssymbol [%s]\n", pad, n.identifier.symbol))
 
-	if n.state == nodeInitialized {
+	if n.value != nil {
 		tmp.WriteString(fmt.Sprintf("%sstate [initialized]\n", pad))
-	} else if n.state == nodeUninitialized {
-		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]\n", pad))
-	} else if n.state == nodeReassigned {
-		tmp.WriteString(fmt.Sprintf("%sstate [reassigned]\n", pad))
 	} else {
-		tmp.WriteString(fmt.Sprintf("%sstate [Unknown]\n", pad))
+		tmp.WriteString(fmt.Sprintf("%sstate [uninitialized]\n", pad))
 	}
-
 	tmp.WriteString(fmt.Sprintf("%sdefinition\n", pad))
 
 	padSize += PADNUMBER
@@ -404,7 +392,7 @@ func ASTCreateExit(ts *LexerState, program *Program) bool {
 
 func ASTCreateChaosGlobalDef(ts *LexerState, program *Program) bool {
 	var token Token
-	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
+	node := NodeIdentifier{nodeType: nodeIdentifier}
 
 	ts.ConsumeAssert(tokGlobal)
 	ts.ConsumeAssert(tokDef)
@@ -434,7 +422,6 @@ func ASTCreateChaosGlobalDef(ts *LexerState, program *Program) bool {
 
 		ts.ConsumeAssert(tokAssignment)
 
-		node.state = nodeInitialized
 		if ts.MatchAt(0, tokLiteral) {
 			token = ts.Consume()
 			node.value = castAssert[*TokenLiteral](token)
@@ -446,7 +433,7 @@ func ASTCreateChaosGlobalDef(ts *LexerState, program *Program) bool {
 
 	ts.ConsumeAssert(tokSemicolon)
 
-	if node.varType.tokType == tokInferType && node.state == nodeUninitialized {
+	if node.varType.tokType == tokInferType && node.value == nil {
 		ts.PrintError("Expected uninitialized variable or assignment for '%s'.\n", node.identifier.symbol)
 		os.Exit(1)
 	}
@@ -461,7 +448,7 @@ func ASTCreateChaosGlobalDef(ts *LexerState, program *Program) bool {
 
 func ASTCreateChaosDef(ts *LexerState, program *Program) bool {
 	var token Token
-	node := NodeIdentifier{state: nodeUninitialized, nodeType: nodeIdentifier}
+	node := NodeIdentifier{nodeType: nodeIdentifier}
 
 	ts.ConsumeAssert(tokDef)
 
@@ -490,7 +477,6 @@ func ASTCreateChaosDef(ts *LexerState, program *Program) bool {
 
 		ts.ConsumeAssert(tokAssignment)
 
-		node.state = nodeInitialized
 		if ts.MatchAt(0, tokLiteral) {
 			token = ts.Consume()
 			node.value = castAssert[*TokenLiteral](token)
@@ -502,7 +488,7 @@ func ASTCreateChaosDef(ts *LexerState, program *Program) bool {
 
 	ts.ConsumeAssert(tokSemicolon)
 
-	if node.varType.tokType == tokInferType && node.state == nodeUninitialized {
+	if node.varType.tokType == tokInferType && node.value == nil {
 		ts.PrintError("Expected uninitialized variable or assignment for '%s'.\n", node.identifier.symbol)
 		os.Exit(1)
 	}
@@ -514,7 +500,7 @@ func ASTCreateChaosDef(ts *LexerState, program *Program) bool {
 func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 
 	var token Token
-	node := NodeProcDef{nodeType: nodeProc, state: nodeInitialized}
+	node := NodeProcDef{nodeType: nodeProc}
 
 	ts.ConsumeAssert(tokProc)
 
@@ -553,7 +539,6 @@ func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 			token = ts.Consume()
 			nIdent.varType = castAssert[*TokenVarType](token)
 			nIdent.varType.variadic = isVariadic
-			nIdent.state = nodeUninitialized
 
 			if ts.MatchAt(0, tokComma) {
 				ts.Consume()
@@ -582,7 +567,6 @@ func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 			token = ts.Consume()
 			n.identifier = &TokenIdentifier{}
 			n.varType = castAssert[*TokenVarType](token)
-			n.state = nodeUninitialized
 
 			node.rets = append(node.rets, n)
 		}
@@ -618,7 +602,7 @@ func ASTCreateProcDefinition(ts *LexerState, program *Program) bool {
 func ASTCreateProcCall(ts *LexerState, program *Program) bool {
 
 	var token Token
-	node := NodeProcCall{state: nodeInitialized, nodeType: nodeProcCall}
+	node := NodeProcCall{nodeType: nodeProcCall}
 
 	ts.ConsumeAssert(tokRun)
 
