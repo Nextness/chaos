@@ -1,32 +1,26 @@
-#let MAX-LEN := 4096;
+MAX-LEN :: 4096;
 
-proc length
-    expects str as *String, max-length as U64? = MAX-LEN
-executes
-    def init-pos as *String = str;
-    while str != «\0» evaluate str++ executes
-        #if max-length != undefined #executes
-            if not max-length return max-length-hit!;
+length :: proc (str: String, max-length: U64? = MAX-LEN) -> I64! {
+    init-pos := &str;
+    while str != «\0» evaluate ++str {
+        #if max-length != undefined {
+            if not max-length return "max-length-hit";
             max-length--;
-        #end-if
-    end-while
+        }
+    }
     return str - init-pos;
-end-proc
+}
 
-proc copy
-    expects str as &String, max-length as U64? = MAX-LEN
-    returns *String!
-executes
-    def tmp as *String;
-    while str != «\0» executes
-        tmp++ = str++;
-        #if max-length != undefined #executes
-            if not max-length return max-length-hit!;
+copy :: proc (str: &String, max-length: U64? = MAX-LEN) -> String! {
+    tmp: *String;
+    while str != «\0» evaluate tmp++ = str++ {
+        #if max-length !=undefined {
+            if not max-length return "max-length-hit";
             max-length--;
-        #end-if
-    end-while
+        }
+    }
     return tmp;
-end-proc
+}
 
 #module string;
 #import «core::numbers.chaos»;

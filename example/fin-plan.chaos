@@ -1,59 +1,46 @@
-type Inss-Range struct
-    initial as F64;
-    final as F64;
-    aliquot as F64;
-end-type
+Inss-Range :: struct {
+    initial, final, aliquot: F64;
+}
 
-def Inss-Table = alias Map using 4, String, Inss-Range;
-def INSS-TABLE as Inss-Table = new with
-    «first-band»  = new with initial=0.0,     final=1518.0,  aliquot=0.075 end-new,
-    «second-band» = new with initial=1518.01, final=2793.88, aliquot=0.09  end-new,
-    «third-band»  = new with initial=2793.89, final=4190.83, aliquot=0.12  end-new,
-    «fourth-band» = new with initial=4190.84, final=8157.41, aliquot=0.14  end-new,
-end-new;
+Inss-Table :: alias Map<dyn, String, Inss-Range>;
+INSS-TABLE :: Inss-Table(
+    «first-band»:  Inss-Range(initial=0.0,     final=1518.0, aliquot=0.075),
+    «second-band»: Inss-Range(initial=1518.01, final=2793.88, aliquot=0.09),
+    «third-band»:  Inss-Range(initial=2793.89, final=4190.83, aliquot=0.12),
+    «fourth-band»: Inss-Range(initial=4190.84, final=8157.41, aliquot=0.14),
+);
 
-type Income-Tax-Range struct
-    initial as F64;
-    final as F64;
-    aliquot as F64;
-    monthly-deduction as F64;
-end-type
+Income-Tax-Range :: struct {
+    initial, final, aliquot, monthly-deduction: F64;
+}
 
-def Income-Tax-Table = alias Map using 5, String, Income-Tax-Range;
-def INCOME-TAX-TABLE as Income-Tax-Table = new with
-    «first-band»  = new with initial=0.0,     final=2259.20,   aliquot=0.0,   monthly-deduction=0.0    end-new,
-    «second-band» = new with initial=2259.21, final=2828.65,   aliquot=0.075, monthly-deduction=169.44 end-new,
-    «third-band»  = new with initial=2828.66, final=3751.05,   aliquot=0.150, monthly-deduction=381.44 end-new,
-    «fourth-band» = new with initial=3751.06, final=4664.68,   aliquot=0.225, monthly-deduction=662.77 end-new,
-    «fifth-band»  = new with initial=4664.69, final=math::inf, aliquot=0.275, monthly-deduction=896.00 end-new,
-end-new;
+Income-Tax-Table :: alias Map<dyn, String, Income-Tax-Range>;
+INCOME-TAX-TABLE :: Income-Tax-Table(
+    «first-band»:  Income-Tax-Range(initial=0.0,     final=2259.20,   aliquot=0.0,   monthly-deduction=0.0),
+    «second-band»: Income-Tax-Range(initial=2259.21, final=2828.65,   aliquot=0.075, monthly-deduction=169.44),
+    «third-band»:  Income-Tax-Range(initial=2828.66, final=3751.05,   aliquot=0.150, monthly-deduction=381.44),
+    «fourth-band»: Income-Tax-Range(initial=3751.06, final=4664.68,   aliquot=0.225, monthly-deduction=662.77),
+    «fifth-band»:  Income-Tax-Range(initial=4664.69, final=math::inf, aliquot=0.275, monthly-deduction=896.00),
+);
 
-proc inss-deuction-calculaion
-    expects gross-salary as F64, inss-table as Inss-Table
-    returns F64
-executes
-    def aliquot-sum as F64 = 0.0;
-    while _, inss-range in inss-table executes
-        if gross-salary >= inss-range.final executes
+inss-deduction-calculation :: proc (gross-salary: F64, inss-table: Inss-Table) -> (aliquot-sum: F64 = 0.0) {
+    while _, inss-range in inss-table {
+        if gross-salary >= inss-range.final {
             aliquot-sum += (inss-range.final - inss-range.initial) * inss-range.aliquot;
-        else executes
+        } else {
             aliquot-sum += (gross-salary - inss-range.initial) * inss-range.aliquot;
-        end-if
-    end-while
-    return aliquot-sum;
-end-proc
+        }
+    }
+    return;
+}
 
-proc income-tax-deduction-calculation
-    expects gross-salary as F64, income-tax-table as Income-Tax-Table, inss-deduction as F64
-    returns F64
-executes
-    def income-tax-sum as F64 = 0.0;
-    while _, income-tax-range in inome-tax-table executes
-        if income-tax-range.initial <= gross-salary and gross-salary <= income-tax-range.final executes
+income-tax-deduction-calculation :: proc (gross-salary: F64, income-tax-table: Income-Tax-Table, inss-deduction: F64) -> (income-tax-sum: F64 = 0.0) {
+    while _, income-tax-range in inome-tax-table {
+        if income-tax-range.initial <= gross-salary and gross-salary <= income-tax-range.final {
             income-tax-sum = ((gross-salary - inss-deduction) * income-tax-range.aliquot) - income-tax-range.monthy-deduction;
             break
-        end-if
-    end-while
-    return income-tax-sum;
-end-proc
+        }
+    }
+    return;
+}
 

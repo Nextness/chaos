@@ -1,85 +1,62 @@
-#module random
-
 /** -- Explanation --
  *  Perform Sha3 using '<nameOfEnum>.<value>' and get the first 64 bits starting fromthe begining.
  *  At comp time sha3(AnotherEnum.somethingInHere) is 1cc2a66e347661378dde3fc074c46e...
  *  When we call AnotherEnum.somethingInHere we will have 482518638 [1cc2a66e3]
 **/
-type AnotherEnum enum
-    somethingInHere: #unique = iota;
-    anotherThingInHere;
-    yetAnotherThingIsHere;
-end-type
+Another_Enum :: enum {
+    SOMETHING_IN_HERE : #unique = iota;
+    ANOTHER_THING_HERE;
+    YET_ANOTHER_THING_IS_HERE;
+}
 
-type Json-Response
-    generic T
-struct
-    status-code as U32? = undefined; #tag «json:status_code»
-    content as T? = undefined;  #tag «json:content»
-end-type
+Json_Response <T> :: struct {
+    status_code: U32? = undefined; #tag «json:status_code»
+    content: T? = undefined;       #tag «json:content»
+}
 
-type Some-Struct struct
-    username as String;
-    password as String; #redacted
-end-type
+Json_Response.something_crazy :: proc (self: *Self, status-code: U32) -> Void! {
+    self.status-code = status-code;
+}
 
-def some-struct = new *Some-Struct with
+response := Json_Response(...)?;
+result :: response.something_crazy() unless error {
+    exit 1;
+}
+
+Some_Struct :: struct {
+    username: String;
+    password: String; #redacted
+}
+
+some_struct := #global Some_Struct(
     username = «username»,
-    password = (run get-env-var with «ENV_VAR_NAME», «None»),
-end-new;
+    password = get_env_var(«ENV_VAR_NAME», «None»),
+);
 
-proc main returns U64 executes
-    if def window as Window = run initialize-window with 100, 100, «Window» catch-into err executes
-        run print-fn with  «Something went wrong in here - reason: {err}»;
+main :: #entry proc (Void) -> U64 {
+    window := initialize_with(100, 100, «Window») unless error {
+        print(«Something went wrong in here - {error}»);
         return 1;
-    end-if
+    }
+}
 
-    window = run? initialize-window with 100, 100, «AnotherWindow»;
-end-proc
-
-proc loop-with-label returns Bool1 executes
-    while x > 10 evaluate x += 1 label loop executes
-        while y > 10 evaluate y += 1 executes
-            if def something = run operation catch-into err executes
-                run logger with error, «The operation failed - reason: {err}»;
+loop_with_label :: proc (Void) -> Bool! {
+    while x > 10 evaluate x++ label loop {
+        while y > 10 evaluate y++ {
+            operation() unless error {
+                logger(ERROR, «The operation failed - reason: {error.reason}»);
                 break loop;
-            end-if
-        end-while
+            }
+        }
         return something;
-    end-while
-    return operation-failed!;
-end-proc
+    }
+    return "operation-failed, Because you suck!";
+}
 
-def any-error as Any-Error? = #0;
-if run operation with input catch-into any-error executes
+#scope = «file»;
 
-end-if
-
-proc testing-while-loops executes
-    while i < 1 evaluate i = run? some-operation with some-input executes
-        
-    end-while
-end-proc
-
-proc trying-things-out returns Void! executes
-    if def result =
-        run some-operation with «»
-        |> run another-operation with 100
-        |> run yet-another-operation with false
-        catch-into err
-    executes
-        if err == generic-error! executes
-            run logger with ERROR, «Failed at some-operation because of {err}»;
-        else executes
-            run logger with ERROR, «Unknown error: {err}»;
-        end-if
-        return err;
-    end-if
-end-proc
-
-#[scope=«file»]
-
+#module random;
 #import «core::allocator.chaos»;
 #import «core::logger.chaos»;
-#let num := #import «core::numbers.chaos»;
+num :: #import «core::numbers.chaos»;
 

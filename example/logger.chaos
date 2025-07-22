@@ -1,41 +1,32 @@
-type Logger-Level enum-array
-    trace as U64;
+Logger-Level :: enum-array {
+    trace: U64;
     debug;
     info;
     warning;
     error;
     critical;
     disabled;
-end-type
+}
 
-scaffold
-type Log struct
-    date-format as String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
-    output as Array using Stream = new with STD-OUT end-new;
-    include-os-name as Bool = false;
-    log-level as EnumArray? using U64 = undefined;
-end-type
+Log :: scaffold {
+    date-format: String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
+    output: Array<dyn, Stream> = (STD-OUT);
+    include-os-name: Bool = false;
+    log-level: Enum-Array<U64>? = undefined;
+}
 
-type Logger
-    builds Log
-struct
-    date-format = default;
-    output = default;
-    include-os-name = default;
-    log-level = .info;
-end-type
+Log.Logger :: struct {
+    date-format := default;
+    output := default;
+    include-os-name := default;
+    log-level: Logger-Level = .info;
+}
 
-proc log
-    expects l as Logger, log-level as Logger-Level, message as String
-    returns Void
-executes
-    // Think how to improve this kind of potential otimization,
-    // since it is not garanteed to be executed. The value may not be known at
-    // compile time.
-    #if #[try log-level < l.log-level] #executes
+log :: proc (l: Logger, log-level: Logger-Level, message: String) {
+    #if log-level < l.log-level {
         #optimize-out;
-    #end-if
-end-proc;
+    }
+}
 
 #module logger;
 #let io = #import «core::fmt::io.chaos»;

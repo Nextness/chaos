@@ -1,11 +1,8 @@
-proc main
-    expects argc as I64, argv as ...String
-    returns Void
-executes
-    def error as AnyError = null-pointer!;
-    run print-fn with «The error is {error}»;
+main :: proc (argc: I64, argv: ...String) -> Void {
+    error: AnyError = "null-pointer, reason can be included here";
+    print(«The error is {error} - reason {error.reason}»);
     return;
-end-proc
+}
 
 #module errors;
 #import «core::fmt::io.chaos»;

@@ -1,114 +1,93 @@
 // Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
 // to use as example
 
-#[macro]
-proc length expects dll as &Double-Linked-List returns U64 executes
+length :: #inline proc (dll: &Double-Linked-List) -> U64 {
     return dll.*.count as U64;
-end-proc
+}
 
-#[macro]
-proc head expects dll as &Double-Linked-List returns *Node! executes
-    return (dll.head != undefined) ? dll.head : null-pointer!;
-end-proc
+head :: #inline proc (dll: &Double-Linked-List) -> *Node! {
+    return dll.head != undefined ? dll.head : "null-pointer";
+}
 
-#[macro]
-proc tail expects dll as &Double-Linked-List returns *Node! executes
-    return (dll.tail != undefined) ? dll.tail : null-pointer!;
-end-proc
+tail :: #inline proc (dll: &Double-Linked-List) -> *Node! {
+    return dll.tail != undefined ? dll.tail : "null-pointer";
+}
 
-proc print
-    expects dll as &Double-Linked-List
-executes
-    def node as &Node = dll.head;
-    while i < dll.count evaluate i++ executes
-        def pad = i * 2;
-        run io::print with «{pad:node.data}»;
+print :: proc (dll: &Double-Linked-List) -> Void {
+    node: &Node = dll.head;
+    while i < dll.count evaluate i++ {
+        pad := i * 2;
+        io.print(«{pad:node.data}»);
         node = node.next;
-    end-while
-end-proc
+    }
+}
 
-type Double-Linked-List
-    generic C as num::Ints, T
-struct
-    count as C = 0;
-    head as *Node? using T;
-    tail as *Node? using T;
-end-type
+Double-Linked-List <C: num.Ints, T: AnyType> :: struct {
+    count: C = 0;
+    head: *Node<T>?;
+    tail: *Node<T>?;
+}
 
-type Node
-    generic T
-struct
-    data as *T;
-    prev as *Node? using T;
-    next as *Node? using T;
-end-type
+Node <T> :: struct {
+    data: *T;
+    prev: *Node<T>?;
+    next: *Node<T>?;
+}
 
-proc init-node
-    generic T
-    expects data: T
-    returns (*Node using T)!
-executes
-    def ND = alias Node using T;
+init-node <T> :: proc (data: T) -> *Node<T>! {
+    ND :: alias Node<T>;
+    new-node: *ND = alloc(size-of ND) unless |error| {
+        logger(ERROR, «Failed to allocate node - {error}»);
+        return "out-of-memory :: you are poor and don't have enough RAM lol";
+    }
 
-    if def new-node as *ND = run alloc with size-of ND catch-into err executes
-        run logger with error, «Failed to allocate node - {err}»;
-        return out-of-memory!;
-    end-if
-
-    run logger with trace, «Allocated memory for node: {new-node.address}»;
-    new-node.data = *data;
+    logger(TRACE, «Allocated memory for node: {new-node.address}»);
+    new-node.data = data;
     return new-node;
-end-proc
+}
 
-proc push-head
-    expects node as *Node, data as Node.T
-    returns Void!
-executes
-    def new-node = run? init-node with data;
-
-    if dll.count == 0 executes
+push-head :: proc (node: *Node, data: Node.T) -> Void! {
+    new-node := init-node(data)?;
+    if dll.count == 0 {
         dll.head = newNode;
         dll.tail = newNode;
-    else executes
+    } else {
         new-node.next = dll.head;
         dll.head.prev = new-node;
         dll.head = newNode;
-    end-if
-
+    }
     dll.count++;
-end-proc
+}
 
-proc insert-node
-    expects node as *Node, data as Node.T, index as U64
-    returns Void!
-executes
-    if (index < 0 or index > dll.count) return out-of-bounds!;
-    if index == 0 executes
-        run? dll.push-head with data;
+insert-node :: proc (node: *Node, data: Node.T, index: U64) -> Void! {
+    if (index < 0 or index > dll.count) return "out-of-bounds :: doesn't know how to measure...";
+
+    if index == 0 {
+        push-head(dll, data);
         return;
-    elif index == dll.count executes
-        run? dll.push-tail with data;
+    } elif index == dll.count {
+        push-tail(dll, data);
         return;
-    end-if
+    }
 
-    def tmp as *Node using Node.T;
-    if index <= (dll.count / 2) executes
-        while i < index - 1 evaluate i++ tmp = tmp.next;
-    else executes
-        while i < dll.count evaluate i++ tmp = tmp.prev;
-    end-if
+    tmp: *Node<Node.T>;
+    if index <= dll.count / 2 {
+        for i := 0 while i < index - 1 evaluate i++ tmp = tmp.next;
+    } else {
+        for i := 0 while i < dll.count evaluate i++ tmp = tmp.prev;
+    }
 
-    def new-node = run init-node with data or return null-pointer!;
+    new-node := init-node(data)?;
     tmp.next.prev = new-node;
     new-node.next = tmp.next;
     tmp.next = new-node;
     new-node.prev = tmp;
     dll.count++;
-end-proc
+}
 
-proc delete-head expects dll as *Double-Linked-List executes
-    #not-implemented;
-end-proc
+delete-head :: proc (dll: *Double-Linked-List) -> Void! {
+    #todo;
+}
 
 #module doubleLinkedList;
 

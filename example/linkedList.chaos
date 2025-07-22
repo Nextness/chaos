@@ -1,27 +1,18 @@
-type Node
-    generic T
-struct
-    value as T? = undefined;
-    next as *Node? = undefined;
-end-type
+Node <T> :: struct {
+    value: T? = undefined;
+    next: *Node?<T> = undefined;
+}
 
-proc init-node
-    generic T
-    returns (*Node using T)!
-executes
-    def node-head = run? alloc with (run size-of with Node using T);
+init-node <T> :: proc -> *Node<T>! {
+    node-head := alloc(size-of Node<T>)?;
     return node-head;
-end-proc
+}
 
-proc insert
-    expects n as *Node, value as Node.T
-    returns Void!
-executes
-    def current-node = n;
-    while (current-node != undefined current-node = current-node.next;
-    current-node.next = run? alloc with size-of Node using T;
+insert :: proc (n: *Node, value: Node.T) -> Void {
+    current-node := n;
+    while (current-node != undefined) current-node = current-node.next;
     current-node.next = value;
-end-proc
+}
 
 #module linkedList;
 #import «core::error.chaos»;

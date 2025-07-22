@@ -45,6 +45,7 @@ const (
 	tokWith
 	tokLiteral
 	tokAs
+	tokEndRun
 	tokCount
 )
 
@@ -145,6 +146,9 @@ func (tokTyp TokenType) HumanReadableString() string {
 	if tokTyp == tokAs {
 		return "as"
 	}
+	if tokTyp == tokEndRun {
+		return "end-run"
+	}
 	return "unknown-token"
 }
 
@@ -244,6 +248,9 @@ func (tokTyp TokenType) String() string {
 	}
 	if tokTyp == tokAs {
 		return "tokAs"
+	}
+	if tokTyp == tokEndRun {
+		return "tokEndRun"
 	}
 	return "unknown-tokType"
 }
@@ -555,6 +562,12 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 
 	tokens := []Token{}
 	for cs.cursor < cs.count {
+
+		if cs.MatchByteAt(0, '_') {
+			fmt.Fprint(os.Stderr, "[ERROR] If you want to use underscore for identifiers, please go use another peasant fucking language :)\n")
+			os.Exit(1)
+		}
+
 		// Single-line comment
 		if cs.MatchStrAt(0, "//") {
 			for !cs.MatchByteAt(0, '\n') {
@@ -1298,6 +1311,15 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				if string == "run" {
 					token := &TokenKeyword{
 						tokType:  tokRun,
+						position: position,
+					}
+					tokens = append(tokens, token)
+					continue
+				}
+
+				if string == "end-run" {
+					token := &TokenKeyword{
+						tokType:  tokEndRun,
 						position: position,
 					}
 					tokens = append(tokens, token)

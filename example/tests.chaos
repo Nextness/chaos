@@ -1,15 +1,12 @@
-test first-test-suite with tear-up as Tear-Up, tear-down as Tear-Down executes
-
-    proc first-test-name with t as &Unit-Test executes
-        def something = run some-condition-must-happen with «abc»;
+first-test-suite :: test (tear-up: Tear-Up, tear-down: Tear-Down) {
+    first-test-name :: proc (t: *Unit-Test) {
+        something :: some-condition-must-happen(«abc»);
         assert something, «Expected something to have a value, but it doesn't...»;
-    end-proc
+    }
 
-    // This example is wrong
-    proc second-test-name with t as &Unit-Test executes
-        def something = run some-condition-must-happen «abc»;
-        assert (not somthing catch err), «Expected an error, but found nothing»;
-    end-proc
-
-end-test
-
+    second-test-name :: proc (t: *Unit-Test) {
+        if not [error, reason] from some-condition-must-happen(«ab») {
+            assert false, «Expected an error, but found nothing»;
+        }
+    }
+}

@@ -1,33 +1,26 @@
 // Copyright
 
-proc get-user-by-username
-    expects username as String, session as Session
-    returns (Async using User)!
-executes
-    if length(username) >= 4096 return large-text!;
-    def get-user-query = «SELECT username FROM user_database WHERE username={username}»;
-    return run? perform-query with session, get-user-query;;
-end-proc
+get-user-by-username :: proc (username: String, session: Session) -> Async<User>! {
+    if length(username) >= 4096 return "large-text";
+    get-user-query :: «SELECT username FROM user_database WHERE username={username}»;
+    async-user := perform-query(get-user-query, session);
+    return async-user;
+}
 
-proc get-user
-    expects username as String
-    returns User!
-executes
-    proc task
-        returns User!
-    executes
-        def global-session = run? get-global-sesssion;
-        return run? get-user-by-username with username, global-session;
-    end-proc
+get-user :: proc (username: String) -> User! {
+    task :: proc () -> User! {
+        global-session :: get-global-session()?;
+        return get-user-by-username(username, global-session);
+    }
 
-    def current-user as AsyntTask = run asyncTask? with task;
-    if def user = run current-user.await catch-into err executes
-        run logger with «Failed to get user {username}»;
-        return err;
-    end-if
+    current-user := async-task(task);
+    user :: await(current-user) unless error {
+        logger(ERROR, «Failed to get user {username}»);
+        return "failed-to-get-user";
+    }
 
     return user;
-end-proc
+}
 
 #module asyncTasks;
 #import «core::tasks.chaos»;

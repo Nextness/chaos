@@ -1,85 +1,46 @@
-#[overload]
-proc is-uppercase
-    expects val as Byte
-    returns Bool
-executes
-    def result = true;
-    if run internal::is-uppercase with val catch-into err executes
-        result = false;
-    end-if
-    return false;
-end-proc
-
-#[overload]
-proc is-uppercase
-    expects val as String
-    returns Bool
-executes
-    def result = true;
-    if run internal::is-uppercase with val catch-into err executes
-        result = false;
-    end-if
-    return false;
-end-proc
-
-
-#[overload]
-proc is-uppercase
-    expects val as Char
-    returns Bool
-executes
-    def result = true;
-    if run internal::is-uppercase with val catch-into err executes
-        result = false;
-    end-if
-    return false;
-end-proc
-
-
-type Lexer-Error-Config struct
-    error-msg as String;
-    examples as Array using String?;
-    example-count as I64;
-end-type
-
-proc new-lexer-error-config
-    expects error-msg as String
-    returns Lexer-Error-Config
-executes
-    return new Lexer-Error-Config with
-        error-msg = error-msg,
-        examples = new Array using String?,
-        example-count = 0,
-    end-new;
-end-proc
-
-proc new-example
-    expects exposed lec as *Lexer-Error-Config, examples as ...String
-executes
-    def example-len = run length with examples;
-    assert example-len > 0;
-
-    def pad = «    »;
-    lex.example-count += 1;
-    def prefix = «({lex.example-count})»;
-    while idx, example in examples executes
-        if idx == 0 executes
-            def tmp = «{pad}{prefix} {example}»;
-            run append with lec.examples, tmp;
-            continue;
-        end-if
-        def tmp = «{pad}    {example}»;
-        run append with lec.examples, tmp;
-    end-while
-end-proc
-
-proc get-something
-    expects id as &String
-    returns U64!
-executes
-    id = «»; // This should fail, since it is a reference, and references cannot be assigned.
-             // In a sense, this value is immutable.
-    def result I64 = run? someOperation with id;
+is-uppercase <T> :: proc (val: T) -> Bool {
+    #if   (T == Byte)   result :: internal.is-uppercase<Byte>(val);
+    #elif (T == String) result :: internal.is-uppercase<String>(val);
+    #else               #exit «Failed to compile - unsupported type {type-of T}»;
     return result;
-end-proc
+}
+
+Lexer-Error-Config :: struct {
+    error-msg: String;
+    examples: Array<dyn, String?>;
+    example-count: I64;
+}
+
+new-lexer-error :: proc (error-msg: String) -> Lexer-Error-Config {
+    return Lexer-Error-Config(
+        error-msg = error-msg,
+        examples = Array<dyn, String>(),
+        example-count = 0,
+    );
+}
+
+Lexer-Error-Config.new-example :: proc (self: *Self, examples: ...String) -> Void {
+    example-len :: length(examples);
+    assert example > 0;
+
+    pad :: «    »;
+    self.example-count += 1;
+    preffix :: «({self.example-count})»;
+    while id, example in examples {
+        if id == 0 {
+            tmp :: «{pad}{preffix} {example}»;
+            self.examples.append(tmp);
+            continue;
+        }
+        tmp :: «{pad}    {example}»;
+        self.examples.append(tmp);
+    }
+}
+
+get-something :: proc (id: &String) -> U64! {
+    id :: «»; // This should fail, since it is a reference, and references cannot be assigned.
+              // In a sense, this value is immutable.
+    result: I64 = some-operation(id);
+    return result;
+}
 

@@ -1,67 +1,53 @@
 // Trying real life code to validate syntax
 // from Tsoding: https://github.com/tsodin/bpe/blob/main/src/bpe.cg
 
-proc dump-tokens
-    expects file-path as &String, tokens as *Tokens
-    returns Void!
-executes
-    return run? write-entire-file
-        with file-path, tokens.items, (tokens.count * size-of tokens.items);
-end-proc
+dump-tokens :: proc (file-path: &String, tokens: *Tokens) -> Void! {
+    return write-entire-file(file-path, tokens.items, tokens.count * size-of tokens.items);
+}
 
-proc load-tokens
-    expects file-path as &String, tokens as *Tokens, tmp-sb as *String-Builder
-    returns Void!
-executes
+load-tokens :: proc (file-path: &String, tokens: *Tokens, tmp-sb: *String-Builder) -> Void! {
     tmp-sb.count = 0;
-    run? read-entire-file with file-path, tmb-sb;
-    if (tmp-sb.count % size-of tokens.items) != 0 return generic-error!;
-    def items-count as *U32 = tmp-sb.items as *Void;
-    while i < items-count increment i executes
-        run da-append with tokens, (items at i);
-    end-while
-end-proc
+    read-entire-file(file-path, tmp-sb);
+    if (tmp-sb.count % size-of tokens.items) != 0 return "generic-error";
 
-proc load-pairs
-    expects file-path as &String, pairs as &Pairs, tmp-sb as *String-Builer, version as *U64
-    returns Void!
-executes
-    tmp-sb.count = 0;
-    run? read-entire-file with file-path, tmp-sb;
+    items-count: *U32 = tmp-sb.items as *Void;
+    while i < items-count evaluate i++ {
+        da-append(tokens, items[i]?);
+    }
+}
 
-    def data as String-View = run sb-to-sv with tmp-sb;
-    def magic-count as U64 = 4;
-    def magic-prefix as String-View = run sv-from-cstr with «BPE»;
-    if run sv-starts-with with data, magic-prefix executes
-        if data.count < magic-count return generic-error!;
-    end-if
+load-pairs :: proc (file-path: &String, pairs: *Pairs, tmp-sb: *String-Builder, version: U64) -> Void! {
+    tmp-sb := 0;
+    read-entire-file(file-path, tmp-sb);
+    data := sb-to-sv(tmp-sb)?;
 
-    if version = (data.data at 3) catch-into err executes
-        run logger with ERROR, «Invalid data»;
-        return invalid-data!;
-    end-if
+    magic-count  :: 4;
+    magic-prefix :: sv-from-cstr(«BPE»);
 
-    data.data += magic-count;
+    if sv-starts-with(data, magic-prefix) {
+        if data.count < magic-count return "generic-error";
+    }
+
+    version = data.data[3] unless |error| {
+        logger(ERROR, «invalid data»);
+        return "invalid-data";
+    }
+
+    data.data  += magic-count;
     data.count -= magic-count;
 
-    if version ==
-    case 0 executes
-        run? parse-pairs-v0 with file-path, pairs, data;
-        break-case;
-    case 1 executes
-        run? parse-pairs-v1 with file-path, pairs, data;
-        break-case;
-    case default executes
-        return generic-error!;
-        break-case;
-    end-if
+    if version == {
+    case 0 { parse-pairs-v0(file-path, pairs, data); break-case; }
+    case 1 { parse-pairs-v1(file-path, pairs, data); break-case; }
+    case default return "generic-error";
+    }
 
-    def magic-prefix-v0 as String-View = run sv-from-parts with «\0\0\0\0», 4;
-    if run sv-start-with with data, magic-prefix-v0 executes
+    magic-prefix-v0 :: sv-from-parts(«\0\0\0\0», 4);
+    if sv-start-with(data, magic-prefix-v0) {
         version = 0;
-        run? parse-pair-v0 with file-path, pairs, data;
-    end-if
+        parse-pair-v0(file-path, pairs, data);
+    }
 
-    return generic-error!;
-end-proc
+    return "generic-error";
+}
 

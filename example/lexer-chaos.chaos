@@ -1,7 +1,8 @@
-def Symbol = distinct String;
+Symbol :: distinct String;
+Token-Atom :: distinct I64;
 
-type TokenType enum
-    TOK-INFER-TYPE as I64 = -1;
+Token-Type :: enum-array {
+    TOK-INFER-TYPE: Token-Atom;
     TOK-GLOBAL;
     TOK-DEF;
     TOK-ASSIGNMENT;
@@ -34,83 +35,70 @@ type TokenType enum
     TOK-LITERAL;
     TOK-INFER-ASSIGN;
     TOK-AS;
-end-type
+}
 
-#[overload]
-proc as-string
-    expects token as Token-Type
-    returns String
-executes
-    if token ==
-    case .TOKEN-INFER-TYPE return «TOK-INFER-TYPE»;
-    case .TOK-GLOBAL return «TOK-GLOBAL»;
-    case .TOK-DEF return «TOK-DEF»;
-    case .TOK-ASSIGNMENT return «TOK-ASSIGNMENT»;
-    case .TOK-PLUS return «TOK-PLUS»;
-    case .TOK-MINUS return «TOK-MINUS»;
-    case .TOK-VARTYPE return «TOK-VARTYPE»;
-    case .TOK-IDENTIFIER return «TOK-IDENTIFIER»;
-    case .TOK-NEWLINE return «TOK-NEWLINE»;
-    case .TOK-END-OF-FILE return «TOK-END-OF-FILE»;
-    case .TOK-EXIT return «TOK-EXIT»;
-    case .TOK-COMMA return «TOK-COMMA»;
-    case .TOK-LESS-THAN return «TOK-LESS-THAN»;
-    case .TOK-GREATER-THAN return «TOK-GREATER-THAN»;
-    case .TOK-EQUALS return «TOK-EQUALS»;
-    case .TOK-EXECUTES return «TOK-EXECUTES»;
-    case .TOK-IF return «TOK-IF»;
-    case .TOK-ELIF return «TOK-ELIF»;
-    case .TOK-ELSE return «TOK-ELSE»;
-    case .TOK-PROC return «TOK-PROC»;
-    case .TOK-END-PROC return «TOK-END-PROC»;
-    case .TOK-RETURNS return «TOK-RETURNS»;
-    case .TOK-EXPECTS return «TOK-EXPECTS»;
-    case .TOK-OPEN-PAREN return «TOK-OPEN-PAREN»;
-    case .TOK-CLOSE-PAREN return «TOK-CLOSE-PAREN»;
-    case .TOK-ELLIPSIS return «TOK-ELLIPSIS»;
-    case .TOK-SEMICOLON return «TOK-SEMICOLON»;
-    case .TOK-COLON return «TOK-COLON»;
-    case .TOK-RUN return «TOK-RUN»;
-    case .TOK-WITH return «TOK-WITH»;
-    case .TOK-LITERAL return «TOK-LITERAL»;
-    case .TOK-INFER-ASSIGN return «TOK-INFER-ASSIGN»;
-    case .TOK-AS return «TOK-AS»;
-    end-if
-    exit 1, «TOK-UNKNOWN»;
-end-proc
+token-type-to-string :: Map<dyn, Token-Type, String>(
+    .TOKEN-INFER-TYPE: «TOK-INFER-TYPE»,
+    .TOK-GLOBAL: «TOK-GLOBAL»,
+    .TOK-DEF: «TOK-DEF»,
+    .TOK-ASSIGNMENT: «TOK-ASSIGNMENT»,
+    .TOK-PLUS: «TOK-PLUS»,
+    .TOK-MINUS: «TOK-MINUS»,
+    .TOK-VARTYPE: «TOK-VARTYPE»,
+    .TOK-IDENTIFIER: «TOK-IDENTIFIER»,
+    .TOK-NEWLINE: «TOK-NEWLINE»,
+    .TOK-END-OF-FILE: «TOK-END-OF-FILE»,
+    .TOK-EXIT: «TOK-EXIT»,
+    .TOK-COMMA: «TOK-COMMA»,
+    .TOK-LESS-THAN: «TOK-LESS-THAN»,
+    .TOK-GREATER-THAN: «TOK-GREATER-THAN»,
+    .TOK-EQUALS: «TOK-EQUALS»,
+    .TOK-EXECUTES: «TOK-EXECUTES»,
+    .TOK-IF: «TOK-IF»,
+    .TOK-ELIF: «TOK-ELIF»,
+    .TOK-ELSE: «TOK-ELSE»,
+    .TOK-PROC: «TOK-PROC»,
+    .TOK-END-PROC: «TOK-END-PROC»,
+    .TOK-RETURNS: «TOK-RETURNS»,
+    .TOK-EXPECTS: «TOK-EXPECTS»,
+    .TOK-OPEN-PAREN: «TOK-OPEN-PAREN»,
+    .TOK-CLOSE-PAREN: «TOK-CLOSE-PAREN»,
+    .TOK-ELLIPSIS: «TOK-ELLIPSIS»,
+    .TOK-SEMICOLON: «TOK-SEMICOLON»,
+    .TOK-COLON: «TOK-COLON»,
+    .TOK-RUN: «TOK-RUN»,
+    .TOK-WITH: «TOK-WITH»,
+    .TOK-LITERAL: «TOK-LITERAL»,
+    .TOK-INFER-ASSIGN: «TOK-INFER-ASSIGN»,
+    .TOK-AS: «TOK-AS»,
+);
 
-scaffold
-type Token struct
-    token-type as Token-Type;
-    position as Position;
-end-type
+Position :: struct {
+    line, column: I64;
+}
 
-type Position struct
-    line, column as I64;
-end-type
+Token :: scaffold {
+    token-type: Token-Type;
+    position: Position;
+}
 
-type Token-Keyword builds Token struct
-    token-type as Token-Type;
-    position as Position;
-end-type
+Token.Token-Keyword :: struct {
+    token-type: Token-Type;
+    position: Position;
+}
 
-type Token-Var-Type builds Token struct
-    symbol as Symbol;
-    variadic as Bool;
-    token-type as Token-Type;
-    token-kind as Token-Kind;
-    position as Position;
-end-type
+Token.Token-Var-Type :: struct {
+    symbol: Symbol;
+    variadic: Bool;
+    token-type: Token-Type;
+    token-kind: Token-Kind;
+    position: Position;
+}
 
-#[overload]
-proc as-string
-    expects token as Token
-    returns String
-executes
-    def preffix as String = «{t.position.line:03}:{t.position.column:03}»;
-    return «{preffix} [{run as-string with token.token-type}]»;
-end-proc
-
+Token-Var-Type.as-string :: proc (self: *Self) -> String {
+    preffix := «{self.position.line:03}:{self.position.column:03}»;
+    return «{preffix} [{as-string(token.token-type)}]»;
+}
 
 #[overload]
 proc as-string
@@ -134,113 +122,110 @@ executes
     exit 1, «Unexpected token literal found: {token.value}»;
 end-proc
 
-type Content-State struct
-    data as String;
-    count, cursor, line, column as I64;
-end-type
+Content-State :: struct {
+    data: String;
+    count, cursor, line, column: I64;
+}
 
-#[overload]
-proc match-at
-    expects content-state as *Content-State, offset as I64, string as String
-    returns Bool!
-executes
-    if content-state.cursor + offset > content-state.count executes
-        return out-of-bounds!;
-    end-if
+Content-State.match-at :: #overload proc (*self, offset: I64, string: String) -> Bool! {
+    if self.cursor + offsef > self.count {
+        return "out-of-bounds :: Cursor + offset is bigger than state count";
+    }
 
-    def length as I64 = run length with string;
-    def result as Bool = true;
+    len :: length(string);
+    result := true;
 
-    while i in range length executes
-        result = result and (run peak with content-state, i + offset) == string at? i
-    end-while
+    for i := 0 while i..len {
+        cur-char := string[i] unless |error| {
+            return "out-of-bounds :: Out of bounds while checking position {i} in string {string}";
+        }
+        result = result and peak(content-state, i + offsef) == cur-char;
+    }
 
     return result;
-end-proc
+}
 
-#[overload]
-proc match-at
-    expects content-state as *Content-State, offset as I64, byte as Byte
-    returns Bool!
-executes
-    if content-state.cursor + offset > content-state.count executes
-        return out-of-bounds!;
-    end-if
-    return (run peek-byte with content-state) == byte;
-end-proc
+Content-State.match-at :: #overload proc (*self, offset: I64, byte: Byte) -> Bool! {
+    if self.cursor + offset > self.count {
+        return "out-of-bounds :: Out of bounds while checking content state {i}"
+    }
+    return self.peek-byte()? == byte;
+}
 
-proc tokenize-chaos
-    expects file-name as String, file-content as *bytes::Buffer
-    returns dyn Array using Token
-executes
-    def cs as *Content-State = new with
-        data = run? string with file-content,
-        count = run? length with file-content,
+tokenize-chaos :: proc (file-name: String, file-content: *byte.Buffer) -> Array<dyn, Token>! {
+    cs := *Content-State(
+        data = string(file-content),
+        count = length(file-content),
         cursor = 0,
         line = 1,
         column = 1,
-    end-new;
+    );
 
-    def tokens = new dyn Array using Token;
-    while content-state.cursor < content-state.count executes
-        // Singleline comment
-        if run? match-at with content-state, 0, «//» executes
-            while not run match-at with content-state, 0, "\0" executes
+    tokens := Array<dyn, Token>();
+    while content-state.cursor < content-state.count {
+        // Single comment
+        if content-state.match-at<String>(0, «//»)? {
+            while not content-state.match-at(0, «\0») {
                 content-state.cursor++;
                 content-state.column++;
-            end-while
+            }
             continue;
-        end-if
+        }
 
         // Multiline comment
-        if run? match-at with content-state, 0, «/**» executes
-            def nested-comment as I64 = 0;
+        if content-state.match-at(0, «/**»)? {
+            nested-comment: I64 = 0;
             content-state.cursor += 3;
-            while true executes
-                if run match-at with content-state, 0, "\n" executes
+            while true {
+                if content-state.match-at(0, «\n») {
                     content-state.line++;
                     content-state.cursor++;
                     content-state.column = 0;
                     continue;
-                end-if
-                if (run match-at with content-state, 0, «**/») and nested-comment > 0 executes
+                }
+                if content-state.match-at(0, «**/»)? and nested-comment > 0 {
                     nested-comment--;
                     content-state.cursor += 3;
                     content-state.column += 3;
                     continue;
-                end-if
-                if run? match-at with content-state, 0, «**/» executes
+                }
+                if content-state.match-at(0, «**/»)? {
                     content-state.cursor += 3;
                     content-state.column += 3;
                     break;
-                end-if
-                content-state.cursor++;
-                if run? match-at with content-state, 0, «/**» executes
+                }
+                if content-state.match-at(0, «/**»)? {
                     nested-comment++;
                     content-state.cursor += 3;
                     content-state.column += 3;
                     continue;
-                end-if
-            end-while
+                }
+            }
             continue;
-        end-if
+        }
 
-    // Newline
-    if run? match-at with content-state, 0, «\0» executes
-        content-state.line++;
-        content-state.cursor++;
-        content-state.column = 0;
-        continue;
-    end-if
+        if content-state.match-at(0, «\0»)? {
+            content-state.line++;
+            content-state.cursor++;
+            content-state.column = 0;
+            continue;
+        }
 
-    if run? unicode::is-space with (run? current with content-state) executes
-        content-state.column++;
-        content-state.cursor++;
-        continue;
-    end-if
+        current := content-state.current()
+        if unicode.is-space(current)? {
+            content-state.column++;
+            content-state.cursor++;
+            continue;
+        }
+
+        
+    }
+}
+
+
 
     // Strings
-    if run? match-at with content-state, 0, «\«» executes
+    if run? match-at with content-state, 0, «\«» end-run executes
         def tmp = new bytes::Buffer;
         defer run reset with tmp;
         content-state.cursor += 2;

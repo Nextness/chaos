@@ -1,7 +1,4 @@
-
-#[extern «libc.o», «printf»]
-proc printf expects C-str, ...C-str returns C-void;
-
-#[extern «raylib.o», «windowShouldClose»]
-proc window-should-close expects Cvoid returns Cbool;
+printf              :: #extern «printf» proc;
+window_should_close :: #extern «windowShouldClose» proc;
+Some_Struct         :: #extern «SomeStruct» struct;
 

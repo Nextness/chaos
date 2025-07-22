@@ -1,153 +1,163 @@
 // Copied from https://github.com/benhoyt/ht/blob/master/ht.c
 // Probably it doesn't work - used just to evaluate language. Most likely things will change...
 
-proc iterator
-    expects hash-table as *Hash-Table
-    returns Hash-Table-Iterator
-executes
-    def result as Hash-Table-Iterato = new with hash-table, 0 end-new;
+AnyType.is_in :: #overload proc (self: Self, array: Array) -> Bool {
+    #assert self != Map<..., ..., ...> || self != Array<..., ...>;
+    result : Bool = false;
+
+    #if type_of(array) == Array<dyn, ...> {
+        while element in array {
+            if self == element {
+                result = true;
+                break;
+            }
+        }
+    }
+
+    #if type_of(array) == Array<..., ...> {
+        len :: length(array);
+        for i := 0 while i < len evaluate i++ {
+            if array[i] == element {
+                result = true;
+                break;
+            }
+        }
+    }
+
     return result;
-end-proc
+}
 
-type Entry generic K, V struct
-    key   as *K;
-    value as *V;
-end-type
+AnyType.is_not_in :: proc (self: *Self, array: Array) -> Bool {
+    return not self.is_in(array);
+}
 
-type Hash-Table generic K, V struct
-    entry    as Array using (Entry using K, V);
-    capacity as U64 = 256;
-    size     as U64 = 0;
-end-type
+iterator :: proc (hash_table: *Hash_Table) -> Hash_Table_Iterator {
+    return Hash_Table_Iterator(hash_table, 0);
+}
 
-proc init-hash-table generic K, V
-    returns (*Hash-Table using K, V)!
-executes
-    def HT as Type = alias Hash-Table using K, V;
-    def E  as Type = alias Entry using K, V;
+Entry <K, V> :: struct {
+    key: K;
+    value: V;
 
-    def table as *HT = run? alloc with size-of HT;
-    if entry.table = run calloc using E with table.capacity catch-into err executes
-        run logger with ERROR, «Failed to allocate memory, buy more RAM»;
-        return null-pointer!;
-    end-if
+    #if K.is_not_in(Array<TypeLiteral>(String, Byte, I64) #error;
+}
+
+Hash_Table <K, V> :: struct {
+    entries: *Entry<K, V>;
+    capacity: U64 = 256;
+    size: U64 = 0;
+}
+
+init_hash_table <K, V> :: proc (Void; ctx :: #context) -> *Hash_Table<K, V>! {
+    HT :: alias Hash_Table<K, V>;
+    E  :: alias Entry<K, V>;
+
+    table: *HT = ctx.alloc(size_of HT) unless error {
+        ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
+        return "null_pointer";
+    }
+
+    entry.table = ctx.calloc(table.capacity, size_of E) unless error {
+        ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
+        return "null_pointer";
+    }
 
     return table;
-end-proc
+}
 
-proc destroy
-    expects exposed hash-table as *Hash-Table
-    returns Void!
-executes
-    while i < capacity evaluate i++ executes
-        def cur-entry = entry at? i;
-        run free with cur-entry.key;
-    end-while
+destroy :: proc (using hash_table: *Hash_Table; ctx :: #context) -> Void! {
+    for i := 0 while i < capacity evaluate i++ {
+        ctx.free(entry[i]?.key as *Void);
+    }
+    ctx.free(entries);
+    ctx.free(hash_table);
+}
 
-    run free with entry;
-    run free with hash-table;
-end-proc
+get :: proc (using hash-table: Hash-Table, key: Hash-Table.K) -> Hash-Table.V! {
+    hash :: hash-key(key);
+    i := hash and (capacity - 1);
 
-proc get
-    expects exposed hash-table as Hash-Table, key as Hash-Table.K
-    returns Hash-Table.V!
-executes
-    def hash = run hash-key with key;
-    def i = hash & (capacity - 1);
-    while has-key = entry at? i evaluate i++ executes
-        if has-key == undefined break;
-        if key == has-key.key return has-key.value;
-    end-while
-    return not-found!;
-end-proc
+    while has-key in entry {
+        if (has-key == undefined) break;
+        if (key == has-key.key) return has-key.value;
+    }
 
-proc expand
-    expects exposed hash-table as *Hash-Table
-    returns Void!
-executes
-    def new-capacity = capacity * 2;
-    if new-capacity < capacity return overflow!;
+    return "not-found, key is not present";
+}
 
-    def new-entry = run? calloc with new-capacity, size-of Entry using V;
-    defer run free with new-entry;
+expand :: proc (using hash-table: Hash-Table) -> Void! {
+    new-capacity :: capacity * 2;
+    if (new-capacity < capacity) return "overflow";
 
-    while i < capacity evaluate i++ executes
-        def local-entry = entry at? i;
-        if key != undefined executes
-            run? set-entry with new-entry, new-capacity, key, value, undefined;
-        end-if
-    end-while
+    new-entry := calloc?(new-capacity, size-of Entry<Hash-Table.V>);
+
+    while i < capacity evaluate i++ {
+        local-entry :: entry[i]?;
+        if key != undefined {
+            set-entry(new-entry, new-capacity, key, value, undefined);
+        }
+    }
+
     entry = new-entry;
     capacity = new-capacity;
-end-proc
+}
 
-proc set
-    expects exposed hash-table as *Hash-Table, key as Hash-Table.K, value as Hash-Table.V
-    returns *Hash-Table.K!
-executes
-    if (size >= capacity / 2) run? expand with hash-table;
-    def key = run? set-entry with entry, capacity, key, value, size;
+set :: proc (using hash-table: *Hash-Table, key: Hash-Table.K, value: Hash-Table.V) -> Hash-Table.K! {
+    if (size >= capacity / 2) expand(hash-table)?;
+    key :: set-entry(entry, capacity, key, value, size);
     return key;
-end-proc
+}
 
-proc next
-    expects hash-table as *Hash-Table, it as *Hash-Table-Iterator
-    returns Void!
-executes
-    def table = it.table;
-    while it.index < capacity evaluate it.index++ executes
-        def item = entry at? it.index;
-        if item.key != undefined executes
+next :: proc (using hash-table: *Hash-Table, it: *Hash-Table-Iterator) -> Void! {
+    table := it.table;
+    while it.index < capacity evaluate it.index++ {
+        item :: entry[it.index]?;
+        if item.key != undefined {
             it.key = item.key;
             it.value = item.value;
-        end-if
-    end-while
-    return out-of-bounds!;
-end-proc
+        }
+    }
+    return "out-of-bounds";
+}
 
 #[scope=«file»];
 
-#def fnv-off-set = 14695981039346656037;
-#def fnv-prime  = 1099511628211;
+fnv-off-set :: 14695981039346656037;
+fnv-prime   :: 1099511628211;
 
-proc has-key
-    generic K, V
-    expects key as *K
-    returns V
-executes
-    def hash = fnt-off-set;
-    def tmp = key as String;
-    while i < run length with tmp evaluate i++ executes
-        def current-char = tmp at? i;
+has-key <K, V> :: proc (key: *K) -> V {
+    hash := fnt-off-set;
+    tmp := key;
+
+    while i < length(tmp) evaluate i++ {
+        current-char := tmp[i];
         hash ^= current-char as U64;
         hash *= fnv-prime;
-    end-while
-    return hash;
-end-proc
+    }
 
-proc set-entry
-    expects entry as Entry, capacity as U64, key as *Entry.K, value as *Entry.V, size as *U64?
-    returns String
-executes
-    def i = (run has-key with key) and (capaity - 1);
-    while not cur-entry = entry at i evaluate i++ executes
-        if (cur-entry.key == undefined) break;
-        if cur-entry.key == key executes
+    return hash;
+}
+
+set-entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entry.V, size: *U64?) -> Entry.K {
+    i := has-key(key) and (capacity - 1);
+    while not cur-entry := entry[i]? evaluate i++ {
+        if cur-entry.key == undefined break;
+        if cur-entry.key == key {
             cur-entry.value = value;
             return cur-entry.key;
-        end-if
-    end-while
+        }
+    }
 
-    if size == undefined executes
-        redef key = assert run strdup with key;
-        size.* += 1;
-    end-if
+    if size == undefined {
+        key = strdup(key);
+        size.*++;
+    }
 
-    def cur-entry = entry at? i;
-    dur-entry.key = key;
+    cur-entry := entry[i]?;
+    cur-entry.key = key;
     cur-entry.value = value;
     return key;
-end-proc
+}
 
 #module hashTable;
 #def mem := #import «core::allocators.chaos»;

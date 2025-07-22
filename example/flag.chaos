@@ -1,54 +1,50 @@
-type Flag-Type enum-array
+Flag-Type :: enum-array {
     BOOL;
     UINT64;
     SIZE;
     STR;
-end-type
+}
+#assert length(Flag-Type) == 4, «Exhaustive FlagValue definition»;
 
-#assert (#run length #with Flag-Type) == 4, «Exhaustive FlagValue definition»;
+Flag-Value :: union {
+    as-str: String;
+    as-uint64: U64;
+    as-bool: Bool;
+    as-size: Size;
+}
 
-type Flag-Value union
-    as-str as *String;
-    as-uint64 as U64;
-    as-bool as Bool;
-    as-size as Size;
-end-type
+Flag :: struct {
+    flag-type: Flag-Type;
+    name: *String;
+    description: *String;
+    value: Flag-Value;
+    definition: Flag-Value;
+}
 
-type Flag struct
-    flag-type as Flag-Type;
-    name as *String;
-    description as *String;
-    value as Flag-Value;
-    definition as Flag-Value;
-end-type
+FLAG-CAP :: 256;
 
-#def FLAG-CAP = 256;
+Flag-Content :: struct {
+    flags: Array<dyn, Flag>;
+    flags-count: U64;
+    flag-error: AnyError;
+    program-name: &String;
+    rest-argc: I64;
+    rest-argv: Array<dyn,String>;
+}
 
-type Flag-Context struct
-    flags as Array using Flag;
-    flags-count as U64;
-    flag-error as AnyError;
-    program-name as &String;
-    rest-argc as I64;
-    rest-argv Array using String;
-end-type
+global flag-global-context: Flag-Context;
 
-def flag-global-context as Flag-Context;
+new-flag :: proc (flag-type: Flag-Type, name: Name, description: String) -> Flag! {
+    ctx := flag-global-context;
+    assert ctx.flags-count < FLAG-CAP, «Expected maximum of {FLAG-CAP} flags, but found {ctx.flags-count}»;
 
-proc new-flag
-    expects flag-type as Flag-Type, name *Name, description: *String
-    returns Flag
-executes
-    def ctx as *Flag-Context = *flag-global-context;
-    #assert ctx.flags-count < FLAG-CAP, «Expected maximum of {FLAG-CAP} flags, but found {ctx.flags-count}»;
-
-    ctx.flags-count += 1;
-    def flag as *Flag = ctx.flags at? ctx.flags-count;
-    run? mem-set with flag, 0, size-of flags.*;
+    ctx.flags-count++;
+    flag: *Flag = ctx.flags[flags-count]?;
+    mem-set(flag, 0, size-of flags);
     flag.name = name;
     flag.description = description;
     return flag;
-end-proc
+}
 
 proc flag-name
     expects val as *String or U64 or Bool or Size

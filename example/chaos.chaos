@@ -1,90 +1,90 @@
 // Tringing shit out in here and other things
 // and more things
 
-proc main
-    expects argc as U64, argv as ...String
-    returns U64
-executes
-    run go-rebuild-your-self-tek;
+main :: proc (argc: U64, argv: ...String) -> U64 {
+    go-rebuild-your-self-tek();
 
-    def build-dir as String = «./../build/»;
-    if run os::stat with build-dir catch-into ... executes
-        if run os::mk-dir with build-dir catch-into err executes
-            run print with «Failed to create directory '{build-dir}' because of {err}», stream=os::STR-ERR;
+    build-dir :: «./../build/»;
+    os.stat(build-dir) unless error {
+        os.mkdir(build-dir) unless error {
+            print(«Failed to create directory '{build-dir}' because of {err}», stream=os.STR-ERR);
             return 1;
-        end-if
-    end-if
+        }
+    }
 
-    def main as String = «./chaos.chaos»;
-    def program-name as String = assert argv at 0;
-    if def other-args as Array using String = argv at 1.. catch-into err executes
-        run print with «Failed to get other args because of {err}», stream=os::STR-ERR;
+    main :: «./chaos.chaos»;
+    program-name :: assert argv[0];
+    other-args :: argv[1..] unless error {
+        print(«Failed to get other args because of {err}», stream=os.STR-ERR);
         return 1;
-    end-if
+    }
 
-    def new-command as Command = assert run init-new-command;
-    defer run de-init with new-command;
+    new-command := init-new-command();
+    defer de-init(new-command);
 
-    if (run length with other-args) <= 0 executes
-        run append with new-command, «chaosc build -o {build-dir} {main}»;
-        if run run-and-reset with new-command catch-into err executes
-            run print with «Failed to run command {run string with new-command} because of {err}»;
+    if length(other-args) <= 0 {
+        append(new-command, «chaosc build -o {build-dir} {main}»);
+        run-and-reset(new-commands) unless error {
+            print(«Failed to run command {string(new-command)} because of {err}»);
             return 1;
-        end-if
+        }
         return 0;
-    end-if
+    }
 
-    while arg in other-args executes
-        if arg == «default» executes
-            def default-file-chaos = «./assignment.chaos»;
-            run append with new-command, «chaosc build -o {build-dir} {main} && ./../build/main»;
-            if run run-and-reset with new-command catch-into err executes
-                run print with «Failed to run command {run string with new-command} because of {err}»;
+    while arg in other-args {
+        if arg == «default» {
+            default-file-chaos :: «./assignment.chaos»;
+            append(new-command, «chaosc build -o {build-dir} {main} && ./../build/main»);
+            run-and-reset(new-command) unless error {
+                print(«Failed to run command {string(new-command)} because of {err}»);
                 return 1;
-            end-if
-        else executes
-            run print with «Unknown command '{arg}'», stream=os::STR-ERR;
-            run print with «Usage: {program-name} [default]»;
+            }
+        } else {
+            print(«Unknown command '{arg}'», stream=os.STR-ERR);
+            print(«Usage: {program-name} [default]»)
             return 1;
-        end-if
-    end-while
+        }
+    }
 
     return 0;
-end-proc
+}
 
-proc go-rebuild-your-self-tek executes
-    def build-source-path as String = «./../chaosBuild.go»;
-    if def time-src = run touch-file with build-source-path catch-into err executes
-        run print with «Unable to touch file '{build-source-path}' because of {err}», stream=os::STD-ERR;
+
+
+go-rebuild-your-self-tek :: proc -> Void {
+    build-source-path :: «./../chaosBuild.go»;
+    time-src := touch-file(build-source-path) unless error {
+        print(«Unable to touch file '{build-source-path}' because of {err}», stream=os.STD-ERR);
         exit 1;
-    end-if
+    }
 
-    def build-bin-path as String = «./../chaosBuild»;
-    if def time-bin = run touch-file with build-bin-path catch-into err executes
-        run print with «Unable to touch file '{build-bin-path}' because of {err}», stream=os::STR-ERR;
+    build-bin-path :: «./../chaosBuild»;
+    time-bin := touch-file(build-bin-path) unless error {
+        print(«Unable to touch file '{build-bin-path}' because of {err}», stream=os.STR-ERR);
         exit 1;
-    end-if
+    }
 
-    if time-src == time-bin executes
-        if run os::stat with build-bin-path catch-into err executes
-            run print with «File '{build-bin-path}' not found. Skipping renaming...»;
-        else executes
-            def old-file = «{build-bin-path}.old»;
-            run print with «Renaming {build-bin-path} to {old-file}»;
-            assert run os::rename with build-bin-path, old-file;
-            assert run os::remove with old-file;
-        end-if
-    end-if
+    if time-src == time-bin {
+        if error from os.stat(build-bin-path) {
+            print(«File '{build-bin-path}' not found. Skipping renaming...»);
+        } else {
+            old-file :: «{build-bin-path}.old»;
+            print(«Renaming {build-bin-path} to {old-file}»);
+            assert os.rename(build-bin-path, old-file);
+            assert os.remove(old-file);
+        }
+    }
 
-    def new-command as *Command = assert run init-new-command;
-    defer run de-init with new-command;
+    new-command := assert init-new-command();
+    defer de-init(new-command);
 
-    run append with new-command, «chaosc build {build-source-path}»;
-    if run run-and-reset with new-command catch-into err executes
+    append(new-command, «chaosc build {build-source-path}»);
+    if error from run-and-reset(new-command) {
         exit 1;
-    end-if
-    run go-rebuild-your-self-tek;
-end-proc
+    }
+
+    go-rebuild-your-self-tek();
+}
 
 #module main;
 #scope(«file»);
