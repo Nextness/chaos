@@ -3,18 +3,18 @@ Node <T> :: struct {
     next: *Node?<T> = undefined;
 }
 
-init-node <T> :: proc -> *Node<T>! {
-    node-head := alloc(size-of Node<T>)?;
-    return node-head;
+init_node <T> :: proc -> *Node<T>! {
+    node_head := alloc(size_of Node<T>)?;
+    return node_head;
 }
 
 insert :: proc (n: *Node, value: Node.T) -> Void {
-    current-node := n;
-    while (current-node != undefined) current-node = current-node.next;
-    current-node.next = value;
+    current_node := n;
+    while (current_node != undefined) current_node = current_node.next;
+    current_node.next = value;
 }
 
 #module linkedList;
-#import «core::error.chaos»;
-#import «core::allocator.chaos»;
+#import «core/error»;
+#import «core/allocator»;
 

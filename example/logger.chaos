@@ -1,4 +1,4 @@
-Logger-Level :: enum-array {
+Logger_Level :: enum_array {
     trace: U64;
     debug;
     info;
@@ -9,22 +9,23 @@ Logger-Level :: enum-array {
 }
 
 Log :: scaffold {
-    date-format: String = «%YEAR-%MONTH-%DAY %hour-%minute-%second»;
-    output: Array<dyn, Stream> = (STD-OUT);
-    include-os-name: Bool = false;
-    log-level: Enum-Array<U64>? = undefined;
+    date_format: String = «%YEAR-%MONTH-%DAY %hour:%minute:%second»;
+    output: Array<dyn, Stream> = (STD_OUT);
+    include_os_name: Bool = false;
+    log_level: ...? = undefined;
+    log: proc (*Impl, Enum_Array<U64>, String) -> Void;
 }
 
 Log.Logger :: struct {
-    date-format := default;
+    date_format := default;
     output := default;
-    include-os-name := default;
-    log-level: Logger-Level = .info;
+    include_os_name := default;
+    log_level: Logger_Level = .info;
 }
 
-log :: proc (l: Logger, log-level: Logger-Level, message: String) {
-    #if log-level < l.log-level {
-        #optimize-out;
+Logger.log :: proc (self: *Self, log_level: Logger_Level, message: String) {
+    #if? self.log_level < log_level {
+        #optimize_out;
     }
 }
 

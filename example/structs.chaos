@@ -1,22 +1,13 @@
-type Hello-World struct
-    hello as String;
-    world as String = «world»;
-end-type
+Hello_World :: struct {
+    hello: String;
+    world: String = «world»;
+}
 
-type Another-Hello
-    generic T
-struct
-    another as T;
-    hello as String = «world!»;
-end-type
+main :: #entry proc (Void) -> Void {
+    value := Hello_World(«Hello»);
+    print(«{value.hello} {value.world}»);
+}
 
-#[entry-point]
-proc main executes
-    def value = new Hello-World with «Hello,» end-new;
-    run print-fn with «{value.hello} {value.world}»;
-    return
-end-proc
-
-#module example-structs;
-#import «core::fmt:io.chaos»;
+#module example_structs;
+#import «core/fmt/io»;
 

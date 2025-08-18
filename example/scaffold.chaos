@@ -1,29 +1,28 @@
-Some-Interface <T> :: #scaffold {
-    mandatory-field-1: String;
-    mandatory-field-2: T;
-    do-some-operation: proc (*Impl) -> Void!;
+Some_Interface <T> :: scaffold {
+    mandatory_field_1: String;
+    mandatory_field_2: T;
+    do_some_operation: proc (~self: *Self impl) -> Void!;
 }
 
-Some-Interface.Example <T> :: struct {
-    mandatory-field-1: String;
-    mandatory-field-2: T;
-    another-field: Bool;
+Some_Interface impl Example <T> :: struct {
+    mandatory_field_1: String;
+    mandatory_field_2: T;
+    another_field: Bool;
 }
 
-Example.do-some-operation :: proc (self: *Self) -> Void! {
-    self.mandatory-field-1 = «»;
-    self.mandatory-field-2 = #0;
+Example.do_some_operation :: proc (self: *Self) -> Void! {
+    self.mandatory_field_1 = «»;
+    self.mandatory_field_2 = #0;
 }
 
 main :: #entry proc () -> Void {
-    new-example := Example(
-        mandatory-field-1 = «Hello world»,
-        mandatory-field-2 = true,
-    );
+    new_example := Example {
+        mandatory_field_1 = «Hello world», mandatory_field_2 = true
+    };
 
-    print(«{new-example.*.mandatory-field-1} is {new-example.*.another-field}»);
-    new-example.do-some-operation();
-    print(«{new-example.*.mandatory-field-1} is {new-example.*.another-field}»);
+    print(«{new_example.*.mandatory_field_1} is {new_example.*.another_field}»);
+    new_example.do_some_operation();
+    print(«{new_example.*.mandatory_field_1} is {new_example.*.another_field}»);
 
     return;
 }

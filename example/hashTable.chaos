@@ -12,9 +12,7 @@ AnyType.is_in :: #overload proc (self: Self, array: Array) -> Bool {
                 break;
             }
         }
-    }
-
-    #if type_of(array) == Array<..., ...> {
+    } #elif type_of(array) == Array<..., ...> {
         len :: length(array);
         for i := 0 while i < len evaluate i++ {
             if array[i] == element {
@@ -28,7 +26,7 @@ AnyType.is_in :: #overload proc (self: Self, array: Array) -> Bool {
 }
 
 AnyType.is_not_in :: proc (self: *Self, array: Array) -> Bool {
-    return not self.is_in(array);
+    return !self.is_in(array);
 }
 
 iterator :: proc (hash_table: *Hash_Table) -> Hash_Table_Iterator {
@@ -39,7 +37,10 @@ Entry <K, V> :: struct {
     key: K;
     value: V;
 
-    #if K.is_not_in(Array<TypeLiteral>(String, Byte, I64) #error;
+    #run {
+        allowed_types :: Array<AnyType>(String, Byte, I64);
+        if K.is_not_in(allowed_types) #compilation_error(«Only {allowed_types} can be passed to Entry»);
+    }
 }
 
 Hash_Table <K, V> :: struct {
@@ -57,7 +58,7 @@ init_hash_table <K, V> :: proc (Void; ctx :: #context) -> *Hash_Table<K, V>! {
         return "null_pointer";
     }
 
-    entry.table = ctx.calloc(table.capacity, size_of E) unless error {
+    entry.table = ctx.calloc(table.capacity, size_of E) unless |error| {
         ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
         return "null_pointer";
     }
@@ -66,7 +67,7 @@ init_hash_table <K, V> :: proc (Void; ctx :: #context) -> *Hash_Table<K, V>! {
 }
 
 destroy :: proc (using hash_table: *Hash_Table; ctx :: #context) -> Void! {
-    for i := 0 while i < capacity evaluate i++ {
+    while i: 0..capacity {
         ctx.free(entry[i]?.key as *Void);
     }
     ctx.free(entries);
@@ -91,7 +92,7 @@ expand :: proc (using hash-table: Hash-Table) -> Void! {
 
     new-entry := calloc?(new-capacity, size-of Entry<Hash-Table.V>);
 
-    while i < capacity evaluate i++ {
+    while i: 0..capacity {
         local-entry :: entry[i]?;
         if key != undefined {
             set-entry(new-entry, new-capacity, key, value, undefined);
@@ -110,11 +111,12 @@ set :: proc (using hash-table: *Hash-Table, key: Hash-Table.K, value: Hash-Table
 
 next :: proc (using hash-table: *Hash-Table, it: *Hash-Table-Iterator) -> Void! {
     table := it.table;
-    while it.index < capacity evaluate it.index++ {
-        item :: entry[it.index]?;
+    while i: it.index..capacity {
+        item :: entry[i]?;
         if item.key != undefined {
             it.key = item.key;
             it.value = item.value;
+            return;
         }
     }
     return "out-of-bounds";
@@ -129,7 +131,7 @@ has-key <K, V> :: proc (key: *K) -> V {
     hash := fnt-off-set;
     tmp := key;
 
-    while i < length(tmp) evaluate i++ {
+    while i: 0..tmp.length() {
         current-char := tmp[i];
         hash ^= current-char as U64;
         hash *= fnv-prime;
@@ -139,13 +141,16 @@ has-key <K, V> :: proc (key: *K) -> V {
 }
 
 set-entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entry.V, size: *U64?) -> Entry.K {
-    i := has-key(key) and (capacity - 1);
-    while not cur-entry := entry[i]? evaluate i++ {
-        if cur-entry.key == undefined break;
-        if cur-entry.key == key {
-            cur-entry.value = value;
-            return cur-entry.key;
+    i := has-key(key) && (capacity - 1);
+
+    while true {
+        cur_entry := entry[i]?;
+        if cur_entry.key == undefined break;
+        if cur_entry.key == key {
+            cur_entry.value = value;
+            return cur_entry.key;
         }
+        i++;
     }
 
     if size == undefined {
@@ -153,9 +158,9 @@ set-entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entr
         size.*++;
     }
 
-    cur-entry := entry[i]?;
-    cur-entry.key = key;
-    cur-entry.value = value;
+    cur_entry := entry[i]?;
+    cur_entry.key = key;
+    cur_entry.value = value;
     return key;
 }
 

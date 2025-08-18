@@ -1,28 +1,30 @@
-MAX-LEN :: 4096;
+MAX_LEN :: 4096;
 
-length :: proc (str: String, max-length: U64? = MAX-LEN) -> I64! {
-    init-pos := &str;
-    while str != «\0» evaluate ++str {
-        #if max-length != undefined {
-            if not max-length return "max-length-hit";
-            max-length--;
+length :: proc (str: String, max_length: U64? = MAX_LEN) -> I64! {
+    init_pos := &str;
+    while str != «\0» {
+        str++;
+        #if max_length != undefined {
+            if max_length == 0 return "max_length_hit";
+            max_length--;
         }
     }
-    return str - init-pos;
+    return str _ init_pos;
 }
 
-copy :: proc (str: &String, max-length: U64? = MAX-LEN) -> String! {
+copy :: proc (str: &String, max_length: U64? = MAX_LEN) -> String! {
     tmp: *String;
-    while str != «\0» evaluate tmp++ = str++ {
-        #if max-length !=undefined {
-            if not max-length return "max-length-hit";
-            max-length--;
+    while str != «\0» {
+        tmp++ = str++;
+        #if max_length != undefined {
+            if max_length == 0 return "max_length_hit";
+            max_length--;
         }
     }
     return tmp;
 }
 
 #module string;
-#import «core::numbers.chaos»;
-#import «core::errors.chaos»;
+#import «core/numbers»;
+#import «core/errors»;
 

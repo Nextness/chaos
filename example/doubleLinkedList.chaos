@@ -1,31 +1,37 @@
-// Got from https://github.com/biaofuxmu/linked-list/blob/master/double_list/double_list.c
+// Got from https://github.com/biaofuxmu/linked_list/blob/master/double_list/double_list.c
 // to use as example
 
-length :: #inline proc (dll: &Double-Linked-List) -> U64 {
+length :: #inline proc (dll: &Double_Linked_List) -> U64 {
     return dll.*.count as U64;
 }
 
-head :: #inline proc (dll: &Double-Linked-List) -> *Node! {
-    return dll.head != undefined ? dll.head : "null-pointer";
+head :: #inline proc (dll: &Double_Linked_List) -> *Node! {
+    return dll.head != undefined ? dll.head : "null_pointer";
 }
 
-tail :: #inline proc (dll: &Double-Linked-List) -> *Node! {
-    return dll.tail != undefined ? dll.tail : "null-pointer";
+tail :: #inline proc (dll: &Double_Linked_List) -> *Node! {
+    return dll.tail != undefined ? dll.tail : "null_pointer";
 }
 
-print :: proc (dll: &Double-Linked-List) -> Void {
-    node: &Node = dll.head;
-    while i < dll.count evaluate i++ {
+print :: proc (dll: &Double_Linked_List) -> Void {
+    node: *Node = dll.head;
+    while i: 0..dll.count {
         pad := i * 2;
         io.print(«{pad:node.data}»);
         node = node.next;
     }
 }
 
-Double-Linked-List <C: num.Ints, T: AnyType> :: struct {
+Double_Linked_List <C = U64, T> :: struct {
     count: C = 0;
     head: *Node<T>?;
     tail: *Node<T>?;
+
+    #run {
+        if !C.matches(num.Ints) {
+            #compilation_error «{Self} only accepts {num.Ints}»;
+        }
+    }
 }
 
 Node <T> :: struct {
@@ -34,58 +40,50 @@ Node <T> :: struct {
     next: *Node<T>?;
 }
 
-init-node <T> :: proc (data: T) -> *Node<T>! {
+init_node <T> :: proc (data: T) -> *Node<T>! {
     ND :: alias Node<T>;
-    new-node: *ND = alloc(size-of ND) unless |error| {
-        logger(ERROR, «Failed to allocate node - {error}»);
-        return "out-of-memory :: you are poor and don't have enough RAM lol";
+    new_node: *ND = alloc(size_of(ND)) unless |error| {
+        logger(ERROR, «Failed to allocate node _ {error}»);
+        return "out_of_memory :: you are poor and don't have enough RAM lol";
     }
 
-    logger(TRACE, «Allocated memory for node: {new-node.address}»);
-    new-node.data = data;
-    return new-node;
+    logger(TRACE, «Allocated memory for node: {new_node.address}»);
+    new_node.data = data;
+    return new_node;
 }
 
-push-head :: proc (node: *Node, data: Node.T) -> Void! {
-    new-node := init-node(data)?;
+push_head :: proc (node: *Node, data: Node.T) -> Void! {
+    new_node := init_node(data)?;
     if dll.count == 0 {
         dll.head = newNode;
         dll.tail = newNode;
     } else {
-        new-node.next = dll.head;
-        dll.head.prev = new-node;
+        new_node.next = dll.head;
+        dll.head.prev = new_node;
         dll.head = newNode;
     }
     dll.count++;
 }
 
-insert-node :: proc (node: *Node, data: Node.T, index: U64) -> Void! {
-    if (index < 0 or index > dll.count) return "out-of-bounds :: doesn't know how to measure...";
+insert_node :: proc (node: *Node, data: Node.T, index: U64) -> Void! {
+    if (index < 0 or index > dll.count) return "out_of_bounds :: doesn't know how to measure...";
 
-    if index == 0 {
-        push-head(dll, data);
-        return;
-    } elif index == dll.count {
-        push-tail(dll, data);
-        return;
-    }
+    if (index == 0 return) push_head(dll, data);
+    elif (index == dll.count) return push_tail(dll, data);
 
     tmp: *Node<Node.T>;
-    if index <= dll.count / 2 {
-        for i := 0 while i < index - 1 evaluate i++ tmp = tmp.next;
-    } else {
-        for i := 0 while i < dll.count evaluate i++ tmp = tmp.prev;
-    }
+    if index <= (dll.count / 2) while (i: 0..index) tmp = tmp.next;
+    else while (i: 0..dll.count) tmp = tmp.prev;
 
-    new-node := init-node(data)?;
-    tmp.next.prev = new-node;
-    new-node.next = tmp.next;
-    tmp.next = new-node;
-    new-node.prev = tmp;
+    new_node := init_node(data)?;
+    tmp.next.prev = new_node;
+    new_node.next = tmp.next;
+    tmp.next = new_node;
+    new_node.prev = tmp;
     dll.count++;
 }
 
-delete-head :: proc (dll: *Double-Linked-List) -> Void! {
+delete_head :: proc (dll: *Double_Linked_List) -> Void! {
     #todo;
 }
 

@@ -3,25 +3,18 @@
  *  /** Nested comment **/
 **/
 
-global def new-variable = 10;
+new_variable :: 10;
 
-proc another-operation
-    expects input as I64
-    returns Void
-executes
+another_operation :: proc (input: I64) -> Void {
     exit 10;
-end-proc
+}
 
-proc main returns Void executes
-    def something as F32 = 10.1;
-    def something-1 as String = «adiasjda__»;
-    def something-2 as I64= 10;
-    def something-3 as Bool = true;
-    run another-operation with 1 end-run;
-    // run another-operation with 1 end-run;
-    // run another-operation with 1 end-run;
-    // run another-operation with 1 end-run;
-    // run another-operation with 1 end-run;
+main :: #entry proc -> Void {
+    something: F32 = 10.1;
+    something_1: String = «oiashda»;
+    something_2: I64 = 10;
+    something_3: Bool = true;
+    another_operation(1);
     exit 69;
-end-proc
+}
 

@@ -1,76 +1,76 @@
 Symbol :: distinct String;
-Token-Atom :: distinct I64;
+Token_Atom :: distinct I64;
 
-Token-Type :: enum-array {
-    TOK-INFER-TYPE: Token-Atom;
-    TOK-GLOBAL;
-    TOK-DEF;
-    TOK-ASSIGNMENT;
-    TOK-PLUS;
-    TOK-MINUS;
-    TOK-VARTYPE;
-    TOK-IDENTIFIER;
-    TOK-NEWLINE;
-    TOK-END-OF-FILE;
-    TOK-EXIT;
-    TOK-COMMA;
-    TOK-LESS-THAN;
-    TOK-GREATER-THAN;
-    TOK-EQUALS;
-    TOK-EXECUTES;
-    TOK-IF;
-    TOK-ELIF;
-    TOK-ELSE;
-    TOK-PROC;
-    TOK-END-PROC;
-    TOK-RETURNS;
-    TOK-EXPECTS;
-    TOK-OPEN-PAREN;
-    TOK-CLOSE-PAREN;
-    TOK-ELLIPSIS;
-    TOK-SEMICOLON;
-    TOK-COLON;
-    TOK-RUN;
-    TOK-WITH;
-    TOK-LITERAL;
-    TOK-INFER-ASSIGN;
-    TOK-AS;
+Token_Type :: enum_array {
+    TOK_INFER_TYPE: Token_Atom;
+    TOK_GLOBAL;
+    TOK_DEF;
+    TOK_ASSIGNMENT;
+    TOK_PLUS;
+    TOK_MINUS;
+    TOK_VARTYPE;
+    TOK_IDENTIFIER;
+    TOK_NEWLINE;
+    TOK_END_OF_FILE;
+    TOK_EXIT;
+    TOK_COMMA;
+    TOK_LESS_THAN;
+    TOK_GREATER_THAN;
+    TOK_EQUALS;
+    TOK_EXECUTES;
+    TOK_IF;
+    TOK_ELIF;
+    TOK_ELSE;
+    TOK_PROC;
+    TOK_END_PROC;
+    TOK_RETURNS;
+    TOK_EXPECTS;
+    TOK_OPEN_PAREN;
+    TOK_CLOSE_PAREN;
+    TOK_ELLIPSIS;
+    TOK_SEMICOLON;
+    TOK_COLON;
+    TOK_RUN;
+    TOK_WITH;
+    TOK_LITERAL;
+    TOK_INFER_ASSIGN;
+    TOK_AS;
 }
 
-token-type-to-string :: Map<dyn, Token-Type, String>(
-    .TOKEN-INFER-TYPE: «TOK-INFER-TYPE»,
-    .TOK-GLOBAL: «TOK-GLOBAL»,
-    .TOK-DEF: «TOK-DEF»,
-    .TOK-ASSIGNMENT: «TOK-ASSIGNMENT»,
-    .TOK-PLUS: «TOK-PLUS»,
-    .TOK-MINUS: «TOK-MINUS»,
-    .TOK-VARTYPE: «TOK-VARTYPE»,
-    .TOK-IDENTIFIER: «TOK-IDENTIFIER»,
-    .TOK-NEWLINE: «TOK-NEWLINE»,
-    .TOK-END-OF-FILE: «TOK-END-OF-FILE»,
-    .TOK-EXIT: «TOK-EXIT»,
-    .TOK-COMMA: «TOK-COMMA»,
-    .TOK-LESS-THAN: «TOK-LESS-THAN»,
-    .TOK-GREATER-THAN: «TOK-GREATER-THAN»,
-    .TOK-EQUALS: «TOK-EQUALS»,
-    .TOK-EXECUTES: «TOK-EXECUTES»,
-    .TOK-IF: «TOK-IF»,
-    .TOK-ELIF: «TOK-ELIF»,
-    .TOK-ELSE: «TOK-ELSE»,
-    .TOK-PROC: «TOK-PROC»,
-    .TOK-END-PROC: «TOK-END-PROC»,
-    .TOK-RETURNS: «TOK-RETURNS»,
-    .TOK-EXPECTS: «TOK-EXPECTS»,
-    .TOK-OPEN-PAREN: «TOK-OPEN-PAREN»,
-    .TOK-CLOSE-PAREN: «TOK-CLOSE-PAREN»,
-    .TOK-ELLIPSIS: «TOK-ELLIPSIS»,
-    .TOK-SEMICOLON: «TOK-SEMICOLON»,
-    .TOK-COLON: «TOK-COLON»,
-    .TOK-RUN: «TOK-RUN»,
-    .TOK-WITH: «TOK-WITH»,
-    .TOK-LITERAL: «TOK-LITERAL»,
-    .TOK-INFER-ASSIGN: «TOK-INFER-ASSIGN»,
-    .TOK-AS: «TOK-AS»,
+token_type_to_string :: Array<String>(
+    [Token_Type.TOKEN_INFER_TYPE] = «TOK_INFER_TYPE»,
+    [Token_Type.TOK_GLOBAL] = «TOK_GLOBAL»,
+    [Token_Type.TOK_DEF] = «TOK_DEF»,
+    [Token_Type.TOK_ASSIGNMENT] = «TOK_ASSIGNMENT»,
+    [Token_Type.TOK_PLUS] = «TOK_PLUS»,
+    [Token_Type.TOK_MINUS] = «TOK_MINUS»,
+    [Token_Type.TOK_VARTYPE] = «TOK_VARTYPE»,
+    [Token_Type.TOK_IDENTIFIER] = «TOK_IDENTIFIER»,
+    [Token_Type.TOK_NEWLINE] = «TOK_NEWLINE»,
+    [Token_Type.TOK_END_OF_FILE] = «TOK_END_OF_FILE»,
+    [Token_Type.TOK_EXIT] = «TOK_EXIT»,
+    [Token_Type.TOK_COMMA] = «TOK_COMMA»,
+    [Token_Type.TOK_LESS_THAN] = «TOK_LESS_THAN»,
+    [Token_Type.TOK_GREATER_THAN] = «TOK_GREATER_THAN»,
+    [Token_Type.TOK_EQUALS] = «TOK_EQUALS»,
+    [Token_Type.TOK_EXECUTES] = «TOK_EXECUTES»,
+    [Token_Type.TOK_IF] = «TOK_IF»,
+    [Token_Type.TOK_ELIF] = «TOK_ELIF»,
+    [Token_Type.TOK_ELSE] = «TOK_ELSE»,
+    [Token_Type.TOK_PROC] = «TOK_PROC»,
+    [Token_Type.TOK_END_PROC] = «TOK_END_PROC»,
+    [Token_Type.TOK_RETURNS] = «TOK_RETURNS»,
+    [Token_Type.TOK_EXPECTS] = «TOK_EXPECTS»,
+    [Token_Type.TOK_OPEN_PAREN] = «TOK_OPEN_PAREN»,
+    [Token_Type.TOK_CLOSE_PAREN] = «TOK_CLOSE_PAREN»,
+    [Token_Type.TOK_ELLIPSIS] = «TOK_ELLIPSIS»,
+    [Token_Type.TOK_SEMICOLON] = «TOK_SEMICOLON»,
+    [Token_Type.TOK_COLON] = «TOK_COLON»,
+    [Token_Type.TOK_RUN] = «TOK_RUN»,
+    [Token_Type.TOK_WITH] = «TOK_WITH»,
+    [Token_Type.TOK_LITERAL] = «TOK_LITERAL»,
+    [Token_Type.TOK_INFER_ASSIGN] = «TOK_INFER_ASSIGN»,
+    [Token_Type.TOK_AS] = «TOK_AS»,
 );
 
 Position :: struct {
@@ -78,143 +78,133 @@ Position :: struct {
 }
 
 Token :: scaffold {
-    token-type: Token-Type;
+    token_type: Token_Type;
+    position: Position;
+    as_string: proc(*Impl) -> String;
+}
+
+Token.Token_Keyword :: struct {
+    token_type: Token_Type;
     position: Position;
 }
 
-Token.Token-Keyword :: struct {
-    token-type: Token-Type;
-    position: Position;
+Token_Keyword.as_string :: proc (self: *Self) -> String {
+    preffix :: «{self.position.line:03}:{self.position.column:03}»;
+    if self.token_type == {
+        case .TOK_STRING:
+            if value != #0 {
+                token_str :: token_type_to_string[self.token_type];
+                return «{preffix} [{token_str}] "{value}"»;
+            }
+            return «{preffix} [{token_str}]»;
+        case .TOKEN_NUMBER: fallthrough;
+        case .TOKEN_BOOL: exit 1;
+    }
 }
 
-Token.Token-Var-Type :: struct {
+Token.Token_Var_Type :: struct {
     symbol: Symbol;
     variadic: Bool;
-    token-type: Token-Type;
-    token-kind: Token-Kind;
+    token_type: Token_Type;
+    token_kind: Token_Kind;
     position: Position;
 }
 
-Token-Var-Type.as-string :: proc (self: *Self) -> String {
+Token_Var_Type.as_string :: proc (self: *Self) -> String {
     preffix := «{self.position.line:03}:{self.position.column:03}»;
-    return «{preffix} [{as-string(token.token-type)}]»;
+    return «{preffix} [{as_string(token.token_type)}]»;
 }
 
-#[overload]
-proc as-string
-    expects token as Token-Literal
-    returns String
-executes
-    def preffix as String = «{t.position.line:03}:{t.position.column:03}»;
-
-    if value = token.value as?
-    case String executes
-        if (value != #0) return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
-        return «{preffix} [{run as-string with token.toke-type}]»;
-    case I64 executes
-        return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
-    case Bool executes
-        return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
-    case F64 executes
-        return «{preffix} [{run as-string with token.toke-type}] "{value}"»;
-    end-if
-
-    exit 1, «Unexpected token literal found: {token.value}»;
-end-proc
-
-Content-State :: struct {
+Content_State :: struct {
     data: String;
     count, cursor, line, column: I64;
 }
 
-Content-State.match-at :: #overload proc (*self, offset: I64, string: String) -> Bool! {
+Content_State.match_at :: #overload proc (*self, offset: I64, string: String; ctx :: #context) -> Bool! {
     if self.cursor + offsef > self.count {
-        return "out-of-bounds :: Cursor + offset is bigger than state count";
+        ctx.logger.log(.ERROR, «Cursor + offset is bigger than state count»);
+        return "out_of_bounds";
     }
 
     len :: length(string);
     result := true;
 
-    for i := 0 while i..len {
-        cur-char := string[i] unless |error| {
-            return "out-of-bounds :: Out of bounds while checking position {i} in string {string}";
+    while i: 0..len {
+        cur_char := string[i] unless error {
+            ctx.logger.log(.ERROR, «Out of bounds while checking position {i} in string {string}»);
+            return "out_of_bounds";
         }
-        result = result and peak(content-state, i + offsef) == cur-char;
+        result &= peak(content_state, i + offsef) == cur_char;
     }
 
     return result;
 }
 
-Content-State.match-at :: #overload proc (*self, offset: I64, byte: Byte) -> Bool! {
+Content_State.match_at :: #overload proc (*self, offset: I64, byte: Byte; ctx :: #context) -> Bool! {
     if self.cursor + offset > self.count {
-        return "out-of-bounds :: Out of bounds while checking content state {i}"
+        ctx.logger.log(.ERROR, «Out of bounds while checking content state {i}»);
+        return "out_of_bounds"
     }
-    return self.peek-byte()? == byte;
+    return self.peek_byte()? == byte;
 }
 
-tokenize-chaos :: proc (file-name: String, file-content: *byte.Buffer) -> Array<dyn, Token>! {
-    cs := *Content-State(
-        data = string(file-content),
-        count = length(file-content),
-        cursor = 0,
-        line = 1,
-        column = 1,
-    );
+tokenize_chaos :: proc (file_name: String, file_content: *byte.Buffer) -> Array<dyn, Token>! {
+    cs := *Content_State(string(file_content), length(file_content), 0, 1, 1);
 
     tokens := Array<dyn, Token>();
-    while content-state.cursor < content-state.count {
+    while content_state.cursor < content_state.count {
         // Single comment
-        if content-state.match-at<String>(0, «//»)? {
-            while not content-state.match-at(0, «\0») {
-                content-state.cursor++;
-                content-state.column++;
+        if content_state.match_at(0, «//»)? {
+            while !content_state.match_at(0, «\0») {
+                content_state.cursor++;
+                content_state.column++;
             }
             continue;
         }
 
         // Multiline comment
-        if content-state.match-at(0, «/**»)? {
-            nested-comment: I64 = 0;
-            content-state.cursor += 3;
+        if content_state.match_at(0, «/**»)? {
+            nested_comment: I64 = 0;
+            content_state.cursor += 3;
             while true {
-                if content-state.match-at(0, «\n») {
-                    content-state.line++;
-                    content-state.cursor++;
-                    content-state.column = 0;
+                if content_state.match_at(0, «\n») {
+                    content_state.line++;
+                    content_state.cursor++;
+                    content_state.column = 0;
                     continue;
                 }
-                if content-state.match-at(0, «**/»)? and nested-comment > 0 {
-                    nested-comment--;
-                    content-state.cursor += 3;
-                    content-state.column += 3;
+                if content_state.match_at(0, «**/»)? and nested_comment > 0 {
+                    nested_comment__;
+                    content_state.cursor += 3;
+                    content_state.column += 3;
                     continue;
                 }
-                if content-state.match-at(0, «**/»)? {
-                    content-state.cursor += 3;
-                    content-state.column += 3;
+                if content_state.match_at(0, «**/»)? {
+                    content_state.cursor += 3;
+                    content_state.column += 3;
                     break;
                 }
-                if content-state.match-at(0, «/**»)? {
-                    nested-comment++;
-                    content-state.cursor += 3;
-                    content-state.column += 3;
+                if content_state.match_at(0, «/**»)? {
+                    nested_comment++;
+                    content_state.cursor += 3;
+                    content_state.column += 3;
                     continue;
                 }
             }
             continue;
         }
 
-        if content-state.match-at(0, «\0»)? {
-            content-state.line++;
-            content-state.cursor++;
-            content-state.column = 0;
+        if content_state.match_at(0, «\0»)? {
+            content_state.line++;
+            content_state.cursor++;
+            content_state.column = 0;
             continue;
         }
 
-        current := content-state.current()
-        if unicode.is-space(current)? {
-            content-state.column++;
-            content-state.cursor++;
+        current := content_state.current()
+        if unicode.is_space(current)? {
+            content_state.column++;
+            content_state.cursor++;
             continue;
         }
 
@@ -225,73 +215,73 @@ tokenize-chaos :: proc (file-name: String, file-content: *byte.Buffer) -> Array<
 
 
     // Strings
-    if run? match-at with content-state, 0, «\«» end-run executes
+    if run? match_at with content_state, 0, «\«» end_run executes
         def tmp = new bytes::Buffer;
         defer run reset with tmp;
-        content-state.cursor += 2;
+        content_state.cursor += 2;
 
-        while run? match-at with content-state, 0, «\»» executes
-            run? write-string with tmp, (run? current with content-state);
-            content-state++;
-        end-while
+        while run? match_at with content_state, 0, «\»» executes
+            run? write_string with tmp, (run? current with content_state);
+            content_state++;
+        end_while
 
-        def token = new Token-Literal with
+        def token = new Token_Literal with
             value = run? string with tmp,
-            token-type = .TOKEN-LITERAL,
-            token-kind = .KIND-STRING,
+            token_type = .TOKEN_LITERAL,
+            token_kind = .KIND_STRING,
             position = new Position with
-                line = content-state.line,
-                column = content-state.column,
-            end-new,
-        end-new;
+                line = content_state.line,
+                column = content_state.column,
+            end_new,
+        end_new;
 
-        content-state.cursor += 2;
+        content_state.cursor += 2;
         run? append with tokens, token;
         continue;
-    end-if
+    end_if
 
-    if run? match at content-state, 0, «==» executes
-        def token = new Token-Operator with
-            token-type = .TOKEN-EQUALS,
+    if run? match at content_state, 0, «==» executes
+        def token = new Token_Operator with
+            token_type = .TOKEN_EQUALS,
             position = new Position with
-                line = content-state.line,
-                column = content-state.column,
-            end-new;
-            content-state.column += 2;
-            content-state.cursor += 2;
+                line = content_state.line,
+                column = content_state.column,
+            end_new;
+            content_state.column += 2;
+            content_state.cursor += 2;
             run? append with tokens, token;
             continue;
-        end-new;
-    end-if
+        end_new;
+    end_if
 
-    if run? match at content-state, 0, «...» executes
-        def token = new Token-Operator with
-            token-type = .TOKEN-ELLIPSIS,
+    if run? match at content_state, 0, «...» executes
+        def token = new Token_Operator with
+            token_type = .TOKEN_ELLIPSIS,
             position = new Position with
-                line = content-state.line,
-                column = content-state.column,
-            end-new;
-            content-state.column += 3;
-            content-state.cursor += 3;
+                line = content_state.line,
+                column = content_state.column,
+            end_new;
+            content_state.column += 3;
+            content_state.cursor += 3;
             run? append with tokens, token;
             continue;
-        end-new;
-    end-if
+        end_new;
+    end_if
 
-    if run? match at content-state, 0, «=» executes
-        def token = new Token-Operator with
-            token-type = .TOKEN-ASSIGNMENT,
+    if run? match at content_state, 0, «=» executes
+        def token = new Token_Operator with
+            token_type = .TOKEN_ASSIGNMENT,
             position = new Position with
-                line = content-state.line,
-                column = content-state.column,
-            end-new;
-            content-state.column += 3;
-            content-state.cursor += 3;
+                line = content_state.line,
+                column = content_state.column,
+            end_new;
+            content_state.column += 3;
+            content_state.cursor += 3;
             run? append with tokens, token;
             continue;
-        end-new;
-    end-if
+        end_new;
+    end_if
 
-    end-while
-end-proc
+    end_while
+end_proc
 

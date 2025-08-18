@@ -1,31 +1,36 @@
-is-uppercase <T> :: proc (val: T) -> Bool {
-    #if   (T == Byte)   result :: internal.is-uppercase<Byte>(val);
-    #elif (T == String) result :: internal.is-uppercase<String>(val);
-    #else               #exit «Failed to compile - unsupported type {type-of T}»;
-    return result;
+is_uppercase :: #overload proc (val: String) -> Bool {
+    
 }
 
-Lexer-Error-Config :: struct {
-    error-msg: String;
+is_uppercase :: #overload proc (val: Byte) -> Bool {
+    
+}
+
+is_uppercase :: #overload proc(val: #char) -> Bool {
+    
+}
+
+Lexer_Error_Config :: struct {
+    error_msg: String;
     examples: Array<dyn, String?>;
-    example-count: I64;
+    example_count: I64;
 }
 
-new-lexer-error :: proc (error-msg: String) -> Lexer-Error-Config {
-    return Lexer-Error-Config(
-        error-msg = error-msg,
+new_lexer_error :: proc (error_msg: String) -> Lexer_Error_Config {
+    return Lexer_Error_Config(
+        error_msg = error_msg,
         examples = Array<dyn, String>(),
-        example-count = 0,
+        example_count = 0,
     );
 }
 
-Lexer-Error-Config.new-example :: proc (self: *Self, examples: ...String) -> Void {
-    example-len :: length(examples);
+Lexer_Error_Config.new_example :: proc (self: *Self, examples: ...String) -> Void {
+    example_len :: length(examples);
     assert example > 0;
 
     pad :: «    »;
-    self.example-count += 1;
-    preffix :: «({self.example-count})»;
+    self.example_count++;
+    preffix :: «({self.example_count})»;
     while id, example in examples {
         if id == 0 {
             tmp :: «{pad}{preffix} {example}»;
@@ -37,10 +42,10 @@ Lexer-Error-Config.new-example :: proc (self: *Self, examples: ...String) -> Voi
     }
 }
 
-get-something :: proc (id: &String) -> U64! {
+get_something :: proc (id: &String) -> U64! {
     id :: «»; // This should fail, since it is a reference, and references cannot be assigned.
               // In a sense, this value is immutable.
-    result: I64 = some-operation(id);
+    result: I64 = some_operation(id);
     return result;
 }
 

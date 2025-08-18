@@ -1,11 +1,11 @@
-first-test-suite :: test (tear-up: Tear-Up, tear-down: Tear-Down) {
-    first-test-name :: proc (t: *Unit-Test) {
-        something :: some-condition-must-happen(«abc»);
+first_test_suit :: test (tear_up: Tear_Up, tear_down: Tear_Down) {
+    first_test_name :: proc (t: *Unit_Test) {
+        something :: some_condition_must_happen(«abc»);
         assert something, «Expected something to have a value, but it doesn't...»;
     }
 
-    second-test-name :: proc (t: *Unit-Test) {
-        if not [error, reason] from some-condition-must-happen(«ab») {
+    second_test_name :: proc (t: *Unit_Test) {
+        if !(error from some_condition_must_happen(«ab»)) {
             assert false, «Expected an error, but found nothing»;
         }
     }
