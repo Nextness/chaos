@@ -732,23 +732,23 @@ func (tokens LexerState) print() {
 	}
 }
 
-func (ts *LexerState) Current() Token {
+func (ls *LexerState) Current() Token {
 	assert(
-		ts.cursor < ts.count,
-		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", ts.cursor, ts.count),
+		ls.cursor < ls.count,
+		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", ls.cursor, ls.count),
 	)
-	return ts.data[ts.cursor]
+	return ls.data[ls.cursor]
 }
 
-func (ts *LexerState) currentTokenTypeAsString() string {
-	return ts.Current().TokenType.String()
+func (ls *LexerState) currentTokenTypeAsString() string {
+	return ls.Current().TokenType.String()
 }
 
-func (ts *LexerState) MatchAt(offset int, tokTypes ...TokenType) (result bool) {
+func (ls *LexerState) MatchAt(offset int, tokTypes ...TokenType) (result bool) {
 	result = false
 	for _, token := range tokTypes {
-		if ts.cursor+offset < ts.count {
-			curTok := ts.data[ts.cursor+offset]
+		if ls.cursor+offset < ls.count {
+			curTok := ls.data[ls.cursor+offset]
 			if curTok.TokenType == token {
 				result = true
 				break
@@ -772,22 +772,22 @@ func (ls *LexerState) MatchTokenSequence(tokenTypes ...TokenType) (result bool) 
 	return
 }
 
-func (ts *LexerState) Peek(offset int) (result Token) {
+func (ls *LexerState) Peek(offset int) (result Token) {
 	assert(offset != 0, "cannot peak with 0")
-	if ts.cursor+offset < ts.count {
-		result = ts.data[ts.cursor+offset]
+	if ls.cursor+offset < ls.count {
+		result = ls.data[ls.cursor+offset]
 	}
 	return
 }
 
-func (ts *LexerState) ConsumeAssert(tokType TokenType) Token {
+func (ls *LexerState) ConsumeAssert(tokType TokenType) Token {
 	assert(
-		ts.Current().TokenType == tokType,
-		fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), ts.currentTokenTypeAsString()),
+		ls.Current().TokenType == tokType,
+		fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), ls.currentTokenTypeAsString()),
 	)
-	result := ts.Current()
-	if ts.cursor < ts.count {
-		ts.cursor++
+	result := ls.Current()
+	if ls.cursor < ls.count {
+		ls.cursor++
 	}
 	return result
 }
@@ -798,26 +798,26 @@ func (ls *LexerState) ConsumeAssertMany(tokenType ...TokenType) {
 	}
 }
 
-func (ts *LexerState) Consume(count ...int) (result Token) {
+func (ls *LexerState) Consume(count ...int) (result Token) {
 	assert(len(count) <= 1, "Count can only be 1 or empty")
 	c := 0
 	if len(count) == 1 {
 		c = count[0]
 	}
 	for range c - 1 {
-		ts.cursor++
+		ls.cursor++
 	}
-	if ts.cursor < ts.count {
-		result = ts.Current()
-		ts.cursor++
+	if ls.cursor < ls.count {
+		result = ls.Current()
+		ls.cursor++
 	}
 	return
 }
 
-func (ts *LexerState) PrintError(format string, a ...any) {
-	token := ts.Current()
+func (ls *LexerState) PrintError(format string, a ...any) {
+	token := ls.Current()
 	pos := token.Position
-	preffix := fmt.Sprintf("[ERROR] %s:%02d:%02d", ts.filepath, pos.line, pos.column)
+	preffix := fmt.Sprintf("[ERROR] %s:%02d:%02d", ls.filepath, pos.line, pos.column)
 	errorMsg := fmt.Sprintf(format, a...)
 	fmt.Fprintf(os.Stderr, "%s %s", preffix, errorMsg)
 }
