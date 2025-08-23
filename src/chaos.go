@@ -39,29 +39,29 @@ func main() {
 			ts.print()
 			fmt.Print("\n")
 
-			program := ASTCreateChaosProgram(ts)
-
-			pp := PrettyPrint{
-				padCount:       0,
-				includeNewline: true,
-			}
-			size := len(program.nodes)
-			fmt.Print("----------------------------------------------------------------------------------\n")
-			for idx, program := range program.nodes {
-				program.Print(pp)
-				if idx+1 != size {
-					fmt.Print("----------------------------------------------------------------------------------\n")
-				}
-			}
-			fmt.Print("----------------------------------------------------------------------------------\n")
-
-			for _, proc := range program.allocatedProcs {
-				fmt.Printf("proc %s\n", proc)
-			}
-
-			for _, vars := range program.allocatedVariables {
-				fmt.Printf("global def %s\n", vars)
-			}
+			// program := ASTCreateChaosProgram(ts)
+			//
+			// pp := PrettyPrint{
+			// 	padCount:       0,
+			// 	includeNewline: true,
+			// }
+			// size := len(program.nodes)
+			// fmt.Print("----------------------------------------------------------------------------------\n")
+			// for idx, program := range program.nodes {
+			// 	program.Print(pp)
+			// 	if idx+1 != size {
+			// 		fmt.Print("----------------------------------------------------------------------------------\n")
+			// 	}
+			// }
+			// fmt.Print("----------------------------------------------------------------------------------\n")
+			//
+			// for _, proc := range program.allocatedProcs {
+			// 	fmt.Printf("proc %s\n", proc)
+			// }
+			//
+			// for _, vars := range program.allocatedVariables {
+			// 	fmt.Printf("global def %s\n", vars)
+			// }
 
 			// es := globalExecutionOrderChaos(program)
 			// typeCheckingChaos(es)

@@ -8,18 +8,14 @@ import (
 	"unicode"
 )
 
-type Symbol string
-
 type TokenType int
 
 const (
-	tokInferType           = -1
-	tokGlobal    TokenType = iota
+	tokGlobal TokenType = iota
 	tokDef
 	tokAssignment
 	tokPlus
 	tokMinus
-	tokVarType
 	tokIdentifier
 	tokNewline
 	tokEndOfFile
@@ -33,26 +29,23 @@ const (
 	tokElif
 	tokElse
 	tokProc
-	tokEndProc
 	tokReturns
-	tokExpects
 	tokOpenParen
 	tokCloseParen
 	tokEllipsis
 	tokSemicolon
 	tokColon
-	tokRun
-	tokWith
-	tokLiteral
+	tokStringLiteral
+	tokNumberLiteral
+	tokBoolLiteral
 	tokAs
-	tokEndRun
+	tokOpenBraket
+	tokCloseBraket
+	tokHash
 	tokCount
 )
 
 func (tokTyp TokenType) HumanReadableString() string {
-	if tokTyp == tokInferType {
-		return "infered-type"
-	}
 	if tokTyp == tokGlobal {
 		return "global"
 	}
@@ -67,9 +60,6 @@ func (tokTyp TokenType) HumanReadableString() string {
 	}
 	if tokTyp == tokMinus {
 		return "-"
-	}
-	if tokTyp == tokVarType {
-		return "type"
 	}
 	if tokTyp == tokIdentifier {
 		return "identifier"
@@ -101,14 +91,8 @@ func (tokTyp TokenType) HumanReadableString() string {
 	if tokTyp == tokProc {
 		return "proc"
 	}
-	if tokTyp == tokEndProc {
-		return "end-proc"
-	}
 	if tokTyp == tokReturns {
 		return "returns"
-	}
-	if tokTyp == tokExpects {
-		return "expects"
 	}
 	if tokTyp == tokOpenParen {
 		return "("
@@ -134,28 +118,37 @@ func (tokTyp TokenType) HumanReadableString() string {
 	if tokTyp == tokColon {
 		return ":"
 	}
-	if tokTyp == tokRun {
-		return "run"
+	// TODO: print the actual number
+	// instead of the token name
+	if tokTyp == tokNumberLiteral {
+		return "tokNumberLiteral"
 	}
-	if tokTyp == tokWith {
-		return "with"
+	// TODO: print the actual string
+	// instead of the token name
+	if tokTyp == tokStringLiteral {
+		return "tokStringLiteral"
 	}
-	if tokTyp == tokLiteral {
-		return "literal"
+	// TODO: print the actual bool
+	// instead of the token name
+	if tokTyp == tokBoolLiteral {
+		return "tokBoolLIteral"
 	}
 	if tokTyp == tokAs {
 		return "as"
 	}
-	if tokTyp == tokEndRun {
-		return "end-run"
+	if tokTyp == tokOpenBraket {
+		return "{"
+	}
+	if tokTyp == tokCloseBraket {
+		return "}"
+	}
+	if tokTyp == tokHash {
+		return "#"
 	}
 	return "unknown-token"
 }
 
 func (tokTyp TokenType) String() string {
-	if tokTyp == tokInferType {
-		return "tokInferType"
-	}
 	if tokTyp == tokGlobal {
 		return "tokGlobal"
 	}
@@ -170,9 +163,6 @@ func (tokTyp TokenType) String() string {
 	}
 	if tokTyp == tokMinus {
 		return "tokMinus"
-	}
-	if tokTyp == tokVarType {
-		return "tokVarType"
 	}
 	if tokTyp == tokIdentifier {
 		return "tokIdentifier"
@@ -204,14 +194,8 @@ func (tokTyp TokenType) String() string {
 	if tokTyp == tokProc {
 		return "tokProc"
 	}
-	if tokTyp == tokEndProc {
-		return "tokEndProc"
-	}
 	if tokTyp == tokReturns {
 		return "tokReturns"
-	}
-	if tokTyp == tokExpects {
-		return "tokExpects"
 	}
 	if tokTyp == tokOpenParen {
 		return "tokOpenParen"
@@ -237,147 +221,28 @@ func (tokTyp TokenType) String() string {
 	if tokTyp == tokColon {
 		return "tokColon"
 	}
-	if tokTyp == tokRun {
-		return "tokRun"
+	if tokTyp == tokNumberLiteral {
+		return "tokNumberLiteral"
 	}
-	if tokTyp == tokWith {
-		return "tokWith"
+	if tokTyp == tokStringLiteral {
+		return "tokStringLiteral"
 	}
-	if tokTyp == tokLiteral {
-		return "tokLiteral"
+	if tokTyp == tokBoolLiteral {
+		return "tokBoolLiteral"
 	}
 	if tokTyp == tokAs {
 		return "tokAs"
 	}
-	if tokTyp == tokEndRun {
-		return "tokEndRun"
+	if tokTyp == tokOpenBraket {
+		return "tokOpenBraket"
 	}
-	return "unknown-tokType"
-}
-
-type TokenKind int
-
-const (
-	kindAnyError TokenKind = iota
-	kindAnyType
-	kindString
-	kindChar
-	kindBool
-	kindU8
-	kindU16
-	kindU32
-	kindU64
-	kindU128
-	kindI8
-	kindI16
-	kindI32
-	kindI64
-	kindI128
-	kindF16
-	kindF32
-	kindF64
-	kindF128
-	kindC64
-	kindC128
-	kindQ128
-	kindQ256
-	kindArray
-	kindVoid
-	kindMap
-	kindNone
-)
-
-func (t TokenKind) String() string {
-	if t == kindAnyError {
-		return "Any-Error"
+	if tokTyp == tokCloseBraket {
+		return "tokCloseBraket"
 	}
-	if t == kindAnyType {
-		return "Any-Type"
+	if tokTyp == tokHash {
+		return "tokHash"
 	}
-	if t == kindString {
-		return "String"
-	}
-	if t == kindChar {
-		return "Char"
-	}
-	if t == kindBool {
-		return "Bool"
-	}
-	if t == kindU8 {
-		return "U8"
-	}
-	if t == kindU16 {
-		return "U16"
-	}
-	if t == kindU32 {
-		return "U32"
-	}
-	if t == kindU64 {
-		return "U64"
-	}
-	if t == kindU128 {
-		return "U128"
-	}
-	if t == kindI8 {
-		return "I8"
-	}
-	if t == kindI16 {
-		return "I16"
-	}
-	if t == kindI32 {
-		return "I32"
-	}
-	if t == kindI64 {
-		return "I64"
-	}
-	if t == kindI128 {
-		return "I128"
-	}
-	if t == kindF16 {
-		return "F16"
-	}
-	if t == kindF32 {
-		return "F32"
-	}
-	if t == kindF64 {
-		return "F64"
-	}
-	if t == kindF128 {
-		return "F128"
-	}
-	if t == kindC64 {
-		return "C64"
-	}
-	if t == kindC128 {
-		return "C128"
-	}
-	if t == kindQ128 {
-		return "Q128"
-	}
-	if t == kindQ256 {
-		return "Q256"
-	}
-	if t == kindArray {
-		return "Array"
-	}
-	if t == kindVoid {
-		return "Void"
-	}
-	if t == kindMap {
-		return "Map"
-	}
-	if t == kindNone {
-		return "None"
-	}
-	return "unknown-kind"
-}
-
-type PtrAnyToken any
-
-type Token interface {
-	String() string
-	TokenType() TokenType
-	Position() Position
+	return "unknownToken"
 }
 
 type Position struct {
@@ -385,128 +250,12 @@ type Position struct {
 	column int
 }
 
-type TokenKeyword struct {
-	tokType  TokenType
-	position Position
+type Token struct {
+	Symbol    string
+	TokenType TokenType
+	Position  Position
+	Value     any
 }
-
-func (t *TokenKeyword) String() string {
-	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s]", preffix, t.tokType.String())
-}
-
-func (t *TokenKeyword) TokenType() TokenType {
-	return t.tokType
-}
-
-func (t *TokenKeyword) Position() Position {
-	return t.position
-}
-
-type TokenVarType struct {
-	symbol   Symbol
-	variadic bool
-	tokType  TokenType
-	tokKind  TokenKind
-	position Position
-}
-
-func (t *TokenVarType) String() string {
-	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.String(), t.symbol)
-}
-
-func (t *TokenVarType) TokenType() TokenType {
-	return t.tokType
-}
-
-func (t *TokenVarType) Position() Position {
-	return t.position
-}
-
-type TokenOperator struct {
-	tokType  TokenType
-	position Position
-}
-
-func (t *TokenOperator) String() string {
-	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s]", preffix, t.tokType.String())
-}
-
-func (t *TokenOperator) TokenType() TokenType {
-	return t.tokType
-}
-
-func (t *TokenOperator) Position() Position {
-	return t.position
-}
-
-type TokenLiteral struct {
-	value    PtrAnyToken
-	tokType  TokenType
-	tokKind  TokenKind
-	position Position
-}
-
-func (t *TokenLiteral) String() string {
-	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-
-	curType := any(t.value)
-	if val, ok := cast[string](curType); ok {
-		if val != "" {
-			return fmt.Sprintf("%s [%s] \"%s\"", preffix, t.tokType.String(), val)
-		}
-		return fmt.Sprintf("%s [%s]", preffix, t.tokType.String())
-	}
-
-	if val, ok := cast[int](curType); ok {
-		return fmt.Sprintf("%s [%s] %d", preffix, t.tokType.String(), val)
-	}
-
-	if val, ok := cast[bool](curType); ok {
-		return fmt.Sprintf("%s [%s] %t", preffix, t.tokType.String(), val)
-	}
-
-	if val, ok := cast[float64](curType); ok {
-		return fmt.Sprintf("%s [%s] %f", preffix, t.tokType.String(), val)
-	}
-
-	panic(fmt.Sprintf("Unexpected token literal found: %v", t.value))
-}
-
-func (t *TokenLiteral) TokenType() TokenType {
-	return t.tokType
-}
-
-func (t *TokenLiteral) Position() Position {
-	return t.position
-}
-
-type TokenIdentifier struct {
-	symbol   Symbol
-	tokType  TokenType
-	position Position
-}
-
-func (t *TokenIdentifier) String() string {
-	preffix := fmt.Sprintf("%03d:%03d", t.position.line, t.position.column)
-	return fmt.Sprintf("%s [%s] %s", preffix, t.tokType.String(), t.symbol)
-}
-
-func (t *TokenIdentifier) TokenType() TokenType {
-	return t.tokType
-}
-
-func (t *TokenIdentifier) Position() Position {
-	return t.position
-}
-
-var _ Token = &TokenKeyword{}
-var _ Token = &TokenVarType{}
-var _ Token = &TokenOperator{}
-var _ Token = &TokenLiteral{}
-var _ Token = &TokenIdentifier{}
 
 type ContentState struct {
 	data         string
@@ -643,11 +392,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				cs.cursor++
 			}
 
-			token := &TokenLiteral{
-				value:    tmp.String(),
-				tokType:  tokLiteral,
-				tokKind:  kindString,
-				position: position,
+			token := Token{
+				Symbol:    "None",
+				TokenType: tokStringLiteral,
+				Value:     tmp.String(),
+				Position:  position,
 			}
 
 			cs.cursor += 2
@@ -655,150 +404,176 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.MatchStrAt(0, "==") {
-			tok := &TokenOperator{
-				tokType: tokEquals,
-				position: Position{
+		if sym := "=="; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokEquals,
+				Position: Position{
 					line:   cs.line,
 					column: cs.column,
 				},
 			}
 			cs.column += 2
 			cs.cursor += 2
-			tokens = append(tokens, tok)
+			tokens = append(tokens, token)
 			continue
 		}
 
-		if cs.MatchStrAt(0, "...") {
-			tok := &TokenKeyword{
-				tokType: tokEllipsis,
-				position: Position{
+		if sym := "..."; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokEllipsis,
+				Position: Position{
 					line:   cs.line,
 					column: cs.column,
 				},
 			}
 			cs.column += 3
 			cs.cursor += 3
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := "="; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokAssignment,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := "+"; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokPlus,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := "-"; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokMinus,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := ","; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokComma,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := "<"; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokLessThan,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := ">"; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokGreaterThan,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := ";"; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokSemicolon,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := ":"; cs.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokColon,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := "("; cs.MatchStrAt(0, sym) {
+			tok := Token{
+				Symbol:    sym,
+				TokenType: tokOpenParen,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
 			tokens = append(tokens, tok)
 			continue
 		}
 
-		if cs.MatchStrAt(0, "=") {
-			token := &TokenOperator{
-				tokType: tokAssignment,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, "+") {
-			token := &TokenOperator{
-				tokType: tokPlus,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, "-") {
-			token := &TokenOperator{
-				tokType: tokMinus,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, ",") {
-			token := &TokenOperator{
-				tokType: tokComma,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, "<") {
-			token := &TokenOperator{
-				tokType: tokLessThan,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, ">") {
-			token := &TokenOperator{
-				tokType: tokGreaterThan,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, ";") {
-			token := &TokenOperator{
-				tokType: tokSemicolon,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, ":") {
-			token := &TokenOperator{
-				tokType: tokColon,
-				position: Position{
-					line:   cs.line,
-					column: cs.column,
-				},
-			}
-			cs.column++
-			cs.cursor++
-			tokens = append(tokens, token)
-			continue
-		}
-
-		if cs.MatchStrAt(0, "(") {
-			tok := &TokenKeyword{
-				tokType: tokOpenParen,
-				position: Position{
+		if sym := ")"; cs.MatchStrAt(0, sym) {
+			tok := Token{
+				Symbol:    sym,
+				TokenType: tokCloseParen,
+				Position: Position{
 					line:   cs.line,
 					column: cs.column,
 				},
@@ -809,10 +584,41 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 			continue
 		}
 
-		if cs.MatchStrAt(0, ")") {
-			tok := &TokenKeyword{
-				tokType: tokCloseParen,
-				position: Position{
+		if sym := "{"; cs.MatchStrAt(0, sym) {
+			tok := Token{
+				Symbol:    sym,
+				TokenType: tokOpenBraket,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, tok)
+			continue
+		}
+
+		if sym := "}"; cs.MatchStrAt(0, sym) {
+			tok := Token{
+				Symbol:    sym,
+				TokenType: tokCloseBraket,
+				Position: Position{
+					line:   cs.line,
+					column: cs.column,
+				},
+			}
+			cs.column++
+			cs.cursor++
+			tokens = append(tokens, tok)
+			continue
+		}
+
+		if sym := "#"; cs.MatchStrAt(0, sym) {
+			tok := Token{
+				Symbol:    sym,
+				TokenType: tokHash,
+				Position: Position{
 					line:   cs.line,
 					column: cs.column,
 				},
@@ -850,11 +656,10 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				val, err := strconv.ParseFloat(number, 64)
 				assert(err == nil, "Failed to convert string to float")
 
-				token := &TokenLiteral{
-					value:    val,
-					tokType:  tokLiteral,
-					tokKind:  kindF64,
-					position: position,
+				token := Token{
+					TokenType: tokNumberLiteral,
+					Value:     val,
+					Position:  position,
 				}
 				tokens = append(tokens, token)
 				continue
@@ -862,11 +667,10 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				val, err := strconv.Atoi(tmp.String())
 				assert(err == nil, "Failed to convert string to number")
 
-				token := &TokenLiteral{
-					value:    val,
-					tokType:  tokLiteral,
-					tokKind:  kindI64,
-					position: position,
+				token := Token{
+					TokenType: tokNumberLiteral,
+					Value:     val,
+					Position:  position,
 				}
 				tokens = append(tokens, token)
 				continue
@@ -882,477 +686,106 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				column: cs.column,
 			}
 
-			if isUppercase(cs.CurrentByte()) {
+			for isAlphanum(cs.CurrentByte()) || cs.MatchByteAt(0, '_') {
+				tmp.WriteByte(cs.CurrentByte())
+				cs.column++
+				cs.cursor++
+			}
 
-				for isAlphanum(cs.CurrentByte()) || cs.MatchByteAt(0, '-') {
-					tmp.WriteByte(cs.CurrentByte())
-					cs.column++
-					cs.cursor++
-				}
+			string := tmp.String()
 
-				varString := tmp.String()
-
-				if varString == "Any-Error" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindAnyError,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Any-Type" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindAnyType,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "String" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindString,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Char" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindChar,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Bool" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindBool,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "U8" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindU8,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "U16" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindU16,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "U32" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindU32,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "U64" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindU64,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "U128" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindU128,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "I8" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindI8,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "I16" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindI16,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "I32" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindI32,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "I64" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindI64,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "I128" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindI128,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "F16" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindF16,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "F32" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindF32,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "F64" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindF64,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "F128" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindF128,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "C64" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindC64,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "C128" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindC128,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Q128" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindQ128,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Q256" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindQ256,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Array" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindArray,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Void" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindVoid,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if varString == "Map" {
-					token := &TokenVarType{
-						symbol:   Symbol(varString),
-						tokType:  tokVarType,
-						tokKind:  kindMap,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-			} else {
-				for isAlphanum(cs.CurrentByte()) || cs.MatchByteAt(0, '-') {
-					tmp.WriteByte(cs.CurrentByte())
-					cs.column++
-					cs.cursor++
-				}
-
-				string := tmp.String()
-
-				// Keywords
-				if string == "true" {
-					token := &TokenLiteral{
-						value:    true,
-						tokType:  tokLiteral,
-						tokKind:  kindBool,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "false" {
-					token := &TokenLiteral{
-						value:    false,
-						tokType:  tokLiteral,
-						tokKind:  kindBool,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "global" {
-					token := &TokenKeyword{
-						tokType:  tokGlobal,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "def" {
-					token := &TokenKeyword{
-						tokType:  tokDef,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "exit" {
-					token := &TokenKeyword{
-						tokType:  tokExit,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "executes" {
-					token := &TokenKeyword{
-						tokType:  tokExecutes,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "if" {
-					token := &TokenKeyword{
-						tokType:  tokIf,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "elif" {
-					token := &TokenKeyword{
-						tokType:  tokElif,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "else" {
-					token := &TokenKeyword{
-						tokType:  tokElse,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "proc" {
-					token := &TokenKeyword{
-						tokType:  tokProc,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "end-proc" {
-					token := &TokenKeyword{
-						tokType:  tokEndProc,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "returns" {
-					token := &TokenKeyword{
-						tokType:  tokReturns,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "expects" {
-					token := &TokenKeyword{
-						tokType:  tokExpects,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "run" {
-					token := &TokenKeyword{
-						tokType:  tokRun,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "end-run" {
-					token := &TokenKeyword{
-						tokType:  tokEndRun,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "with" {
-					token := &TokenKeyword{
-						tokType:  tokWith,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				if string == "as" {
-					token := &TokenKeyword{
-						tokType:  tokAs,
-						position: position,
-					}
-					tokens = append(tokens, token)
-					continue
-				}
-
-				// Identifiers
-				token := &TokenIdentifier{
-					symbol:   Symbol(string),
-					tokType:  tokIdentifier,
-					position: position,
+			// Keywords
+			if sym := "true"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					Value:     true,
+					TokenType: tokBoolLiteral,
+					Position:  position,
 				}
 				tokens = append(tokens, token)
 				continue
 			}
+
+			if sym := "false"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					Value:     false,
+					TokenType: tokBoolLiteral,
+					Position:  position,
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			if sym := "exit"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					TokenType: tokExit,
+					Position:  position,
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			if sym := "if"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					TokenType: tokIf,
+					Position:  position,
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			if sym := "elif"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					TokenType: tokElif,
+					Position:  position,
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			if sym := "else"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					TokenType: tokElse,
+					Position:  position,
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			if sym := "proc"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					TokenType: tokProc,
+					Position:  position,
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			if sym := "as"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					TokenType: tokAs,
+					Position:  position,
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			// Identifiers
+			token := Token{
+				Symbol:    string,
+				TokenType: tokIdentifier,
+				Value:     nil,
+				Position:  position,
+			}
+			tokens = append(tokens, token)
+			continue
 		}
 
 		fmt.Fprintf(
@@ -1363,10 +796,10 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 		panic("unrecheable")
 	}
 
-	eof := &TokenLiteral{
-		value:   "eof",
-		tokType: tokEndOfFile,
-		position: Position{
+	eof := Token{
+		Symbol:    "eof",
+		TokenType: tokEndOfFile,
+		Position: Position{
 			line:   cs.line,
 			column: cs.column,
 		},
@@ -1385,14 +818,24 @@ type LexerState struct {
 
 func (tokens LexerState) print() {
 	fmt.Print("Token List:\n")
-	for _, tok := range tokens.data {
-		if tok.TokenType() == tokEndOfFile {
+	for idx, token := range tokens.data {
+		if token.TokenType == tokEndOfFile {
 			return
 		}
-		if tok.TokenType() == tokNewline {
+		if token.TokenType == tokNewline {
 			continue
 		}
-		fmt.Printf("%s\n", tok.String())
+		if token.TokenType == tokStringLiteral {
+			fmt.Printf("%6d. [%s] `%s`\n", idx, token.TokenType.String(), token.Value)
+		} else if token.TokenType == tokNumberLiteral {
+			if val, ok := cast[int](token.Value); ok {
+				fmt.Printf("%6d. [%s] `%d`\n", idx, token.TokenType.String(), val)
+			} else if val, ok := cast[float64](token.Value); ok {
+				fmt.Printf("%6d. [%s] `%f`\n", idx, token.TokenType.String(), val)
+			}
+		} else {
+			fmt.Printf("%6d. [%s] `%s`\n", idx, token.TokenType.String(), token.Symbol)
+		}
 	}
 }
 
@@ -1405,30 +848,15 @@ func (ts *LexerState) Current() Token {
 }
 
 func (ts *LexerState) currentTokenTypeAsString() string {
-	return ts.Current().TokenType().String()
-}
-
-func (tok *TokenKind) MatchAt(offset int, tokKinds ...TokenKind) (result bool) {
-	result = false
-	cursor := 0
-	length := len(tokKinds)
-	for _, t := range tokKinds {
-		if cursor+offset < length {
-			if *tok == t {
-				result = true
-				break
-			}
-		}
-	}
-	return
+	return ts.Current().TokenType.String()
 }
 
 func (ts *LexerState) MatchAt(offset int, tokTypes ...TokenType) (result bool) {
 	result = false
-	for _, tok := range tokTypes {
+	for _, token := range tokTypes {
 		if ts.cursor+offset < ts.count {
 			curTok := ts.data[ts.cursor+offset]
-			if curTok.TokenType() == tok {
+			if curTok.TokenType == token {
 				result = true
 				break
 			}
@@ -1439,7 +867,6 @@ func (ts *LexerState) MatchAt(offset int, tokTypes ...TokenType) (result bool) {
 
 func (ts *LexerState) Peek(offset int) (result Token) {
 	assert(offset != 0, "cannot peak with 0")
-	result = nil
 	if ts.cursor+offset < ts.count {
 		result = ts.data[ts.cursor+offset]
 	}
@@ -1448,7 +875,7 @@ func (ts *LexerState) Peek(offset int) (result Token) {
 
 func (ts *LexerState) ConsumeAssert(tokType TokenType) Token {
 	assert(
-		ts.Current().TokenType() == tokType,
+		ts.Current().TokenType == tokType,
 		fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), ts.currentTokenTypeAsString()),
 	)
 	result := ts.Current()
@@ -1464,7 +891,6 @@ func (ts *LexerState) Consume(count ...int) (result Token) {
 	if len(count) == 1 {
 		c = count[0]
 	}
-	result = nil
 	for range c - 1 {
 		ts.cursor++
 	}
@@ -1476,8 +902,8 @@ func (ts *LexerState) Consume(count ...int) (result Token) {
 }
 
 func (ts *LexerState) PrintError(format string, a ...any) {
-	t := ts.Current()
-	pos := t.Position()
+	token := ts.Current()
+	pos := token.Position
 	preffix := fmt.Sprintf("[ERROR] %s:%02d:%02d", ts.filepath, pos.line, pos.column)
 	errorMsg := fmt.Sprintf(format, a...)
 	fmt.Fprintf(os.Stderr, "%s %s", preffix, errorMsg)
