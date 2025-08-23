@@ -3,18 +3,27 @@
  *  /** Nested comment **/
 **/
 
-new_variable :: 10;
+new_variable_0 :: 10;
+// new_variable_1 : U64 : 10;
+// new_variable_2 := 10;
+// new_variable_3 : U64 = 10;
+// new_variable_4 :: operation(1);
+// 
+// operation :: proc (input: I64) -> Void {
+// }
+// 
+// operation(10);
 
-another_operation :: proc (input: I64) -> Void {
-    exit 10;
-}
-
-main :: #entry proc -> Void {
-    something: F32 = 10.1;
-    something_1: String = «oiashda»;
-    something_2: I64 = 10;
-    something_3: Bool = true;
-    another_operation(1);
-    exit 69;
-}
+// another_operation :: proc (input: I64) -> Void {
+//     exit 10;
+// }
+// 
+// main :: #entry proc -> Void {
+//     something: F32 = 10.1;
+//     something_1: String = «oiashda»;
+//     something_2: I64 = 10;
+//     something_3: Bool = true;
+//     another_operation(1);
+//     exit 69;
+// }
 

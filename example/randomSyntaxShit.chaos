@@ -37,10 +37,10 @@ Some_Struct :: struct {
     password: #redacted String;
 }
 
-some_struct := Some_Struct(
+some_struct := Some_Struct {
     username = «username»,
     password = get_env_var(«ENV_VAR_NAME», «None»)?,
-);
+};
 
 Another_Redacted :: #redacted struct {
     id:       U64;
@@ -51,7 +51,7 @@ Another_Redacted :: #redacted struct {
 redacted :: Another_Redacted{10, «username», «some_password»};
 print(«{redacted.reveal()}»);
 
-main :: #entry proc (Void) -> U64 {
+main :: #entry proc (Void) -> U64! {
     window := initialize_with(100, 100, «Window») unless |error| {
         print(«Something went wrong in here - {error}»);
         return 1;
@@ -68,7 +68,7 @@ loop_with_label :: proc (Void) -> Bool! {
         }
         return something;
     }
-    return "operation-failed, Because you suck!";
+    return "operation_failed - Because you suck!";
 }
 
 complex: C64 = c'100 + 10i' * 10; // result should be c'1000 + 100i'
@@ -153,14 +153,14 @@ handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> Void! {
     return;
 }
 
-AnyType.is_truthy :: #inline proc (self: *Self) -> Bool {
+AnyType.is_falsy :: #inline proc (self: *Self) -> Bool {
     #if type_of self == String return self == «»;
-    #if type_of self == Array<dyn, ...> return self.length() == 0;
-    #if type_of self == Array<..., ...> return self.count == 0;
+    #if type_of self == Array[dyn, ...] return self.length() == 0;
+    #if type_of self == Array[..., ...] return self.count == 0;
 }
 
-AnyType.is_falsy :: #inline proc (self: *Self) -> Bool {
-    return !self.is_truthy();
+AnyType.is_truthy :: #inline proc (self: *Self) -> Bool {
+    return !self.is_falsy();
 }
 
 #scope = «file»;

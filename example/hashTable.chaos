@@ -33,27 +33,24 @@ iterator :: proc (hash_table: *Hash_Table) -> Hash_Table_Iterator {
     return Hash_Table_Iterator(hash_table, 0);
 }
 
-Entry <K, V> :: struct {
-    key: K;
-    value: V;
+Entry[Key, Value] :: struct {
+    #if (!Key.match(String, Byte, I64)) #compilation_error(«Only {allowed_types} can be passed to Entry»);
 
-    #run {
-        allowed_types :: Array<AnyType>(String, Byte, I64);
-        if K.is_not_in(allowed_types) #compilation_error(«Only {allowed_types} can be passed to Entry»);
-    }
+    key: Key;
+    value: Value;
 }
 
-Hash_Table <K, V> :: struct {
-    entries: *Entry<K, V>;
+Hash_Table [Key, Value] :: struct {
+    entries: *Entry[Key, Value];
     capacity: U64 = 256;
     size: U64 = 0;
 }
 
-init_hash_table <K, V> :: proc (Void; ctx :: #context) -> *Hash_Table<K, V>! {
-    HT :: alias Hash_Table<K, V>;
-    E  :: alias Entry<K, V>;
+init_hash_table[Key, Value] :: proc (Void; ctx :: #context) -> *Hash_Table[Key, Value]! {
+    HT :: alias Hash_Table[Key, Value];
+    E  :: alias Entry[Key, Value];
 
-    table: *HT = ctx.alloc(size_of HT) unless error {
+    table: *HT = ctx.alloc(size_of HT) unless |error| {
         ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
         return "null_pointer";
     }
@@ -74,16 +71,16 @@ destroy :: proc (using hash_table: *Hash_Table; ctx :: #context) -> Void! {
     ctx.free(hash_table);
 }
 
-get :: proc (using hash-table: Hash-Table, key: Hash-Table.K) -> Hash-Table.V! {
-    hash :: hash-key(key);
-    i := hash and (capacity - 1);
+get :: proc (using hash_table: Hash_Table, key: Hash_Table.Key) -> Hash_Table.Value! {
+    hash :: hash_key(key);
+    i := hash && (capacity - 1);
 
-    while has-key in entry {
-        if (has-key == undefined) break;
-        if (key == has-key.key) return has-key.value;
+    while has_key in entry {
+        if (has_key == undefined) break;
+        if (key == has_key.key) return has_key.value;
     }
 
-    return "not-found, key is not present";
+    return "not_found - key is not present";
 }
 
 expand :: proc (using hash-table: Hash-Table) -> Void! {

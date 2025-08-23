@@ -1,46 +1,27 @@
 // Numbers
 
-Ints       :: alias I8   | I16 | I32 | I64 | I128;
-UInts      :: alias U8   | U16 | U32 | U64 | U128;
-Floats     :: alias F16  | F32 | F64 | F128;
-Complex    :: alias C64  | C128;
-Quaternion :: alias Q128 | Q256;
+Ints       :: tagged_union { I8   | I16 | I32 | I64 | I128; }
+UInts      :: tagged_union { U8   | U16 | U32 | U64 | U128; }
+Floats     :: tagged_union { F16  | F32 | F64 | F128; }
+Complex    :: tagged_union { C64  | C128; }
+Quaternion :: tagged_union { Q128 | Q256; }
 
-Natural    :: alias Ints    | UInts;
-Real       :: alias Natural | Floats;
-Any_Number :: alias Real    | Complex | Quaternion;
+Natural    :: tagged_union { Ints    | UInts; }
+Real       :: tagged_union { Natural | Floats; }
+Any_Number :: tagged_union { Real    | Complex | Quaternion; }
 
-Matrix_2x2 <T> :: struct {
-    #run if !T.match(Any_Number) #compilation_error «Expected any number but got {T}»;
+Matrix[Type, Row, Column] :: struct {
+    #if (!Type.match(Any_Number))         #compilation_error «Expected any number type but got {Type}»;
+    #if (!Row.match(Literal<Natural>))    #compilation_error «Expected a Literal value for {Natural.expand()} but got {Row} ({type_of Row})»;
+    #if (!Column.match(Literal<Natural>)) #compilation_error «Expected a Literal value for {Natural.expand()} but got {Column} ({type_of Column})»;
 
-    row1: Array<2, T>;
-    row2: Array<2, T>;
+    #while (r: 1..Row+1) #insert «row{r}: Array<{Column}, {T}>;\n»;
 }
 
-Matrix_3x3 <T> :: struct {
-    #run {
-        if !T.match(Any_Number) #compilation_error «Expected any number but got {T}»;
-    }
-    row1: Array<3, T>;
-    row2: Array<3, T>;
-    row2: Array<3, T>;
+Vector[Type] :: struct {
+    #if (!Type.match(Any_Number)) #compilation_error «Expected any number type but got {Type}»;
+    x, y: Type;
 }
-
-Matrix_NxN <T, N> :: struct {
-    #run {
-        if !T.match(Any_Number) #compilation_error «Expected any number but got {T}»;
-        if !N.match(Literal<Natural>) #compilation_error «Expected a Literal value for {Natural.expand()} but got {N} ({type_of N})»;
-        if N <= 3 #compilation_error «This struct is only for Matrixes higher than 3 dimensions»;
-
-        while r: 1..N+1 {
-           #insert «row{r}: Array<{N}, {T}>;\n»
-        }
-    }
-}
-
-some_value : Matrix_NxN<U64, 10> = #0;
-
-Vector <T> :: struct { x, y: T; }
 
 #module types;
 

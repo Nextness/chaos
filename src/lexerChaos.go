@@ -11,9 +11,7 @@ import (
 type TokenType int
 
 const (
-	tokGlobal TokenType = iota
-	tokDef
-	tokAssignment
+	tokAssignment TokenType = iota
 	tokPlus
 	tokMinus
 	tokIdentifier
@@ -45,116 +43,11 @@ const (
 	tokCount
 )
 
-func (tokTyp TokenType) HumanReadableString() string {
-	if tokTyp == tokGlobal {
-		return "global"
-	}
-	if tokTyp == tokDef {
-		return "def"
-	}
-	if tokTyp == tokAssignment {
-		return "="
-	}
-	if tokTyp == tokPlus {
-		return "+"
-	}
-	if tokTyp == tokMinus {
-		return "-"
-	}
-	if tokTyp == tokIdentifier {
-		return "identifier"
-	}
-	if tokTyp == tokNewline {
-		return "newline"
-	}
-	if tokTyp == tokExit {
-		return "exit"
-	}
-	if tokTyp == tokComma {
-		return ","
-	}
-	if tokTyp == tokLessThan {
-		return "<"
-	}
-	if tokTyp == tokGreaterThan {
-		return ">"
-	}
-	if tokTyp == tokExecutes {
-		return "executes"
-	}
-	if tokTyp == tokIf {
-		return "if"
-	}
-	if tokTyp == tokEndOfFile {
-		return "eof"
-	}
-	if tokTyp == tokProc {
-		return "proc"
-	}
-	if tokTyp == tokReturns {
-		return "returns"
-	}
-	if tokTyp == tokOpenParen {
-		return "("
-	}
-	if tokTyp == tokCloseParen {
-		return ")"
-	}
-	if tokTyp == tokEllipsis {
-		return "..."
-	}
-	if tokTyp == tokEquals {
-		return "=="
-	}
-	if tokTyp == tokElif {
-		return "elif"
-	}
-	if tokTyp == tokElse {
-		return "else"
-	}
-	if tokTyp == tokSemicolon {
-		return ";"
-	}
-	if tokTyp == tokColon {
-		return ":"
-	}
-	// TODO: print the actual number
-	// instead of the token name
-	if tokTyp == tokNumberLiteral {
-		return "tokNumberLiteral"
-	}
-	// TODO: print the actual string
-	// instead of the token name
-	if tokTyp == tokStringLiteral {
-		return "tokStringLiteral"
-	}
-	// TODO: print the actual bool
-	// instead of the token name
-	if tokTyp == tokBoolLiteral {
-		return "tokBoolLIteral"
-	}
-	if tokTyp == tokAs {
-		return "as"
-	}
-	if tokTyp == tokOpenBraket {
-		return "{"
-	}
-	if tokTyp == tokCloseBraket {
-		return "}"
-	}
-	if tokTyp == tokHash {
-		return "#"
-	}
-	return "unknown-token"
-}
-
 func (tokTyp TokenType) String() string {
-	if tokTyp == tokGlobal {
-		return "tokGlobal"
-	}
-	if tokTyp == tokDef {
-		return "tokDef"
-	}
+	assert(
+		tokCount == 29,
+		fmt.Sprintf("Expected 29 token count but found %d", tokCount),
+	)
 	if tokTyp == tokAssignment {
 		return "tokAssignment"
 	}
@@ -242,7 +135,7 @@ func (tokTyp TokenType) String() string {
 	if tokTyp == tokHash {
 		return "tokHash"
 	}
-	return "unknownToken"
+	return "unrecheable"
 }
 
 type Position struct {
@@ -865,6 +758,20 @@ func (ts *LexerState) MatchAt(offset int, tokTypes ...TokenType) (result bool) {
 	return
 }
 
+func (ls *LexerState) MatchTokenSequence(tokenTypes ...TokenType) (result bool) {
+	result = true
+	for idx, tokenType := range tokenTypes {
+		if ls.cursor+idx < ls.count {
+			currentToken := ls.data[ls.cursor+idx]
+			if currentToken.TokenType != tokenType {
+				result = false
+				break
+			}
+		}
+	}
+	return
+}
+
 func (ts *LexerState) Peek(offset int) (result Token) {
 	assert(offset != 0, "cannot peak with 0")
 	if ts.cursor+offset < ts.count {
@@ -883,6 +790,12 @@ func (ts *LexerState) ConsumeAssert(tokType TokenType) Token {
 		ts.cursor++
 	}
 	return result
+}
+
+func (ls *LexerState) ConsumeAssertMany(tokenType ...TokenType) {
+	for _, tt := range tokenType {
+		ls.ConsumeAssert(tt)
+	}
 }
 
 func (ts *LexerState) Consume(count ...int) (result Token) {

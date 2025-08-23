@@ -39,7 +39,7 @@ func main() {
 			ts.print()
 			fmt.Print("\n")
 
-			// program := ASTCreateChaosProgram(ts)
+			ASTCreateChaosProgram(ts)
 			//
 			// pp := PrettyPrint{
 			// 	padCount:       0,
