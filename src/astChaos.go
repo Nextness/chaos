@@ -40,14 +40,26 @@ func (p *Program) print() {
 					t = node.VarType.Symbol
 				}
 				fmt.Printf("%6d. var(%s, %s) = %d\n", idx, name, t, result)
-			}
-			if result, ok := cast[float64](node.VarValue.LiteralInt.Value); ok {
+				continue
+			} else if result, ok := cast[float64](node.VarValue.LiteralInt.Value); ok {
 				name := node.VarName.Symbol
 				t := "infer"
 				if node.VarType.Symbol != "" {
 					t = node.VarType.Symbol
 				}
 				fmt.Printf("%6d. var(%s, %s) = %.2f\n", idx, name, t, result)
+				continue
+			} else if result := castAssert[string](node.VarValue.LiteralString.Value); result != "" {
+				name := node.VarName.Symbol
+				t := "infer"
+				if node.VarType.Symbol != "" {
+					t = node.VarType.Symbol
+				}
+				fmt.Printf("%6d. var(%s, %s) = \"%s\"\n", idx, name, t, result)
+				continue
+			} else {
+				fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarValue)
+				continue
 			}
 		}
 	}
@@ -78,14 +90,14 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		if lex.MatchTokenSequence(tokColon, tokColon) {
 			lex.ConsumeAssert(tokColon)
 			lex.ConsumeAssert(tokColon)
-			node := ASTParseExpression(lex)
-			n := Node{
+			lhs := ASTParseExpression(lex)
+			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
-				VarValue: &node,
+				VarValue: &lhs,
 			}
-			AllocatedVars[node.LiteralInt.Symbol] = n
-			return n
+			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			return node
 		}
 
 		if lex.MatchTokenSequence(tokColon, tokIdentifier, tokColon) {
@@ -93,29 +105,29 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			varType := lex.Consume()
 			lex.ConsumeAssert(tokColon)
 
-			node := ASTParseExpression(lex)
-			n := Node{
+			lhs := ASTParseExpression(lex)
+			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
 				VarType:  varType,
-				VarValue: &node,
+				VarValue: &lhs,
 			}
-			AllocatedVars[node.LiteralInt.Symbol] = n
-			return n
+			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			return node
 		}
 
 		if lex.MatchTokenSequence(tokColon, tokAssignment) {
 			lex.ConsumeAssert(tokColon)
 			lex.ConsumeAssert(tokAssignment)
 
-			node := ASTParseExpression(lex)
-			n := Node{
+			lhs := ASTParseExpression(lex)
+			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
-				VarValue: &node,
+				VarValue: &lhs,
 			}
-			AllocatedVars[node.LiteralInt.Symbol] = n
-			return n
+			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			return node
 		}
 
 		if lex.MatchTokenSequence(tokColon, tokIdentifier, tokAssignment) {
@@ -123,15 +135,15 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			varType := lex.Consume()
 			lex.ConsumeAssert(tokAssignment)
 
-			node := ASTParseExpression(lex)
-			n := Node{
+			lhs := ASTParseExpression(lex)
+			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
 				VarType:  varType,
-				VarValue: &node,
+				VarValue: &lhs,
 			}
-			AllocatedVars[node.LiteralInt.Symbol] = n
-			return n
+			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			return node
 		}
 	}
 	return Node{}
