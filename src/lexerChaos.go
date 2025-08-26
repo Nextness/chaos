@@ -43,96 +43,96 @@ const (
 	tokCount
 )
 
-func (tokTyp TokenType) String() string {
+func (tokenType TokenType) String() string {
 	assert(
 		tokCount == 29,
 		fmt.Sprintf("Expected 29 token count but found %d", tokCount),
 	)
-	if tokTyp == tokAssignment {
+	if tokenType == tokAssignment {
 		return "tokAssignment"
 	}
-	if tokTyp == tokPlus {
+	if tokenType == tokPlus {
 		return "tokPlus"
 	}
-	if tokTyp == tokMinus {
+	if tokenType == tokMinus {
 		return "tokMinus"
 	}
-	if tokTyp == tokIdentifier {
+	if tokenType == tokIdentifier {
 		return "tokIdentifier"
 	}
-	if tokTyp == tokNewline {
+	if tokenType == tokNewline {
 		return "tokNewline"
 	}
-	if tokTyp == tokExit {
+	if tokenType == tokExit {
 		return "tokExit"
 	}
-	if tokTyp == tokComma {
+	if tokenType == tokComma {
 		return "tokComma"
 	}
-	if tokTyp == tokLessThan {
+	if tokenType == tokLessThan {
 		return "tokLessThan"
 	}
-	if tokTyp == tokGreaterThan {
+	if tokenType == tokGreaterThan {
 		return "tokGreaterThan"
 	}
-	if tokTyp == tokExecutes {
+	if tokenType == tokExecutes {
 		return "tokExecutes"
 	}
-	if tokTyp == tokIf {
+	if tokenType == tokIf {
 		return "tokIf"
 	}
-	if tokTyp == tokEndOfFile {
+	if tokenType == tokEndOfFile {
 		return "tokEndOfFile"
 	}
-	if tokTyp == tokProc {
+	if tokenType == tokProc {
 		return "tokProc"
 	}
-	if tokTyp == tokReturns {
+	if tokenType == tokReturns {
 		return "tokReturns"
 	}
-	if tokTyp == tokOpenParen {
+	if tokenType == tokOpenParen {
 		return "tokOpenParen"
 	}
-	if tokTyp == tokCloseParen {
+	if tokenType == tokCloseParen {
 		return "tokCloseParen"
 	}
-	if tokTyp == tokEllipsis {
+	if tokenType == tokEllipsis {
 		return "tokEllipsis"
 	}
-	if tokTyp == tokEquals {
+	if tokenType == tokEquals {
 		return "tokEquals"
 	}
-	if tokTyp == tokElif {
+	if tokenType == tokElif {
 		return "tokElif"
 	}
-	if tokTyp == tokElse {
+	if tokenType == tokElse {
 		return "tokElse"
 	}
-	if tokTyp == tokSemicolon {
+	if tokenType == tokSemicolon {
 		return "tokSemicolon"
 	}
-	if tokTyp == tokColon {
+	if tokenType == tokColon {
 		return "tokColon"
 	}
-	if tokTyp == tokNumberLiteral {
+	if tokenType == tokNumberLiteral {
 		return "tokNumberLiteral"
 	}
-	if tokTyp == tokStringLiteral {
+	if tokenType == tokStringLiteral {
 		return "tokStringLiteral"
 	}
-	if tokTyp == tokBoolLiteral {
+	if tokenType == tokBoolLiteral {
 		return "tokBoolLiteral"
 	}
-	if tokTyp == tokAs {
+	if tokenType == tokAs {
 		return "tokAs"
 	}
-	if tokTyp == tokOpenBraket {
+	if tokenType == tokOpenBraket {
 		return "tokOpenBraket"
 	}
-	if tokTyp == tokCloseBraket {
+	if tokenType == tokCloseBraket {
 		return "tokCloseBraket"
 	}
-	if tokTyp == tokHash {
+	if tokenType == tokHash {
 		return "tokHash"
 	}
 	return "unrecheable"
@@ -150,51 +150,51 @@ type Token struct {
 	Value     any
 }
 
-type ContentState struct {
+type Source struct {
 	data         string
 	count        int
 	cursor       int
 	line, column int
 }
 
-func (cs *ContentState) CurrentString() string {
-	return string(cs.data[cs.cursor])
+func (src *Source) CurrentString() string {
+	return string(src.data[src.cursor])
 }
 
-func (cs *ContentState) MatchStrAt(offset int, str string) bool {
-	if cs.cursor+offset > cs.count {
+func (src *Source) MatchStrAt(offset int, str string) bool {
+	if src.cursor+offset > src.count {
 		panic("Out of bounds while matchStrAt")
 	}
 	length := len(str)
 	result := true
 	for i := range length {
-		result = result && (cs.PeekByte(i+offset) == str[i])
+		result = result && (src.PeekByte(i+offset) == str[i])
 	}
 	return result
 }
 
-func (cs *ContentState) CurrentByte() byte {
-	return cs.data[cs.cursor]
+func (src *Source) CurrentByte() byte {
+	return src.data[src.cursor]
 }
 
-func (cs *ContentState) PeekByte(offset int) (result byte) {
+func (src *Source) PeekByte(offset int) (result byte) {
 	result = byte(0)
-	if cs.cursor+offset < cs.count {
-		result = cs.data[cs.cursor+offset]
+	if src.cursor+offset < src.count {
+		result = src.data[src.cursor+offset]
 	}
 	return
 }
 
-func (cs *ContentState) MatchByteAt(offset int, b byte) bool {
-	if cs.cursor+offset > cs.count {
+func (src *Source) MatchByteAt(offset int, b byte) bool {
+	if src.cursor+offset > src.count {
 		panic("Out of bounds while matchByteAt")
 	}
-	return cs.PeekByte(offset) == b
+	return src.PeekByte(offset) == b
 
 }
 
 func TokenizeChaos(fileContent *bytes.Buffer) []Token {
-	cs := &ContentState{
+	src := &Source{
 		data:   fileContent.String(),
 		count:  fileContent.Len(),
 		cursor: 0,
@@ -203,56 +203,56 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 	}
 
 	tokens := []Token{}
-	for cs.cursor < cs.count {
+	for src.cursor < src.count {
 
-		if cs.MatchByteAt(0, '_') {
+		if src.MatchByteAt(0, '_') {
 			fmt.Fprint(os.Stderr, "[ERROR] If you want to use underscore for identifiers, please go use another peasant fucking language :)\n")
 			os.Exit(1)
 		}
 
 		// Single-line comment
-		if cs.MatchStrAt(0, "//") {
-			for !cs.MatchByteAt(0, '\n') {
-				cs.cursor++
+		if src.MatchStrAt(0, "//") {
+			for !src.MatchByteAt(0, '\n') {
+				src.cursor++
 			}
 			continue
 		}
 
 		// Newline
-		if cs.MatchByteAt(0, '\n') {
-			cs.line++
-			cs.cursor++
-			cs.column = 0
+		if src.MatchByteAt(0, '\n') {
+			src.line++
+			src.cursor++
+			src.column = 0
 			continue
 		}
 
 		// Multi-line comment
-		if cs.MatchStrAt(0, "/**") {
+		if src.MatchStrAt(0, "/**") {
 			nestedComment := 0
-			cs.cursor += 3
+			src.cursor += 3
 			for true {
-				if cs.MatchByteAt(0, '\n') {
-					cs.line++
-					cs.cursor++
-					cs.column = 0
+				if src.MatchByteAt(0, '\n') {
+					src.line++
+					src.cursor++
+					src.column = 0
 					continue
 				}
-				if cs.MatchStrAt(0, "**/") && nestedComment > 0 {
+				if src.MatchStrAt(0, "**/") && nestedComment > 0 {
 					nestedComment--
-					cs.cursor += 3
-					cs.column += 3
+					src.cursor += 3
+					src.column += 3
 					continue
 				}
-				if cs.MatchStrAt(0, "**/") {
-					cs.cursor += 3
-					cs.column += 3
+				if src.MatchStrAt(0, "**/") {
+					src.cursor += 3
+					src.column += 3
 					break
 				}
-				cs.cursor++
-				if cs.MatchStrAt(0, "/**") {
+				src.cursor++
+				if src.MatchStrAt(0, "/**") {
 					nestedComment++
-					cs.cursor += 3
-					cs.column += 3
+					src.cursor += 3
+					src.column += 3
 					continue
 				}
 			}
@@ -260,29 +260,29 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 		}
 
 		// Empty characters
-		if unicode.IsSpace(rune(cs.CurrentByte())) {
-			cs.column++
-			cs.cursor++
+		if unicode.IsSpace(rune(src.CurrentByte())) {
+			src.column++
+			src.cursor++
 			continue
 		}
 
 		// Strings
-		if cs.MatchStrAt(0, "«") {
+		if src.MatchStrAt(0, "«") {
 
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
 			position := Position{
-				line:   cs.line,
-				column: cs.column,
+				line:   src.line,
+				column: src.column,
 			}
-			cs.cursor += 2
+			src.cursor += 2
 
 			// TO-DO: Handle nested '«»'
 			// TO-DO: Handle interpolated strings like «hello {some-printable-variable}»
-			for !cs.MatchStrAt(0, "»") {
-				tmp.WriteString(cs.CurrentString())
-				cs.cursor++
+			for !src.MatchStrAt(0, "»") {
+				tmp.WriteString(src.CurrentString())
+				src.cursor++
 			}
 
 			token := Token{
@@ -292,256 +292,256 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				Position:  position,
 			}
 
-			cs.cursor += 2
+			src.cursor += 2
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := "=="; cs.MatchStrAt(0, sym) {
+		if sym := "=="; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokEquals,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column += 2
-			cs.cursor += 2
+			src.column += 2
+			src.cursor += 2
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := "..."; cs.MatchStrAt(0, sym) {
+		if sym := "..."; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokEllipsis,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column += 3
-			cs.cursor += 3
+			src.column += 3
+			src.cursor += 3
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := "="; cs.MatchStrAt(0, sym) {
+		if sym := "="; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokAssignment,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := "+"; cs.MatchStrAt(0, sym) {
+		if sym := "+"; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokPlus,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := "-"; cs.MatchStrAt(0, sym) {
+		if sym := "-"; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokMinus,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := ","; cs.MatchStrAt(0, sym) {
+		if sym := ","; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokComma,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := "<"; cs.MatchStrAt(0, sym) {
+		if sym := "<"; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokLessThan,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := ">"; cs.MatchStrAt(0, sym) {
+		if sym := ">"; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokGreaterThan,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := ";"; cs.MatchStrAt(0, sym) {
+		if sym := ";"; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokSemicolon,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := ":"; cs.MatchStrAt(0, sym) {
+		if sym := ":"; src.MatchStrAt(0, sym) {
 			token := Token{
 				Symbol:    sym,
 				TokenType: tokColon,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, token)
 			continue
 		}
 
-		if sym := "("; cs.MatchStrAt(0, sym) {
+		if sym := "("; src.MatchStrAt(0, sym) {
 			tok := Token{
 				Symbol:    sym,
 				TokenType: tokOpenParen,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, tok)
 			continue
 		}
 
-		if sym := ")"; cs.MatchStrAt(0, sym) {
+		if sym := ")"; src.MatchStrAt(0, sym) {
 			tok := Token{
 				Symbol:    sym,
 				TokenType: tokCloseParen,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, tok)
 			continue
 		}
 
-		if sym := "{"; cs.MatchStrAt(0, sym) {
+		if sym := "{"; src.MatchStrAt(0, sym) {
 			tok := Token{
 				Symbol:    sym,
 				TokenType: tokOpenBraket,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, tok)
 			continue
 		}
 
-		if sym := "}"; cs.MatchStrAt(0, sym) {
+		if sym := "}"; src.MatchStrAt(0, sym) {
 			tok := Token{
 				Symbol:    sym,
 				TokenType: tokCloseBraket,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, tok)
 			continue
 		}
 
-		if sym := "#"; cs.MatchStrAt(0, sym) {
+		if sym := "#"; src.MatchStrAt(0, sym) {
 			tok := Token{
 				Symbol:    sym,
 				TokenType: tokHash,
 				Position: Position{
-					line:   cs.line,
-					column: cs.column,
+					line:   src.line,
+					column: src.column,
 				},
 			}
-			cs.column++
-			cs.cursor++
+			src.column++
+			src.cursor++
 			tokens = append(tokens, tok)
 			continue
 		}
 
 		// Number literals (float or int)
-		if isNum(cs.CurrentByte()) {
+		if isNum(src.CurrentByte()) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
 			position := Position{
-				line:   cs.line,
-				column: cs.column,
+				line:   src.line,
+				column: src.column,
 			}
 
 			isFloat := false
-			for isNum(cs.CurrentByte()) || cs.MatchByteAt(0, '.') || cs.MatchByteAt(0, '_') {
-				if cs.MatchByteAt(0, '.') {
+			for isNum(src.CurrentByte()) || src.MatchByteAt(0, '.') || src.MatchByteAt(0, '_') {
+				if src.MatchByteAt(0, '.') {
 					isFloat = true
 				}
-				if !cs.MatchByteAt(0, '_') {
-					tmp.WriteByte(cs.CurrentByte())
+				if !src.MatchByteAt(0, '_') {
+					tmp.WriteByte(src.CurrentByte())
 				}
-				cs.column++
-				cs.cursor++
+				src.column++
+				src.cursor++
 			}
 
 			number := tmp.String()
@@ -570,19 +570,19 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 			}
 		}
 
-		if isAlpha(cs.CurrentByte()) {
+		if isAlpha(src.CurrentByte()) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
 			position := Position{
-				line:   cs.line,
-				column: cs.column,
+				line:   src.line,
+				column: src.column,
 			}
 
-			for isAlphanum(cs.CurrentByte()) || cs.MatchByteAt(0, '_') {
-				tmp.WriteByte(cs.CurrentByte())
-				cs.column++
-				cs.cursor++
+			for isAlphanum(src.CurrentByte()) || src.MatchByteAt(0, '_') {
+				tmp.WriteByte(src.CurrentByte())
+				src.column++
+				src.cursor++
 			}
 
 			string := tmp.String()
@@ -684,7 +684,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 		fmt.Fprintf(
 			os.Stderr,
 			"[ERROR] Failed while tokenizing - unknown character '%s' at position %03d:%03d\n",
-			cs.CurrentString(), cs.line, cs.column,
+			src.CurrentString(), src.line, src.column,
 		)
 		panic("unrecheable")
 	}
@@ -693,8 +693,8 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 		Symbol:    "eof",
 		TokenType: tokEndOfFile,
 		Position: Position{
-			line:   cs.line,
-			column: cs.column,
+			line:   src.line,
+			column: src.column,
 		},
 	}
 
@@ -702,14 +702,14 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 	return tokens
 }
 
-type LexerState struct {
+type Lexer struct {
 	data     []Token
 	filepath string
 	count    int
 	cursor   int
 }
 
-func (tokens LexerState) print() {
+func (tokens Lexer) print() {
 	fmt.Print("Token List:\n")
 	for idx, token := range tokens.data {
 		if token.TokenType == tokEndOfFile {
@@ -732,92 +732,77 @@ func (tokens LexerState) print() {
 	}
 }
 
-func (ls *LexerState) Current() Token {
-	assert(
-		ls.cursor < ls.count,
-		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", ls.cursor, ls.count),
-	)
-	return ls.data[ls.cursor]
+func (lex *Lexer) checkBounds(offset int) {
+	// TODO: Include information about where it failed - maybe need to use reflection
+	errorMsg := fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", lex.cursor, lex.count)
+	assert(lex.cursor+offset < lex.count, errorMsg)
 }
 
-func (ls *LexerState) currentTokenTypeAsString() string {
-	return ls.Current().TokenType.String()
+func (lex *Lexer) GetToken(offset int) Token {
+	lex.checkBounds(offset)
+	return lex.data[lex.cursor+offset]
 }
 
-func (ls *LexerState) MatchAt(offset int, tokTypes ...TokenType) (result bool) {
-	result = false
+func (lex *Lexer) MatchAt(offset int, tokTypes ...TokenType) bool {
 	for _, token := range tokTypes {
-		if ls.cursor+offset < ls.count {
-			curTok := ls.data[ls.cursor+offset]
-			if curTok.TokenType == token {
-				result = true
-				break
-			}
+		currentToken := lex.GetToken(offset)
+		if currentToken.TokenType == token {
+			return true
 		}
 	}
-	return
+	return false
 }
 
-func (ls *LexerState) MatchTokenSequence(tokenTypes ...TokenType) (result bool) {
-	result = true
-	for idx, tokenType := range tokenTypes {
-		if ls.cursor+idx < ls.count {
-			currentToken := ls.data[ls.cursor+idx]
-			if currentToken.TokenType != tokenType {
-				result = false
-				break
-			}
+func (lex *Lexer) MatchTokenSequence(tokenTypes ...TokenType) bool {
+	for offset, tokenType := range tokenTypes {
+		currentToken := lex.GetToken(offset)
+		if currentToken.TokenType != tokenType {
+			return false
 		}
 	}
-	return
+	return true
 }
 
-func (ls *LexerState) Peek(offset int) (result Token) {
-	assert(offset != 0, "cannot peak with 0")
-	if ls.cursor+offset < ls.count {
-		result = ls.data[ls.cursor+offset]
+func (lex *Lexer) MatchTokenAndConsumeAssert(tokenType TokenType) (Token, bool) {
+	if lex.MatchAt(0, tokenType) {
+		token := lex.ConsumeAssert(tokenType)
+		return token, true
 	}
-	return
+	return Token{}, false
 }
 
-func (ls *LexerState) ConsumeAssert(tokType TokenType) Token {
+func (lex *Lexer) Consume() Token {
+	token := lex.GetToken(0)
+	lex.cursor++
+	return token
+}
+
+func (lex *Lexer) ConsumeMany(count int) {
+	for range count {
+		lex.cursor++
+	}
+}
+
+func (lex *Lexer) ConsumeAssert(tokType TokenType) Token {
+	token := lex.GetToken(0)
 	assert(
-		ls.Current().TokenType == tokType,
-		fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), ls.currentTokenTypeAsString()),
+		token.TokenType == tokType,
+		fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), token.TokenType.String()),
 	)
-	result := ls.Current()
-	if ls.cursor < ls.count {
-		ls.cursor++
-	}
-	return result
+	lex.cursor++
+	return token
 }
 
-func (ls *LexerState) ConsumeAssertMany(tokenType ...TokenType) {
-	for _, tt := range tokenType {
-		ls.ConsumeAssert(tt)
+func (lex *Lexer) ConsumeAssertMany(tokenTypes ...TokenType) {
+	for _, tokenType := range tokenTypes {
+		lex.ConsumeAssert(tokenType)
 	}
 }
 
-func (ls *LexerState) Consume(count ...int) (result Token) {
-	assert(len(count) <= 1, "Count can only be 1 or empty")
-	c := 0
-	if len(count) == 1 {
-		c = count[0]
-	}
-	for range c - 1 {
-		ls.cursor++
-	}
-	if ls.cursor < ls.count {
-		result = ls.Current()
-		ls.cursor++
-	}
-	return
-}
-
-func (ls *LexerState) PrintError(format string, a ...any) {
-	token := ls.Current()
+func (lex *Lexer) PrintError(format string, a ...any) {
+	token := lex.GetToken(0)
 	pos := token.Position
-	preffix := fmt.Sprintf("[ERROR] %s:%02d:%02d", ls.filepath, pos.line, pos.column)
+	preffix := fmt.Sprintf("[ERROR] %s:%02d:%02d", lex.filepath, pos.line, pos.column)
 	errorMsg := fmt.Sprintf(format, a...)
 	fmt.Fprintf(os.Stderr, "%s %s", preffix, errorMsg)
 }

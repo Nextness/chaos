@@ -30,7 +30,7 @@ func main() {
 
 			fileContent := bytes.NewBuffer(file)
 			tokens := TokenizeChaos(fileContent)
-			ts := &LexerState{
+			ts := &Lexer{
 				data:     tokens,
 				filepath: arg,
 				count:    len(tokens),
