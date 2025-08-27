@@ -7,6 +7,24 @@ import (
 	"strings"
 )
 
+func compileChaos(filepath string, src []byte) bool {
+	fileContent := bytes.NewBuffer(src)
+	tokens := TokenizeChaos(fileContent)
+
+	lex := &Lexer{
+		data:     tokens,
+		filepath: filepath,
+		count:    len(tokens),
+		cursor:   0,
+	}
+
+	program := ASTCreateChaosProgram(lex)
+	codeGen := GenerateCode(&program)
+
+	os.WriteFile("testing.asm", codeGen.Bytes(), 0644)
+	return true
+}
+
 func main() {
 	programName := os.Args[0]
 	if len(os.Args) <= 1 {
@@ -22,54 +40,16 @@ func main() {
 				fmt.Fprintf(os.Stderr, "[ERROR] The provided file path '%s' doesn't exist\n", arg)
 				os.Exit(1)
 			}
-			file, err := os.ReadFile(arg)
+
+			src, err := os.ReadFile(arg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "[ERROR] Failed to open the file for whatever reason\n")
 				os.Exit(1)
 			}
-
-			fileContent := bytes.NewBuffer(file)
-			tokens := TokenizeChaos(fileContent)
-			ts := &Lexer{
-				data:     tokens,
-				filepath: arg,
-				count:    len(tokens),
-				cursor:   0,
-			}
-			ts.print()
-			fmt.Print("\n")
-
-			ASTCreateChaosProgram(ts)
-			//
-			// pp := PrettyPrint{
-			// 	padCount:       0,
-			// 	includeNewline: true,
-			// }
-			// size := len(program.nodes)
-			// fmt.Print("----------------------------------------------------------------------------------\n")
-			// for idx, program := range program.nodes {
-			// 	program.Print(pp)
-			// 	if idx+1 != size {
-			// 		fmt.Print("----------------------------------------------------------------------------------\n")
-			// 	}
-			// }
-			// fmt.Print("----------------------------------------------------------------------------------\n")
-			//
-			// for _, proc := range program.allocatedProcs {
-			// 	fmt.Printf("proc %s\n", proc)
-			// }
-			//
-			// for _, vars := range program.allocatedVariables {
-			// 	fmt.Printf("global def %s\n", vars)
-			// }
-
-			// es := globalExecutionOrderChaos(program)
-			// typeCheckingChaos(es)
-			// irChaos(es)
-			// generateProgram(instructions)
+			compileChaos(arg, src)
 
 		} else {
-			fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)
+			fmt.Fprintf(os.Stderr, "[ERROR] Failed to compile the program %s\n", programName)
 			fmt.Printf("Usage: %s <file.chaos>\n", programName)
 			os.Exit(1)
 		}

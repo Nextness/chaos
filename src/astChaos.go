@@ -8,6 +8,7 @@ const (
 	nodeIntLiteral NodeType = iota
 	nodeStringLiteral
 	nodeIdentifier
+	nodeExit
 )
 
 type Node struct {
@@ -21,6 +22,10 @@ type Node struct {
 	VarName  Token
 	VarType  Token
 	VarValue *Node
+
+	// Exit
+	ExVal int
+	ExMsg string
 }
 
 type Program struct {
@@ -41,7 +46,9 @@ func (p *Program) print() {
 				}
 				fmt.Printf("%6d. var(%s, %s) = %d\n", idx, name, t, result)
 				continue
-			} else if result, ok := cast[float64](node.VarValue.LiteralInt.Value); ok {
+			}
+
+			if result, ok := cast[float64](node.VarValue.LiteralInt.Value); ok {
 				name := node.VarName.Symbol
 				t := "infer"
 				if node.VarType.Symbol != "" {
@@ -49,7 +56,9 @@ func (p *Program) print() {
 				}
 				fmt.Printf("%6d. var(%s, %s) = %.2f\n", idx, name, t, result)
 				continue
-			} else if result := castAssert[string](node.VarValue.LiteralString.Value); result != "" {
+			}
+
+			if result := castAssert[string](node.VarValue.LiteralString.Value); result != "" {
 				name := node.VarName.Symbol
 				t := "infer"
 				if node.VarType.Symbol != "" {
@@ -57,11 +66,22 @@ func (p *Program) print() {
 				}
 				fmt.Printf("%6d. var(%s, %s) = \"%s\"\n", idx, name, t, result)
 				continue
-			} else {
-				fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarValue)
+			}
+			fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarValue)
+			continue
+		}
+
+		if node.NodeType == nodeExit {
+			status := node.ExVal
+			if node.ExMsg != "" {
+				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, node.ExMsg)
 				continue
 			}
+			fmt.Printf("%6d. exit(%d)\n", idx, status)
+			continue
 		}
+
+		panic(fmt.Sprintf("[ERROR] Unknown node '%+v'", node))
 	}
 }
 
@@ -73,16 +93,17 @@ func ASTParseExpression(lex *Lexer) Node {
 			NodeType:   nodeIntLiteral,
 			LiteralInt: expr,
 		}
-	} else if expr.TokenType == tokStringLiteral {
+	}
+
+	if expr.TokenType == tokStringLiteral {
 		lex.ConsumeAssert(tokSemicolon)
 		return Node{
 			NodeType:      nodeStringLiteral,
 			LiteralString: expr,
 		}
-	} else {
-		assert(false, fmt.Sprintf("Unknown token found at ASTParseExpresion - %s", expr.TokenType.String()))
 	}
-	return Node{}
+
+	panic(fmt.Sprintf("Unknown token found at ASTParseExpresion - \"%s\"", expr.TokenType.String()))
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
@@ -146,7 +167,25 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			return node
 		}
 	}
-	return Node{}
+
+	if _, matches := lex.MatchTokenAndConsumeAssert(tokExit); matches {
+		if status, matches := lex.MatchTokenAndConsumeAssert(tokNumberLiteral); matches {
+			exMsg := ""
+			if lex.MatchAt(0, tokComma) {
+				lex.ConsumeAssert(tokComma)
+				exMsg = castAssert[string](lex.ConsumeAssert(tokStringLiteral).Value)
+			}
+			lex.ConsumeAssert(tokSemicolon)
+			node := Node{
+				NodeType: nodeExit,
+				ExVal:    castAssert[int](status.Value),
+				ExMsg:    exMsg,
+			}
+			return node
+		}
+	}
+
+	panic(fmt.Sprintf("[ERROR] Unknown token \"%s\"", lex.GetToken(0).Symbol))
 }
 
 func ASTParseStatement(lex *Lexer) Node {
