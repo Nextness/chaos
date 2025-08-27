@@ -111,13 +111,14 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		if lex.MatchTokenSequence(tokColon, tokColon) {
 			lex.ConsumeAssert(tokColon)
 			lex.ConsumeAssert(tokColon)
-			lhs := ASTParseExpression(lex)
+
+			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
-				VarValue: &lhs,
+				VarValue: &rhs,
 			}
-			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			AllocatedVars[identifier.Symbol] = node
 			return node
 		}
 
@@ -126,14 +127,14 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			varType := lex.Consume()
 			lex.ConsumeAssert(tokColon)
 
-			lhs := ASTParseExpression(lex)
+			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
 				VarType:  varType,
-				VarValue: &lhs,
+				VarValue: &rhs,
 			}
-			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			AllocatedVars[identifier.Symbol] = node
 			return node
 		}
 
@@ -141,13 +142,13 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			lex.ConsumeAssert(tokColon)
 			lex.ConsumeAssert(tokAssignment)
 
-			lhs := ASTParseExpression(lex)
+			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
-				VarValue: &lhs,
+				VarValue: &rhs,
 			}
-			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			AllocatedVars[identifier.Symbol] = node
 			return node
 		}
 
@@ -156,14 +157,14 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			varType := lex.Consume()
 			lex.ConsumeAssert(tokAssignment)
 
-			lhs := ASTParseExpression(lex)
+			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
 				VarName:  identifier,
 				VarType:  varType,
-				VarValue: &lhs,
+				VarValue: &rhs,
 			}
-			AllocatedVars[lhs.LiteralInt.Symbol] = node
+			AllocatedVars[identifier.Symbol] = node
 			return node
 		}
 	}
@@ -176,12 +177,30 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				exMsg = castAssert[string](lex.ConsumeAssert(tokStringLiteral).Value)
 			}
 			lex.ConsumeAssert(tokSemicolon)
+
 			node := Node{
 				NodeType: nodeExit,
 				ExVal:    castAssert[int](status.Value),
 				ExMsg:    exMsg,
 			}
 			return node
+		}
+		if status, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
+			exMsg := ""
+			if lex.MatchAt(0, tokComma) {
+				lex.ConsumeAssert(tokComma)
+				exMsg = castAssert[string](lex.ConsumeAssert(tokStringLiteral).Value)
+			}
+			lex.ConsumeAssert(tokSemicolon)
+
+			identValue := AllocatedVars[status.Symbol]
+			node := Node{
+				NodeType: nodeExit,
+				ExVal:    castAssert[int](identValue.VarValue.LiteralInt.Value),
+				ExMsg:    exMsg,
+			}
+			return node
+
 		}
 	}
 

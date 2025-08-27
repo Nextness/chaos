@@ -15,6 +15,7 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 	buffer := bytes.Buffer{}
 
 	GenerateHeader(&buffer)
+
 	for _, node := range prog.Nodes {
 		if node.NodeType == nodeIdentifier {
 			continue
@@ -23,7 +24,7 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 			buffer.WriteString("    mov rax, 60\n")
 			buffer.WriteString(fmt.Sprintf("    mov rdi, %d\n", node.ExVal))
 			buffer.WriteString("    syscall\n")
-			buffer.WriteString("    ret")
+			buffer.WriteString("    ret\n")
 		}
 	}
 

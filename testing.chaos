@@ -1,6 +1,6 @@
 // new_variable_0 :: 10;
 // new_variable_1 := 13;
-// new_variable_2 : I64 : 321654321;
+new_variable_2 : I64 : 3;
 // new_variable_2 : F64 = 31651.00;
 // 
 // new_string_0 :: «hello world»;
@@ -9,4 +9,5 @@
 // new_string_3 : String = «hello world»;
 
 // exit 10, «some error resulted in this»;
-exit 69 ;
+// exit 69;
+exit new_variable_2;
