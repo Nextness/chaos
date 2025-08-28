@@ -41,10 +41,10 @@ func isInside(b byte, listChar []byte) bool {
 }
 
 func assert(ok bool, reason string) {
-	pc, _, _, _ := runtime.Caller(1)
-	file, l := runtime.FuncForPC(pc).FileLine(pc)
+	pc, filename, line, _ := runtime.Caller(1)
+	caller := runtime.FuncForPC(pc).Name()
 	if !ok {
-		panic(fmt.Sprintf("%s:%d: Assertion failed - %s\n", file, l, reason))
+		panic(fmt.Sprintf("%s[%s:%d] Assertion failed - %s\n", caller, filename, line, reason))
 	}
 }
 
