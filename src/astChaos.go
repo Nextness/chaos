@@ -23,8 +23,8 @@ type Exit struct {
 }
 
 type Literal struct {
-	LiteralInt    Token
-	LiteralString Token
+	Int    Token
+	String Token
 }
 
 type Node struct {
@@ -45,7 +45,7 @@ func (p *Program) print() {
 	fmt.Print("Node list:\n")
 	for idx, node := range p.Nodes {
 		if node.NodeType == nodeIdentifier {
-			if result, ok := cast[int](node.VarDecl.Value.Literal.LiteralInt.Value); ok {
+			if result, ok := cast[int](node.VarDecl.Value.Literal.Int.Value); ok {
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
 				if node.VarDecl.Type.Symbol != "" {
@@ -55,7 +55,7 @@ func (p *Program) print() {
 				continue
 			}
 
-			if result, ok := cast[float64](node.VarDecl.Value.Literal.LiteralInt.Value); ok {
+			if result, ok := cast[float64](node.VarDecl.Value.Literal.Int.Value); ok {
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
 				if node.VarDecl.Type.Symbol != "" {
@@ -65,7 +65,7 @@ func (p *Program) print() {
 				continue
 			}
 
-			if result, ok := cast[string](node.VarDecl.Value.Literal.LiteralString.Value); ok && result != "" {
+			if result, ok := cast[string](node.VarDecl.Value.Literal.String.Value); ok && result != "" {
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
 				if node.VarDecl.Type.Symbol != "" {
@@ -91,14 +91,14 @@ func (p *Program) print() {
 
 		if node.NodeType == nodeExit {
 			msg := ""
-			if node.Exit.Message.Literal.LiteralString.Value != "" {
-				msg = castAssert[string](node.Exit.Message.Literal.LiteralString.Value)
+			if node.Exit.Message.Literal.String.Value != "" {
+				msg = castAssert[string](node.Exit.Message.Literal.String.Value)
 			}
 
 			if node.Exit.Value.VarDecl.Name.Symbol != "" {
 				status := node.Exit.Value.VarDecl.Name.Symbol
 				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
-			} else if status, ok := cast[int](node.Exit.Value.Literal.LiteralInt.Value); ok {
+			} else if status, ok := cast[int](node.Exit.Value.Literal.Int.Value); ok {
 				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
 			}
 			continue
@@ -115,7 +115,7 @@ func ASTParseExpression(lex *Lexer) Node {
 		return Node{
 			NodeType: nodeIntLiteral,
 			Literal: Literal{
-				LiteralInt: expr,
+				Int: expr,
 			},
 		}
 	}
@@ -125,7 +125,7 @@ func ASTParseExpression(lex *Lexer) Node {
 		return Node{
 			NodeType: nodeStringLiteral,
 			Literal: Literal{
-				LiteralString: expr,
+				String: expr,
 			},
 		}
 	}
@@ -226,13 +226,13 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 					Value: &Node{
 						NodeType: nodeIntLiteral,
 						Literal: Literal{
-							LiteralInt: status,
+							Int: status,
 						},
 					},
 					Message: &Node{
 						NodeType: nodeStringLiteral,
 						Literal: Literal{
-							LiteralString: exMsg,
+							String: exMsg,
 						},
 					},
 				},
@@ -256,7 +256,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 					Message: &Node{
 						NodeType: nodeStringLiteral,
 						Literal: Literal{
-							LiteralString: exMsg,
+							String: exMsg,
 						},
 					},
 				},
