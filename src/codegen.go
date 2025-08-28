@@ -52,17 +52,17 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 			if node.ExMsg.LiteralString.Value != "" {
 				msg := castAssert[string](node.ExMsg.LiteralString.Value)
 
-				strLen := len(msg) + 1
 				strName := fmt.Sprintf("str_%d", strCount)
+				strSize := fmt.Sprintf("%s_size", strName)
 				strCount++
 
 				strBuf.WriteString(fmt.Sprintf("%s db \"%s\", 10\n", strName, msg))
-				strBuf.WriteString(fmt.Sprintf("%s_size = $-%s\n", strName, strName))
+				strBuf.WriteString(fmt.Sprintf("%s = $-%s\n", strSize, strName))
 
 				buffer.WriteString("    mov rax, 1\n")
 				buffer.WriteString("    mov rdi, 1\n")
 				buffer.WriteString(fmt.Sprintf("    mov rsi, %s\n", strName))
-				buffer.WriteString(fmt.Sprintf("    mov rdx, %d\n", strLen))
+				buffer.WriteString(fmt.Sprintf("    mov rdx, %s\n", strSize))
 				buffer.WriteString("    syscall\n")
 			}
 
