@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"os"
-	"strings"
+	"path/filepath"
+	"runtime"
 	"unicode"
 )
 
@@ -40,13 +41,11 @@ func isInside(b byte, listChar []byte) bool {
 }
 
 func assert(ok bool, reason string) {
+	pc, _, _, _ := runtime.Caller(1)
+	file, l := runtime.FuncForPC(pc).FileLine(pc)
 	if !ok {
-		panic(fmt.Sprintf("Assertion failed - %s\n", reason))
+		panic(fmt.Sprintf("%s:%d: Assertion failed - %s\n", file, l, reason))
 	}
-}
-
-func makePad(padCount int) string {
-	return strings.Repeat(" ", padCount*PAD_WIDTH)
 }
 
 func chaosDebug(format string, args ...any) {
@@ -64,6 +63,19 @@ func cast[V any](value any) (V, bool) {
 
 func castAssert[V any](value any) V {
 	result, ok := cast[V](value)
-	assert(ok, fmt.Sprintf("failed to cast %T into %T", value, new(V)))
+	pc, filename, line, _ := runtime.Caller(1)
+	caller := runtime.FuncForPC(pc).Name()
+	if !ok {
+		panic(
+			fmt.Sprintf(
+				"%s[%s:%d] Assertion failed - failed to cast %T into %T\n",
+				caller,
+				filepath.Base(filename),
+				line,
+				value,
+				new(V),
+			),
+		)
+	}
 	return result
 }

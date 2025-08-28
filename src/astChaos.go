@@ -58,7 +58,7 @@ func (p *Program) print() {
 				continue
 			}
 
-			if result := castAssert[string](node.VarValue.LiteralString.Value); result != "" {
+			if result, ok := cast[string](node.VarValue.LiteralString.Value); ok && result != "" {
 				name := node.VarName.Symbol
 				t := "infer"
 				if node.VarType.Symbol != "" {
@@ -67,6 +67,17 @@ func (p *Program) print() {
 				fmt.Printf("%6d. var(%s, %s) = \"%s\"\n", idx, name, t, result)
 				continue
 			}
+
+			if node.VarValue != nil {
+				name := node.VarName.Symbol
+				t := "infer"
+				if node.VarType.Symbol != "" {
+					t = node.VarType.Symbol
+				}
+				fmt.Printf("%6d. var(%s, %s) = %s\n", idx, name, t, node.VarValue.VarName.Symbol)
+				continue
+			}
+
 			fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarValue)
 			continue
 		}
@@ -101,6 +112,12 @@ func ASTParseExpression(lex *Lexer) Node {
 			NodeType:      nodeStringLiteral,
 			LiteralString: expr,
 		}
+	}
+
+	if expr.TokenType == tokIdentifier {
+		ident := AllocatedVars[expr.Symbol]
+		lex.ConsumeAssert(tokSemicolon)
+		return ident
 	}
 
 	panic(fmt.Sprintf("Unknown token found at ASTParseExpresion - \"%s\"", expr.TokenType.String()))
