@@ -22,18 +22,16 @@ type Exit struct {
 	ExMsg *Node
 }
 
-type Node struct {
-	NodeType NodeType
-
-	// Literal
+type Literal struct {
 	LiteralInt    Token
 	LiteralString Token
+}
 
-	// Variable Declaration
-	VarDecl VarDecl
-
-	// Exit
-	Exit Exit
+type Node struct {
+	NodeType NodeType
+	Literal  Literal
+	VarDecl  VarDecl
+	Exit     Exit
 }
 
 type Program struct {
@@ -47,7 +45,7 @@ func (p *Program) print() {
 	fmt.Print("Node list:\n")
 	for idx, node := range p.Nodes {
 		if node.NodeType == nodeIdentifier {
-			if result, ok := cast[int](node.VarDecl.VarValue.LiteralInt.Value); ok {
+			if result, ok := cast[int](node.VarDecl.VarValue.Literal.LiteralInt.Value); ok {
 				name := node.VarDecl.VarName.Symbol
 				t := "infer"
 				if node.VarDecl.VarType.Symbol != "" {
@@ -57,7 +55,7 @@ func (p *Program) print() {
 				continue
 			}
 
-			if result, ok := cast[float64](node.VarDecl.VarValue.LiteralInt.Value); ok {
+			if result, ok := cast[float64](node.VarDecl.VarValue.Literal.LiteralInt.Value); ok {
 				name := node.VarDecl.VarName.Symbol
 				t := "infer"
 				if node.VarDecl.VarType.Symbol != "" {
@@ -67,7 +65,7 @@ func (p *Program) print() {
 				continue
 			}
 
-			if result, ok := cast[string](node.VarDecl.VarValue.LiteralString.Value); ok && result != "" {
+			if result, ok := cast[string](node.VarDecl.VarValue.Literal.LiteralString.Value); ok && result != "" {
 				name := node.VarDecl.VarName.Symbol
 				t := "infer"
 				if node.VarDecl.VarType.Symbol != "" {
@@ -93,14 +91,14 @@ func (p *Program) print() {
 
 		if node.NodeType == nodeExit {
 			msg := ""
-			if node.Exit.ExMsg.LiteralString.Value != "" {
-				msg = castAssert[string](node.Exit.ExMsg.LiteralString.Value)
+			if node.Exit.ExMsg.Literal.LiteralString.Value != "" {
+				msg = castAssert[string](node.Exit.ExMsg.Literal.LiteralString.Value)
 			}
 
 			if node.Exit.ExVal.VarDecl.VarName.Symbol != "" {
 				status := node.Exit.ExVal.VarDecl.VarName.Symbol
 				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
-			} else if status, ok := cast[int](node.Exit.ExVal.LiteralInt.Value); ok {
+			} else if status, ok := cast[int](node.Exit.ExVal.Literal.LiteralInt.Value); ok {
 				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
 			}
 			continue
@@ -115,16 +113,20 @@ func ASTParseExpression(lex *Lexer) Node {
 	if expr.TokenType == tokNumberLiteral {
 		lex.ConsumeAssert(tokSemicolon)
 		return Node{
-			NodeType:   nodeIntLiteral,
-			LiteralInt: expr,
+			NodeType: nodeIntLiteral,
+			Literal: Literal{
+				LiteralInt: expr,
+			},
 		}
 	}
 
 	if expr.TokenType == tokStringLiteral {
 		lex.ConsumeAssert(tokSemicolon)
 		return Node{
-			NodeType:      nodeStringLiteral,
-			LiteralString: expr,
+			NodeType: nodeStringLiteral,
+			Literal: Literal{
+				LiteralString: expr,
+			},
 		}
 	}
 
@@ -222,12 +224,16 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				NodeType: nodeExit,
 				Exit: Exit{
 					ExVal: &Node{
-						NodeType:   nodeIntLiteral,
-						LiteralInt: status,
+						NodeType: nodeIntLiteral,
+						Literal: Literal{
+							LiteralInt: status,
+						},
 					},
 					ExMsg: &Node{
-						NodeType:      nodeStringLiteral,
-						LiteralString: exMsg,
+						NodeType: nodeStringLiteral,
+						Literal: Literal{
+							LiteralString: exMsg,
+						},
 					},
 				},
 			}
@@ -248,8 +254,10 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				Exit: Exit{
 					ExVal: &identValue,
 					ExMsg: &Node{
-						NodeType:      nodeStringLiteral,
-						LiteralString: exMsg,
+						NodeType: nodeStringLiteral,
+						Literal: Literal{
+							LiteralString: exMsg,
+						},
 					},
 				},
 			}
