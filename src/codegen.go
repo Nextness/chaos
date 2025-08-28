@@ -19,13 +19,13 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 
 	for _, node := range prog.AllocatedVars {
 		if node.NodeType == nodeIdentifier {
-			if result, ok := cast[int](node.VarValue.LiteralInt.Value); ok {
-				varName := node.VarName.Symbol
+			if result, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
+				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, result))
 				continue
 			}
-			if node.VarValue != nil {
-				varName := node.VarName.Symbol
+			if node.VarDecl.Assignment != nil {
+				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, 0))
 				continue
 			}
@@ -35,12 +35,12 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 	strCount := 0
 	for opid, node := range prog.Nodes {
 		if node.NodeType == nodeIdentifier {
-			if _, ok := cast[int](node.VarValue.LiteralInt.Value); ok {
+			if _, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
 				continue
 			}
-			if node.VarValue != nil {
-				varName := node.VarName.Symbol
-				value := castAssert[string](node.VarValue.VarName.Symbol)
+			if node.VarDecl.Assignment != nil {
+				varName := node.VarDecl.Name.Symbol
+				value := castAssert[string](node.VarDecl.Assignment.VarDecl.Name.Symbol)
 				buffer.WriteString(fmt.Sprintf("    ; %06d. assign\n", opid))
 				buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", value))
 				buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", varName))
@@ -49,8 +49,8 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 
 		if node.NodeType == nodeExit {
 			buffer.WriteString(fmt.Sprintf("    ; %06d. exit\n", opid))
-			if node.ExMsg.LiteralString.Value != "" {
-				msg := castAssert[string](node.ExMsg.LiteralString.Value)
+			if node.Exit.Message.Literal.String.Value != "" {
+				msg := castAssert[string](node.Exit.Message.Literal.String.Value)
 
 				strName := fmt.Sprintf("str_%d", strCount)
 				strSize := fmt.Sprintf("%s_size", strName)
@@ -66,12 +66,12 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				buffer.WriteString("    syscall\n")
 			}
 
-			if node.ExVal.VarName.Symbol != "" {
+			if node.Exit.Status.VarDecl.Name.Symbol != "" {
 				buffer.WriteString("    mov rax, 60\n")
-				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.ExVal.VarName.Symbol)))
+				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.Exit.Status.VarDecl.Name.Symbol)))
 				buffer.WriteString("    syscall\n")
 				buffer.WriteString("    ret\n")
-			} else if status, ok := cast[int](node.ExVal.LiteralInt.Value); ok {
+			} else if status, ok := cast[int](node.Exit.Status.Literal.Int.Value); ok {
 				buffer.WriteString("    mov rax, 60\n")
 				buffer.WriteString(fmt.Sprintf("    mov rdi, %d\n", status))
 				buffer.WriteString("    syscall\n")
