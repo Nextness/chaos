@@ -18,8 +18,8 @@ type VarDecl struct {
 }
 
 type Exit struct {
-	ExVal *Node
-	ExMsg *Node
+	Value   *Node
+	Message *Node
 }
 
 type Literal struct {
@@ -91,14 +91,14 @@ func (p *Program) print() {
 
 		if node.NodeType == nodeExit {
 			msg := ""
-			if node.Exit.ExMsg.Literal.LiteralString.Value != "" {
-				msg = castAssert[string](node.Exit.ExMsg.Literal.LiteralString.Value)
+			if node.Exit.Message.Literal.LiteralString.Value != "" {
+				msg = castAssert[string](node.Exit.Message.Literal.LiteralString.Value)
 			}
 
-			if node.Exit.ExVal.VarDecl.Name.Symbol != "" {
-				status := node.Exit.ExVal.VarDecl.Name.Symbol
+			if node.Exit.Value.VarDecl.Name.Symbol != "" {
+				status := node.Exit.Value.VarDecl.Name.Symbol
 				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
-			} else if status, ok := cast[int](node.Exit.ExVal.Literal.LiteralInt.Value); ok {
+			} else if status, ok := cast[int](node.Exit.Value.Literal.LiteralInt.Value); ok {
 				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
 			}
 			continue
@@ -223,13 +223,13 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			node := Node{
 				NodeType: nodeExit,
 				Exit: Exit{
-					ExVal: &Node{
+					Value: &Node{
 						NodeType: nodeIntLiteral,
 						Literal: Literal{
 							LiteralInt: status,
 						},
 					},
-					ExMsg: &Node{
+					Message: &Node{
 						NodeType: nodeStringLiteral,
 						Literal: Literal{
 							LiteralString: exMsg,
@@ -252,8 +252,8 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			node := Node{
 				NodeType: nodeExit,
 				Exit: Exit{
-					ExVal: &identValue,
-					ExMsg: &Node{
+					Value: &identValue,
+					Message: &Node{
 						NodeType: nodeStringLiteral,
 						Literal: Literal{
 							LiteralString: exMsg,

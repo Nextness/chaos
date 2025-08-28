@@ -49,8 +49,8 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 
 		if node.NodeType == nodeExit {
 			buffer.WriteString(fmt.Sprintf("    ; %06d. exit\n", opid))
-			if node.Exit.ExMsg.Literal.LiteralString.Value != "" {
-				msg := castAssert[string](node.Exit.ExMsg.Literal.LiteralString.Value)
+			if node.Exit.Message.Literal.LiteralString.Value != "" {
+				msg := castAssert[string](node.Exit.Message.Literal.LiteralString.Value)
 
 				strName := fmt.Sprintf("str_%d", strCount)
 				strSize := fmt.Sprintf("%s_size", strName)
@@ -66,12 +66,12 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				buffer.WriteString("    syscall\n")
 			}
 
-			if node.Exit.ExVal.VarDecl.Name.Symbol != "" {
+			if node.Exit.Value.VarDecl.Name.Symbol != "" {
 				buffer.WriteString("    mov rax, 60\n")
-				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.Exit.ExVal.VarDecl.Name.Symbol)))
+				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.Exit.Value.VarDecl.Name.Symbol)))
 				buffer.WriteString("    syscall\n")
 				buffer.WriteString("    ret\n")
-			} else if status, ok := cast[int](node.Exit.ExVal.Literal.LiteralInt.Value); ok {
+			} else if status, ok := cast[int](node.Exit.Value.Literal.LiteralInt.Value); ok {
 				buffer.WriteString("    mov rax, 60\n")
 				buffer.WriteString(fmt.Sprintf("    mov rdi, %d\n", status))
 				buffer.WriteString("    syscall\n")
