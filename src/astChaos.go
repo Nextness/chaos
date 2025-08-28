@@ -17,6 +17,11 @@ type VarDecl struct {
 	VarValue *Node
 }
 
+type Exit struct {
+	ExVal *Node
+	ExMsg *Node
+}
+
 type Node struct {
 	NodeType NodeType
 
@@ -28,8 +33,7 @@ type Node struct {
 	VarDecl VarDecl
 
 	// Exit
-	ExVal *Node
-	ExMsg *Node
+	Exit Exit
 }
 
 type Program struct {
@@ -89,14 +93,14 @@ func (p *Program) print() {
 
 		if node.NodeType == nodeExit {
 			msg := ""
-			if node.ExMsg.LiteralString.Value != "" {
-				msg = castAssert[string](node.ExMsg.LiteralString.Value)
+			if node.Exit.ExMsg.LiteralString.Value != "" {
+				msg = castAssert[string](node.Exit.ExMsg.LiteralString.Value)
 			}
 
-			if node.ExVal.VarDecl.VarName.Symbol != "" {
-				status := node.ExVal.VarDecl.VarName.Symbol
+			if node.Exit.ExVal.VarDecl.VarName.Symbol != "" {
+				status := node.Exit.ExVal.VarDecl.VarName.Symbol
 				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
-			} else if status, ok := cast[int](node.ExVal.LiteralInt.Value); ok {
+			} else if status, ok := cast[int](node.Exit.ExVal.LiteralInt.Value); ok {
 				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
 			}
 			continue
@@ -216,13 +220,15 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 
 			node := Node{
 				NodeType: nodeExit,
-				ExVal: &Node{
-					NodeType:   nodeIntLiteral,
-					LiteralInt: status,
-				},
-				ExMsg: &Node{
-					NodeType:      nodeStringLiteral,
-					LiteralString: exMsg,
+				Exit: Exit{
+					ExVal: &Node{
+						NodeType:   nodeIntLiteral,
+						LiteralInt: status,
+					},
+					ExMsg: &Node{
+						NodeType:      nodeStringLiteral,
+						LiteralString: exMsg,
+					},
 				},
 			}
 			return node
@@ -239,10 +245,12 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 
 			node := Node{
 				NodeType: nodeExit,
-				ExVal:    &identValue,
-				ExMsg: &Node{
-					NodeType:      nodeStringLiteral,
-					LiteralString: exMsg,
+				Exit: Exit{
+					ExVal: &identValue,
+					ExMsg: &Node{
+						NodeType:      nodeStringLiteral,
+						LiteralString: exMsg,
+					},
 				},
 			}
 			return node
