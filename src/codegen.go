@@ -19,13 +19,13 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 
 	for _, node := range prog.AllocatedVars {
 		if node.NodeType == nodeIdentifier {
-			if result, ok := cast[int](node.VarValue.LiteralInt.Value); ok {
-				varName := node.VarName.Symbol
+			if result, ok := cast[int](node.VarDecl.VarValue.LiteralInt.Value); ok {
+				varName := node.VarDecl.VarName.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, result))
 				continue
 			}
-			if node.VarValue != nil {
-				varName := node.VarName.Symbol
+			if node.VarDecl.VarValue != nil {
+				varName := node.VarDecl.VarName.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, 0))
 				continue
 			}
@@ -35,12 +35,12 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 	strCount := 0
 	for opid, node := range prog.Nodes {
 		if node.NodeType == nodeIdentifier {
-			if _, ok := cast[int](node.VarValue.LiteralInt.Value); ok {
+			if _, ok := cast[int](node.VarDecl.VarValue.LiteralInt.Value); ok {
 				continue
 			}
-			if node.VarValue != nil {
-				varName := node.VarName.Symbol
-				value := castAssert[string](node.VarValue.VarName.Symbol)
+			if node.VarDecl.VarValue != nil {
+				varName := node.VarDecl.VarName.Symbol
+				value := castAssert[string](node.VarDecl.VarValue.VarDecl.VarName.Symbol)
 				buffer.WriteString(fmt.Sprintf("    ; %06d. assign\n", opid))
 				buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", value))
 				buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", varName))
@@ -66,9 +66,9 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				buffer.WriteString("    syscall\n")
 			}
 
-			if node.ExVal.VarName.Symbol != "" {
+			if node.ExVal.VarDecl.VarName.Symbol != "" {
 				buffer.WriteString("    mov rax, 60\n")
-				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.ExVal.VarName.Symbol)))
+				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.ExVal.VarDecl.VarName.Symbol)))
 				buffer.WriteString("    syscall\n")
 				buffer.WriteString("    ret\n")
 			} else if status, ok := cast[int](node.ExVal.LiteralInt.Value); ok {

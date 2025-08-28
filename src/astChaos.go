@@ -11,6 +11,12 @@ const (
 	nodeExit
 )
 
+type VarDecl struct {
+	VarName  Token
+	VarType  Token
+	VarValue *Node
+}
+
 type Node struct {
 	NodeType NodeType
 
@@ -19,9 +25,7 @@ type Node struct {
 	LiteralString Token
 
 	// Variable Declaration
-	VarName  Token
-	VarType  Token
-	VarValue *Node
+	VarDecl VarDecl
 
 	// Exit
 	ExVal *Node
@@ -39,47 +43,47 @@ func (p *Program) print() {
 	fmt.Print("Node list:\n")
 	for idx, node := range p.Nodes {
 		if node.NodeType == nodeIdentifier {
-			if result, ok := cast[int](node.VarValue.LiteralInt.Value); ok {
-				name := node.VarName.Symbol
+			if result, ok := cast[int](node.VarDecl.VarValue.LiteralInt.Value); ok {
+				name := node.VarDecl.VarName.Symbol
 				t := "infer"
-				if node.VarType.Symbol != "" {
-					t = node.VarType.Symbol
+				if node.VarDecl.VarType.Symbol != "" {
+					t = node.VarDecl.VarType.Symbol
 				}
 				fmt.Printf("%6d. var(%s, %s) = %d\n", idx, name, t, result)
 				continue
 			}
 
-			if result, ok := cast[float64](node.VarValue.LiteralInt.Value); ok {
-				name := node.VarName.Symbol
+			if result, ok := cast[float64](node.VarDecl.VarValue.LiteralInt.Value); ok {
+				name := node.VarDecl.VarName.Symbol
 				t := "infer"
-				if node.VarType.Symbol != "" {
-					t = node.VarType.Symbol
+				if node.VarDecl.VarType.Symbol != "" {
+					t = node.VarDecl.VarType.Symbol
 				}
 				fmt.Printf("%6d. var(%s, %s) = %.2f\n", idx, name, t, result)
 				continue
 			}
 
-			if result, ok := cast[string](node.VarValue.LiteralString.Value); ok && result != "" {
-				name := node.VarName.Symbol
+			if result, ok := cast[string](node.VarDecl.VarValue.LiteralString.Value); ok && result != "" {
+				name := node.VarDecl.VarName.Symbol
 				t := "infer"
-				if node.VarType.Symbol != "" {
-					t = node.VarType.Symbol
+				if node.VarDecl.VarType.Symbol != "" {
+					t = node.VarDecl.VarType.Symbol
 				}
 				fmt.Printf("%6d. var(%s, %s) = \"%s\"\n", idx, name, t, result)
 				continue
 			}
 
-			if node.VarValue != nil {
-				name := node.VarName.Symbol
+			if node.VarDecl.VarValue != nil {
+				name := node.VarDecl.VarName.Symbol
 				t := "infer"
-				if node.VarType.Symbol != "" {
-					t = node.VarType.Symbol
+				if node.VarDecl.VarType.Symbol != "" {
+					t = node.VarDecl.VarType.Symbol
 				}
-				fmt.Printf("%6d. var(%s, %s) = %s\n", idx, name, t, node.VarValue.VarName.Symbol)
+				fmt.Printf("%6d. var(%s, %s) = %s\n", idx, name, t, node.VarDecl.VarValue.VarDecl.VarName.Symbol)
 				continue
 			}
 
-			fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarValue)
+			fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarDecl.VarValue)
 			continue
 		}
 
@@ -89,8 +93,8 @@ func (p *Program) print() {
 				msg = castAssert[string](node.ExMsg.LiteralString.Value)
 			}
 
-			if node.ExVal.VarName.Symbol != "" {
-				status := node.ExVal.VarName.Symbol
+			if node.ExVal.VarDecl.VarName.Symbol != "" {
+				status := node.ExVal.VarDecl.VarName.Symbol
 				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
 			} else if status, ok := cast[int](node.ExVal.LiteralInt.Value); ok {
 				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
@@ -139,8 +143,10 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarName:  identifier,
-				VarValue: &rhs,
+				VarDecl: VarDecl{
+					VarName:  identifier,
+					VarValue: &rhs,
+				},
 			}
 			AllocatedVars[identifier.Symbol] = node
 			return node
@@ -154,9 +160,11 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarName:  identifier,
-				VarType:  varType,
-				VarValue: &rhs,
+				VarDecl: VarDecl{
+					VarName:  identifier,
+					VarType:  varType,
+					VarValue: &rhs,
+				},
 			}
 			AllocatedVars[identifier.Symbol] = node
 			return node
@@ -169,8 +177,10 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarName:  identifier,
-				VarValue: &rhs,
+				VarDecl: VarDecl{
+					VarName:  identifier,
+					VarValue: &rhs,
+				},
 			}
 			AllocatedVars[identifier.Symbol] = node
 			return node
@@ -184,9 +194,11 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarName:  identifier,
-				VarType:  varType,
-				VarValue: &rhs,
+				VarDecl: VarDecl{
+					VarName:  identifier,
+					VarType:  varType,
+					VarValue: &rhs,
+				},
 			}
 			AllocatedVars[identifier.Symbol] = node
 			return node
