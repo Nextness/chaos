@@ -24,12 +24,13 @@ type Node struct {
 	VarValue *Node
 
 	// Exit
-	ExVal int
-	ExMsg string
+	ExVal *Node
+	ExMsg *Node
 }
 
 type Program struct {
-	Nodes []Node
+	Nodes         []Node
+	AllocatedVars map[string]Node
 }
 
 var AllocatedVars map[string]Node = map[string]Node{}
@@ -83,12 +84,17 @@ func (p *Program) print() {
 		}
 
 		if node.NodeType == nodeExit {
-			status := node.ExVal
-			if node.ExMsg != "" {
-				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, node.ExMsg)
-				continue
+			msg := ""
+			if node.ExMsg.LiteralString.Value != "" {
+				msg = castAssert[string](node.ExMsg.LiteralString.Value)
 			}
-			fmt.Printf("%6d. exit(%d)\n", idx, status)
+
+			if node.ExVal.VarName.Symbol != "" {
+				status := node.ExVal.VarName.Symbol
+				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
+			} else if status, ok := cast[int](node.ExVal.LiteralInt.Value); ok {
+				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
+			}
 			continue
 		}
 
@@ -120,7 +126,8 @@ func ASTParseExpression(lex *Lexer) Node {
 		return ident
 	}
 
-	panic(fmt.Sprintf("Unknown token found at ASTParseExpresion - \"%s\"", expr.TokenType.String()))
+	assert(false, fmt.Sprintf("Unknown token found - \"%s\"", expr.TokenType.String()))
+	return Node{}
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
@@ -188,33 +195,43 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 
 	if _, matches := lex.MatchTokenAndConsumeAssert(tokExit); matches {
 		if status, matches := lex.MatchTokenAndConsumeAssert(tokNumberLiteral); matches {
-			exMsg := ""
+			var exMsg Token
 			if lex.MatchAt(0, tokComma) {
 				lex.ConsumeAssert(tokComma)
-				exMsg = castAssert[string](lex.ConsumeAssert(tokStringLiteral).Value)
+				exMsg = lex.ConsumeAssert(tokStringLiteral)
 			}
 			lex.ConsumeAssert(tokSemicolon)
 
 			node := Node{
 				NodeType: nodeExit,
-				ExVal:    castAssert[int](status.Value),
-				ExMsg:    exMsg,
+				ExVal: &Node{
+					NodeType:   nodeIntLiteral,
+					LiteralInt: status,
+				},
+				ExMsg: &Node{
+					NodeType:      nodeStringLiteral,
+					LiteralString: exMsg,
+				},
 			}
 			return node
 		}
-		if status, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
-			exMsg := ""
+
+		if token, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
+			var exMsg Token
 			if lex.MatchAt(0, tokComma) {
 				lex.ConsumeAssert(tokComma)
-				exMsg = castAssert[string](lex.ConsumeAssert(tokStringLiteral).Value)
+				exMsg = lex.ConsumeAssert(tokStringLiteral)
 			}
 			lex.ConsumeAssert(tokSemicolon)
+			identValue := AllocatedVars[token.Symbol]
 
-			identValue := AllocatedVars[status.Symbol]
 			node := Node{
 				NodeType: nodeExit,
-				ExVal:    castAssert[int](identValue.VarValue.LiteralInt.Value),
-				ExMsg:    exMsg,
+				ExVal:    &identValue,
+				ExMsg: &Node{
+					NodeType:      nodeStringLiteral,
+					LiteralString: exMsg,
+				},
 			}
 			return node
 
@@ -240,6 +257,8 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 		node := ASTParseStatement(lex)
 		program.Nodes = append(program.Nodes, node)
 	}
+
+	program.AllocatedVars = AllocatedVars
 
 	program.print()
 	return program

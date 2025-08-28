@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -44,13 +45,25 @@ func assert(ok bool, reason string) {
 	pc, filename, line, _ := runtime.Caller(1)
 	caller := runtime.FuncForPC(pc).Name()
 	if !ok {
-		panic(fmt.Sprintf("%s[%s:%d] Assertion failed - %s\n", caller, filename, line, reason))
+		panic(fmt.Sprintf("%s[%s:%d] Assertion failed - %s\n", caller, filepath.Base(filename), line, reason))
 	}
 }
 
-func chaosDebug(format string, args ...any) {
-	fmt.Fprintf(os.Stdout, "DEBUG: "+format+"\n", args...)
+func pp(anything any) string {
+	s, _ := json.MarshalIndent(anything, "", "\t")
+	return string(s)
 }
+
+func chaosDebug(anything ...any) {
+	for id, thing := range anything {
+		fmt.Fprintf(os.Stdout, "DEBUG %d: "+pp(thing)+"\n", id)
+	}
+	os.Exit(0)
+}
+
+// func chaosDebug(format string, args ...any) {
+// 	fmt.Fprintf(os.Stdout, "DEBUG: "+format+"\n", args...)
+// }
 
 func todo[V any](args ...any) V {
 	panic("TODO: Not implemented yet")
