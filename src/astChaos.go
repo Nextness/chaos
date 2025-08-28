@@ -18,7 +18,7 @@ type VarDecl struct {
 }
 
 type Exit struct {
-	Value   *Node
+	Status  *Node
 	Message *Node
 }
 
@@ -95,10 +95,10 @@ func (p *Program) print() {
 				msg = castAssert[string](node.Exit.Message.Literal.String.Value)
 			}
 
-			if node.Exit.Value.VarDecl.Name.Symbol != "" {
-				status := node.Exit.Value.VarDecl.Name.Symbol
+			if node.Exit.Status.VarDecl.Name.Symbol != "" {
+				status := node.Exit.Status.VarDecl.Name.Symbol
 				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
-			} else if status, ok := cast[int](node.Exit.Value.Literal.Int.Value); ok {
+			} else if status, ok := cast[int](node.Exit.Status.Literal.Int.Value); ok {
 				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
 			}
 			continue
@@ -223,7 +223,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			node := Node{
 				NodeType: nodeExit,
 				Exit: Exit{
-					Value: &Node{
+					Status: &Node{
 						NodeType: nodeIntLiteral,
 						Literal: Literal{
 							Int: status,
@@ -252,7 +252,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			node := Node{
 				NodeType: nodeExit,
 				Exit: Exit{
-					Value: &identValue,
+					Status: &identValue,
 					Message: &Node{
 						NodeType: nodeStringLiteral,
 						Literal: Literal{

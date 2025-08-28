@@ -66,12 +66,12 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				buffer.WriteString("    syscall\n")
 			}
 
-			if node.Exit.Value.VarDecl.Name.Symbol != "" {
+			if node.Exit.Status.VarDecl.Name.Symbol != "" {
 				buffer.WriteString("    mov rax, 60\n")
-				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.Exit.Value.VarDecl.Name.Symbol)))
+				buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](node.Exit.Status.VarDecl.Name.Symbol)))
 				buffer.WriteString("    syscall\n")
 				buffer.WriteString("    ret\n")
-			} else if status, ok := cast[int](node.Exit.Value.Literal.Int.Value); ok {
+			} else if status, ok := cast[int](node.Exit.Status.Literal.Int.Value); ok {
 				buffer.WriteString("    mov rax, 60\n")
 				buffer.WriteString(fmt.Sprintf("    mov rdi, %d\n", status))
 				buffer.WriteString("    syscall\n")
