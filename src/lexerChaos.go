@@ -793,7 +793,7 @@ func (lex *Lexer) ConsumeAssert(tokType TokenType) Token {
 	return token
 }
 
-func (lex *Lexer) ConsumeAssertMany(tokenTypes ...TokenType) {
+func (lex *Lexer) ConsumeAssertSequence(tokenTypes ...TokenType) {
 	for _, tokenType := range tokenTypes {
 		lex.ConsumeAssert(tokenType)
 	}
