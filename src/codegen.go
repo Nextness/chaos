@@ -19,12 +19,12 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 
 	for _, node := range prog.AllocatedVars {
 		if node.NodeType == nodeIdentifier {
-			if result, ok := cast[int](node.VarDecl.Value.Literal.Int.Value); ok {
+			if result, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
 				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, result))
 				continue
 			}
-			if node.VarDecl.Value != nil {
+			if node.VarDecl.Assignment != nil {
 				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, 0))
 				continue
@@ -35,12 +35,12 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 	strCount := 0
 	for opid, node := range prog.Nodes {
 		if node.NodeType == nodeIdentifier {
-			if _, ok := cast[int](node.VarDecl.Value.Literal.Int.Value); ok {
+			if _, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
 				continue
 			}
-			if node.VarDecl.Value != nil {
+			if node.VarDecl.Assignment != nil {
 				varName := node.VarDecl.Name.Symbol
-				value := castAssert[string](node.VarDecl.Value.VarDecl.Name.Symbol)
+				value := castAssert[string](node.VarDecl.Assignment.VarDecl.Name.Symbol)
 				buffer.WriteString(fmt.Sprintf("    ; %06d. assign\n", opid))
 				buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", value))
 				buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", varName))
