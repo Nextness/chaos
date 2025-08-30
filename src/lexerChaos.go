@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"unicode"
 )
@@ -785,10 +787,12 @@ func (lex *Lexer) ConsumeMany(count int) {
 
 func (lex *Lexer) ConsumeAssert(tokType TokenType) Token {
 	token := lex.GetToken(0)
-	assert(
-		token.TokenType == tokType,
-		fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), token.TokenType.String()),
-	)
+	pc, filename, line, _ := runtime.Caller(1)
+	caller := runtime.FuncForPC(pc).Name()
+	reason := fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), token.TokenType.String())
+	if token.TokenType != tokType {
+		panic(fmt.Sprintf("%s[%s:%d] Assertion failed - %s\n", caller, filepath.Base(filename), line, reason))
+	}
 	lex.cursor++
 	return token
 }

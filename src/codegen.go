@@ -38,6 +38,18 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 			if _, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
 				continue
 			}
+			if node.VarDecl.Assignment.NodeType == nodeBinOp {
+				name := node.VarDecl.Name.Symbol
+				lhs, okLhs := cast[int](node.VarDecl.Assignment.BinOp.Lhs.Literal.Int.Value)
+				rhs, okRhs := cast[int](node.VarDecl.Assignment.BinOp.Rhs.Literal.Int.Value)
+				if okLhs && okRhs {
+					buffer.WriteString(fmt.Sprintf("    ; %06d. add\n", opid))
+					buffer.WriteString(fmt.Sprintf("    mov rax, %d\n", lhs))
+					buffer.WriteString(fmt.Sprintf("    add rax, %d\n", rhs))
+					buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
+					continue
+				}
+			}
 			if node.VarDecl.Assignment != nil {
 				varName := node.VarDecl.Name.Symbol
 				value := castAssert[string](node.VarDecl.Assignment.VarDecl.Name.Symbol)

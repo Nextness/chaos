@@ -9,6 +9,13 @@ const (
 	nodeStringLiteral
 	nodeIdentifier
 	nodeExit
+	nodeBinOp
+)
+
+type BinOpOperation int
+
+const (
+	opPlus BinOpOperation = iota
 )
 
 type VarDecl struct {
@@ -27,11 +34,18 @@ type Literal struct {
 	String Token
 }
 
+type BinOp struct {
+	Operation BinOpOperation
+	Lhs       *Node
+	Rhs       *Node
+}
+
 type Node struct {
 	NodeType NodeType
 	Literal  Literal
 	VarDecl  VarDecl
 	Exit     Exit
+	BinOp    BinOp
 }
 
 type Program struct {
@@ -45,6 +59,19 @@ func (p *Program) print() {
 	fmt.Print("Node list:\n")
 	for idx, node := range p.Nodes {
 		if node.NodeType == nodeIdentifier {
+			if node.VarDecl.Assignment.NodeType == nodeBinOp {
+				name := node.VarDecl.Name.Symbol
+				t := "infer"
+				if node.VarDecl.Type.Symbol != "" {
+					t = node.VarDecl.Type.Symbol
+				}
+				lhs, okLhs := cast[int](node.VarDecl.Assignment.BinOp.Lhs.Literal.Int.Value)
+				rhs, okRhs := cast[int](node.VarDecl.Assignment.BinOp.Rhs.Literal.Int.Value)
+				if okLhs && okRhs {
+					fmt.Printf("%6d. var(%s, %s) = %d + %d\n", idx, name, t, lhs, rhs)
+				}
+				continue
+			}
 			if result, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
@@ -111,6 +138,24 @@ func (p *Program) print() {
 func ASTParseExpression(lex *Lexer) Node {
 	expr := lex.Consume()
 	if expr.TokenType == tokNumberLiteral {
+		if lex.GetToken(0).TokenType == tokPlus {
+			lex.ConsumeAssert(tokPlus)
+			n := ASTParseExpression(lex)
+			nod := Node{
+				NodeType: nodeBinOp,
+				BinOp: BinOp{
+					Operation: opPlus,
+					Lhs: &Node{
+						NodeType: nodeIntLiteral,
+						Literal: Literal{
+							Int: expr,
+						},
+					},
+					Rhs: &n,
+				},
+			}
+			return nod
+		}
 		lex.ConsumeAssert(tokSemicolon)
 		return Node{
 			NodeType: nodeIntLiteral,
