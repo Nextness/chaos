@@ -58,7 +58,6 @@ func chaosDebug(anything ...any) {
 	for id, thing := range anything {
 		fmt.Fprintf(os.Stdout, "DEBUG %d: "+pp(thing)+"\n", id)
 	}
-	os.Exit(0)
 }
 
 // func chaosDebug(format string, args ...any) {

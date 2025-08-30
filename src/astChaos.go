@@ -66,7 +66,7 @@ func (p *Program) print() {
 					t = node.VarDecl.Type.Symbol
 				}
 				lhs, okLhs := cast[int](node.VarDecl.Assignment.BinOp.Lhs.Literal.Int.Value)
-				rhs, okRhs := cast[int](node.VarDecl.Assignment.BinOp.Lhs.Literal.Int.Value)
+				rhs, okRhs := cast[int](node.VarDecl.Assignment.BinOp.Rhs.Literal.Int.Value)
 				if okLhs && okRhs {
 					fmt.Printf("%6d. var(%s, %s) = %d + %d\n", idx, name, t, lhs, rhs)
 				}
