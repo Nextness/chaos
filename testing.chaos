@@ -1,8 +1,11 @@
+bin_op :: 198342 + 123121;
+
 new_variable_0 :: 10;
 new_variable_1 := 69;
 new_variable_2 : I64 : new_variable_1;
 new_variable_3 : I64 : new_variable_2;
 exit new_variable_3, «Alguma coisa diferente!»;
+
 // new_variable_2 : F64 = 31651.00;
 
 // new_string_0 :: «hello world»;
