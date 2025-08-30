@@ -7,6 +7,7 @@ type NodeType int
 const (
 	nodeIntLiteral NodeType = iota
 	nodeStringLiteral
+	nodeFloatLiteral
 	nodeIdentifier
 	nodeExit
 	nodeBinOp
@@ -42,7 +43,7 @@ type BinOp struct {
 
 type Node struct {
 	NodeType NodeType
-	Literal  Literal
+	Literal  *Literal
 	VarDecl  VarDecl
 	Exit     Exit
 	BinOp    BinOp
@@ -59,6 +60,7 @@ func (p *Program) print() {
 	fmt.Print("Node list:\n")
 	for idx, node := range p.Nodes {
 		if node.NodeType == nodeIdentifier {
+
 			if node.VarDecl.Assignment.NodeType == nodeBinOp {
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
@@ -72,7 +74,9 @@ func (p *Program) print() {
 				}
 				continue
 			}
-			if result, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
+
+			if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
+				result := castAssert[int](node.VarDecl.Assignment.Literal.Int.Value)
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
 				if node.VarDecl.Type.Symbol != "" {
@@ -82,7 +86,8 @@ func (p *Program) print() {
 				continue
 			}
 
-			if result, ok := cast[float64](node.VarDecl.Assignment.Literal.Int.Value); ok {
+			if node.VarDecl.Assignment.NodeType == nodeFloatLiteral {
+				result := castAssert[float64](node.VarDecl.Assignment.Literal.Int.Value)
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
 				if node.VarDecl.Type.Symbol != "" {
@@ -92,7 +97,8 @@ func (p *Program) print() {
 				continue
 			}
 
-			if result, ok := cast[string](node.VarDecl.Assignment.Literal.String.Value); ok && result != "" {
+			if node.VarDecl.Assignment.NodeType == nodeStringLiteral {
+				result := castAssert[string](node.VarDecl.Assignment.Literal.String.Value)
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
 				if node.VarDecl.Type.Symbol != "" {
@@ -147,7 +153,7 @@ func ASTParseExpression(lex *Lexer) Node {
 					Operation: opPlus,
 					Lhs: &Node{
 						NodeType: nodeIntLiteral,
-						Literal: Literal{
+						Literal: &Literal{
 							Int: expr,
 						},
 					},
@@ -159,7 +165,7 @@ func ASTParseExpression(lex *Lexer) Node {
 		lex.ConsumeAssert(tokSemicolon)
 		return Node{
 			NodeType: nodeIntLiteral,
-			Literal: Literal{
+			Literal: &Literal{
 				Int: expr,
 			},
 		}
@@ -169,7 +175,7 @@ func ASTParseExpression(lex *Lexer) Node {
 		lex.ConsumeAssert(tokSemicolon)
 		return Node{
 			NodeType: nodeStringLiteral,
-			Literal: Literal{
+			Literal: &Literal{
 				String: expr,
 			},
 		}
@@ -270,13 +276,13 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				Exit: Exit{
 					Status: &Node{
 						NodeType: nodeIntLiteral,
-						Literal: Literal{
+						Literal: &Literal{
 							Int: status,
 						},
 					},
 					Message: &Node{
 						NodeType: nodeStringLiteral,
-						Literal: Literal{
+						Literal: &Literal{
 							String: exMsg,
 						},
 					},
@@ -300,7 +306,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 					Status: &identValue,
 					Message: &Node{
 						NodeType: nodeStringLiteral,
-						Literal: Literal{
+						Literal: &Literal{
 							String: exMsg,
 						},
 					},
