@@ -37,8 +37,8 @@ type Literal struct {
 
 type BinOp struct {
 	Operation BinOpOperation
-	Lhs       *Node
-	Rhs       *Node
+	Lhs       Node
+	Rhs       Node
 }
 
 type Node struct {
@@ -46,7 +46,7 @@ type Node struct {
 	Literal  *Literal
 	VarDecl  *VarDecl
 	Exit     *Exit
-	BinOp    BinOp
+	BinOp    *BinOp
 }
 
 type Program struct {
@@ -149,15 +149,15 @@ func ASTParseExpression(lex *Lexer) Node {
 			n := ASTParseExpression(lex)
 			nod := Node{
 				NodeType: nodeBinOp,
-				BinOp: BinOp{
+				BinOp: &BinOp{
 					Operation: opPlus,
-					Lhs: &Node{
+					Lhs: Node{
 						NodeType: nodeIntLiteral,
 						Literal: &Literal{
 							Int: expr,
 						},
 					},
-					Rhs: &n,
+					Rhs: n,
 				},
 			}
 			return nod
