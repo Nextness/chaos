@@ -26,8 +26,8 @@ type VarDecl struct {
 }
 
 type Exit struct {
-	Status  *Node
-	Message *Node
+	Status  Node
+	Message Node
 }
 
 type Literal struct {
@@ -45,7 +45,7 @@ type Node struct {
 	NodeType NodeType
 	Literal  *Literal
 	VarDecl  *VarDecl
-	Exit     Exit
+	Exit     *Exit
 	BinOp    BinOp
 }
 
@@ -273,14 +273,14 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 
 			node := Node{
 				NodeType: nodeExit,
-				Exit: Exit{
-					Status: &Node{
+				Exit: &Exit{
+					Status: Node{
 						NodeType: nodeIntLiteral,
 						Literal: &Literal{
 							Int: status,
 						},
 					},
-					Message: &Node{
+					Message: Node{
 						NodeType: nodeStringLiteral,
 						Literal: &Literal{
 							String: exMsg,
@@ -302,9 +302,9 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 
 			node := Node{
 				NodeType: nodeExit,
-				Exit: Exit{
-					Status: &identValue,
-					Message: &Node{
+				Exit: &Exit{
+					Status: identValue,
+					Message: Node{
 						NodeType: nodeStringLiteral,
 						Literal: &Literal{
 							String: exMsg,
