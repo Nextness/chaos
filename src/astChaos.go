@@ -22,7 +22,7 @@ const (
 type VarDecl struct {
 	Name       Token
 	Type       Token
-	Assignment *Node
+	Assignment Node
 }
 
 type Exit struct {
@@ -44,7 +44,7 @@ type BinOp struct {
 type Node struct {
 	NodeType NodeType
 	Literal  *Literal
-	VarDecl  VarDecl
+	VarDecl  *VarDecl
 	Exit     Exit
 	BinOp    BinOp
 }
@@ -108,7 +108,7 @@ func (p *Program) print() {
 				continue
 			}
 
-			if node.VarDecl.Assignment != nil {
+			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 				name := node.VarDecl.Name.Symbol
 				t := "infer"
 				if node.VarDecl.Type.Symbol != "" {
@@ -200,9 +200,9 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarDecl: VarDecl{
+				VarDecl: &VarDecl{
 					Name:       identifier,
-					Assignment: &rhs,
+					Assignment: rhs,
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
@@ -217,10 +217,10 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarDecl: VarDecl{
+				VarDecl: &VarDecl{
 					Name:       identifier,
 					Type:       varType,
-					Assignment: &rhs,
+					Assignment: rhs,
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
@@ -234,9 +234,9 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarDecl: VarDecl{
+				VarDecl: &VarDecl{
 					Name:       identifier,
-					Assignment: &rhs,
+					Assignment: rhs,
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
@@ -251,10 +251,10 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			rhs := ASTParseExpression(lex)
 			node := Node{
 				NodeType: nodeIdentifier,
-				VarDecl: VarDecl{
+				VarDecl: &VarDecl{
 					Name:       identifier,
 					Type:       varType,
-					Assignment: &rhs,
+					Assignment: rhs,
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node

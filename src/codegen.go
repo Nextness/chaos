@@ -30,7 +30,7 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, result))
 				continue
 			}
-			if node.VarDecl.Assignment != nil {
+			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, 0))
 				continue
@@ -58,12 +58,13 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 					continue
 				}
 			}
-			if node.VarDecl.Assignment != nil {
+			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 				varName := node.VarDecl.Name.Symbol
 				value := castAssert[string](node.VarDecl.Assignment.VarDecl.Name.Symbol)
 				buffer.WriteString(fmt.Sprintf("    ; %06d. assign\n", opid))
 				buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", value))
 				buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", varName))
+				continue
 			}
 		}
 
