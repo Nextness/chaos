@@ -19,12 +19,18 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 
 	for _, node := range prog.AllocatedVars {
 		if node.NodeType == nodeIdentifier {
-			if result, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
+			if node.VarDecl.Assignment.NodeType == nodeBinOp {
+				varName := node.VarDecl.Name.Symbol
+				datBuf.WriteString(fmt.Sprintf("    %s dq 0\n", varName))
+				continue
+			}
+			if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
+				result := castAssert[int](node.VarDecl.Assignment.Literal.Int.Value)
 				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, result))
 				continue
 			}
-			if node.VarDecl.Assignment != nil {
+			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, 0))
 				continue
@@ -35,9 +41,11 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 	strCount := 0
 	for opid, node := range prog.Nodes {
 		if node.NodeType == nodeIdentifier {
-			if _, ok := cast[int](node.VarDecl.Assignment.Literal.Int.Value); ok {
+			if node.VarDecl.Assignment.NodeType == nodeIntLiteral ||
+				node.VarDecl.Assignment.NodeType == nodeFloatLiteral {
 				continue
 			}
+
 			if node.VarDecl.Assignment.NodeType == nodeBinOp {
 				name := node.VarDecl.Name.Symbol
 				lhs, okLhs := cast[int](node.VarDecl.Assignment.BinOp.Lhs.Literal.Int.Value)
@@ -50,12 +58,13 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 					continue
 				}
 			}
-			if node.VarDecl.Assignment != nil {
+			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 				varName := node.VarDecl.Name.Symbol
 				value := castAssert[string](node.VarDecl.Assignment.VarDecl.Name.Symbol)
 				buffer.WriteString(fmt.Sprintf("    ; %06d. assign\n", opid))
 				buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", value))
 				buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", varName))
+				continue
 			}
 		}
 
