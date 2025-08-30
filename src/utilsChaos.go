@@ -60,10 +60,6 @@ func chaosDebug(anything ...any) {
 	}
 }
 
-// func chaosDebug(format string, args ...any) {
-// 	fmt.Fprintf(os.Stdout, "DEBUG: "+format+"\n", args...)
-// }
-
 func todo[V any](args ...any) V {
 	panic("TODO: Not implemented yet")
 }
