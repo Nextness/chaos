@@ -58,144 +58,104 @@ type Program struct {
 
 var AllocatedVars map[string]Node = map[string]Node{}
 
-func (p *Program) print() {
-	fmt.Print("Node list:\n")
-	for idx, node := range p.Nodes {
-		if node.NodeType == nodeIdentifier {
-
-			if node.VarDecl.Assignment.NodeType == nodeBinOp {
-				reassinableType := "const"
-				if node.Reassignable {
-					reassinableType = "var"
-				}
-
-				name := node.VarDecl.Name.Symbol
-				t := "infer"
-				if node.VarDecl.Type.Symbol != "" {
-					t = node.VarDecl.Type.Symbol
-				}
-
-				var lhs, rhs Node
-				var okLhs, okRhs bool = false, false
-				if node.VarDecl.Assignment.BinOp.Lhs.NodeType != nodeNull {
-					okLhs = true
-					lhs = node.VarDecl.Assignment.BinOp.Lhs
-				}
-
-				if node.VarDecl.Assignment.BinOp.Rhs.NodeType != nodeNull {
-					okRhs = true
-					rhs = node.VarDecl.Assignment.BinOp.Rhs
-				}
-
-				if okLhs && okRhs {
-					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
-						l := castAssert[int](lhs.Literal.Int.Value)
-						r := castAssert[int](rhs.Literal.Int.Value)
-						fmt.Printf("%6d. %s(%s, %s) = %d + %d\n", idx, reassinableType, name, t, l, r)
-						continue
-					}
-					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
-						l := castAssert[int](lhs.Literal.Int.Value)
-						r := rhs.VarDecl.Name.Symbol
-						fmt.Printf("%6d. %s(%s, %s) = %d + %s\n", idx, reassinableType, name, t, l, r)
-						continue
-					}
-					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
-						l := lhs.VarDecl.Name.Symbol
-						r := castAssert[int](rhs.Literal.Int.Value)
-						fmt.Printf("%6d. %s(%s, %s) = %s + %d\n", idx, reassinableType, name, t, l, r)
-						continue
-					}
-					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
-						l := lhs.VarDecl.Name.Symbol
-						r := rhs.VarDecl.Name.Symbol
-						fmt.Printf("%6d. %s(%s, %s) = %s + %s\n", idx, reassinableType, name, t, l, r)
-						continue
-					}
-				}
-				continue
-			}
-
-			if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
-				reassinableType := "const"
-				if node.Reassignable {
-					reassinableType = "var"
-				}
-				result := castAssert[int](node.VarDecl.Assignment.Literal.Int.Value)
-				name := node.VarDecl.Name.Symbol
-				t := "infer"
-				if node.VarDecl.Type.Symbol != "" {
-					t = node.VarDecl.Type.Symbol
-				}
-				fmt.Printf("%6d. %s(%s, %s) = %d\n", idx, reassinableType, name, t, result)
-				continue
-			}
-
-			if node.VarDecl.Assignment.NodeType == nodeFloatLiteral {
-				reassinableType := "const"
-				if node.Reassignable {
-					reassinableType = "var"
-				}
-				result := castAssert[float64](node.VarDecl.Assignment.Literal.Int.Value)
-				name := node.VarDecl.Name.Symbol
-				t := "infer"
-				if node.VarDecl.Type.Symbol != "" {
-					t = node.VarDecl.Type.Symbol
-				}
-				fmt.Printf("%6d. %s(%s, %s) = %.2f\n", idx, reassinableType, name, t, result)
-				continue
-			}
-
-			if node.VarDecl.Assignment.NodeType == nodeStringLiteral {
-				reassinableType := "const"
-				if node.Reassignable {
-					reassinableType = "var"
-				}
-				result := castAssert[string](node.VarDecl.Assignment.Literal.String.Value)
-				name := node.VarDecl.Name.Symbol
-				t := "infer"
-				if node.VarDecl.Type.Symbol != "" {
-					t = node.VarDecl.Type.Symbol
-				}
-				fmt.Printf("%6d. %s(%s, %s) = \"%s\"\n", idx, reassinableType, name, t, result)
-				continue
-			}
-
-			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
-				reassinableType := "const"
-				if node.Reassignable {
-					reassinableType = "var"
-				}
-				name := node.VarDecl.Name.Symbol
-				t := "infer"
-				if node.VarDecl.Type.Symbol != "" {
-					t = node.VarDecl.Type.Symbol
-				}
-				fmt.Printf("%6d. %s(%s, %s) = %s\n", idx, reassinableType, name, t, node.VarDecl.Assignment.VarDecl.Name.Symbol)
-				continue
-			}
-
-			fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarDecl.Assignment)
-			continue
+func (node *Node) print(idx int) {
+	if node.NodeType == nodeIdentifier {
+		reassinableType := "const"
+		if node.Reassignable {
+			reassinableType = "var"
 		}
 
-		if node.NodeType == nodeExit {
-			msg := ""
-			if node.Exit.Message.Literal.String.Value != "" {
-				msg = castAssert[string](node.Exit.Message.Literal.String.Value)
-			}
-
-			if node.Exit.Status.VarDecl.Name.Symbol != "" {
-				status := node.Exit.Status.VarDecl.Name.Symbol
-				fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
-			} else if status, ok := cast[int](node.Exit.Status.Literal.Int.Value); ok {
-				fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
-			}
-			continue
+		name := node.VarDecl.Name.Symbol
+		t := "infer"
+		if node.VarDecl.Type.Symbol != "" {
+			t = node.VarDecl.Type.Symbol
 		}
 
-		panic(fmt.Sprintf("[ERROR] Unknown node '%+v'", node))
+		if node.VarDecl.Assignment.NodeType == nodeBinOp {
+			var lhs, rhs Node
+			var okLhs, okRhs bool = false, false
+			if node.VarDecl.Assignment.BinOp.Lhs.NodeType != nodeNull {
+				okLhs = true
+				lhs = node.VarDecl.Assignment.BinOp.Lhs
+			}
+
+			if node.VarDecl.Assignment.BinOp.Rhs.NodeType != nodeNull {
+				okRhs = true
+				rhs = node.VarDecl.Assignment.BinOp.Rhs
+			}
+
+			if okLhs && okRhs {
+				if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
+					l := castAssert[int](lhs.Literal.Int.Value)
+					r := castAssert[int](rhs.Literal.Int.Value)
+					fmt.Printf("%6d. %s(%s, %s) = %d + %d\n", idx, reassinableType, name, t, l, r)
+					return
+				}
+				if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
+					l := castAssert[int](lhs.Literal.Int.Value)
+					r := rhs.VarDecl.Name.Symbol
+					fmt.Printf("%6d. %s(%s, %s) = %d + %s\n", idx, reassinableType, name, t, l, r)
+					return
+				}
+				if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
+					l := lhs.VarDecl.Name.Symbol
+					r := castAssert[int](rhs.Literal.Int.Value)
+					fmt.Printf("%6d. %s(%s, %s) = %s + %d\n", idx, reassinableType, name, t, l, r)
+					return
+				}
+				if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
+					l := lhs.VarDecl.Name.Symbol
+					r := rhs.VarDecl.Name.Symbol
+					fmt.Printf("%6d. %s(%s, %s) = %s + %s\n", idx, reassinableType, name, t, l, r)
+					return
+				}
+			}
+		}
+
+		if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
+			result := castAssert[int](node.VarDecl.Assignment.Literal.Int.Value)
+			fmt.Printf("%6d. %s(%s, %s) = %d\n", idx, reassinableType, name, t, result)
+			return
+		}
+
+		if node.VarDecl.Assignment.NodeType == nodeFloatLiteral {
+			result := castAssert[float64](node.VarDecl.Assignment.Literal.Int.Value)
+			fmt.Printf("%6d. %s(%s, %s) = %.2f\n", idx, reassinableType, name, t, result)
+			return
+		}
+
+		if node.VarDecl.Assignment.NodeType == nodeStringLiteral {
+			result := castAssert[string](node.VarDecl.Assignment.Literal.String.Value)
+			fmt.Printf("%6d. %s(%s, %s) = \"%s\"\n", idx, reassinableType, name, t, result)
+			return
+		}
+
+		if node.VarDecl.Assignment.NodeType == nodeIdentifier {
+			name := node.VarDecl.Name.Symbol
+			fmt.Printf("%6d. %s(%s, %s) = %s\n", idx, reassinableType, name, t, node.VarDecl.Assignment.VarDecl.Name.Symbol)
+			return
+		}
+
+		fmt.Printf("[ERROR] Not implemented :: %+v\n", node.VarDecl.Assignment)
+		return
 	}
+
+	if node.NodeType == nodeExit {
+		msg := ""
+		if node.Exit.Message.Literal.String.Value != "" {
+			msg = castAssert[string](node.Exit.Message.Literal.String.Value)
+		}
+
+		if node.Exit.Status.VarDecl.Name.Symbol != "" {
+			status := node.Exit.Status.VarDecl.Name.Symbol
+			fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
+		} else if status, ok := cast[int](node.Exit.Status.Literal.Int.Value); ok {
+			fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
+		}
+		return
+	}
+
+	assert[any](false, fmt.Sprintf("[ERROR] Unknown node '%+v'", node))
 }
 
 func ASTParseExpression(lex *Lexer) Node {
@@ -412,6 +372,9 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 
 	program.AllocatedVars = AllocatedVars
 
-	program.print()
+	fmt.Print("Node list:\n")
+	for idx, node := range program.Nodes {
+		node.print(idx)
+	}
 	return program
 }
