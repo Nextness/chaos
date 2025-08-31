@@ -111,6 +111,7 @@ func (node *Node) print(idx int) {
 					return
 				}
 			}
+			return
 		}
 
 		if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
@@ -227,8 +228,18 @@ func ASTParseExpression(lex *Lexer) Node {
 	return assert[Node](false, fmt.Sprintf("Unknown token found - \"%s\"", expr.TokenType.String()))
 }
 
-func ASTParsePrimaryExpression(lex *Lexer) Node {
+func ASTParsePrimaryExpression(lex *Lexer) (Node, bool) {
 	if identifier, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
+		if lex.MatchAt(0, tokAssignment) {
+			lex.ConsumeAssert(tokAssignment)
+			rhs := ASTParseExpression(lex)
+			node := AllocatedVars[identifier.Symbol]
+			node.VarDecl.Assignment = rhs
+			node.VarDecl.Initialized = true
+			node.Reassignable = true
+			AllocatedVars[identifier.Symbol] = node
+			return Node{}, true
+		}
 
 		if lex.MatchTokenSequence(tokColon, tokIdentifier, tokSemicolon) {
 			lex.ConsumeAssert(tokColon)
@@ -236,7 +247,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 			lex.ConsumeAssert(tokSemicolon)
 			node := Node{
 				NodeType:     nodeIdentifier,
-				Reassignable: false,
+				Reassignable: true,
 				VarDecl: &VarDecl{
 					Name:        identifier,
 					Type:        varType,
@@ -244,7 +255,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
-			return node
+			return node, false
 		}
 
 		if lex.MatchTokenSequence(tokColon, tokColon) {
@@ -262,7 +273,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
-			return node
+			return node, false
 		}
 
 		if lex.MatchTokenSequence(tokColon, tokIdentifier, tokColon) {
@@ -282,7 +293,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
-			return node
+			return node, false
 		}
 
 		if lex.MatchTokenSequence(tokColon, tokAssignment) {
@@ -300,7 +311,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
-			return node
+			return node, false
 		}
 
 		if lex.MatchTokenSequence(tokColon, tokIdentifier, tokAssignment) {
@@ -320,7 +331,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 				},
 			}
 			AllocatedVars[identifier.Symbol] = node
-			return node
+			return node, false
 		}
 	}
 
@@ -350,7 +361,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 					},
 				},
 			}
-			return node
+			return node, false
 		}
 
 		if token, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
@@ -374,17 +385,17 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 					},
 				},
 			}
-			return node
+			return node, false
 
 		}
 	}
 
-	return assert[Node](false, fmt.Sprintf("[ERROR] Unknown token \"%s\"", lex.GetToken(0).Symbol))
+	return assert[Node](false, fmt.Sprintf("[ERROR] Unknown token \"%s\"", lex.GetToken(0).Symbol)), false
 }
 
-func ASTParseStatement(lex *Lexer) Node {
-	node := ASTParsePrimaryExpression(lex)
-	return node
+func ASTParseStatement(lex *Lexer) (Node, bool) {
+	node, skip := ASTParsePrimaryExpression(lex)
+	return node, skip
 }
 
 func ASTCreateChaosProgram(lex *Lexer) Program {
@@ -395,15 +406,19 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 	}
 
 	for !lex.MatchAt(0, tokEndOfFile) {
-		node := ASTParseStatement(lex)
-		program.Nodes = append(program.Nodes, node)
+		node, skip := ASTParseStatement(lex)
+		if !skip {
+			program.Nodes = append(program.Nodes, node)
+		}
 	}
 
+	size := len(AllocatedVars)
 	program.AllocatedVars = AllocatedVars
 
-	fmt.Print("Node list:\n")
+	fmt.Printf("Allocated Vars [%d] - Node list:\n", size)
 	for idx, node := range program.Nodes {
 		node.print(idx)
 	}
+
 	return program
 }
