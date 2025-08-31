@@ -17,7 +17,8 @@ const (
 type BinOpOperation int
 
 const (
-	opPlus BinOpOperation = iota
+	opNull BinOpOperation = iota
+	opPlus
 )
 
 type VarDecl struct {
