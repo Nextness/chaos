@@ -30,6 +30,14 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				datBuf.WriteString(fmt.Sprintf("    %s dq %d\n", varName, result))
 				continue
 			}
+
+			if !node.VarDecl.Initialized {
+				// TODO: Handle different types - right now we only accept Int
+				assert[any](node.VarDecl.Type.Symbol == "U64", "Right now we only allow U64")
+				varName := node.VarDecl.Name.Symbol
+				datBuf.WriteString(fmt.Sprintf("    %s dq 0\n", varName))
+				continue
+			}
 			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 				varName := node.VarDecl.Name.Symbol
 				datBuf.WriteString(fmt.Sprintf("    %s dq 0\n", varName))
