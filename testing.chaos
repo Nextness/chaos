@@ -1,5 +1,9 @@
+not_init_var_0: U64;
 not_init_var_1: U64;
 not_init_var_1 = 1;
+
+not_init_var_2: U64;
+not_init_var_2 = 10;
 
 bin_op_0 :: 1 + 0; // 1
 bin_op_1 := bin_op_0 + 1; // 2
