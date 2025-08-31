@@ -209,8 +209,7 @@ func ASTParseExpression(lex *Lexer) Node {
 		return ident
 	}
 
-	assert(false, fmt.Sprintf("Unknown token found - \"%s\"", expr.TokenType.String()))
-	return Node{}
+	return assert[Node](false, fmt.Sprintf("Unknown token found - \"%s\"", expr.TokenType.String()))
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
@@ -352,7 +351,7 @@ func ASTParseStatement(lex *Lexer) Node {
 }
 
 func ASTCreateChaosProgram(lex *Lexer) Program {
-	assert(lex.cursor == 0, "Cursor is not 0")
+	assert[any](lex.cursor == 0, "Cursor is not 0")
 
 	program := Program{
 		Nodes: []Node{},

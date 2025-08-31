@@ -1,4 +1,8 @@
-bin_op :: 1 + 1;
+bin_op_0 :: 1 + 0;
+// Todo: Implement binop with Identifiers
+bin_op_1 := 1 + bin_op_1;
+bin_op_2 : I64 : 3 + 4;
+bin_op_3 : I64 = 6 + 5;
 
 variable_0 :: 10;
 variable_1 := 69;
@@ -9,7 +13,7 @@ new_variable_0 :: 10;
 new_variable_1 := 69;
 new_variable_2 : I64 : new_variable_1;
 new_variable_3 : I64 = new_variable_2;
-exit bin_op, «Alguma coisa diferente!»;
+exit bin_op_0, «Alguma coisa diferente!»;
 
 // new_variable_2 : F64 = 31651.00;
 
