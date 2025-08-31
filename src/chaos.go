@@ -18,10 +18,10 @@ func compileChaos(filepath string, src []byte) bool {
 		cursor:   0,
 	}
 
-	ASTCreateChaosProgram(lex)
-	// codeGen := GenerateCode(&program)
-	//
-	// os.WriteFile("testing.asm", codeGen.Bytes(), 0644)
+	program := ASTCreateChaosProgram(lex)
+	codeGen := GenerateCode(&program)
+
+	os.WriteFile("testing.asm", codeGen.Bytes(), 0644)
 	return true
 }
 
