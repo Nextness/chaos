@@ -5,7 +5,8 @@ import "fmt"
 type NodeType int
 
 const (
-	nodeIntLiteral NodeType = iota
+	nodeNull NodeType = iota
+	nodeIntLiteral
 	nodeStringLiteral
 	nodeFloatLiteral
 	nodeIdentifier
@@ -73,10 +74,44 @@ func (p *Program) print() {
 				if node.VarDecl.Type.Symbol != "" {
 					t = node.VarDecl.Type.Symbol
 				}
-				lhs, okLhs := cast[int](node.VarDecl.Assignment.BinOp.Lhs.Literal.Int.Value)
-				rhs, okRhs := cast[int](node.VarDecl.Assignment.BinOp.Rhs.Literal.Int.Value)
+
+				var lhs, rhs Node
+				var okLhs, okRhs bool = false, false
+				if node.VarDecl.Assignment.BinOp.Lhs.NodeType != nodeNull {
+					okLhs = true
+					lhs = node.VarDecl.Assignment.BinOp.Lhs
+				}
+
+				if node.VarDecl.Assignment.BinOp.Rhs.NodeType != nodeNull {
+					okRhs = true
+					rhs = node.VarDecl.Assignment.BinOp.Rhs
+				}
+
 				if okLhs && okRhs {
-					fmt.Printf("%6d. %s(%s, %s) = %d + %d\n", idx, reassinableType, name, t, lhs, rhs)
+					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
+						l := castAssert[int](lhs.Literal.Int.Value)
+						r := castAssert[int](rhs.Literal.Int.Value)
+						fmt.Printf("%6d. %s(%s, %s) = %d + %d\n", idx, reassinableType, name, t, l, r)
+						continue
+					}
+					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
+						l := castAssert[int](lhs.Literal.Int.Value)
+						r := rhs.VarDecl.Name.Symbol
+						fmt.Printf("%6d. %s(%s, %s) = %d + %s\n", idx, reassinableType, name, t, l, r)
+						continue
+					}
+					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
+						l := lhs.VarDecl.Name.Symbol
+						r := castAssert[int](rhs.Literal.Int.Value)
+						fmt.Printf("%6d. %s(%s, %s) = %s + %d\n", idx, reassinableType, name, t, l, r)
+						continue
+					}
+					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
+						l := lhs.VarDecl.Name.Symbol
+						r := rhs.VarDecl.Name.Symbol
+						fmt.Printf("%6d. %s(%s, %s) = %s + %s\n", idx, reassinableType, name, t, l, r)
+						continue
+					}
 				}
 				continue
 			}
@@ -168,7 +203,7 @@ func ASTParseExpression(lex *Lexer) Node {
 	if expr.TokenType == tokNumberLiteral {
 		if lex.GetToken(0).TokenType == tokPlus {
 			lex.ConsumeAssert(tokPlus)
-			n := ASTParseExpression(lex)
+			rhs := ASTParseExpression(lex)
 			nod := Node{
 				NodeType: nodeBinOp,
 				BinOp: &BinOp{
@@ -179,7 +214,7 @@ func ASTParseExpression(lex *Lexer) Node {
 							Int: expr,
 						},
 					},
-					Rhs: n,
+					Rhs: rhs,
 				},
 			}
 			return nod
@@ -205,12 +240,24 @@ func ASTParseExpression(lex *Lexer) Node {
 
 	if expr.TokenType == tokIdentifier {
 		ident := AllocatedVars[expr.Symbol]
+		if lex.GetToken(0).TokenType == tokPlus {
+			lex.ConsumeAssert(tokPlus)
+			rhs := ASTParseExpression(lex)
+			nod := Node{
+				NodeType: nodeBinOp,
+				BinOp: &BinOp{
+					Operation: opPlus,
+					Lhs:       ident,
+					Rhs:       rhs,
+				},
+			}
+			return nod
+		}
 		lex.ConsumeAssert(tokSemicolon)
 		return ident
 	}
 
-	assert(false, fmt.Sprintf("Unknown token found - \"%s\"", expr.TokenType.String()))
-	return Node{}
+	return assert[Node](false, fmt.Sprintf("Unknown token found - \"%s\"", expr.TokenType.String()))
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
@@ -352,7 +399,7 @@ func ASTParseStatement(lex *Lexer) Node {
 }
 
 func ASTCreateChaosProgram(lex *Lexer) Program {
-	assert(lex.cursor == 0, "Cursor is not 0")
+	assert[any](lex.cursor == 0, "Cursor is not 0")
 
 	program := Program{
 		Nodes: []Node{},

@@ -46,7 +46,7 @@ const (
 )
 
 func (tokenType TokenType) String() string {
-	assert(
+	assert[any](
 		tokCount == 29,
 		fmt.Sprintf("Expected 29 token count but found %d", tokCount),
 	)
@@ -549,7 +549,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 			number := tmp.String()
 			if isFloat {
 				val, err := strconv.ParseFloat(number, 64)
-				assert(err == nil, "Failed to convert string to float")
+				assert[any](err == nil, "Failed to convert string to float")
 
 				token := Token{
 					TokenType: tokNumberLiteral,
@@ -560,7 +560,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				continue
 			} else {
 				val, err := strconv.Atoi(tmp.String())
-				assert(err == nil, "Failed to convert string to number")
+				assert[any](err == nil, "Failed to convert string to number")
 
 				token := Token{
 					TokenType: tokNumberLiteral,
@@ -737,7 +737,7 @@ func (tokens Lexer) print() {
 func (lex *Lexer) checkBounds(offset int) {
 	// TODO: Include information about where it failed - maybe need to use reflection
 	errorMsg := fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", lex.cursor, lex.count)
-	assert(lex.cursor+offset < lex.count, errorMsg)
+	assert[any](lex.cursor+offset < lex.count, errorMsg)
 }
 
 func (lex *Lexer) GetToken(offset int) Token {
