@@ -1,8 +1,10 @@
 bin_op_0 :: 1 + 0;
-// Todo: Implement binop with Identifiers
-bin_op_1 := 1 + bin_op_1;
+bin_op_1 := bin_op_0 + 1;
 bin_op_2 : I64 : 3 + 4;
 bin_op_3 : I64 = 6 + 5;
+bin_op_4 : I64 = bin_op_0 + bin_op_0;
+bin_op_5 := bin_op_0 + bin_op_0;
+bin_op_6 :: bin_op_0 + bin_op_0;
 
 variable_0 :: 10;
 variable_1 := 69;
