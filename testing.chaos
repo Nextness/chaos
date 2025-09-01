@@ -26,9 +26,7 @@ new_variable_3 : I64 = new_variable_2;
 exit bin_op_0, «Alguma coisa diferente!»;
 
 something_else :: proc {
-    a := 10;
-    b := a + 1;
-    exit b, «something»;
+    exit 1, «something»;
 }
 
 // new_variable_2 : F64 = 31651.00;

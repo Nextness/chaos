@@ -54,6 +54,50 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				continue
 			}
 
+			if node.VarDecl.Assignment.NodeType == nodeProcDef {
+				procName := node.VarDecl.Name.Symbol
+				buffer.WriteString(fmt.Sprintf("; %06d. proc_def\n", opid))
+				buffer.WriteString(fmt.Sprintf("%s:\n", procName))
+				for _, nd := range node.VarDecl.Assignment.Proc.Scope {
+					chaosDebug(nd)
+					if nd.NodeType == nodeExit {
+						buffer.WriteString(fmt.Sprintf("    ; %06d. exit\n", opid))
+						if nd.Exit.Message.NodeType == nodeStringLiteral {
+							msg := castAssert[string](nd.Exit.Message.Literal.String.Value)
+
+							strName := fmt.Sprintf("str_%d", strCount)
+							strSize := fmt.Sprintf("%s_size", strName)
+							strCount++
+
+							strBuf.WriteString(fmt.Sprintf("%s db \"%s\", 10\n", strName, msg))
+							strBuf.WriteString(fmt.Sprintf("%s = $-%s\n", strSize, strName))
+
+							buffer.WriteString("    mov rax, 1\n")
+							buffer.WriteString("    mov rdi, 1\n")
+							buffer.WriteString(fmt.Sprintf("    mov rsi, %s\n", strName))
+							buffer.WriteString(fmt.Sprintf("    mov rdx, %s\n", strSize))
+							buffer.WriteString("    syscall\n")
+						}
+
+						if nd.Exit.Status.NodeType == nodeIdentifier {
+							buffer.WriteString("    mov rax, 60\n")
+							buffer.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](nd.Exit.Status.VarDecl.Name.Symbol)))
+							buffer.WriteString("    syscall\n")
+							buffer.WriteString("    ret\n")
+						}
+						if nd.Exit.Status.NodeType == nodeIntLiteral {
+							status := castAssert[int](nd.Exit.Status.Literal.Int.Value)
+							buffer.WriteString("    mov rax, 60\n")
+							buffer.WriteString(fmt.Sprintf("    mov rdi, %d\n", status))
+							buffer.WriteString("    syscall\n")
+							buffer.WriteString("    ret\n")
+						}
+						continue
+					}
+				}
+				continue
+			}
+
 			if node.VarDecl.Assignment.NodeType == nodeBinOp {
 				name := node.VarDecl.Name.Symbol
 

@@ -401,7 +401,6 @@ func ASTParsePrimaryExpression(lex *Lexer) (Node, bool) {
 					},
 				},
 			}
-			chaosDebug(node)
 			return node, false
 		}
 
