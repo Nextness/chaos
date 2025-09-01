@@ -198,7 +198,7 @@ func (node *Node) print(idx int) {
 		return
 	}
 
-	assert[any](false, fmt.Sprintf("[ERROR] Unknown node '%+v'", node))
+	assert[any](false, fmt.Sprintf("Unknown node '%v'", node))
 }
 
 func ASTParseProc(lex *Lexer) Node {

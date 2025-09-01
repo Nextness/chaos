@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strconv"
 	"unicode"
 )
@@ -206,11 +204,6 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 
 	tokens := []Token{}
 	for src.cursor < src.count {
-
-		if src.MatchByteAt(0, '_') {
-			fmt.Fprint(os.Stderr, "[ERROR] If you want to use underscore for identifiers, please go use another peasant fucking language :)\n")
-			os.Exit(1)
-		}
 
 		// Single-line comment
 		if src.MatchStrAt(0, "//") {
@@ -735,9 +728,10 @@ func (tokens Lexer) print() {
 }
 
 func (lex *Lexer) checkBounds(offset int) {
-	// TODO: Include information about where it failed - maybe need to use reflection
-	errorMsg := fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", lex.cursor, lex.count)
-	assert[any](lex.cursor+offset < lex.count, errorMsg)
+	assert[any](
+		lex.cursor+offset < lex.count,
+		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", lex.cursor, lex.count),
+	)
 }
 
 func (lex *Lexer) GetToken(offset int) Token {
@@ -780,19 +774,19 @@ func (lex *Lexer) Consume() Token {
 }
 
 func (lex *Lexer) ConsumeMany(count int) {
-	for range count {
-		lex.cursor++
-	}
+	lex.checkBounds(count)
+	lex.cursor += count
 }
 
 func (lex *Lexer) ConsumeAssert(tokType TokenType) Token {
 	token := lex.GetToken(0)
-	pc, filename, line, _ := runtime.Caller(1)
-	caller := runtime.FuncForPC(pc).Name()
-	reason := fmt.Sprintf("Expected the token '%s' but found '%s'", tokType.String(), token.TokenType.String())
-	if token.TokenType != tokType {
-		panic(fmt.Sprintf("%s[%s:%d] Assertion failed - %s\n", caller, filepath.Base(filename), line, reason))
-	}
+	assert[any](
+		token.TokenType == tokType,
+		fmt.Sprintf(
+			"%s:%d:%d Expected %s but got %s",
+			lex.filepath, token.Position.line, token.Position.column, tokType.String(), token.TokenType.String(),
+		),
+	)
 	lex.cursor++
 	return token
 }
@@ -801,12 +795,4 @@ func (lex *Lexer) ConsumeAssertSequence(tokenTypes ...TokenType) {
 	for _, tokenType := range tokenTypes {
 		lex.ConsumeAssert(tokenType)
 	}
-}
-
-func (lex *Lexer) PrintError(format string, a ...any) {
-	token := lex.GetToken(0)
-	pos := token.Position
-	preffix := fmt.Sprintf("[ERROR] %s:%02d:%02d", lex.filepath, pos.line, pos.column)
-	errorMsg := fmt.Sprintf(format, a...)
-	fmt.Fprintf(os.Stderr, "%s %s", preffix, errorMsg)
 }

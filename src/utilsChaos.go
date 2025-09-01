@@ -9,13 +9,6 @@ import (
 	"unicode"
 )
 
-const PAD_WIDTH = 2
-
-func isUppercase(b byte) bool {
-	s := rune(b)
-	return unicode.IsUpper(s) && unicode.IsLetter(s)
-}
-
 func isNum(b byte) bool {
 	s := rune(b)
 	return unicode.IsNumber(s)
@@ -31,33 +24,43 @@ func isAlphanum(b byte) bool {
 	return unicode.IsNumber(s) || unicode.IsLetter(s)
 }
 
-func isInside(b byte, listChar []byte) bool {
-	result := false
-	for _, item := range listChar {
-		if result = (b == item); result {
+func assert[T any](ok bool, reason string) T {
+	if ok {
+		return *new(T)
+	}
+	progCounter := make([]uintptr, 20)                  // Stacktrace size set to 20 for now
+	invocationsCount := runtime.Callers(2, progCounter) // Skipping Callers, Caller of Callers
+	frames := runtime.CallersFrames(progCounter[:invocationsCount])
+	iter := 0
+	printOnce := true
+	fmt.Print("\033[1;31m[ERROR] Assertion failed - stopping execution\033[0m\n")
+	for {
+		frame, more := frames.Next()
+		if iter == 0 || iter == 1 || iter == 2 || iter == 3 || iter == 4 || iter == invocationsCount-2 {
+			fmt.Fprintf(os.Stderr, "  %d. %s:%d %s\n", iter, filepath.Base(frame.File), frame.Line, frame.Function)
+		} else if printOnce {
+			fmt.Fprintf(os.Stderr, "  ...\n")
+			printOnce = false
+		}
+		iter++
+		if !more {
 			break
 		}
 	}
-	return result
-}
-
-func assert[T any](ok bool, reason string) T {
-	pc, filename, line, _ := runtime.Caller(1)
-	caller := runtime.FuncForPC(pc).Name()
-	if !ok {
-		panic(fmt.Sprintf("%s[%s:%d] Assertion failed - %s\n", caller, filepath.Base(filename), line, reason))
+	if reason == "" {
+		reason = "Reason not provided"
 	}
-	return *new(T)
-}
-
-func pp(anything any) string {
-	s, _ := json.MarshalIndent(anything, "", "\t")
-	return string(s)
+	fmt.Printf("  \033[4;37mREASON:\033[0m %s\n", reason)
+	panic("")
 }
 
 func chaosDebug(anything ...any) {
-	for id, thing := range anything {
-		fmt.Fprintf(os.Stdout, "DEBUG %d: "+pp(thing)+"\n", id)
+	pp := func(anything any) string {
+		s, _ := json.MarshalIndent(anything, "", "\t")
+		return string(s)
+	}
+	for _, thing := range anything {
+		fmt.Printf("DEBUG:\n%s\n", pp(thing))
 	}
 }
 
@@ -71,20 +74,8 @@ func cast[V any](value any) (V, bool) {
 }
 
 func castAssert[V any](value any) V {
-	result, ok := cast[V](value)
-	pc, filename, line, _ := runtime.Caller(1)
-	caller := runtime.FuncForPC(pc).Name()
-	if !ok {
-		panic(
-			fmt.Sprintf(
-				"%s[%s:%d] Assertion failed - failed to cast %T into %T\n",
-				caller,
-				filepath.Base(filename),
-				line,
-				value,
-				new(V),
-			),
-		)
+	if result, ok := cast[V](value); ok {
+		return result
 	}
-	return result
+	return assert[V](false, fmt.Sprintf("Could not cast %T into %T", value, *new(V)))
 }
