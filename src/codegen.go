@@ -11,11 +11,59 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 	buffer := bytes.Buffer{}
 	datBuf := bytes.Buffer{}
 	strBuf := bytes.Buffer{}
+	procBuf := bytes.Buffer{}
 
 	buffer.WriteString("format ELF64 executable 3\n\n")
 	buffer.WriteString(fmt.Sprintf("entry %s\n\n", entryPoint))
 	buffer.WriteString("segment readable executable\n\n")
 	buffer.WriteString(fmt.Sprintf("%s:\n", entryPoint))
+
+	strCount := 0
+
+	for _, node := range prog.AllocatedProcs {
+		if node.VarDecl.Assignment.NodeType == nodeProcDef {
+			procName := node.VarDecl.Name.Symbol
+			procBuf.WriteString("; proc_def\n")
+			procBuf.WriteString(fmt.Sprintf("%s:\n", procName))
+			for _, nd := range node.VarDecl.Assignment.Proc.Scope {
+				if nd.NodeType == nodeExit {
+					procBuf.WriteString("    ; exit\n")
+					if nd.Exit.Message.NodeType == nodeStringLiteral {
+						msg := castAssert[string](nd.Exit.Message.Literal.String.Value)
+
+						strName := fmt.Sprintf("str_%d", strCount)
+						strSize := fmt.Sprintf("%s_size", strName)
+						strCount++
+
+						strBuf.WriteString(fmt.Sprintf("%s db \"%s\", 10\n", strName, msg))
+						strBuf.WriteString(fmt.Sprintf("%s = $-%s\n", strSize, strName))
+
+						procBuf.WriteString("    mov rax, 1\n")
+						procBuf.WriteString("    mov rdi, 1\n")
+						procBuf.WriteString(fmt.Sprintf("    mov rsi, %s\n", strName))
+						procBuf.WriteString(fmt.Sprintf("    mov rdx, %s\n", strSize))
+						procBuf.WriteString("    syscall\n")
+					}
+
+					if nd.Exit.Status.NodeType == nodeIdentifier {
+						procBuf.WriteString("    mov rax, 60\n")
+						procBuf.WriteString(fmt.Sprintf("    mov rdi, [%s]\n", castAssert[string](nd.Exit.Status.VarDecl.Name.Symbol)))
+						procBuf.WriteString("    syscall\n")
+						procBuf.WriteString("    ret\n")
+					}
+					if nd.Exit.Status.NodeType == nodeIntLiteral {
+						status := castAssert[int](nd.Exit.Status.Literal.Int.Value)
+						procBuf.WriteString("    mov rax, 60\n")
+						procBuf.WriteString(fmt.Sprintf("    mov rdi, %d\n", status))
+						procBuf.WriteString("    syscall\n")
+						procBuf.WriteString("    ret\n")
+					}
+					continue
+				}
+			}
+			continue
+		}
+	}
 
 	for _, node := range prog.AllocatedVars {
 		if node.NodeType == nodeIdentifier {
@@ -46,8 +94,13 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 		}
 	}
 
-	strCount := 0
 	for opid, node := range prog.Nodes {
+		if node.NodeType == nodeCall {
+			name := node.Call.Name.Symbol
+			buffer.WriteString(fmt.Sprintf("    ; %6d. proc_call\n", opid))
+			buffer.WriteString(fmt.Sprintf("    call %s\n", name))
+			continue
+		}
 		if node.NodeType == nodeIdentifier {
 			if node.VarDecl.Assignment.NodeType == nodeIntLiteral ||
 				node.VarDecl.Assignment.NodeType == nodeFloatLiteral {
@@ -150,6 +203,7 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 	}
 
 	buffer.WriteString("\n")
+	buffer.Write(procBuf.Bytes())
 	buffer.WriteString("segment readable\n\n")
 	buffer.Write(strBuf.Bytes())
 

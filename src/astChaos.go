@@ -12,6 +12,8 @@ const (
 	nodeIdentifier
 	nodeExit
 	nodeBinOp
+	nodeProcDef
+	nodeCall
 )
 
 type BinOpOperation int
@@ -44,6 +46,14 @@ type BinOp struct {
 	Rhs       Node
 }
 
+type Proc struct {
+	Scope []Node
+}
+
+type Call struct {
+	Name Token
+}
+
 type Node struct {
 	NodeType     NodeType
 	Reassignable bool
@@ -51,16 +61,29 @@ type Node struct {
 	VarDecl      *VarDecl
 	Exit         *Exit
 	BinOp        *BinOp
+	Proc         *Proc
+	Call         *Call
 }
 
 type Program struct {
-	Nodes         []Node
-	AllocatedVars map[string]Node
+	Nodes          []Node
+	AllocatedVars  map[string]Node
+	AllocatedProcs map[string]Node
 }
 
+// TODO: Make these variables allocate VarDecl and
+// Proc respectively instead of Node
 var AllocatedVars map[string]Node = map[string]Node{}
+var AllocatedProcs map[string]Node = map[string]Node{}
 
 func (node *Node) print(idx int) {
+
+	if node.NodeType == nodeCall {
+		name := node.Call.Name.Symbol
+		fmt.Printf("%6d. call(%s, Void, Void)\n", idx, name)
+		return
+	}
+
 	if node.NodeType == nodeIdentifier {
 		reassinableType := "const"
 		if node.Reassignable {
@@ -71,6 +94,15 @@ func (node *Node) print(idx int) {
 		t := "infer"
 		if node.VarDecl.Type.Symbol != "" {
 			t = node.VarDecl.Type.Symbol
+		}
+
+		if node.VarDecl.Assignment.NodeType == nodeProcDef {
+			fmt.Printf("%6d. %s() -> Void {\n", idx, name)
+			for _, nod := range node.VarDecl.Assignment.Proc.Scope {
+				nod.print(idx)
+			}
+			fmt.Printf("%6d. }\n", idx)
+			return
 		}
 
 		if node.VarDecl.Assignment.NodeType == nodeBinOp {
@@ -151,14 +183,16 @@ func (node *Node) print(idx int) {
 
 	if node.NodeType == nodeExit {
 		msg := ""
-		if node.Exit.Message.Literal.String.Value != "" {
+		if node.Exit.Message.NodeType == nodeStringLiteral {
 			msg = castAssert[string](node.Exit.Message.Literal.String.Value)
 		}
 
-		if node.Exit.Status.VarDecl.Name.Symbol != "" {
+		if node.Exit.Status.NodeType == nodeIdentifier {
 			status := node.Exit.Status.VarDecl.Name.Symbol
 			fmt.Printf("%6d. exit(%s, \"%s\")\n", idx, status, msg)
-		} else if status, ok := cast[int](node.Exit.Status.Literal.Int.Value); ok {
+		}
+		if node.Exit.Status.NodeType == nodeIntLiteral {
+			status := castAssert[int](node.Exit.Status.Literal.Int.Value)
 			fmt.Printf("%6d. exit(%d, \"%s\")\n", idx, status, msg)
 		}
 		return
@@ -167,8 +201,29 @@ func (node *Node) print(idx int) {
 	assert[any](false, fmt.Sprintf("[ERROR] Unknown node '%+v'", node))
 }
 
+func ASTParseProc(lex *Lexer) Node {
+	node := Node{
+		NodeType: nodeProcDef,
+		Proc: &Proc{
+			Scope: []Node{},
+		},
+	}
+	lex.ConsumeAssert(tokOpenBraket)
+	for lex.GetToken(0).TokenType != tokCloseBraket {
+		stmt, _ := ASTParseStatement(lex)
+		node.Proc.Scope = append(node.Proc.Scope, stmt)
+	}
+	lex.ConsumeAssert(tokCloseBraket)
+	return node
+}
+
 func ASTParseExpression(lex *Lexer) Node {
 	expr := lex.Consume()
+
+	if expr.TokenType == tokProc {
+		return ASTParseProc(lex)
+	}
+
 	if expr.TokenType == tokNumberLiteral {
 		if lex.GetToken(0).TokenType == tokPlus {
 			lex.ConsumeAssert(tokPlus)
@@ -226,11 +281,25 @@ func ASTParseExpression(lex *Lexer) Node {
 		return ident
 	}
 
-	return assert[Node](false, fmt.Sprintf("Unknown token found - \"%s\"", expr.TokenType.String()))
+	token := lex.GetToken(0)
+	return assert[Node](false, fmt.Sprintf("Unknown token found - \"%s\"", token.TokenType.String()))
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) (Node, bool) {
 	if identifier, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
+		if _, ok := AllocatedProcs[identifier.Symbol]; ok {
+			lex.ConsumeAssert(tokOpenParen)
+			lex.ConsumeAssert(tokCloseParen)
+			lex.ConsumeAssert(tokSemicolon)
+			node := Node{
+				NodeType: nodeCall,
+				Call: &Call{
+					Name: identifier,
+				},
+			}
+			return node, false
+		}
+
 		if lex.MatchAt(0, tokAssignment) {
 			lex.ConsumeAssert(tokAssignment)
 			rhs := ASTParseExpression(lex)
@@ -273,7 +342,11 @@ func ASTParsePrimaryExpression(lex *Lexer) (Node, bool) {
 					Initialized: true,
 				},
 			}
-			AllocatedVars[identifier.Symbol] = node
+			if rhs.NodeType == nodeProcDef {
+				AllocatedProcs[identifier.Symbol] = node
+			} else {
+				AllocatedVars[identifier.Symbol] = node
+			}
 			return node, false
 		}
 
@@ -415,6 +488,7 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 
 	size := len(AllocatedVars)
 	program.AllocatedVars = AllocatedVars
+	program.AllocatedProcs = AllocatedProcs
 
 	fmt.Printf("Allocated Vars [%d] - Node list:\n", size)
 	for idx, node := range program.Nodes {
