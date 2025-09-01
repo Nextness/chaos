@@ -59,7 +59,6 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				buffer.WriteString(fmt.Sprintf("; %06d. proc_def\n", opid))
 				buffer.WriteString(fmt.Sprintf("%s:\n", procName))
 				for _, nd := range node.VarDecl.Assignment.Proc.Scope {
-					chaosDebug(nd)
 					if nd.NodeType == nodeExit {
 						buffer.WriteString(fmt.Sprintf("    ; %06d. exit\n", opid))
 						if nd.Exit.Message.NodeType == nodeStringLiteral {

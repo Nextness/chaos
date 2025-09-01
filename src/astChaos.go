@@ -13,6 +13,7 @@ const (
 	nodeExit
 	nodeBinOp
 	nodeProcDef
+	nodeCall
 )
 
 type BinOpOperation int
@@ -46,8 +47,11 @@ type BinOp struct {
 }
 
 type Proc struct {
-	Name  Token
 	Scope []Node
+}
+
+type Call struct {
+	Name Token
 }
 
 type Node struct {
@@ -58,11 +62,13 @@ type Node struct {
 	Exit         *Exit
 	BinOp        *BinOp
 	Proc         *Proc
+	Call         *Call
 }
 
 type Program struct {
-	Nodes         []Node
-	AllocatedVars map[string]Node
+	Nodes          []Node
+	AllocatedVars  map[string]Node
+	AllocatedProcs map[string]Node
 }
 
 // TODO: Make these variables allocate VarDecl and
@@ -71,6 +77,13 @@ var AllocatedVars map[string]Node = map[string]Node{}
 var AllocatedProcs map[string]Node = map[string]Node{}
 
 func (node *Node) print(idx int) {
+
+	if node.NodeType == nodeCall {
+		name := node.Call.Name.Symbol
+		fmt.Printf("%6d. call(%s, Void, Void)\n", idx, name)
+		return
+	}
+
 	if node.NodeType == nodeIdentifier {
 		reassinableType := "const"
 		if node.Reassignable {
@@ -91,6 +104,7 @@ func (node *Node) print(idx int) {
 			fmt.Printf("%6d. }\n", idx)
 			return
 		}
+
 		if node.VarDecl.Assignment.NodeType == nodeBinOp {
 			var lhs, rhs Node
 			var okLhs, okRhs bool = false, false
@@ -187,24 +201,27 @@ func (node *Node) print(idx int) {
 	assert[any](false, fmt.Sprintf("[ERROR] Unknown node '%+v'", node))
 }
 
+func ASTParseProc(lex *Lexer) Node {
+	node := Node{
+		NodeType: nodeProcDef,
+		Proc: &Proc{
+			Scope: []Node{},
+		},
+	}
+	lex.ConsumeAssert(tokOpenBraket)
+	for lex.GetToken(0).TokenType != tokCloseBraket {
+		stmt, _ := ASTParseStatement(lex)
+		node.Proc.Scope = append(node.Proc.Scope, stmt)
+	}
+	lex.ConsumeAssert(tokCloseBraket)
+	return node
+}
+
 func ASTParseExpression(lex *Lexer) Node {
 	expr := lex.Consume()
 
 	if expr.TokenType == tokProc {
-		node := Node{
-			NodeType: nodeProcDef,
-			Proc: &Proc{
-				Name:  expr,
-				Scope: []Node{},
-			},
-		}
-		lex.ConsumeAssert(tokOpenBraket)
-		for lex.GetToken(0).TokenType != tokCloseBraket {
-			stmt, _ := ASTParseStatement(lex)
-			node.Proc.Scope = append(node.Proc.Scope, stmt)
-		}
-		lex.ConsumeAssert(tokCloseBraket)
-		return node
+		return ASTParseProc(lex)
 	}
 
 	if expr.TokenType == tokNumberLiteral {
@@ -270,6 +287,19 @@ func ASTParseExpression(lex *Lexer) Node {
 
 func ASTParsePrimaryExpression(lex *Lexer) (Node, bool) {
 	if identifier, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
+		if _, ok := AllocatedProcs[identifier.Symbol]; ok {
+			lex.ConsumeAssert(tokOpenParen)
+			lex.ConsumeAssert(tokCloseParen)
+			lex.ConsumeAssert(tokSemicolon)
+			node := Node{
+				NodeType: nodeCall,
+				Call: &Call{
+					Name: identifier,
+				},
+			}
+			return node, false
+		}
+
 		if lex.MatchAt(0, tokAssignment) {
 			lex.ConsumeAssert(tokAssignment)
 			rhs := ASTParseExpression(lex)
@@ -312,7 +342,11 @@ func ASTParsePrimaryExpression(lex *Lexer) (Node, bool) {
 					Initialized: true,
 				},
 			}
-			AllocatedVars[identifier.Symbol] = node
+			if rhs.NodeType == nodeProcDef {
+				AllocatedProcs[identifier.Symbol] = node
+			} else {
+				AllocatedVars[identifier.Symbol] = node
+			}
 			return node, false
 		}
 
@@ -454,6 +488,7 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 
 	size := len(AllocatedVars)
 	program.AllocatedVars = AllocatedVars
+	program.AllocatedProcs = AllocatedProcs
 
 	fmt.Printf("Allocated Vars [%d] - Node list:\n", size)
 	for idx, node := range program.Nodes {
