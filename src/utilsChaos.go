@@ -28,6 +28,7 @@ func assert[T any](ok bool, reason string) T {
 	if ok {
 		return *new(T)
 	}
+	// TODO: Improve colors/style for asserts
 	progCounter := make([]uintptr, 20)                  // Stacktrace size set to 20 for now
 	invocationsCount := runtime.Callers(2, progCounter) // Skipping Callers, Caller of Callers
 	frames := runtime.CallersFrames(progCounter[:invocationsCount])

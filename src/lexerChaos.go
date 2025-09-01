@@ -34,6 +34,7 @@ const (
 	tokSemicolon
 	tokColon
 	tokStringLiteral
+	// TODO: Distinguish int literal from float literal at token level
 	tokNumberLiteral
 	tokBoolLiteral
 	tokAs
@@ -157,14 +158,19 @@ type Source struct {
 	line, column int
 }
 
+func (src *Source) checkBounds(offset int) {
+	assert[any](
+		src.cursor+offset < src.count,
+		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", src.cursor, src.count),
+	)
+}
+
 func (src *Source) CurrentString() string {
 	return string(src.data[src.cursor])
 }
 
 func (src *Source) MatchStrAt(offset int, str string) bool {
-	if src.cursor+offset > src.count {
-		panic("Out of bounds while matchStrAt")
-	}
+	src.checkBounds(offset)
 	length := len(str)
 	result := true
 	for i := range length {
@@ -177,20 +183,14 @@ func (src *Source) CurrentByte() byte {
 	return src.data[src.cursor]
 }
 
-func (src *Source) PeekByte(offset int) (result byte) {
-	result = byte(0)
-	if src.cursor+offset < src.count {
-		result = src.data[src.cursor+offset]
-	}
-	return
+func (src *Source) PeekByte(offset int) byte {
+	src.checkBounds(offset)
+	return src.data[src.cursor+offset]
 }
 
 func (src *Source) MatchByteAt(offset int, b byte) bool {
-	if src.cursor+offset > src.count {
-		panic("Out of bounds while matchByteAt")
-	}
+	src.checkBounds(offset)
 	return src.PeekByte(offset) == b
-
 }
 
 func TokenizeChaos(fileContent *bytes.Buffer) []Token {
