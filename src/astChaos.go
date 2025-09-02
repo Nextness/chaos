@@ -282,6 +282,24 @@ func ASTParseExpression(lex *Lexer) Node {
 	return assert[Node](false, fmt.Sprintf("Unknown token found - \"%s\"", token.TokenType.String()))
 }
 
+func ASTParseProcDefinition(lex *Lexer) (Node, bool) {
+	if lex.MatchTokenSequence(tokIdentifier, tokColon, tokColon, tokProc) {
+		ident := lex.ConsumeAssert(tokIdentifier)
+		lex.ConsumeAssertSequence(tokColon, tokColon, tokProc)
+		node := Node{
+			NodeType:     nodeIdentifier,
+			Reassignable: false,
+			VarDecl: &VarDecl{
+				Name:        ident,
+				Assignment:  ASTParseProc(lex),
+				Initialized: true,
+			},
+		}
+		return node, true
+	}
+	return Node{}, false
+}
+
 func ASTParseVariableDefinition(lex *Lexer) (Node, bool) {
 	if lex.MatchTokenSequence(tokIdentifier, tokColon, tokIdentifier, tokSemicolon) {
 		ident := lex.ConsumeAssert(tokIdentifier)
@@ -399,6 +417,9 @@ func ASTParseNewVariableAssignment(lex *Lexer) (Node, bool) {
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
+	if node, ok := ASTParseProcDefinition(lex); ok {
+		return node
+	}
 
 	if node, ok := ASTParseVariableDefinition(lex); ok {
 		lex.ConsumeAssert(tokSemicolon)
@@ -409,6 +430,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		lex.ConsumeAssert(tokSemicolon)
 		return node
 	}
+
 	if node, ok := ASTParseNewConstAssignment(lex); ok {
 		lex.ConsumeAssert(tokSemicolon)
 		return node
