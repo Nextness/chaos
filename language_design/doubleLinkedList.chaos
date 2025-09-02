@@ -1,0 +1,91 @@
+// Got from https://github.com/biaofuxmu/linked_list/blob/master/double_list/double_list.c
+// to use as example
+
+length :: #inline proc (dll: &Double_Linked_List) -> U64 {
+    return dll.*.count as U64;
+}
+
+head :: #inline proc (dll: &Double_Linked_List) -> *Node! {
+    return dll.head != undefined ? dll.head : "null_pointer";
+}
+
+tail :: #inline proc (dll: &Double_Linked_List) -> *Node! {
+    return dll.tail != undefined ? dll.tail : "null_pointer";
+}
+
+print :: proc (dll: &Double_Linked_List) -> Void {
+    node: *Node = dll.head;
+    while i: 0..dll.count {
+        pad := i * 2;
+        io.print(«{pad:node.data}»);
+        node = node.next;
+    }
+}
+
+Double_Linked_List <C = U64, T> :: struct {
+    count: C = 0;
+    head: *Node<T>?;
+    tail: *Node<T>?;
+
+    #run {
+        if !C.matches(num.Ints) {
+            #compilation_error «{Self} only accepts {num.Ints}»;
+        }
+    }
+}
+
+Node <T> :: struct {
+    data: *T;
+    prev: *Node<T>?;
+    next: *Node<T>?;
+}
+
+init_node <T> :: proc (data: T) -> *Node<T>! {
+    ND :: alias Node<T>;
+    new_node: *ND = alloc(size_of(ND)) unless |error| {
+        logger(ERROR, «Failed to allocate node _ {error}»);
+        return "out_of_memory :: you are poor and don't have enough RAM lol";
+    }
+
+    logger(TRACE, «Allocated memory for node: {new_node.address}»);
+    new_node.data = data;
+    return new_node;
+}
+
+push_head :: proc (node: *Node, data: Node.T) -> Void! {
+    new_node := init_node(data)?;
+    if dll.count == 0 {
+        dll.head = newNode;
+        dll.tail = newNode;
+    } else {
+        new_node.next = dll.head;
+        dll.head.prev = new_node;
+        dll.head = newNode;
+    }
+    dll.count++;
+}
+
+insert_node :: proc (node: *Node, data: Node.T, index: U64) -> Void! {
+    if (index < 0 or index > dll.count) return "out_of_bounds :: doesn't know how to measure...";
+
+    if (index == 0 return) push_head(dll, data);
+    elif (index == dll.count) return push_tail(dll, data);
+
+    tmp: *Node<Node.T>;
+    if index <= (dll.count / 2) while (i: 0..index) tmp = tmp.next;
+    else while (i: 0..dll.count) tmp = tmp.prev;
+
+    new_node := init_node(data)?;
+    tmp.next.prev = new_node;
+    new_node.next = tmp.next;
+    tmp.next = new_node;
+    new_node.prev = tmp;
+    dll.count++;
+}
+
+delete_head :: proc (dll: *Double_Linked_List) -> Void! {
+    #todo;
+}
+
+#module doubleLinkedList;
+

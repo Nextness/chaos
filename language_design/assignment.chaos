@@ -1,0 +1,36 @@
+// Example for comment
+
+#global something_new: String = «some string in here»;
+
+something_else :: proc (some_variable_name: I64, another_variable: Bool) -> Void {
+    variable_name :: «some shit»;
+    a :: 10;
+    some_minus :: 1 - 1;
+
+    some_variable: String;
+    something1: U64 = some_minus;
+    some_string :: «something should be here»;
+    something: U64  /** something in  here**/ = 1;
+
+    if something == 2 {
+        some_value: String = «somethings»;
+        exit 1, «failed to complete action»;
+    } elif something > 1 {
+        exit 1, «failed to complete action»;
+    }
+
+    exit 0, «Complete action»;
+}
+
+main :: #entry proc (argc: I64, argv: Array<String>) -> Void {
+    string_literal :: «something»;
+    another_string :: string_literal;
+    infered_int := 10;
+
+    simple_example: U64 = 190;
+    another: U64 = simple_example;
+    yet_another: U64 = another;
+
+    something_else(10, true);
+}
+

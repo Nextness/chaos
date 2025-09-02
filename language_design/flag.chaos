@@ -1,0 +1,55 @@
+Flag-Type :: enum-array {
+    BOOL;
+    UINT64;
+    SIZE;
+    STR;
+}
+#assert length(Flag-Type) == 4, «Exhaustive FlagValue definition»;
+
+Flag-Value :: union {
+    as-str: String;
+    as-uint64: U64;
+    as-bool: Bool;
+    as-size: Size;
+}
+
+Flag :: struct {
+    flag-type: Flag-Type;
+    name: *String;
+    description: *String;
+    value: Flag-Value;
+    definition: Flag-Value;
+}
+
+FLAG-CAP :: 256;
+
+Flag-Content :: struct {
+    flags: Array<dyn, Flag>;
+    flags-count: U64;
+    flag-error: AnyError;
+    program-name: &String;
+    rest-argc: I64;
+    rest-argv: Array<dyn,String>;
+}
+
+global flag-global-context: Flag-Context;
+
+new-flag :: proc (flag-type: Flag-Type, name: Name, description: String) -> Flag! {
+    ctx := flag-global-context;
+    assert ctx.flags-count < FLAG-CAP, «Expected maximum of {FLAG-CAP} flags, but found {ctx.flags-count}»;
+
+    ctx.flags-count++;
+    flag: *Flag = ctx.flags[flags-count]?;
+    mem-set(flag, 0, size-of flags);
+    flag.name = name;
+    flag.description = description;
+    return flag;
+}
+
+proc flag-name
+    expects val as *String or U64 or Bool or Size
+    returns String
+executes
+    ...;
+end-proc
+

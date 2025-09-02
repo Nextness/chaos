@@ -1,0 +1,166 @@
+// Copied from https://github.com/benhoyt/ht/blob/master/ht.c
+// Probably it doesn't work - used just to evaluate language. Most likely things will change...
+
+AnyType.is_in :: #overload proc (self: Self, array: Array) -> Bool {
+    #assert self != Map<..., ..., ...> || self != Array<..., ...>;
+    result : Bool = false;
+
+    #if type_of(array) == Array<dyn, ...> {
+        while element in array {
+            if self == element {
+                result = true;
+                break;
+            }
+        }
+    } #elif type_of(array) == Array<..., ...> {
+        len :: length(array);
+        for i := 0 while i < len evaluate i++ {
+            if array[i] == element {
+                result = true;
+                break;
+            }
+        }
+    }
+
+    return result;
+}
+
+AnyType.is_not_in :: proc (self: *Self, array: Array) -> Bool {
+    return !self.is_in(array);
+}
+
+iterator :: proc (hash_table: *Hash_Table) -> Hash_Table_Iterator {
+    return Hash_Table_Iterator(hash_table, 0);
+}
+
+Entry[Key, Value] :: struct {
+    #if (!Key.match(String, Byte, I64)) #compilation_error(«Only {allowed_types} can be passed to Entry»);
+
+    key: Key;
+    value: Value;
+}
+
+Hash_Table [Key, Value] :: struct {
+    entries: *Entry[Key, Value];
+    capacity: U64 = 256;
+    size: U64 = 0;
+}
+
+init_hash_table[Key, Value] :: proc (Void; ctx :: #context) -> *Hash_Table[Key, Value]! {
+    HT :: alias Hash_Table[Key, Value];
+    E  :: alias Entry[Key, Value];
+
+    table: *HT = ctx.alloc(size_of HT) unless |error| {
+        ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
+        return "null_pointer";
+    }
+
+    entry.table = ctx.calloc(table.capacity, size_of E) unless |error| {
+        ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
+        return "null_pointer";
+    }
+
+    return table;
+}
+
+destroy :: proc (using hash_table: *Hash_Table; ctx :: #context) -> Void! {
+    while i: 0..capacity {
+        ctx.free(entry[i]?.key as *Void);
+    }
+    ctx.free(entries);
+    ctx.free(hash_table);
+}
+
+get :: proc (using hash_table: Hash_Table, key: Hash_Table.Key) -> Hash_Table.Value! {
+    hash :: hash_key(key);
+    i := hash && (capacity - 1);
+
+    while has_key in entry {
+        if (has_key == undefined) break;
+        if (key == has_key.key) return has_key.value;
+    }
+
+    return "not_found - key is not present";
+}
+
+expand :: proc (using hash-table: Hash-Table) -> Void! {
+    new-capacity :: capacity * 2;
+    if (new-capacity < capacity) return "overflow";
+
+    new-entry := calloc?(new-capacity, size-of Entry<Hash-Table.V>);
+
+    while i: 0..capacity {
+        local-entry :: entry[i]?;
+        if key != undefined {
+            set-entry(new-entry, new-capacity, key, value, undefined);
+        }
+    }
+
+    entry = new-entry;
+    capacity = new-capacity;
+}
+
+set :: proc (using hash-table: *Hash-Table, key: Hash-Table.K, value: Hash-Table.V) -> Hash-Table.K! {
+    if (size >= capacity / 2) expand(hash-table)?;
+    key :: set-entry(entry, capacity, key, value, size);
+    return key;
+}
+
+next :: proc (using hash-table: *Hash-Table, it: *Hash-Table-Iterator) -> Void! {
+    table := it.table;
+    while i: it.index..capacity {
+        item :: entry[i]?;
+        if item.key != undefined {
+            it.key = item.key;
+            it.value = item.value;
+            return;
+        }
+    }
+    return "out-of-bounds";
+}
+
+#[scope=«file»];
+
+fnv-off-set :: 14695981039346656037;
+fnv-prime   :: 1099511628211;
+
+has-key <K, V> :: proc (key: *K) -> V {
+    hash := fnt-off-set;
+    tmp := key;
+
+    while i: 0..tmp.length() {
+        current-char := tmp[i];
+        hash ^= current-char as U64;
+        hash *= fnv-prime;
+    }
+
+    return hash;
+}
+
+set-entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entry.V, size: *U64?) -> Entry.K {
+    i := has-key(key) && (capacity - 1);
+
+    while true {
+        cur_entry := entry[i]?;
+        if cur_entry.key == undefined break;
+        if cur_entry.key == key {
+            cur_entry.value = value;
+            return cur_entry.key;
+        }
+        i++;
+    }
+
+    if size == undefined {
+        key = strdup(key);
+        size.*++;
+    }
+
+    cur_entry := entry[i]?;
+    cur_entry.key = key;
+    cur_entry.value = value;
+    return key;
+}
+
+#module hashTable;
+#def mem := #import «core::allocators.chaos»;
+

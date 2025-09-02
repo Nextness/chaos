@@ -1,0 +1,172 @@
+/** -- Explanation --
+ *  Perform Sha3 using '<nameOfEnum>.<value>' and get the first 64 bits starting fromthe begining.
+ *  At comp time sha3(AnotherEnum.somethingInHere) is 1cc2a66e347661378dde3fc074c46e...
+ *  When we call AnotherEnum.somethingInHere we will have 482518638 [1cc2a66e3]
+**/
+Another_Enum :: enum {
+    SOMETHING_IN_HERE : #unique = iota;
+    ANOTHER_THING_HERE;
+    YET_ANOTHER_THING_IS_HERE;
+}
+
+Json_Response <T> :: struct {
+    status_code: U32? = null; #tag(«json:status_code»)
+    content: T? = null;       #tag(«json:content»)
+}
+
+Json_Response.something_crazy :: proc (self: *Self, status-code: U32) -> Void! {
+    if (status_code > 400) return "invalid_status_code";
+    self.status-code = status-code;
+}
+
+response := Json_Response(...)?;
+result :: response.something_crazy(401) unless |error| {
+    exit 1;
+}
+
+AnyType.reveal :: proc (self: *Self) -> String {
+    #let result = «<redacted>»;
+    #if chaos_flags.CHAOS_DEBUG {
+        result = self.value.to_string();
+    }
+    return result;
+}
+
+Some_Struct :: struct {
+    username: String;
+    password: #redacted String;
+}
+
+some_struct := Some_Struct {
+    username = «username»,
+    password = get_env_var(«ENV_VAR_NAME», «None»)?,
+};
+
+Another_Redacted :: #redacted struct {
+    id:       U64;
+    username: String;
+    password: String;
+}
+
+redacted :: Another_Redacted{10, «username», «some_password»};
+print(«{redacted.reveal()}»);
+
+main :: #entry proc (Void) -> U64! {
+    window := initialize_with(100, 100, «Window») unless |error| {
+        print(«Something went wrong in here - {error}»);
+        return 1;
+    }
+}
+
+loop_with_label :: proc (Void) -> Bool! {
+    while x: 0..10 label loop {
+        while y: 0..10 {
+            operation() unless |error| {
+                logger.log(ERROR, «The operation failed - reason: {error.reason}»);
+                break loop;
+            }
+        }
+        return something;
+    }
+    return "operation_failed - Because you suck!";
+}
+
+complex: C64 = c'100 + 10i' * 10; // result should be c'1000 + 100i'
+complex_2: C64 = c'1-i' * c'1+i'; // result shoulb be c'2'
+a: Q256 = q'1 - 2i + j';
+
+
+// Think about a way to track allocations and deallocations during compilation
+#global allocator_count :: 0;
+#global list_of_functions_with_allocator :: Array<Proc_Details>();
+
+new_variable :: { key=«asd», value=100 };
+
+Allocator :: scaffold {
+    malloc:  proc (~size: U64) -> *Void!;
+    calloc:  proc () -> *Void;
+    realloc: proc () -> *Void;
+    free:    proc (~val: *AnyType) -> Void!;
+}
+
+Allocator impl Default_Allocator :: struct {}
+
+Default_Allocator.malloc = proc (size: U64) -> *Void! {
+    
+}
+
+Default_Allocator.free = proc (val: *AnyType) -> Void! {
+    
+}
+
+
+Allocator impl Allocator_With_Info :: struct {
+    internal_memory: U64? = null;
+
+    malloc := default;
+    calloc := default;
+    realloc := default;
+    free := default;
+    another_operation: proc (self: *Self) -> I64!;
+}
+
+Allocator_With_Info.malloc = proc (size: U64) -> *Void! {
+    #not_implemented
+}
+
+Allocator_With_Info.free = proc (val: *AnyType) -> Void! {
+    #not_implemented
+}
+
+Allocator_With_Info.another_operation :: proc (self: *Self) -> Void!{
+    #not_implemented
+}
+
+something := Allocator_With_Info(internal_memory = 0);
+result := something.malloc(100)?;
+something.another_operation() unless |error| {
+    
+}
+
+some_function(input1: String, input2: *Allocator impl) -> Void! {
+    return null;
+}
+
+handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> Void! {
+    some_result: U64!;
+
+    if some_unput_1 {
+        some_result = optional_operation_with_possible_error();
+        if catch some_result |error| {
+            print(«{some_input_2} has failed: {error.reason}\n»);
+            return "generic_error";
+        }
+        return;
+    }
+
+    some_result = operation_with_possible_error() unless |error| {
+        print(«{some_input_2} has failed: {error.reason}\n»);
+        return "generic_error";
+    }
+    print(«{some_input_2} was successful\n»);
+
+    return;
+}
+
+AnyType.is_falsy :: #inline proc (self: *Self) -> Bool {
+    #if type_of self == String return self == «»;
+    #if type_of self == Array[dyn, ...] return self.length() == 0;
+    #if type_of self == Array[..., ...] return self.count == 0;
+}
+
+AnyType.is_truthy :: #inline proc (self: *Self) -> Bool {
+    return !self.is_falsy();
+}
+
+#scope = «file»;
+
+#module random;
+#import «core::allocator.chaos»;
+#import «core::logger.chaos»;
+num :: #import «core::numbers.chaos»;
+

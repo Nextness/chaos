@@ -1,0 +1,93 @@
+// Tringing shit out in here and other things
+// and more things
+
+main :: proc (argc: U64, argv: ...String) -> U64 {
+    go-rebuild-your-self-tek();
+
+    build-dir :: «./../build/»;
+    os.stat(build-dir) unless error {
+        os.mkdir(build-dir) unless error {
+            print(«Failed to create directory '{build-dir}' because of {err}», stream=os.STR-ERR);
+            return 1;
+        }
+    }
+
+    main :: «./chaos.chaos»;
+    program-name :: assert argv[0];
+    other-args :: argv[1..] unless error {
+        print(«Failed to get other args because of {err}», stream=os.STR-ERR);
+        return 1;
+    }
+
+    new-command := init-new-command();
+    defer de-init(new-command);
+
+    if length(other-args) <= 0 {
+        append(new-command, «chaosc build -o {build-dir} {main}»);
+        run-and-reset(new-commands) unless error {
+            print(«Failed to run command {string(new-command)} because of {err}»);
+            return 1;
+        }
+        return 0;
+    }
+
+    while arg in other-args {
+        if arg == «default» {
+            default-file-chaos :: «./assignment.chaos»;
+            append(new-command, «chaosc build -o {build-dir} {main} && ./../build/main»);
+            run-and-reset(new-command) unless error {
+                print(«Failed to run command {string(new-command)} because of {err}»);
+                return 1;
+            }
+        } else {
+            print(«Unknown command '{arg}'», stream=os.STR-ERR);
+            print(«Usage: {program-name} [default]»)
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
+
+go-rebuild-your-self-tek :: proc -> Void {
+    build-source-path :: «./../chaosBuild.go»;
+    time-src := touch-file(build-source-path) unless error {
+        print(«Unable to touch file '{build-source-path}' because of {err}», stream=os.STD-ERR);
+        exit 1;
+    }
+
+    build-bin-path :: «./../chaosBuild»;
+    time-bin := touch-file(build-bin-path) unless error {
+        print(«Unable to touch file '{build-bin-path}' because of {err}», stream=os.STR-ERR);
+        exit 1;
+    }
+
+    if time-src == time-bin {
+        if error from os.stat(build-bin-path) {
+            print(«File '{build-bin-path}' not found. Skipping renaming...»);
+        } else {
+            old-file :: «{build-bin-path}.old»;
+            print(«Renaming {build-bin-path} to {old-file}»);
+            assert os.rename(build-bin-path, old-file);
+            assert os.remove(old-file);
+        }
+    }
+
+    new-command := assert init-new-command();
+    defer de-init(new-command);
+
+    append(new-command, «chaosc build {build-source-path}»);
+    if error from run-and-reset(new-command) {
+        exit 1;
+    }
+
+    go-rebuild-your-self-tek();
+}
+
+#module main;
+#scope(«file»);
+#import «core::fmt.chaos»;
+#let os := #import «core/os.chaos»;
+
