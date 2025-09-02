@@ -1,1 +1,0 @@
-def some-atomic-value as Atomic using U32;

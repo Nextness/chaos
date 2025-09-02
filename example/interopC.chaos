@@ -1,4 +1,0 @@
-printf              :: #extern «printf» proc;
-window_should_close :: #extern «windowShouldClose» proc;
-Some_Struct         :: #extern «SomeStruct» struct;
-
