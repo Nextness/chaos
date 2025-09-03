@@ -20,14 +20,14 @@ bin_ops :: proc {
     exit bin_op_6, «bin_op_6»;
 }
 
-vars :: proc {
+vars_proc :: proc (something: I64, another_thing: String, error: Bool) {
     variable_0 :: 10;
     variable_1 := 69;
     variable_2 : I32 : 2;
     variable_3 : I64 = 32;
 }
 
-more_vars :: proc {
+more_vars :: proc (input_1: String, input_2: Bool) {
     new_variable_0 :: 10;
     new_variable_1 := 69;
     new_variable_2 : I64 : new_variable_1;

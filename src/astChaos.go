@@ -47,7 +47,8 @@ type BinOp struct {
 }
 
 type Proc struct {
-	Scope []Node
+	Scope  []Node
+	Inputs []Node
 }
 
 type Call struct {
@@ -97,7 +98,18 @@ func (node *Node) print(idx int) {
 		}
 
 		if node.VarDecl.Assignment.NodeType == nodeProcDef {
-			fmt.Printf("%6d. %s() -> Void {\n", idx, name)
+			var inputs string = ""
+			if node.VarDecl.Assignment.Proc.Inputs != nil {
+				size := len(node.VarDecl.Assignment.Proc.Inputs)
+				for id, n := range node.VarDecl.Assignment.Proc.Inputs {
+					if id == size-1 {
+						inputs = fmt.Sprintf("%s%s: %s", inputs, n.VarDecl.Name.Symbol, n.VarDecl.Type.Symbol)
+						continue
+					}
+					inputs = fmt.Sprintf("%s%s: %s, ", inputs, n.VarDecl.Name.Symbol, n.VarDecl.Type.Symbol)
+				}
+			}
+			fmt.Printf("%6d. %s(%s) -> Void {\n", idx, name, inputs)
 			for _, nod := range node.VarDecl.Assignment.Proc.Scope {
 				nod.print(idx)
 			}
@@ -205,9 +217,31 @@ func ASTParseProc(lex *Lexer) Node {
 	node := Node{
 		NodeType: nodeProcDef,
 		Proc: &Proc{
-			Scope: []Node{},
+			Scope:  []Node{},
+			Inputs: []Node{},
 		},
 	}
+
+	if lex.MatchTokenSequence(tokOpenParen) {
+		lex.ConsumeAssert(tokOpenParen)
+		for lex.GetToken(0).TokenType != tokCloseParen {
+			ident := lex.ConsumeAssert(tokIdentifier)
+			lex.ConsumeAssert(tokColon)
+			varType := lex.ConsumeAssert(tokIdentifier)
+			lex.MatchTokenSequenceAndConsumeAssert(tokComma)
+			n := Node{
+				NodeType: nodeIdentifier,
+				VarDecl: &VarDecl{
+					Name:        ident,
+					Type:        varType,
+					Initialized: false,
+				},
+			}
+			node.Proc.Inputs = append(node.Proc.Inputs, n)
+		}
+		lex.ConsumeAssert(tokCloseParen)
+	}
+
 	lex.ConsumeAssert(tokOpenBraket)
 	for lex.GetToken(0).TokenType != tokCloseBraket {
 		stmt := ASTParseStatement(lex)
