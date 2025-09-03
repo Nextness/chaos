@@ -26,6 +26,18 @@ func compileChaos(filepath string, src []byte) bool {
 }
 
 func main() {
+	debug := false
+	// Handling panics so that the stacktrace from golang is not printed, only
+	// the one for chaos compiler itself
+	if !debug {
+		defer func() {
+			if r := recover(); r != nil {
+				// debug.PrintStack() // Call this to print the stack trace
+				os.Exit(1)
+			}
+		}()
+	}
+
 	programName := os.Args[0]
 	if len(os.Args) <= 1 {
 		fmt.Fprintf(os.Stderr, "[ERROR] Failed to the program %s\n", programName)

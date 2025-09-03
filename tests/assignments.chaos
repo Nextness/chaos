@@ -1,0 +1,14 @@
+// Example 1
+not_init_var_1: U64;
+not_init_var_1 = 1;
+
+// Example 2
+variable_0 :: 10;
+variable_1 := 69;
+variable_1 = 10;
+variable_2 : I32 : 2;
+variable_3 : I64 = 32;
+variable_3 = 33;
+
+// Finished Example Successfully
+exit 0;
