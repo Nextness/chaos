@@ -295,6 +295,7 @@ func ASTParseProcDefinition(lex *Lexer) (Node, bool) {
 				Initialized: true,
 			},
 		}
+		AllocatedProcs[ident.Symbol] = node
 		return node, true
 	}
 	return Node{}, false
@@ -416,6 +417,25 @@ func ASTParseNewVariableAssignment(lex *Lexer) (Node, bool) {
 	return Node{}, false
 }
 
+func ASTParseProcCall(lex *Lexer) (Node, bool) {
+	if lex.MatchTokenSequence(tokIdentifier, tokOpenParen) {
+		ident := lex.ConsumeAssert(tokIdentifier)
+		if _, ok := AllocatedProcs[ident.Symbol]; !ok {
+			assert[any](false, "Proc doesn't exist")
+		}
+		lex.ConsumeAssert(tokOpenParen)
+		lex.ConsumeAssert(tokCloseParen)
+		node := Node{
+			NodeType: nodeCall,
+			Call: &Call{
+				Name: ident,
+			},
+		}
+		return node, true
+	}
+	return Node{}, false
+}
+
 func ASTParsePrimaryExpression(lex *Lexer) Node {
 	if node, ok := ASTParseProcDefinition(lex); ok {
 		return node
@@ -441,19 +461,9 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		return Node{}
 	}
 
-	if identifier, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
-		if _, ok := AllocatedProcs[identifier.Symbol]; ok {
-			lex.ConsumeAssert(tokOpenParen)
-			lex.ConsumeAssert(tokCloseParen)
-			lex.ConsumeAssert(tokSemicolon)
-			node := Node{
-				NodeType: nodeCall,
-				Call: &Call{
-					Name: identifier,
-				},
-			}
-			return node
-		}
+	if node, ok := ASTParseProcCall(lex); ok {
+		lex.ConsumeAssert(tokSemicolon)
+		return node
 	}
 
 	if _, matches := lex.MatchTokenAndConsumeAssert(tokExit); matches {
@@ -514,7 +524,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		return Node{}
 	}
 
-	return assert[Node](false, fmt.Sprintf("[ERROR] Unknown token \"%s\"", lex.GetToken(0).Symbol))
+	return assert[Node](false, fmt.Sprintf("[ERROR] Unexpected token \"%s\"", lex.GetToken(0).Symbol))
 }
 
 func ASTParseStatement(lex *Lexer) Node {
