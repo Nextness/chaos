@@ -350,12 +350,7 @@ func ASTParseNewConstAssignment(lex *Lexer) (Node, bool) {
 				Initialized: true,
 			},
 		}
-		// TODO: Handle this better
-		if node.VarDecl.Assignment.NodeType == nodeProcDef {
-			AllocatedProcs[ident.Symbol] = node
-		} else {
-			AllocatedVars[ident.Symbol] = node
-		}
+		AllocatedVars[ident.Symbol] = node
 		return node, true
 	}
 	if lex.MatchTokenSequence(tokIdentifier, tokColon, tokIdentifier, tokColon) {
@@ -436,6 +431,25 @@ func ASTParseProcCall(lex *Lexer) (Node, bool) {
 	return Node{}, false
 }
 
+func ASTParseExit(lex *Lexer) (Node, bool) {
+	if lex.MatchTokenSequenceAndConsumeAssert(tokExit) {
+		var message Node
+		status := ASTParseExpression(lex)
+		if lex.MatchTokenSequenceAndConsumeAssert(tokComma) {
+			message = ASTParseExpression(lex)
+		}
+		node := Node{
+			NodeType: nodeExit,
+			Exit: &Exit{
+				Status:  status,
+				Message: message,
+			},
+		}
+		return node, true
+	}
+	return Node{}, false
+}
+
 func ASTParsePrimaryExpression(lex *Lexer) Node {
 	if node, ok := ASTParseProcDefinition(lex); ok {
 		return node
@@ -466,58 +480,9 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		return node
 	}
 
-	if _, matches := lex.MatchTokenAndConsumeAssert(tokExit); matches {
-		if status, matches := lex.MatchTokenAndConsumeAssert(tokNumberLiteral); matches {
-			var exMsg Token
-			if lex.MatchAt(0, tokComma) {
-				lex.ConsumeAssert(tokComma)
-				exMsg = lex.ConsumeAssert(tokStringLiteral)
-			}
-			lex.ConsumeAssert(tokSemicolon)
-
-			node := Node{
-				NodeType: nodeExit,
-				Exit: &Exit{
-					Status: Node{
-						NodeType: nodeIntLiteral,
-						Literal: &Literal{
-							Int: status,
-						},
-					},
-					Message: Node{
-						NodeType: nodeStringLiteral,
-						Literal: &Literal{
-							String: exMsg,
-						},
-					},
-				},
-			}
-			return node
-		}
-
-		if token, matches := lex.MatchTokenAndConsumeAssert(tokIdentifier); matches {
-			var exMsg Token
-			if lex.MatchAt(0, tokComma) {
-				lex.ConsumeAssert(tokComma)
-				exMsg = lex.ConsumeAssert(tokStringLiteral)
-			}
-			lex.ConsumeAssert(tokSemicolon)
-			identValue := AllocatedVars[token.Symbol]
-
-			node := Node{
-				NodeType: nodeExit,
-				Exit: &Exit{
-					Status: identValue,
-					Message: Node{
-						NodeType: nodeStringLiteral,
-						Literal: &Literal{
-							String: exMsg,
-						},
-					},
-				},
-			}
-			return node
-		}
+	if node, ok := ASTParseExit(lex); ok {
+		lex.ConsumeAssert(tokSemicolon)
+		return node
 	}
 
 	if lex.GetToken(0).TokenType == tokEndOfFile {

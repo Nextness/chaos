@@ -767,6 +767,20 @@ func (lex *Lexer) MatchTokenAndConsumeAssert(tokenType TokenType) (Token, bool) 
 	return Token{}, false
 }
 
+func (lex *Lexer) MatchTokenSequenceAndConsumeAssert(tokenTypes ...TokenType) bool {
+	result := true
+	for offset, tokenType := range tokenTypes {
+		currentToken := lex.GetToken(offset)
+		if currentToken.TokenType != tokenType {
+			result = false
+		}
+	}
+	if result {
+		lex.ConsumeAssertSequence(tokenTypes...)
+	}
+	return result
+}
+
 func (lex *Lexer) Consume() Token {
 	token := lex.GetToken(0)
 	lex.cursor++
