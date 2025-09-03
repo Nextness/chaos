@@ -493,8 +493,10 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 }
 
 func ASTParseStatement(lex *Lexer) Node {
-	node := ASTParsePrimaryExpression(lex)
-	return node
+	if lex.MatchAt(0, tokIdentifier, tokExit) {
+		return ASTParsePrimaryExpression(lex)
+	}
+	return Node{}
 }
 
 func ASTCreateChaosProgram(lex *Lexer) Program {
