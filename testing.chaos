@@ -42,3 +42,12 @@ something_else :: proc {
 something_else();
 
 // new_variable_2 : F64 = 31651.00;
+
+a := 1;
+b := 2;
+
+less_than_0: Bool = 3 < 2;
+less_than_1: Bool = a < 2;
+less_than_2: Bool = 3 < b;
+less_than_3: Bool = a < b;
+

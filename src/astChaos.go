@@ -21,6 +21,7 @@ type BinOpOperation int
 const (
 	opNull BinOpOperation = iota
 	opPlus
+	opLessThan
 )
 
 type VarDecl struct {
@@ -130,33 +131,63 @@ func (node *Node) print(idx int) {
 				rhs = node.VarDecl.Assignment.BinOp.Rhs
 			}
 
-			if okLhs && okRhs {
+			if node.VarDecl.Assignment.BinOp.Operation == opPlus {
+				if okLhs && okRhs {
+					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
+						l := castAssert[int](lhs.Literal.Int.Value)
+						r := castAssert[int](rhs.Literal.Int.Value)
+						fmt.Printf("%6d. %s(%s, %s) = %d + %d\n", idx, reassinableType, name, t, l, r)
+						return
+					}
+					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
+						l := castAssert[int](lhs.Literal.Int.Value)
+						r := rhs.VarDecl.Name.Symbol
+						fmt.Printf("%6d. %s(%s, %s) = %d + %s\n", idx, reassinableType, name, t, l, r)
+						return
+					}
+					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
+						l := lhs.VarDecl.Name.Symbol
+						r := castAssert[int](rhs.Literal.Int.Value)
+						fmt.Printf("%6d. %s(%s, %s) = %s + %d\n", idx, reassinableType, name, t, l, r)
+						return
+					}
+					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
+						l := lhs.VarDecl.Name.Symbol
+						r := rhs.VarDecl.Name.Symbol
+						fmt.Printf("%6d. %s(%s, %s) = %s + %s\n", idx, reassinableType, name, t, l, r)
+						return
+					}
+				}
+				return
+			}
+			if node.VarDecl.Assignment.BinOp.Operation == opLessThan {
 				if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
 					l := castAssert[int](lhs.Literal.Int.Value)
 					r := castAssert[int](rhs.Literal.Int.Value)
-					fmt.Printf("%6d. %s(%s, %s) = %d + %d\n", idx, reassinableType, name, t, l, r)
+					fmt.Printf("%6d. %s(%s, %s) = %d < %d\n", idx, reassinableType, name, t, l, r)
 					return
 				}
 				if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
 					l := castAssert[int](lhs.Literal.Int.Value)
 					r := rhs.VarDecl.Name.Symbol
-					fmt.Printf("%6d. %s(%s, %s) = %d + %s\n", idx, reassinableType, name, t, l, r)
+					fmt.Printf("%6d. %s(%s, %s) = %d < %s\n", idx, reassinableType, name, t, l, r)
 					return
 				}
 				if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
 					l := lhs.VarDecl.Name.Symbol
 					r := castAssert[int](rhs.Literal.Int.Value)
-					fmt.Printf("%6d. %s(%s, %s) = %s + %d\n", idx, reassinableType, name, t, l, r)
+					fmt.Printf("%6d. %s(%s, %s) = %s < %d\n", idx, reassinableType, name, t, l, r)
 					return
 				}
 				if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
 					l := lhs.VarDecl.Name.Symbol
 					r := rhs.VarDecl.Name.Symbol
-					fmt.Printf("%6d. %s(%s, %s) = %s + %s\n", idx, reassinableType, name, t, l, r)
+					fmt.Printf("%6d. %s(%s, %s) = %s < %s\n", idx, reassinableType, name, t, l, r)
 					return
 				}
+				return
 			}
-			return
+
 		}
 
 		if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
@@ -259,6 +290,24 @@ func ASTParseExpression(lex *Lexer) Node {
 	}
 
 	if expr.TokenType == tokNumberLiteral {
+		if lex.GetToken(0).TokenType == tokLessThan {
+			lex.ConsumeAssert(tokLessThan)
+			rhs := ASTParseExpression(lex)
+			nod := Node{
+				NodeType: nodeBinOp,
+				BinOp: &BinOp{
+					Operation: opLessThan,
+					Lhs: Node{
+						NodeType: nodeIntLiteral,
+						Literal: &Literal{
+							Int: expr,
+						},
+					},
+					Rhs: rhs,
+				},
+			}
+			return nod
+		}
 		if lex.GetToken(0).TokenType == tokPlus {
 			lex.ConsumeAssert(tokPlus)
 			rhs := ASTParseExpression(lex)
@@ -296,6 +345,19 @@ func ASTParseExpression(lex *Lexer) Node {
 
 	if expr.TokenType == tokIdentifier {
 		ident := AllocatedVars[expr.Symbol]
+		if lex.GetToken(0).TokenType == tokLessThan {
+			lex.ConsumeAssert(tokLessThan)
+			rhs := ASTParseExpression(lex)
+			nod := Node{
+				NodeType: nodeBinOp,
+				BinOp: &BinOp{
+					Operation: opLessThan,
+					Lhs:       ident,
+					Rhs:       rhs,
+				},
+			}
+			return nod
+		}
 		if lex.GetToken(0).TokenType == tokPlus {
 			lex.ConsumeAssert(tokPlus)
 			rhs := ASTParseExpression(lex)
@@ -555,6 +617,7 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 	fmt.Printf("Allocated Vars [%d] - Node list:\n", size)
 	for idx, node := range program.Nodes {
 		node.print(idx)
+		fmt.Print("\n")
 	}
 
 	return program

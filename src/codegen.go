@@ -122,40 +122,83 @@ func GenerateCode(prog *Program) *bytes.Buffer {
 				}
 
 				if okLhs && okRhs {
-					buffer.WriteString(fmt.Sprintf("    ; %06d. add\n", opid))
-					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
-						l := castAssert[int](lhs.Literal.Int.Value)
-						r := castAssert[int](rhs.Literal.Int.Value)
-						buffer.WriteString(fmt.Sprintf("    mov rax, %d\n", l))
-						buffer.WriteString(fmt.Sprintf("    add rax, %d\n", r))
-						buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
+					if node.VarDecl.Assignment.BinOp.Operation == opPlus {
+						buffer.WriteString(fmt.Sprintf("    ; %06d. add\n", opid))
+						if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
+							l := castAssert[int](lhs.Literal.Int.Value)
+							r := castAssert[int](rhs.Literal.Int.Value)
+							buffer.WriteString(fmt.Sprintf("    mov rax, %d\n", l))
+							buffer.WriteString(fmt.Sprintf("    add rax, %d\n", r))
+							buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
+							continue
+						}
+						if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
+							l := castAssert[int](lhs.Literal.Int.Value)
+							r := rhs.VarDecl.Name.Symbol
+							buffer.WriteString(fmt.Sprintf("    mov rax, %d\n", l))
+							buffer.WriteString(fmt.Sprintf("    add rax, [%s]\n", r))
+							buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
+							continue
+						}
+						if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
+							l := lhs.VarDecl.Name.Symbol
+							r := castAssert[int](rhs.Literal.Int.Value)
+							buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", l))
+							buffer.WriteString(fmt.Sprintf("    add rax, %d\n", r))
+							buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
+							continue
+						}
+						if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
+							l := lhs.VarDecl.Name.Symbol
+							r := rhs.VarDecl.Name.Symbol
+							buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", l))
+							buffer.WriteString(fmt.Sprintf("    add rax, [%s]\n", r))
+							buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
+							continue
+						}
 						continue
 					}
-					if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
-						l := castAssert[int](lhs.Literal.Int.Value)
-						r := rhs.VarDecl.Name.Symbol
-						buffer.WriteString(fmt.Sprintf("    mov rax, %d\n", l))
-						buffer.WriteString(fmt.Sprintf("    add rax, [%s]\n", r))
-						buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
+
+					if node.VarDecl.Assignment.BinOp.Operation == opLessThan {
+						buffer.WriteString(fmt.Sprintf("    ; %06d. less than\n", opid))
+						if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIntLiteral {
+							l := castAssert[int](lhs.Literal.Int.Value)
+							r := castAssert[int](rhs.Literal.Int.Value)
+							buffer.WriteString(fmt.Sprintf("    mov rax, %d\n", l))
+							buffer.WriteString(fmt.Sprintf("    cmp rax, %d\n", r))
+							buffer.WriteString("    setl r8b\n")
+							buffer.WriteString(fmt.Sprintf("    mov [%s], r8\n", name))
+							continue
+						}
+						if lhs.NodeType == nodeIntLiteral && rhs.NodeType == nodeIdentifier {
+							l := castAssert[int](lhs.Literal.Int.Value)
+							r := rhs.VarDecl.Name.Symbol
+							buffer.WriteString(fmt.Sprintf("    mov rax, %d\n", l))
+							buffer.WriteString(fmt.Sprintf("    cmp rax, [%s]\n", r))
+							buffer.WriteString("    setl r8b\n")
+							buffer.WriteString(fmt.Sprintf("    mov [%s], r8\n", name))
+							continue
+						}
+						if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
+							l := lhs.VarDecl.Name.Symbol
+							r := castAssert[int](rhs.Literal.Int.Value)
+							buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", l))
+							buffer.WriteString(fmt.Sprintf("    cmp rax, %d\n", r))
+							buffer.WriteString("    setl r8b\n")
+							buffer.WriteString(fmt.Sprintf("    mov [%s], r8\n", name))
+							continue
+						}
+						if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
+							l := lhs.VarDecl.Name.Symbol
+							r := rhs.VarDecl.Name.Symbol
+							buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", l))
+							buffer.WriteString(fmt.Sprintf("    cmp rax, [%s]\n", r))
+							buffer.WriteString("    setl r8b\n")
+							buffer.WriteString(fmt.Sprintf("    mov [%s], r8\n", name))
+							continue
+						}
 						continue
 					}
-					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIntLiteral {
-						l := lhs.VarDecl.Name.Symbol
-						r := castAssert[int](rhs.Literal.Int.Value)
-						buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", l))
-						buffer.WriteString(fmt.Sprintf("    add rax, %d\n", r))
-						buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
-						continue
-					}
-					if lhs.NodeType == nodeIdentifier && rhs.NodeType == nodeIdentifier {
-						l := lhs.VarDecl.Name.Symbol
-						r := rhs.VarDecl.Name.Symbol
-						buffer.WriteString(fmt.Sprintf("    mov rax, [%s]\n", l))
-						buffer.WriteString(fmt.Sprintf("    add rax, [%s]\n", r))
-						buffer.WriteString(fmt.Sprintf("    mov [%s], rax\n", name))
-						continue
-					}
-					continue
 				}
 			}
 			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
