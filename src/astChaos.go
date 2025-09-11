@@ -21,6 +21,8 @@ type BinOpOperation int
 const (
 	opNull BinOpOperation = iota
 	opPlus
+	opMinus
+	opMult
 	opLessThan
 )
 
@@ -282,100 +284,86 @@ func ASTParseProc(lex *Lexer) Node {
 	return node
 }
 
-func ASTParseExpression(lex *Lexer) Node {
-	expr := lex.Consume()
-
-	if expr.TokenType == tokProc {
-		return ASTParseProc(lex)
+func infixBindingPower(token Token) (float64, float64) {
+	switch token.TokenType {
+	case tokPlus:
+		fallthrough
+	case tokMinus:
+		return 1.0, 1.1
+	case tokStar:
+		return 2.0, 2.1
+	case tokLessThan:
+		return 5.1, 5.0
+	default:
+		assert[any](false, fmt.Sprintf("Unexpected token %s", token.TokenType.String()))
 	}
+	// Unreachable because go sucks and doesn't understand control flow...
+	return 0.0, 0.0
+}
 
+func ASTParseExpression(lex *Lexer, minBp float64) Node {
+	var lhs Node
+	expr := lex.Consume()
 	if expr.TokenType == tokNumberLiteral {
-		if lex.GetToken(0).TokenType == tokLessThan {
-			lex.ConsumeAssert(tokLessThan)
-			rhs := ASTParseExpression(lex)
-			nod := Node{
-				NodeType: nodeBinOp,
-				BinOp: &BinOp{
-					Operation: opLessThan,
-					Lhs: Node{
-						NodeType: nodeIntLiteral,
-						Literal: &Literal{
-							Int: expr,
-						},
-					},
-					Rhs: rhs,
-				},
-			}
-			return nod
-		}
-		if lex.GetToken(0).TokenType == tokPlus {
-			lex.ConsumeAssert(tokPlus)
-			rhs := ASTParseExpression(lex)
-			nod := Node{
-				NodeType: nodeBinOp,
-				BinOp: &BinOp{
-					Operation: opPlus,
-					Lhs: Node{
-						NodeType: nodeIntLiteral,
-						Literal: &Literal{
-							Int: expr,
-						},
-					},
-					Rhs: rhs,
-				},
-			}
-			return nod
-		}
-		return Node{
-			NodeType: nodeIntLiteral,
-			Literal: &Literal{
-				Int: expr,
-			},
+		lhs.NodeType = nodeIntLiteral
+		lhs.Literal = &Literal{
+			Int: expr,
 		}
 	}
 
 	if expr.TokenType == tokStringLiteral {
-		return Node{
-			NodeType: nodeStringLiteral,
-			Literal: &Literal{
-				String: expr,
-			},
+		lhs.NodeType = nodeStringLiteral
+		lhs.Literal = &Literal{
+			String: expr,
 		}
 	}
 
 	if expr.TokenType == tokIdentifier {
-		ident := AllocatedVars[expr.Symbol]
-		if lex.GetToken(0).TokenType == tokLessThan {
-			lex.ConsumeAssert(tokLessThan)
-			rhs := ASTParseExpression(lex)
-			nod := Node{
-				NodeType: nodeBinOp,
-				BinOp: &BinOp{
-					Operation: opLessThan,
-					Lhs:       ident,
-					Rhs:       rhs,
-				},
-			}
-			return nod
-		}
-		if lex.GetToken(0).TokenType == tokPlus {
-			lex.ConsumeAssert(tokPlus)
-			rhs := ASTParseExpression(lex)
-			nod := Node{
-				NodeType: nodeBinOp,
-				BinOp: &BinOp{
-					Operation: opPlus,
-					Lhs:       ident,
-					Rhs:       rhs,
-				},
-			}
-			return nod
-		}
-		return ident
+		lhs = AllocatedVars[expr.Symbol]
 	}
 
-	token := lex.GetToken(0)
-	return assert[Node](false, fmt.Sprintf("Unknown token found - \"%s\"", token.TokenType.String()))
+	if expr.TokenType == tokOpenParen {
+		lhs = ASTParseExpression(lex, 0.0)
+		lex.ConsumeAssert(tokCloseParen)
+	}
+
+	for {
+		expr = lex.GetToken(0)
+		if expr.TokenType == tokCloseParen || expr.TokenType == tokSemicolon {
+			break
+		}
+
+		var op BinOpOperation
+		if expr.TokenType == tokPlus {
+			op = opPlus
+		} else if expr.TokenType == tokMinus {
+			op = opMinus
+		} else if expr.TokenType == tokStar {
+			op = opMult
+		} else if expr.TokenType == tokLessThan {
+			op = opLessThan
+		} else {
+			return Node{}
+		}
+
+		lex.Consume()
+		lbp, rbp := infixBindingPower(expr)
+		if almostEqual(lbp, minBp) {
+			break
+		}
+
+		rhs := ASTParseExpression(lex, rbp)
+		lhs = Node{
+			NodeType: nodeBinOp,
+			BinOp: &BinOp{
+				Operation: op,
+				Lhs:       lhs,
+				Rhs:       rhs,
+			},
+		}
+	}
+
+	return lhs
 }
 
 func ASTParseProcDefinition(lex *Lexer) (Node, bool) {
@@ -423,7 +411,7 @@ func ASTParseVariableReassignment(lex *Lexer) bool {
 		lex.ConsumeAssert(tokAssignment)
 		node, ok := AllocatedVars[ident.Symbol]
 		assert[any](ok, "Variable is not allocated")
-		node.VarDecl.Assignment = ASTParseExpression(lex)
+		node.VarDecl.Assignment = ASTParseExpression(lex, 0.0)
 
 		node.VarDecl.Initialized = true
 		node.Reassignable = true
@@ -442,7 +430,7 @@ func ASTParseNewConstAssignment(lex *Lexer) (Node, bool) {
 			Reassignable: false,
 			VarDecl: &VarDecl{
 				Name:        ident,
-				Assignment:  ASTParseExpression(lex),
+				Assignment:  ASTParseExpression(lex, 0.0),
 				Initialized: true,
 			},
 		}
@@ -460,7 +448,7 @@ func ASTParseNewConstAssignment(lex *Lexer) (Node, bool) {
 			VarDecl: &VarDecl{
 				Name:        ident,
 				Type:        varType,
-				Assignment:  ASTParseExpression(lex),
+				Assignment:  ASTParseExpression(lex, 0.0),
 				Initialized: true,
 			},
 		}
@@ -479,7 +467,7 @@ func ASTParseNewVariableAssignment(lex *Lexer) (Node, bool) {
 			Reassignable: false,
 			VarDecl: &VarDecl{
 				Name:        ident,
-				Assignment:  ASTParseExpression(lex),
+				Assignment:  ASTParseExpression(lex, 0.0),
 				Initialized: true,
 			},
 		}
@@ -498,7 +486,7 @@ func ASTParseNewVariableAssignment(lex *Lexer) (Node, bool) {
 			VarDecl: &VarDecl{
 				Name:        ident,
 				Type:        varType,
-				Assignment:  ASTParseExpression(lex),
+				Assignment:  ASTParseExpression(lex, 0.0),
 				Initialized: true,
 			},
 		}
@@ -530,9 +518,9 @@ func ASTParseProcCall(lex *Lexer) (Node, bool) {
 func ASTParseExit(lex *Lexer) (Node, bool) {
 	if lex.MatchTokenSequenceAndConsumeAssert(tokExit) {
 		var message Node
-		status := ASTParseExpression(lex)
+		status := ASTParseExpression(lex, 0.0)
 		if lex.MatchTokenSequenceAndConsumeAssert(tokComma) {
-			message = ASTParseExpression(lex)
+			message = ASTParseExpression(lex, 0.0)
 		}
 		node := Node{
 			NodeType: nodeExit,

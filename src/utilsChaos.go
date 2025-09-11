@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -60,8 +61,9 @@ func chaosDebug(anything ...any) {
 		s, _ := json.MarshalIndent(anything, "", "\t")
 		return string(s)
 	}
+	fmt.Printf("DEBUG:\n")
 	for _, thing := range anything {
-		fmt.Printf("DEBUG:\n%s\n", pp(thing))
+		fmt.Printf("%s\n", pp(thing))
 	}
 }
 
@@ -79,4 +81,9 @@ func castAssert[V any](value any) V {
 		return result
 	}
 	return assert[V](false, fmt.Sprintf("Could not cast %T into %T", value, *new(V)))
+}
+
+func almostEqual(a, b float64) bool {
+	const float64EqualityThreshold = 1e-9
+	return math.Abs(a-b) <= float64EqualityThreshold
 }
