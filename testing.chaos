@@ -52,6 +52,5 @@ less_than_2 : Bool = 3 < b;
 less_than_3 : Bool = a < b;
 
 // if 1 < 2 {
-//     exit 1;
 // }
 
