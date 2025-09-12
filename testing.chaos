@@ -3,37 +3,38 @@ not_init_var_1: U64;
 not_init_var_1 = 1;
 
 not_init_var_2: U64;
-not_init_var_2 = 10 + 1;
+// not_init_var_2 = 10 + 1;
+
 
 something :: proc {
-    exit 1, «»;
+    exit 1, «something»;
 }
 
-bin_ops :: proc {
-    bin_op_0 :: 1 + 0; // 1
-    bin_op_1 := bin_op_0 + 1; // 2
-    bin_op_2 : S64 : 3 + 4; // 7
-    bin_op_3 : S64 = 6 + 5; // 11
-    bin_op_4 : S64 = bin_op_0 + bin_op_0; // 2
-    bin_op_5 := bin_op_4 + bin_op_0; // 2 + 1 = 3
-    bin_op_6 :: bin_op_5 + bin_op_0; // 3 + 1 = 4
-    exit bin_op_6, «bin_op_6»;
-}
+// bin_ops :: proc {
+//     bin_op_0 :: 1 + 0; // 1
+//     bin_op_1 := bin_op_0 + 1; // 2
+//     bin_op_2 : S64 : 3 + 4; // 7
+//     bin_op_3 : S64 = 6 + 5; // 11
+//     bin_op_4 : S64 = bin_op_0 + bin_op_0; // 2
+//     bin_op_5 := bin_op_4 + bin_op_0; // 2 + 1 = 3
+//     bin_op_6 :: bin_op_5 + bin_op_0; // 3 + 1 = 4
+//     exit bin_op_6, «bin_op_6»;
+// }
 
 vars_proc :: proc (something: S64, another_thing: String, error: Bool) {
-    variable_0 :: 10;
-    variable_1 := 69;
-    variable_2 : S32 : 2;
-    variable_3 : S64 = 32;
+//     variable_0 :: 10;
+//     variable_1 := 69;
+//     variable_2 : S32 : 2;
+//     variable_3 : S64 = 32;
 }
 
-more_vars :: proc (input_1: String, input_2: Bool) {
-    new_variable_0 :: 10;
-    new_variable_1 := 69;
-    new_variable_2 : S64 : new_variable_1;
-    new_variable_3 : S64 = new_variable_2;
-    exit bin_op_0, «Alguma coisa diferente!»;
-}
+// more_vars :: proc (input_1: String, input_2: Bool) {
+//     new_variable_0 :: 10;
+//     new_variable_1 := 69;
+//     new_variable_2 : S64 : new_variable_1;
+//     new_variable_3 : S64 = new_variable_2;
+//     exit bin_op_0, «Alguma coisa diferente!»;
+// }
 
 something_else :: proc {
     exit 2, «something else»;
@@ -41,15 +42,15 @@ something_else :: proc {
 
 something_else();
 
-// new_variable_2 : F64 = 31651.00;
+// // new_variable_2 : F64 = 31651.00;
 
-a := 1; 
-b := 2;
+// a := 1; 
+// b := 2;
 
-less_than_0 := (10 + 1) * 1 - 2;
-less_than_1 : Bool = a < 2;
-less_than_2 : Bool = 3 < b;
-less_than_3 : Bool = a < b;
+// less_than_0 := (10 + 1) * 1 - 2;
+// less_than_1 : Bool = a < 2;
+// less_than_2 : Bool = 3 < b;
+// less_than_3 : Bool = a < b;
 
 // if 1 < 2 {
 // }

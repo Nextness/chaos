@@ -79,7 +79,7 @@ type Program struct {
 var AllocatedVars map[string]Node = map[string]Node{}
 var AllocatedProcs map[string]Node = map[string]Node{}
 
-func (node *Node) print(idx int) {
+func (node *Node) printtt(idx int) {
 
 	if node.NodeType == nodeNoOp {
 		return
@@ -117,7 +117,7 @@ func (node *Node) print(idx int) {
 			}
 			fmt.Printf("%6d. %s(%s) -> Void {\n", idx, name, inputs)
 			for _, nod := range node.VarDecl.Assignment.Proc.Scope {
-				nod.print(idx)
+				nod.printtt(idx)
 			}
 			fmt.Printf("%6d. }\n", idx)
 			return
@@ -402,7 +402,7 @@ func ASTParseVariable(lex *Lexer) Node {
 		node.VarDecl = &VarDecl{
 			Name:        ident,
 			Assignment:  ASTParseExpression(lex, 0.0),
-			Initialized: false,
+			Initialized: true,
 		}
 		AllocatedVars[ident.Symbol] = node
 		return node
@@ -443,7 +443,6 @@ func ASTParseVariable(lex *Lexer) Node {
 		node.VarDecl.Assignment = ASTParseExpression(lex, 0.0)
 		return node
 	}
-
 	return Node{NodeType: nodeNoOp}
 
 }
@@ -535,16 +534,8 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 		program.Nodes = append(program.Nodes, node)
 	}
 
-	size := len(AllocatedVars)
 	program.AllocatedVars = AllocatedVars
 	program.AllocatedProcs = AllocatedProcs
-
-	fmt.Printf("Allocated Vars [%d] - Node list:\n", size)
-	for _, node := range program.Nodes {
-		chaosDebug(node)
-		// node.print(idx)
-		fmt.Print("\n")
-	}
 
 	return program
 }

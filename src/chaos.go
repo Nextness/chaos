@@ -19,9 +19,14 @@ func compileChaos(filepath string, src []byte) bool {
 	}
 
 	program := ASTCreateChaosProgram(lex)
-	codeGen := GenerateCode(&program)
+	for _, node := range program.Nodes {
+		// chaosDebug(node)
+		ir := ProgramToIR(&node)
+		chaosDebug(ir)
+	}
+	// codeGen := GenerateCode(&program)
 
-	os.WriteFile("testing.asm", codeGen.Bytes(), 0644)
+	// os.WriteFile("testing.asm", codeGen.Bytes(), 0644)
 	return true
 }
 
