@@ -21,8 +21,8 @@ func compileChaos(filepath string, src []byte) bool {
 	program := ASTCreateChaosProgram(lex)
 	for _, node := range program.Nodes {
 		// chaosDebug(node)
-		ir := ProgramToIR(&node)
-		chaosDebug(ir)
+		ProgramToIR(&node)
+		// chaosDebug(ir)
 	}
 	// codeGen := GenerateCode(&program)
 

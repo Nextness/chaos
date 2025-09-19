@@ -466,7 +466,7 @@ func ASTParseProcCall(lex *Lexer) (Node, bool) {
 	return Node{NodeType: nodeNoOp}, false
 }
 
-func ASTParseExit(lex *Lexer) (Node, bool) {
+func ASTParseExit(lex *Lexer) Node {
 	if lex.MatchTokenSequenceAndConsumeAssert(tokExit) {
 		var message Node
 		status := ASTParseExpression(lex, 0.0)
@@ -480,9 +480,10 @@ func ASTParseExit(lex *Lexer) (Node, bool) {
 				Message: message,
 			},
 		}
-		return node, true
+		lex.ConsumeAssert(tokSemicolon)
+		return node
 	}
-	return Node{NodeType: nodeNoOp}, false
+	return Node{NodeType: nodeNoOp}
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
@@ -500,11 +501,6 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		return node
 	}
 
-	if node, ok := ASTParseExit(lex); ok {
-		lex.ConsumeAssert(tokSemicolon)
-		return node
-	}
-
 	if lex.GetToken(0).TokenType == tokEndOfFile {
 		return Node{NodeType: nodeNoOp}
 	}
@@ -513,8 +509,11 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 }
 
 func ASTParseStatement(lex *Lexer) Node {
-	if lex.MatchAt(0, tokIdentifier, tokExit) {
+	if lex.MatchAt(0, tokIdentifier) {
 		return ASTParsePrimaryExpression(lex)
+	}
+	if lex.MatchAt(0, tokExit) {
+		return ASTParseExit(lex)
 	}
 	return Node{NodeType: nodeNoOp}
 }
@@ -531,6 +530,7 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 		if node.NodeType == nodeNoOp {
 			continue
 		}
+		chaosDebug(node)
 		program.Nodes = append(program.Nodes, node)
 	}
 
