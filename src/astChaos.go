@@ -373,25 +373,6 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 	return lhs
 }
 
-func ASTParseProcDefinition(lex *Lexer) (Node, bool) {
-	if lex.MatchTokenSequence(tokIdentifier, tokColon, tokColon, tokProc) {
-		ident := lex.ConsumeAssert(tokIdentifier)
-		lex.ConsumeAssertSequence(tokColon, tokColon, tokProc)
-		node := Node{
-			NodeType:     nodeIdentifier,
-			Reassignable: false,
-			VarDecl: &VarDecl{
-				Name:        ident,
-				Assignment:  ASTParseProc(lex),
-				Initialized: true,
-			},
-		}
-		AllocatedProcs[ident.Symbol] = node
-		return node, true
-	}
-	return Node{NodeType: nodeNoOp}, false
-}
-
 func ASTParseVariable(lex *Lexer) Node {
 	var node Node
 	if lex.MatchTokenSequence(tokIdentifier, tokAssignment) {
@@ -405,6 +386,7 @@ func ASTParseVariable(lex *Lexer) Node {
 			Initialized: true,
 		}
 		AllocatedVars[ident.Symbol] = node
+		lex.ConsumeAssert(tokSemicolon)
 		return node
 	}
 
@@ -425,6 +407,7 @@ func ASTParseVariable(lex *Lexer) Node {
 		}
 
 		if lex.GetToken(0).TokenType == tokSemicolon {
+			lex.ConsumeAssert(tokSemicolon)
 			return node
 		}
 
@@ -435,16 +418,23 @@ func ASTParseVariable(lex *Lexer) Node {
 			lex.ConsumeAssert(tokColon)
 			node.VarDecl.Initialized = true
 			node.Reassignable = false
+			if lex.MatchTokenSequence(tokProc) {
+				lex.ConsumeAssert(tokProc)
+				node.VarDecl.Assignment = ASTParseProc(lex)
+				AllocatedProcs[ident.Symbol] = node
+				return node
+			}
 		} else {
 			assert[any](false, fmt.Sprintf("Unexpected token %s", lex.GetToken(0).TokenType.String()))
 		}
 
 		AllocatedVars[ident.Symbol] = node
 		node.VarDecl.Assignment = ASTParseExpression(lex, 0.0)
+		lex.ConsumeAssert(tokSemicolon)
 		return node
 	}
-	return Node{NodeType: nodeNoOp}
 
+	return Node{NodeType: nodeNoOp}
 }
 
 func ASTParseProcCall(lex *Lexer) (Node, bool) {
@@ -487,12 +477,7 @@ func ASTParseExit(lex *Lexer) Node {
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
-	if node, ok := ASTParseProcDefinition(lex); ok {
-		return node
-	}
-
 	if node := ASTParseVariable(lex); node.NodeType != nodeNoOp {
-		lex.ConsumeAssert(tokSemicolon)
 		return node
 	}
 
