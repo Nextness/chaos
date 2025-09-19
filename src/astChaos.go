@@ -265,15 +265,15 @@ func ASTParseProc(lex *Lexer) Node {
 			lex.ConsumeAssert(tokColon)
 			varType := lex.ConsumeAssert(tokIdentifier)
 			lex.MatchTokenSequenceAndConsumeAssert(tokComma)
-			n := Node{
+
+			node.Proc.Inputs = append(node.Proc.Inputs, Node{
 				NodeType: nodeIdentifier,
 				VarDecl: &VarDecl{
 					Name:        ident,
 					Type:        varType,
 					Initialized: false,
 				},
-			}
-			node.Proc.Inputs = append(node.Proc.Inputs, n)
+			})
 		}
 		lex.ConsumeAssert(tokCloseParen)
 	}
@@ -373,7 +373,7 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 	return lhs
 }
 
-func ASTParseVariable(lex *Lexer) Node {
+func ASTParseAssignment(lex *Lexer) Node {
 	var node Node
 	if lex.MatchTokenSequence(tokIdentifier, tokAssignment) {
 		ident := lex.ConsumeAssert(tokIdentifier)
@@ -457,12 +457,16 @@ func ASTParseProcCall(lex *Lexer) (Node, bool) {
 }
 
 func ASTParseExit(lex *Lexer) Node {
-	if lex.MatchTokenSequenceAndConsumeAssert(tokExit) {
+	if lex.MatchTokenSequence(tokExit) {
+		lex.ConsumeAssert(tokExit)
+
 		var message Node
 		status := ASTParseExpression(lex, 0.0)
-		if lex.MatchTokenSequenceAndConsumeAssert(tokComma) {
+		if lex.MatchTokenSequence(tokComma) {
+			lex.ConsumeAssert(tokComma)
 			message = ASTParseExpression(lex, 0.0)
 		}
+
 		node := Node{
 			NodeType: nodeExit,
 			Exit: &Exit{
@@ -470,6 +474,7 @@ func ASTParseExit(lex *Lexer) Node {
 				Message: message,
 			},
 		}
+
 		lex.ConsumeAssert(tokSemicolon)
 		return node
 	}
@@ -477,7 +482,7 @@ func ASTParseExit(lex *Lexer) Node {
 }
 
 func ASTParsePrimaryExpression(lex *Lexer) Node {
-	if node := ASTParseVariable(lex); node.NodeType != nodeNoOp {
+	if node := ASTParseAssignment(lex); node.NodeType != nodeNoOp {
 		return node
 	}
 
