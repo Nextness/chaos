@@ -56,7 +56,8 @@ type Proc struct {
 }
 
 type Call struct {
-	Name Token
+	Name   Token
+	Inputs []Node
 }
 
 type Node struct {
@@ -327,19 +328,47 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 	if lex.GetToken(0).TokenType == tokIdentifier {
 		expr := lex.ConsumeAssert(tokIdentifier)
 		if lex.GetToken(0).TokenType == tokOpenParen {
-			lex.ConsumeAssert(tokOpenParen)
 			if _, ok := AllocatedProcs[expr.Symbol]; !ok {
 				assert[any](false, "Proc doesn't exist")
 			}
-			lex.ConsumeAssert(tokCloseParen)
 			lhs.NodeType = nodeCall
 			lhs.Call = &Call{
-				Name: expr,
+				Name:   expr,
+				Inputs: []Node{},
 			}
+			lex.ConsumeAssert(tokOpenParen)
+			for lex.GetToken(0).TokenType != tokCloseParen {
+				n := Node{}
+				if lex.GetToken(0).TokenType == tokNumberLiteral {
+					expr := lex.ConsumeAssert(tokNumberLiteral)
+					n.NodeType = nodeIntLiteral
+					n.Literal = &Literal{
+						Int: expr,
+					}
+					AllocatedVars[expr.Symbol] = n
+				} else if lex.GetToken(0).TokenType == tokStringLiteral {
+					expr := lex.ConsumeAssert(tokStringLiteral)
+					n.NodeType = nodeStringLiteral
+					n.Literal = &Literal{
+						String: expr,
+					}
+					AllocatedVars[expr.Symbol] = n
+				}
+				if lex.GetToken(0).TokenType == tokComma {
+					lex.ConsumeAssert(tokComma)
+				}
+				lhs.Call.Inputs = append(lhs.Call.Inputs, n)
+			}
+			lex.ConsumeAssert(tokCloseParen)
+		}
+
+		// TO-DO: This is a crappy solution - I need to rethink how I'm handling shit
+		if val, ok := AllocatedVars[expr.Symbol]; ok {
+			lhs = val
+		} else if val, ok := AllocatedProcs[expr.Symbol]; ok {
+			lhs = val
 		} else {
-			var ok bool
-			lhs, ok = AllocatedVars[expr.Symbol]
-			assert[any](ok, fmt.Sprintf("Variable %s not allocated", expr.Symbol))
+			assert[any](false, fmt.Sprintf("Variable %s not allocated", expr.Symbol))
 		}
 	}
 
@@ -501,10 +530,53 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		return node
 	}
 
-	// if node, ok := ASTParseProcCall(lex); ok {
-	// 	lex.ConsumeAssert(tokSemicolon)
-	// 	return node
-	// }
+	// TO-DO: generalize this so that it can also be used in the ASTParseExpression
+	if lex.GetToken(0).TokenType == tokIdentifier {
+		node := Node{
+			NodeType: nodeCall,
+		}
+		expr := lex.ConsumeAssert(tokIdentifier)
+		if lex.GetToken(0).TokenType == tokOpenParen {
+			if _, ok := AllocatedProcs[expr.Symbol]; !ok {
+				assert[any](false, "Proc doesn't exist")
+			}
+			node.NodeType = nodeCall
+			node.Call = &Call{
+				Name:   expr,
+				Inputs: []Node{},
+			}
+			lex.ConsumeAssert(tokOpenParen)
+			for lex.GetToken(0).TokenType != tokCloseParen {
+				n := Node{}
+				if lex.GetToken(0).TokenType == tokNumberLiteral {
+					expr := lex.ConsumeAssert(tokNumberLiteral)
+					n.NodeType = nodeIntLiteral
+					n.Literal = &Literal{
+						Int: expr,
+					}
+					AllocatedVars[expr.Symbol] = n
+				} else if lex.GetToken(0).TokenType == tokStringLiteral {
+					expr := lex.ConsumeAssert(tokStringLiteral)
+					n.NodeType = nodeStringLiteral
+					n.Literal = &Literal{
+						String: expr,
+					}
+					AllocatedVars[expr.Symbol] = n
+				}
+				if lex.GetToken(0).TokenType == tokComma {
+					lex.ConsumeAssert(tokComma)
+				}
+				node.Call.Inputs = append(node.Call.Inputs, n)
+			}
+			lex.ConsumeAssert(tokCloseParen)
+			lex.ConsumeAssert(tokSemicolon)
+			return node
+		} else {
+			var ok bool
+			node, ok = AllocatedVars[expr.Symbol]
+			assert[any](ok, fmt.Sprintf("Variable %s not allocated", expr.Symbol))
+		}
+	}
 
 	if lex.GetToken(0).TokenType == tokEndOfFile {
 		return Node{NodeType: nodeNoOp}

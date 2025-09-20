@@ -1,9 +1,9 @@
 
-something :: proc {
+something :: proc (input1: String, input2: S64) {
     exit 1, «something»;
 }
 
-a :: something();
+a :: something(«hello world», 1);
 
 not_init_var_0: U64;
 not_init_var_1: U64;
@@ -43,16 +43,13 @@ something_else :: proc {
     exit 2, «something else»;
 }
 
-// TODO: function calls are only working when we have an assignment.
-// I need to fix the structure for expressions and statements to also allow
-// function calls without assignments.
-aa :: something_else();
+result :: something_else();
 
 // // new_variable_2 : F64 = 31651.00;
 
-a := 1; 
+a := 1;
 b := 2;
-  
+
 less_than_0 := (10 + 1) * 1 - 2;
 less_than_1 : Bool = a < 2;
 less_than_2 : Bool = 3 < b;
