@@ -1,3 +1,10 @@
+
+something :: proc {
+    exit 1, «something»;
+}
+
+a :: something();
+
 not_init_var_0: U64;
 not_init_var_1: U64;
 not_init_var_1 = 1;
@@ -5,11 +12,8 @@ not_init_var_1 = 1;
 not_init_var_2: U64;
 not_init_var_2 = (10 + 1) * 2;
 
-something :: proc {
-    exit 1, «something»;
-}
-
 bin_ops :: proc {
+    result :: something();
     bin_op_0 :: 1 + 0; // 1
     bin_op_1 := bin_op_0 + 1; // 2
     bin_op_2 : S64 : 3 + 4; // 7
@@ -39,7 +43,10 @@ something_else :: proc {
     exit 2, «something else»;
 }
 
-something_else();
+// TODO: function calls are only working when we have an assignment.
+// I need to fix the structure for expressions and statements to also allow
+// function calls without assignments.
+aa :: something_else();
 
 // // new_variable_2 : F64 = 31651.00;
 
