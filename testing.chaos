@@ -29,8 +29,8 @@ vars_proc :: proc (something: S64, another_thing: String, error: Bool) {
     variable_1 := 69;
     variable_2 : S32 : 2;
     variable_3 : S64 = 32;
-} 
-  
+}
+
 more_vars :: proc (input_1: String, input_2: Bool) {
     new_variable_0 :: 10;
     new_variable_1 := 69;
@@ -45,7 +45,7 @@ something_else :: proc {
 
 result :: something_else();
 
-// // new_variable_2 : F64 = 31651.00;
+new_variable_2 : F64 = 31651.00;
 
 a := 1;
 b := 2;

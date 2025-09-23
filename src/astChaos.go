@@ -582,7 +582,13 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		return Node{NodeType: nodeNoOp}
 	}
 
-	return assert[Node](false, fmt.Sprintf("[ERROR] %s - Unexpected token \"%s\" at %02d:%02d", lex.filepath, lex.GetToken(0).TokenType.String(), lex.GetToken(0).Position.line, lex.GetToken(0).Position.column))
+	return assert[Node](
+		false,
+		fmt.Sprintf(
+			"[ERROR] %s - Unexpected token \"%s\" at %02d:%02d",
+			lex.filepath, lex.GetToken(0).TokenType.String(), lex.GetToken(0).Position.line, lex.GetToken(0).Position.column,
+		),
+	)
 }
 
 func ASTParseStatement(lex *Lexer) Node {
