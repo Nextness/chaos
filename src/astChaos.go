@@ -10,6 +10,7 @@ const (
 	nodeIntLiteral
 	nodeStringLiteral
 	nodeFloatLiteral
+	nodeBoolLiteral
 	nodeIdentifier
 	nodeExit
 	nodeBinOp
@@ -40,8 +41,9 @@ type Exit struct {
 }
 
 type Literal struct {
-	Int    Token
-	String Token
+	Int     Token
+	String  Token
+	Boolean Token
 }
 
 type BinOp struct {
@@ -321,6 +323,15 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 		lhs.NodeType = nodeStringLiteral
 		lhs.Literal = &Literal{
 			String: expr,
+		}
+		AllocatedVars[expr.Symbol] = lhs
+	}
+
+	if lex.GetToken(0).TokenType == tokBoolLiteral {
+		expr := lex.ConsumeAssert(tokBoolLiteral)
+		lhs.NodeType = nodeBoolLiteral
+		lhs.Literal = &Literal{
+			Boolean: expr,
 		}
 		AllocatedVars[expr.Symbol] = lhs
 	}
@@ -613,7 +624,7 @@ func ASTCreateChaosProgram(lex *Lexer) Program {
 		if node.NodeType == nodeNoOp {
 			continue
 		}
-		chaosDebug(node)
+		// chaosDebug(node)
 		program.Nodes = append(program.Nodes, node)
 	}
 

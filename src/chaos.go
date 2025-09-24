@@ -18,7 +18,8 @@ func compileChaos(filepath string, src []byte) bool {
 		cursor:   0,
 	}
 
-	ASTCreateChaosProgram(lex)
+	program := ASTCreateChaosProgram(lex)
+	TypeCheckChaosProgram(&program)
 	// for _, node := range program.Nodes {
 	// 	// chaosDebug(node)
 	// 	ProgramToIR(&node)

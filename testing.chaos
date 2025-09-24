@@ -1,4 +1,3 @@
-
 something :: proc (input1: String, input2: S64) {
     exit 1, «something»;
 }
