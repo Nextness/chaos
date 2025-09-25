@@ -42,13 +42,15 @@ const (
 	tokCloseBraket
 	tokHash
 	tokStar
+	tokInfer
+	tokArrow
 	tokCount
 )
 
 func (tokenType TokenType) String() string {
 	assert[any](
-		tokCount == 30,
-		fmt.Sprintf("Expected 30 token count but found %d", tokCount),
+		tokCount == 32,
+		fmt.Sprintf("Expected 32 token count but found %d", tokCount),
 	)
 	if tokenType == tokAssignment {
 		return "tokAssignment"
@@ -139,6 +141,12 @@ func (tokenType TokenType) String() string {
 	}
 	if tokenType == tokStar {
 		return "tokStar"
+	}
+	if tokenType == tokInfer {
+		return "tokInfer"
+	}
+	if tokenType == tokArrow {
+		return "tokArrow"
 	}
 	return "unrecheable"
 }
@@ -291,6 +299,21 @@ func TokenizeChaos(fileContent *bytes.Buffer) []Token {
 				Position:  position,
 			}
 
+			src.cursor += 2
+			tokens = append(tokens, token)
+			continue
+		}
+
+		if sym := "->"; src.MatchStrAt(0, sym) {
+			token := Token{
+				Symbol:    sym,
+				TokenType: tokArrow,
+				Position: Position{
+					line:   src.line,
+					column: src.column,
+				},
+			}
+			src.column += 2
 			src.cursor += 2
 			tokens = append(tokens, token)
 			continue

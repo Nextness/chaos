@@ -16,6 +16,7 @@ const (
 	nodeBinOp
 	nodeProcDef
 	nodeCall
+	nodeCount
 )
 
 type BinOpOperation int
@@ -53,8 +54,9 @@ type BinOp struct {
 }
 
 type Proc struct {
-	Scope  []Node
-	Inputs []Node
+	Scope   []Node
+	Inputs  []Node
+	Outputs []Node
 }
 
 type Call struct {
@@ -81,6 +83,36 @@ type Program struct {
 
 var AllocatedVars map[string]Node = map[string]Node{}
 var AllocatedProcs map[string]Node = map[string]Node{}
+
+func (node *Node) toString() string {
+	if node.NodeType == nodeNull {
+		return "nodeNull"
+	} else if node.NodeType == nodeNull {
+		return "nodeNoOp"
+	} else if node.NodeType == nodeIntLiteral {
+		return "nodeIntLiteral"
+	} else if node.NodeType == nodeStringLiteral {
+		return "nodeStringLiteral"
+	} else if node.NodeType == nodeFloatLiteral {
+		return "nodeFloatLiteral"
+	} else if node.NodeType == nodeBoolLiteral {
+		return "nodeBoolLiteral"
+	} else if node.NodeType == nodeIdentifier {
+		return "nodeIdentifier"
+	} else if node.NodeType == nodeExit {
+		return "nodeExit"
+	} else if node.NodeType == nodeBinOp {
+		return "nodeBinOp"
+	} else if node.NodeType == nodeProcDef {
+		return "nodeProcDef"
+	} else if node.NodeType == nodeCall {
+		return "nodeCall"
+	}
+	return assert[string](
+		nodeCount == 11,
+		fmt.Sprintf("Expected 11 node types, but found %d", nodeCount),
+	)
+}
 
 func (node *Node) printtt(idx int) {
 
@@ -256,8 +288,9 @@ func ASTParseProc(lex *Lexer) Node {
 	node := Node{
 		NodeType: nodeProcDef,
 		Proc: &Proc{
-			Scope:  []Node{},
-			Inputs: []Node{},
+			Scope:   []Node{},
+			Inputs:  []Node{},
+			Outputs: []Node{},
 		},
 	}
 
@@ -279,6 +312,17 @@ func ASTParseProc(lex *Lexer) Node {
 			})
 		}
 		lex.ConsumeAssert(tokCloseParen)
+	}
+
+	if lex.MatchTokenSequence(tokArrow) {
+		lex.ConsumeAssert(tokArrow)
+		ident := lex.ConsumeAssert(tokIdentifier)
+		node.Proc.Outputs = append(node.Proc.Outputs, Node{
+			NodeType: nodeIdentifier,
+			VarDecl: &VarDecl{
+				Type: ident,
+			},
+		})
 	}
 
 	lex.ConsumeAssert(tokOpenBraket)
@@ -376,10 +420,6 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 		// TO-DO: This is a crappy solution - I need to rethink how I'm handling shit
 		if val, ok := AllocatedVars[expr.Symbol]; ok {
 			lhs = val
-		} else if val, ok := AllocatedProcs[expr.Symbol]; ok {
-			lhs = val
-		} else {
-			assert[any](false, fmt.Sprintf("Variable %s not allocated", expr.Symbol))
 		}
 	}
 
@@ -469,10 +509,20 @@ func ASTParseIdentifier(lex *Lexer) Node {
 		if lex.MatchTokenSequence(tokAssignment) {
 			lex.ConsumeAssert(tokAssignment)
 			node.VarDecl.Initialized = true
+			if node.VarDecl.Type == (Token{}) {
+				node.VarDecl.Type = Token{
+					TokenType: tokInfer,
+				}
+			}
 		} else if lex.MatchTokenSequence(tokColon) {
 			lex.ConsumeAssert(tokColon)
 			node.VarDecl.Initialized = true
 			node.Reassignable = false
+			if node.VarDecl.Type == (Token{}) {
+				node.VarDecl.Type = Token{
+					TokenType: tokInfer,
+				}
+			}
 			if lex.MatchTokenSequence(tokProc) {
 				lex.ConsumeAssert(tokProc)
 				node.VarDecl.Assignment = ASTParseProc(lex)

@@ -20,6 +20,11 @@ func compileChaos(filepath string, src []byte) bool {
 
 	program := ASTCreateChaosProgram(lex)
 	TypeCheckChaosProgram(&program)
+
+	// for _, node := range program.Nodes {
+	// 	chaosDebug(node)
+	// }
+
 	// for _, node := range program.Nodes {
 	// 	// chaosDebug(node)
 	// 	ProgramToIR(&node)
@@ -31,14 +36,14 @@ func compileChaos(filepath string, src []byte) bool {
 	return true
 }
 
+const debug = false
+
 func main() {
-	debug := false
 	// Handling panics so that the stacktrace from golang is not printed, only
 	// the one for chaos compiler itself
 	if !debug {
 		defer func() {
 			if r := recover(); r != nil {
-				// debug.PrintStack() // Call this to print the stack trace
 				os.Exit(1)
 			}
 		}()
