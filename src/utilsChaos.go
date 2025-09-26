@@ -10,12 +10,6 @@ import (
 	"unicode"
 )
 
-type ChaosSlice[T any] struct {
-	data   []T
-	count  int
-	cursor int
-}
-
 func isNum(b byte) bool {
 	s := rune(b)
 	return unicode.IsNumber(s)

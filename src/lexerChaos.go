@@ -47,7 +47,7 @@ const (
 	tokCount
 )
 
-func (tokenType TokenType) String() string {
+func TokenTypeToString(tokenType TokenType) string {
 	if tokenType == tokAssignment {
 		return "tokAssignment"
 	} else if tokenType == tokPlus {
@@ -132,139 +132,105 @@ type Token struct {
 	Value     any
 }
 
-type Source struct {
-	data         string
-	count        int
-	cursor       int
-	line, column int
-}
-
-func SourceCheckBounds(src *Source, offset int) {
-	assert[any](
-		src.cursor+offset < src.count,
-		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", src.cursor, src.count),
-	)
-}
-
-func SourceCurrentString(src *Source) string {
-	return string(src.data[src.cursor])
-}
-
-func SourceMatchStringAt(src *Source, offset int, str string) bool {
-	SourceCheckBounds(src, offset)
-	length := len(str)
-	result := true
-	for i := range length {
-		result = result && (SourcePeekByte(src, i+offset) == str[i])
-	}
-	return result
-}
-
-func SourceCurrentByte(src *Source) byte {
-	return src.data[src.cursor]
-}
-
-func SourcePeekByte(src *Source, offset int) byte {
-	SourceCheckBounds(src, offset)
-	return src.data[src.cursor+offset]
-}
-
-func SourceMatchByteAt(src *Source, offset int, b byte) bool {
-	SourceCheckBounds(src, offset)
-	return SourcePeekByte(src, offset) == b
-}
-
 func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
-	src := &Source{
-		data:   fileContent.String(),
+	sourceSlice := &ChaosSlice[byte]{
+		data:   fileContent.Bytes(),
 		count:  fileContent.Len(),
 		cursor: 0,
-		line:   1,
-		column: 1,
 	}
 
-	tokens := []Token{}
-	for src.cursor < src.count {
+	setValue := func(value string) []byte {
+		return []byte(value)
+	}
 
-		// Single-line comment
-		if sym := "//"; SourceMatchStringAt(src, 0, sym) {
-			src.cursor += len(sym)
-			for !SourceMatchByteAt(src, 0, '\n') {
-				src.cursor++
+	var value []byte
+	tokens := []Token{}
+	currentLine := 0
+	currentColumn := 0
+
+	for sourceSlice.cursor < sourceSlice.count {
+		value = setValue("//")
+		if ChaosSliceMatch(sourceSlice, value) {
+			sourceSlice.cursor += len(value)
+			value = setValue("\n")
+			for !ChaosSliceMatch(sourceSlice, value) {
+				sourceSlice.cursor++
 			}
 			continue
 		}
 
-		// Newline
-		if SourceMatchByteAt(src, 0, '\n') {
-			src.line++
-			src.cursor++
-			src.column = 0
+		value = setValue("\n")
+		if ChaosSliceMatch(sourceSlice, value) {
+			sourceSlice.cursor++
+			currentLine++
+			currentColumn = 0
 			continue
 		}
 
-		// Multi-line comment
-		if sym := "/**"; SourceMatchStringAt(src, 0, sym) {
+		value = setValue("/**")
+		if ChaosSliceMatch(sourceSlice, value) {
 			nestedComment := 0
-			src.cursor += len(sym)
+			sourceSlice.cursor += len(value)
 			for true {
-				if SourceMatchByteAt(src, 0, '\n') {
-					src.line++
-					src.cursor++
-					src.column = 0
+				value = setValue("\n")
+				if ChaosSliceMatch(sourceSlice, value) {
+					sourceSlice.cursor++
+					currentLine++
+					currentColumn = 0
 					continue
 				}
-				if sym := "**/"; SourceMatchStringAt(src, 0, sym) && nestedComment > 0 {
+				value = setValue("**/")
+				if ChaosSliceMatch(sourceSlice, value) && nestedComment > 0 {
 					nestedComment--
-					src.cursor += len(sym)
-					src.column += len(sym)
+					sourceSlice.cursor += len(value)
+					currentColumn = len(value)
 					continue
 				}
-				if sym := "**/"; SourceMatchStringAt(src, 0, sym) {
-					src.cursor += len(sym)
-					src.column += len(sym)
+				value = setValue("**/")
+				if ChaosSliceMatch(sourceSlice, value) {
+					sourceSlice.cursor += len(value)
+					currentColumn = len(value)
 					break
 				}
-				src.cursor++
-				if sym := "/**"; SourceMatchStringAt(src, 0, sym) {
+				sourceSlice.cursor++
+				value = setValue("/**")
+				if ChaosSliceMatch(sourceSlice, value) {
 					nestedComment++
-					src.cursor += len(sym)
-					src.column += len(sym)
+					sourceSlice.cursor += len(value)
+					currentColumn = len(value)
 					continue
 				}
 			}
 			continue
 		}
 
-		// Empty characters
-		if unicode.IsSpace(rune(SourceCurrentByte(src))) {
-			src.column++
-			src.cursor++
+		if unicode.IsSpace(rune(ChaosSliceGet(sourceSlice))) {
+			sourceSlice.cursor++
+			currentColumn++
 			continue
 		}
 
-		// Strings
-		if sym := "«"; SourceMatchStringAt(src, 0, sym) {
-
+		value = setValue("«")
+		if ChaosSliceMatch(sourceSlice, value) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
 			length := 0
 			position := Position{
-				line:   src.line,
-				column: src.column,
+				line:   currentLine,
+				column: currentColumn,
 			}
-			src.cursor += len(sym)
+			sourceSlice.cursor += len(value)
 
 			// TO-DO: Handle nested '«»'
 			// TO-DO: Handle interpolated strings like «hello {some-printable-variable}»
-			endSym := "»"
-			for !SourceMatchStringAt(src, 0, endSym) {
-				tmp.WriteString(SourceCurrentString(src))
+			value := setValue("»")
+			for !ChaosSliceMatch(sourceSlice, value) {
+				tmp.WriteByte(ChaosSliceGet(sourceSlice))
 				length++
-				src.cursor++
+				sourceSlice.cursor++
 			}
-			src.cursor += len(endSym)
+			sourceSlice.cursor += len(value)
 
 			tokens = append(tokens, Token{
 				TokenType: tokStringLiteral,
@@ -275,284 +241,314 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			continue
 		}
 
-		if sym := "->"; SourceMatchStringAt(src, 0, sym) {
-			length := len(sym)
+		value = setValue("->")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
 			tokens = append(tokens, Token{
-				Symbol:    sym,
+				Symbol:    string(value),
 				TokenType: tokArrow,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
 				Length: length,
 			})
-			src.column += length
-			src.cursor += length
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "=="; SourceMatchStringAt(src, 0, sym) {
-			length := len(sym)
+		value = setValue("==")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
 			tokens = append(tokens, Token{
-				Symbol:    sym,
+				Symbol:    string(value),
 				TokenType: tokEquals,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
 				Length: length,
 			})
-			src.column += length
-			src.cursor += length
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "..."; SourceMatchStringAt(src, 0, sym) {
-			length := len(sym)
+		value = setValue("...")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
 			tokens = append(tokens, Token{
-				Symbol:    sym,
+				Symbol:    string(value),
 				TokenType: tokEllipsis,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
-				},
-			})
-			src.column += length
-			src.cursor += length
-			continue
-		}
-
-		if sym := "="; SourceMatchStringAt(src, 0, sym) {
-			length := len(sym)
-			tokens = append(tokens, Token{
-				Symbol:    sym,
-				TokenType: tokAssignment,
-				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
 				Length: length,
 			})
-			src.column += length
-			src.cursor += length
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "+"; SourceMatchStringAt(src, 0, sym) {
-			token := Token{
-				Symbol:    sym,
+		value = setValue("=")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
+				TokenType: tokAssignment,
+				Position: Position{
+					line:   currentLine,
+					column: currentColumn,
+				},
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
+			continue
+		}
+
+		value = setValue("+")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokPlus,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, token)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "-"; SourceMatchStringAt(src, 0, sym) {
-			token := Token{
-				Symbol:    sym,
+		value = setValue("-")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokMinus,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, token)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := ","; SourceMatchStringAt(src, 0, sym) {
-			token := Token{
-				Symbol:    sym,
+		value = setValue(",")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokComma,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, token)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "<"; SourceMatchStringAt(src, 0, sym) {
-			token := Token{
-				Symbol:    sym,
+		value = setValue("<")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokLessThan,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, token)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := ">"; SourceMatchStringAt(src, 0, sym) {
-			token := Token{
-				Symbol:    sym,
+		value = setValue(">")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokGreaterThan,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, token)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := ";"; SourceMatchStringAt(src, 0, sym) {
-			token := Token{
-				Symbol:    sym,
+		value = setValue(";")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokSemicolon,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, token)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := ":"; SourceMatchStringAt(src, 0, sym) {
-			token := Token{
-				Symbol:    sym,
+		value = setValue(":")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokColon,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, token)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "("; SourceMatchStringAt(src, 0, sym) {
-			tok := Token{
-				Symbol:    sym,
+		value = setValue("(")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokOpenParen,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, tok)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := ")"; SourceMatchStringAt(src, 0, sym) {
-			tok := Token{
-				Symbol:    sym,
+		value = setValue(")")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokCloseParen,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, tok)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "{"; SourceMatchStringAt(src, 0, sym) {
-			tok := Token{
-				Symbol:    sym,
+		value = setValue("{")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokOpenBraket,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, tok)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "}"; SourceMatchStringAt(src, 0, sym) {
-			tok := Token{
-				Symbol:    sym,
+		value = setValue("}")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokCloseBraket,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, tok)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "#"; SourceMatchStringAt(src, 0, sym) {
-			tok := Token{
-				Symbol:    sym,
+		value = setValue("#")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokHash,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, tok)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		if sym := "*"; SourceMatchStringAt(src, 0, sym) {
-			tok := Token{
-				Symbol:    sym,
+		value = setValue("*")
+		if ChaosSliceMatch(sourceSlice, value) {
+			length := len(value)
+			tokens = append(tokens, Token{
+				Symbol:    string(value),
 				TokenType: tokStar,
 				Position: Position{
-					line:   src.line,
-					column: src.column,
+					line:   currentLine,
+					column: currentColumn,
 				},
-			}
-			src.column++
-			src.cursor++
-			tokens = append(tokens, tok)
+				Length: length,
+			})
+			currentColumn += length
+			sourceSlice.cursor += length
 			continue
 		}
 
-		// Number literals (float or int)
-		if isNum(SourceCurrentByte(src)) {
+		if isNum(ChaosSliceGet(sourceSlice)) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
 			position := Position{
-				line:   src.line,
-				column: src.column,
+				line:   currentLine,
+				column: currentColumn,
 			}
 
 			isFloat := false
-			for isNum(SourceCurrentByte(src)) || SourceMatchByteAt(src, 0, '.') || SourceMatchByteAt(src, 0, '_') {
-				if SourceMatchByteAt(src, 0, '.') {
+			for isNum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, setValue(".")) {
+				if ChaosSliceMatch(sourceSlice, setValue(".")) {
 					isFloat = true
 				}
-				if !SourceMatchByteAt(src, 0, '_') {
-					tmp.WriteByte(SourceCurrentByte(src))
+				if !ChaosSliceMatch(sourceSlice, setValue("_")) {
+					tmp.WriteByte(ChaosSliceGet(sourceSlice))
 				}
-				src.column++
-				src.cursor++
+				currentColumn++
+				sourceSlice.cursor++
 			}
 
 			number := tmp.String()
@@ -581,19 +577,19 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			}
 		}
 
-		if isAlpha(SourceCurrentByte(src)) {
+		if isAlpha(ChaosSliceGet(sourceSlice)) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
 			position := Position{
-				line:   src.line,
-				column: src.column,
+				line:   currentLine,
+				column: currentColumn,
 			}
 
-			for isAlphanum(SourceCurrentByte(src)) || SourceMatchByteAt(src, 0, '_') {
-				tmp.WriteByte(SourceCurrentByte(src))
-				src.column++
-				src.cursor++
+			for isAlphanum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, setValue("_")) {
+				tmp.WriteByte(ChaosSliceGet(sourceSlice))
+				currentColumn++
+				sourceSlice.cursor++
 			}
 
 			string := tmp.String()
@@ -605,6 +601,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Value:     true,
 					TokenType: tokBoolLiteral,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -616,6 +613,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Value:     false,
 					TokenType: tokBoolLiteral,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -626,6 +624,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Symbol:    sym,
 					TokenType: tokExit,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -636,6 +635,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Symbol:    sym,
 					TokenType: tokIf,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -646,6 +646,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Symbol:    sym,
 					TokenType: tokElif,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -656,6 +657,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Symbol:    sym,
 					TokenType: tokElse,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -666,6 +668,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Symbol:    sym,
 					TokenType: tokProc,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -676,6 +679,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 					Symbol:    sym,
 					TokenType: tokAs,
 					Position:  position,
+					Length:    len(sym),
 				}
 				tokens = append(tokens, token)
 				continue
@@ -687,6 +691,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				TokenType: tokIdentifier,
 				Value:     nil,
 				Position:  position,
+				Length:    len(string),
 			}
 			tokens = append(tokens, token)
 			continue
@@ -695,7 +700,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 		fmt.Fprintf(
 			os.Stderr,
 			"[ERROR] Failed while tokenizing - unknown character '%s' at position %03d:%03d\n",
-			SourceCurrentString(src), src.line, src.column,
+			string(ChaosSliceGet(sourceSlice)), currentLine, currentColumn,
 		)
 		panic("unrecheable")
 	}
@@ -704,8 +709,8 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 		Symbol:    "eof",
 		TokenType: tokEndOfFile,
 		Position: Position{
-			line:   src.line,
-			column: src.column,
+			line:   currentLine,
+			column: currentColumn,
 		},
 		Length: 3,
 	})
@@ -797,7 +802,7 @@ func (lex *Lexer) ConsumeAssert(tokType TokenType) Token {
 		token.TokenType == tokType,
 		fmt.Sprintf(
 			"%s:%d:%d Expected %s but got %s",
-			lex.filepath, token.Position.line, token.Position.column, tokType.String(), token.TokenType.String(),
+			lex.filepath, token.Position.line, token.Position.column, TokenTypeToString(tokType), TokenTypeToString(token.TokenType),
 		),
 	)
 	lex.cursor++

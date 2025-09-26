@@ -13,7 +13,6 @@ func compileChaos(filepath string, src []byte) bool {
 	for _, t := range tokens.data {
 		chaosDebug(t)
 	}
-	todo[any](tokens)
 
 	// program := ASTCreateChaosProgram(lex)
 	// TypeCheckChaosProgram(&program)

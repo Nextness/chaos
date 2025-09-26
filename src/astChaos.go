@@ -345,7 +345,7 @@ func infixBindingPower(token Token) (float64, float64) {
 	case tokLessThan:
 		return 5.1, 5.0
 	default:
-		assert[any](false, fmt.Sprintf("Unexpected token %s", token.TokenType.String()))
+		assert[any](false, fmt.Sprintf("Unexpected token %s", TokenTypeToString(token.TokenType)))
 	}
 	// Unreachable because go sucks and doesn't understand control flow...
 	return 0.0, 0.0
@@ -530,7 +530,7 @@ func ASTParseIdentifier(lex *Lexer) Node {
 				return node
 			}
 		} else {
-			assert[any](false, fmt.Sprintf("Unexpected token %s", lex.GetToken(0).TokenType.String()))
+			assert[any](false, fmt.Sprintf("Unexpected token %s", TokenTypeToString(lex.GetToken(0).TokenType)))
 		}
 
 		AllocatedVars[ident.Symbol] = node
@@ -647,7 +647,7 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 		false,
 		fmt.Sprintf(
 			"[ERROR] %s - Unexpected token \"%s\" at %02d:%02d",
-			lex.filepath, lex.GetToken(0).TokenType.String(), lex.GetToken(0).Position.line, lex.GetToken(0).Position.column,
+			lex.filepath, TokenTypeToString(lex.GetToken(0).TokenType), lex.GetToken(0).Position.line, lex.GetToken(0).Position.column,
 		),
 	)
 }
