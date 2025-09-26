@@ -10,6 +10,12 @@ import (
 	"unicode"
 )
 
+type ChaosSlice[T any] struct {
+	data   []T
+	count  int
+	cursor int
+}
+
 func isNum(b byte) bool {
 	s := rune(b)
 	return unicode.IsNumber(s)
@@ -36,7 +42,7 @@ func assert[T any](ok bool, reason string) T {
 	iter := 0
 	printOnce := true
 	fmt.Print("\033[1;31m[ERROR] Assertion failed - stopping execution\033[0m\n")
-	for {
+	for true {
 		frame, more := frames.Next()
 		if iter == 0 || iter == 1 || iter == 2 || iter == 3 || iter == 4 || iter == invocationsCount-2 {
 			fmt.Fprintf(os.Stderr, "  %d. %s:%d %s\n", iter, filepath.Base(frame.File), frame.Line, frame.Function)
@@ -68,7 +74,8 @@ func chaosDebug(anything ...any) {
 }
 
 func todo[V any](args ...any) V {
-	panic("TODO: Not implemented yet")
+	os.Exit(0)
+	return *new(V)
 }
 
 func cast[V any](value any) (V, bool) {

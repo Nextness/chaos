@@ -10,29 +10,18 @@ import (
 func compileChaos(filepath string, src []byte) bool {
 	fileContent := bytes.NewBuffer(src)
 	tokens := TokenizeChaos(fileContent)
-
-	lex := &Lexer{
-		data:     tokens,
-		filepath: filepath,
-		count:    len(tokens),
-		cursor:   0,
+	for _, t := range tokens.data {
+		chaosDebug(t)
 	}
+	todo[any](tokens)
 
-	program := ASTCreateChaosProgram(lex)
-	TypeCheckChaosProgram(&program)
-
+	// program := ASTCreateChaosProgram(lex)
+	// TypeCheckChaosProgram(&program)
+	//
 	// for _, node := range program.Nodes {
 	// 	chaosDebug(node)
 	// }
 
-	// for _, node := range program.Nodes {
-	// 	// chaosDebug(node)
-	// 	ProgramToIR(&node)
-	// 	// chaosDebug(ir)
-	// }
-	// codeGen := GenerateCode(&program)
-
-	// os.WriteFile("testing.asm", codeGen.Bytes(), 0644)
 	return true
 }
 
