@@ -9,12 +9,9 @@ import (
 
 func compileChaos(filepath string, src []byte) bool {
 	fileContent := bytes.NewBuffer(src)
-	tokens := TokenizeChaos(fileContent)
-	for _, t := range tokens.data {
-		chaosDebug(t)
-	}
-
-	// program := ASTCreateChaosProgram(lex)
+	tokensSlice := TokenizeChaos(fileContent)
+	program := ASTCreateChaosProgram(&tokensSlice)
+	todo[any](program)
 	// TypeCheckChaosProgram(&program)
 	//
 	// for _, node := range program.Nodes {
@@ -24,7 +21,7 @@ func compileChaos(filepath string, src []byte) bool {
 	return true
 }
 
-const debug = false
+const debug = true
 
 func main() {
 	// Handling panics so that the stacktrace from golang is not printed, only

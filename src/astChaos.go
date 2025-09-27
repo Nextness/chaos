@@ -327,8 +327,9 @@ func ASTParseProc(lex *Lexer) Node {
 
 	lex.ConsumeAssert(tokOpenBraket)
 	for lex.GetToken(0).TokenType != tokCloseBraket {
-		stmt := ASTParseStatement(lex)
-		node.Proc.Scope = append(node.Proc.Scope, stmt)
+		assert[any](false, "must be fixed later")
+		// stmt := ASTParseStatement(lex)
+		// node.Proc.Scope = append(node.Proc.Scope, stmt)
 	}
 	lex.ConsumeAssert(tokCloseBraket)
 	return node
@@ -652,34 +653,34 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 	)
 }
 
-func ASTParseStatement(lex *Lexer) Node {
-	if lex.MatchAt(0, tokIdentifier) {
-		return ASTParsePrimaryExpression(lex)
+func ASTParseStatement(tokens *ChaosSlice[Token]) Node {
+	var search []TokenType
+
+	search = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier)
+	if ChaosSliceMatchOp(tokens, ChaosSliceTokenTypeComparison, search) {
+		// return ASTParsePrimaryExpression(lex)
 	}
-	if lex.MatchAt(0, tokExit) {
-		return ASTParseExit(lex)
+
+	search = ChaosSliceSearchValue[TokenType, TokenType](tokExit)
+	if ChaosSliceMatchOp(tokens, ChaosSliceTokenTypeComparison, search) {
+		// return ASTParseExit(lex)
 	}
+
 	return Node{NodeType: nodeNoOp}
 }
 
-func ASTCreateChaosProgram(lex *Lexer) Program {
-	assert[any](lex.cursor == 0, "Cursor is not 0")
+func ASTCreateChaosProgram(tokens *ChaosSlice[Token]) Program {
+	assert[any](tokens.cursor == 0, "Cursor is not 0")
 
 	program := Program{
 		Nodes: []Node{},
 	}
 
-	for !lex.MatchAt(0, tokEndOfFile) {
-		node := ASTParseStatement(lex)
-		if node.NodeType == nodeNoOp {
-			continue
-		}
-		// chaosDebug(node)
+	for tokens.cursor < tokens.count {
+		node := ASTParseStatement(tokens)
 		program.Nodes = append(program.Nodes, node)
+		ChaosSliceConsume(tokens)
 	}
-
-	program.AllocatedVars = AllocatedVars
-	program.AllocatedProcs = AllocatedProcs
 
 	return program
 }

@@ -22,12 +22,10 @@ const (
 	tokLessThan
 	tokGreaterThan
 	tokEquals
-	tokExecutes
 	tokIf
 	tokElif
 	tokElse
 	tokProc
-	tokReturns
 	tokOpenParen
 	tokCloseParen
 	tokEllipsis
@@ -45,6 +43,11 @@ const (
 	tokInfer
 	tokArrow
 	tokCount
+)
+
+var _ = assert[any](
+	tokCount == 30,
+	fmt.Sprintf("Expected 30 token count but found %d", tokCount),
 )
 
 func TokenTypeToString(tokenType TokenType) string {
@@ -66,16 +69,12 @@ func TokenTypeToString(tokenType TokenType) string {
 		return "tokLessThan"
 	} else if tokenType == tokGreaterThan {
 		return "tokGreaterThan"
-	} else if tokenType == tokExecutes {
-		return "tokExecutes"
 	} else if tokenType == tokIf {
 		return "tokIf"
 	} else if tokenType == tokEndOfFile {
 		return "tokEndOfFile"
 	} else if tokenType == tokProc {
 		return "tokProc"
-	} else if tokenType == tokReturns {
-		return "tokReturns"
 	} else if tokenType == tokOpenParen {
 		return "tokOpenParen"
 	} else if tokenType == tokCloseParen {
@@ -113,15 +112,11 @@ func TokenTypeToString(tokenType TokenType) string {
 	} else if tokenType == tokArrow {
 		return "tokArrow"
 	}
-	return assert[string](
-		tokCount == 32,
-		fmt.Sprintf("Expected 32 token count but found %d", tokCount),
-	)
+	return "unrecheable"
 }
 
 type Position struct {
-	line   int
-	column int
+	line, column int
 }
 
 type Token struct {
@@ -139,64 +134,60 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 		cursor: 0,
 	}
 
-	setValue := func(value string) []byte {
-		return []byte(value)
-	}
-
 	var value []byte
 	tokens := []Token{}
 	currentLine := 0
 	currentColumn := 0
 
 	for sourceSlice.cursor < sourceSlice.count {
-		value = setValue("//")
-		if ChaosSliceMatch(sourceSlice, value) {
-			sourceSlice.cursor += len(value)
-			value = setValue("\n")
+		value = ChaosSliceSearchValue[string, byte]("//")
+		if ChaosSliceMatchOp(sourceSlice, ChaosSliceDefaultComparison, value) {
+			ChaosSliceConsume(sourceSlice, len(value))
+			value = ChaosSliceSearchValue[string, byte]("\n")
 			for !ChaosSliceMatch(sourceSlice, value) {
-				sourceSlice.cursor++
+				ChaosSliceConsume(sourceSlice)
 			}
 			continue
 		}
 
-		value = setValue("\n")
+		value = ChaosSliceSearchValue[string, byte]("\n")
 		if ChaosSliceMatch(sourceSlice, value) {
-			sourceSlice.cursor++
+			ChaosSliceConsume(sourceSlice)
 			currentLine++
 			currentColumn = 0
 			continue
 		}
 
-		value = setValue("/**")
+		value = ChaosSliceSearchValue[string, byte]("/**")
 		if ChaosSliceMatch(sourceSlice, value) {
 			nestedComment := 0
-			sourceSlice.cursor += len(value)
+			ChaosSliceConsume(sourceSlice, len(value))
 			for true {
-				value = setValue("\n")
+				value = ChaosSliceSearchValue[string, byte]("\n")
 				if ChaosSliceMatch(sourceSlice, value) {
-					sourceSlice.cursor++
+					ChaosSliceConsume(sourceSlice)
 					currentLine++
 					currentColumn = 0
 					continue
 				}
-				value = setValue("**/")
+				value = ChaosSliceSearchValue[string, byte]("**/")
 				if ChaosSliceMatch(sourceSlice, value) && nestedComment > 0 {
 					nestedComment--
-					sourceSlice.cursor += len(value)
+					ChaosSliceConsume(sourceSlice, len(value))
 					currentColumn = len(value)
 					continue
 				}
-				value = setValue("**/")
+				value = ChaosSliceSearchValue[string, byte]("**/")
 				if ChaosSliceMatch(sourceSlice, value) {
-					sourceSlice.cursor += len(value)
+					ChaosSliceConsume(sourceSlice, len(value))
 					currentColumn = len(value)
 					break
 				}
 				sourceSlice.cursor++
-				value = setValue("/**")
+				value = ChaosSliceSearchValue[string, byte]("/**")
 				if ChaosSliceMatch(sourceSlice, value) {
 					nestedComment++
-					sourceSlice.cursor += len(value)
+					ChaosSliceConsume(sourceSlice, len(value))
 					currentColumn = len(value)
 					continue
 				}
@@ -205,12 +196,12 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 		}
 
 		if unicode.IsSpace(rune(ChaosSliceGet(sourceSlice))) {
-			sourceSlice.cursor++
+			ChaosSliceConsume(sourceSlice)
 			currentColumn++
 			continue
 		}
 
-		value = setValue("«")
+		value = ChaosSliceSearchValue[string, byte]("«")
 		if ChaosSliceMatch(sourceSlice, value) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
@@ -220,17 +211,17 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				line:   currentLine,
 				column: currentColumn,
 			}
-			sourceSlice.cursor += len(value)
+			ChaosSliceConsume(sourceSlice, len(value))
 
 			// TO-DO: Handle nested '«»'
 			// TO-DO: Handle interpolated strings like «hello {some-printable-variable}»
-			value := setValue("»")
+			value := ChaosSliceSearchValue[string, byte]("»")
 			for !ChaosSliceMatch(sourceSlice, value) {
 				tmp.WriteByte(ChaosSliceGet(sourceSlice))
 				length++
 				sourceSlice.cursor++
 			}
-			sourceSlice.cursor += len(value)
+			ChaosSliceConsume(sourceSlice, len(value))
 
 			tokens = append(tokens, Token{
 				TokenType: tokStringLiteral,
@@ -241,7 +232,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			continue
 		}
 
-		value = setValue("->")
+		value = ChaosSliceSearchValue[string, byte]("->")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -254,11 +245,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("==")
+		value = ChaosSliceSearchValue[string, byte]("==")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -271,11 +262,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("...")
+		value = ChaosSliceSearchValue[string, byte]("...")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -288,11 +279,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("=")
+		value = ChaosSliceSearchValue[string, byte]("=")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -305,11 +296,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("+")
+		value = ChaosSliceSearchValue[string, byte]("+")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -322,11 +313,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("-")
+		value = ChaosSliceSearchValue[string, byte]("-")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -339,11 +330,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue(",")
+		value = ChaosSliceSearchValue[string, byte](",")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -356,11 +347,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("<")
+		value = ChaosSliceSearchValue[string, byte]("<")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -373,11 +364,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue(">")
+		value = ChaosSliceSearchValue[string, byte](">")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -390,11 +381,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue(";")
+		value = ChaosSliceSearchValue[string, byte](";")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -407,11 +398,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue(":")
+		value = ChaosSliceSearchValue[string, byte](":")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -424,11 +415,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("(")
+		value = ChaosSliceSearchValue[string, byte]("(")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -441,11 +432,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue(")")
+		value = ChaosSliceSearchValue[string, byte](")")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -458,11 +449,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("{")
+		value = ChaosSliceSearchValue[string, byte]("{")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -475,11 +466,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("}")
+		value = ChaosSliceSearchValue[string, byte]("}")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -492,11 +483,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("#")
+		value = ChaosSliceSearchValue[string, byte]("#")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -509,11 +500,11 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
-		value = setValue("*")
+		value = ChaosSliceSearchValue[string, byte]("*")
 		if ChaosSliceMatch(sourceSlice, value) {
 			length := len(value)
 			tokens = append(tokens, Token{
@@ -526,7 +517,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			sourceSlice.cursor += length
+			ChaosSliceConsume(sourceSlice)
 			continue
 		}
 
@@ -540,15 +531,15 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			}
 
 			isFloat := false
-			for isNum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, setValue(".")) {
-				if ChaosSliceMatch(sourceSlice, setValue(".")) {
+			for isNum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte](".")) {
+				if ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte](".")) {
 					isFloat = true
 				}
-				if !ChaosSliceMatch(sourceSlice, setValue("_")) {
+				if !ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte]("_")) {
 					tmp.WriteByte(ChaosSliceGet(sourceSlice))
 				}
 				currentColumn++
-				sourceSlice.cursor++
+				ChaosSliceConsume(sourceSlice)
 			}
 
 			number := tmp.String()
@@ -586,10 +577,10 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				column: currentColumn,
 			}
 
-			for isAlphanum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, setValue("_")) {
+			for isAlphanum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte]("_")) {
 				tmp.WriteByte(ChaosSliceGet(sourceSlice))
 				currentColumn++
-				sourceSlice.cursor++
+				ChaosSliceConsume(sourceSlice)
 			}
 
 			string := tmp.String()
@@ -715,13 +706,13 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 		Length: 3,
 	})
 
-	chaosSlice := ChaosSlice[Token]{
+	tokensSlice := ChaosSlice[Token]{
 		data:   tokens,
 		count:  len(tokens),
 		cursor: 0,
 	}
 
-	return chaosSlice
+	return tokensSlice
 }
 
 type Lexer struct {
