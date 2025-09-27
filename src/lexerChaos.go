@@ -112,7 +112,11 @@ func TokenTypeToString(tokenType TokenType) string {
 	} else if tokenType == tokArrow {
 		return "tokArrow"
 	}
-	return "unrecheable"
+	return assert[string](
+		tokCount == 30,
+		fmt.Sprintf("Expected 30 token count but found %d", tokCount),
+	)
+
 }
 
 type Position struct {
