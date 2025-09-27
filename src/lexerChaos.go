@@ -140,7 +140,6 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 	currentColumn := 0
 
 	for sourceSlice.cursor < sourceSlice.count {
-		chaosDebug(fmt.Sprintf("%s", string(sourceSlice.data[sourceSlice.cursor])))
 		value = ChaosSliceSearchValue[string, byte]("//")
 		if ChaosSliceMatchOp(sourceSlice, ChaosSliceDefaultComparison, value) {
 			ChaosSliceConsume(sourceSlice, len(value))
@@ -202,8 +201,8 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("«")
-		if ChaosSliceMatch(sourceSlice, value) {
+		strStart := []byte("«")
+		if ChaosSliceMatch(sourceSlice, strStart) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
@@ -212,17 +211,17 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				line:   currentLine,
 				column: currentColumn,
 			}
-			ChaosSliceConsume(sourceSlice, len(value))
+			ChaosSliceConsume(sourceSlice, len(strStart))
 
 			// TO-DO: Handle nested '«»'
 			// TO-DO: Handle interpolated strings like «hello {some-printable-variable}»
-			value := ChaosSliceSearchValue[string, byte]("»")
-			for !ChaosSliceMatch(sourceSlice, value) {
+			strEnd := []byte("»")
+			for !ChaosSliceMatch(sourceSlice, strEnd) {
 				tmp.WriteByte(ChaosSliceGet(sourceSlice))
 				length++
 				sourceSlice.cursor++
 			}
-			ChaosSliceConsume(sourceSlice, len(value))
+			ChaosSliceConsume(sourceSlice, len(strEnd))
 
 			tokens = append(tokens, Token{
 				TokenType: tokStringLiteral,
@@ -246,7 +245,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			ChaosSliceConsume(sourceSlice, length)
 			continue
 		}
 
@@ -263,7 +262,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			ChaosSliceConsume(sourceSlice, length)
 			continue
 		}
 
@@ -280,7 +279,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: length,
 			})
 			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			ChaosSliceConsume(sourceSlice, length)
 			continue
 		}
 

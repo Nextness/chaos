@@ -14,10 +14,23 @@ func ChaosSliceDefaultComparison[T comparable](value T, compare T) bool {
 	return value == compare
 }
 
-func ChaosSliceTokenTypeComparison[T comparable](value T, compare T) bool {
+func ChaosSliceTokenTypeComparison(value any, compare any) bool {
 	token := castAssert[Token](value)
 	tokenType := castAssert[TokenType](compare)
 	return token.TokenType == tokenType
+}
+
+/* Operators - Asserts */
+func ChaosSliceTokenTypeAssert(a any, b any) {
+	token := castAssert[Token](a)
+	tokenType := castAssert[TokenType](b)
+	assert[any](
+		token.TokenType == tokenType,
+		fmt.Sprintf(
+			"Expected %s but got %s",
+			TokenTypeToString(tokenType), TokenTypeToString(token.TokenType),
+		),
+	)
 }
 
 /* Private Functions */
@@ -57,13 +70,17 @@ func ChaosSliceConsume[T any](chaosSlice *ChaosSlice[T], amount ...int) T {
 		assert[any](false, "Only 1 argument or none is allowed")
 	}
 
+	element := ChaosSliceGet(chaosSlice)
 	chaosSlice.cursor += increment
-	return ChaosSliceGet(chaosSlice)
+	return element
 }
 
-func ChaosSliceConsumeAssert[T comparable, R comparable](chaosSlice *ChaosSlice[T], expected R, operator func(any, any)) T {
-	element := ChaosSliceConsume(chaosSlice)
-	operator(element, expected)
+func ChaosSliceConsumeAssert[T comparable, R comparable](chaosSlice *ChaosSlice[T], operator func(any, any), expected ...R) T {
+	var element T
+	for _, exp := range expected {
+		element = ChaosSliceConsume(chaosSlice)
+		operator(element, exp)
+	}
 	return element
 }
 
@@ -105,7 +122,8 @@ func ChaosSliceMatchOp[T comparable, R any](chaosSlice *ChaosSlice[T], operator 
 	length := len(value)
 	result := true
 	for i := range length {
-		result = result && operator(ChaosSliceGetOffset(chaosSlice, i), value[i])
+		element := ChaosSliceGetOffset(chaosSlice, i)
+		result = result && operator(element, value[i])
 		if !result {
 			break
 		}
