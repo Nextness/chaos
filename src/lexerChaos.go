@@ -127,7 +127,7 @@ type Token struct {
 	Value     any
 }
 
-func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
+func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 	sourceSlice := &ChaosSlice[byte]{
 		data:   fileContent.Bytes(),
 		count:  fileContent.Len(),
@@ -140,6 +140,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 	currentColumn := 0
 
 	for sourceSlice.cursor < sourceSlice.count {
+		chaosDebug(fmt.Sprintf("%s", string(sourceSlice.data[sourceSlice.cursor])))
 		value = ChaosSliceSearchValue[string, byte]("//")
 		if ChaosSliceMatchOp(sourceSlice, ChaosSliceDefaultComparison, value) {
 			ChaosSliceConsume(sourceSlice, len(value))

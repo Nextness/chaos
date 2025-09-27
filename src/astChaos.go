@@ -562,28 +562,39 @@ func ASTParseProcCall(lex *Lexer) (Node, bool) {
 	return Node{NodeType: nodeNoOp}, false
 }
 
-func ASTParseExit(lex *Lexer) Node {
-	if lex.MatchTokenSequence(tokExit) {
-		lex.ConsumeAssert(tokExit)
+func ChaosContentParseExit(chaosSlice *ChaosSlice[Token]) Node {
+	var value []TokenType
 
-		var message Node
-		status := ASTParseExpression(lex, 0.0)
-		if lex.MatchTokenSequence(tokComma) {
-			lex.ConsumeAssert(tokComma)
-			message = ASTParseExpression(lex, 0.0)
-		}
-
-		node := Node{
-			NodeType: nodeExit,
-			Exit: &Exit{
-				Status:  status,
-				Message: message,
-			},
-		}
-
-		lex.ConsumeAssert(tokSemicolon)
-		return node
+	value = ChaosSliceSearchValue[TokenType, TokenType](tokExit)
+	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+		// ChaosSliceConsumeAssert(chaosSlice, tokExit, func(a any, b any) {
+		// 	token := castAssert[Token](a)
+		// 	tokenType := castAssert[TokenType](b)
+		// 	assert[any](token.TokenType == tokenType, "")
+		// })
+		chaosDebug("reached")
 	}
+	// if lex.MatchTokenSequence(tokExit) {
+	// 	lex.ConsumeAssert(tokExit)
+	//
+	// 	var message Node
+	// 	status := ASTParseExpression(lex, 0.0)
+	// 	if lex.MatchTokenSequence(tokComma) {
+	// 		lex.ConsumeAssert(tokComma)
+	// 		message = ASTParseExpression(lex, 0.0)
+	// 	}
+	//
+	// 	node := Node{
+	// 		NodeType: nodeExit,
+	// 		Exit: &Exit{
+	// 			Status:  status,
+	// 			Message: message,
+	// 		},
+	// 	}
+	//
+	// 	lex.ConsumeAssert(tokSemicolon)
+	// 	return node
+	// }
 	return Node{NodeType: nodeNoOp}
 }
 
@@ -653,23 +664,23 @@ func ASTParsePrimaryExpression(lex *Lexer) Node {
 	)
 }
 
-func ASTParseStatement(tokens *ChaosSlice[Token]) Node {
-	var search []TokenType
+func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token]) Node {
+	var value []TokenType
 
-	search = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier)
-	if ChaosSliceMatchOp(tokens, ChaosSliceTokenTypeComparison, search) {
+	value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier)
+	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
 		// return ASTParsePrimaryExpression(lex)
 	}
 
-	search = ChaosSliceSearchValue[TokenType, TokenType](tokExit)
-	if ChaosSliceMatchOp(tokens, ChaosSliceTokenTypeComparison, search) {
-		// return ASTParseExit(lex)
+	value = ChaosSliceSearchValue[TokenType, TokenType](tokExit)
+	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+		return ChaosContentParseExit(chaosSlice)
 	}
 
 	return Node{NodeType: nodeNoOp}
 }
 
-func ASTCreateChaosProgram(tokens *ChaosSlice[Token]) Program {
+func ChaosContentAST(tokens *ChaosSlice[Token]) Program {
 	assert[any](tokens.cursor == 0, "Cursor is not 0")
 
 	program := Program{
@@ -677,7 +688,7 @@ func ASTCreateChaosProgram(tokens *ChaosSlice[Token]) Program {
 	}
 
 	for tokens.cursor < tokens.count {
-		node := ASTParseStatement(tokens)
+		node := ChaosContentASTParseStatement(tokens)
 		program.Nodes = append(program.Nodes, node)
 		ChaosSliceConsume(tokens)
 	}

@@ -9,8 +9,8 @@ import (
 
 func compileChaos(filepath string, src []byte) bool {
 	fileContent := bytes.NewBuffer(src)
-	tokensSlice := TokenizeChaos(fileContent)
-	program := ASTCreateChaosProgram(&tokensSlice)
+	tokensSlice := ChaosContentTokenize(fileContent)
+	program := ChaosContentAST(&tokensSlice)
 	todo[any](program)
 	// TypeCheckChaosProgram(&program)
 	//

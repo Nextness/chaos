@@ -9,7 +9,7 @@ type ChaosSlice[T any] struct {
 	cursor int
 }
 
-/* Operators */
+/* Operators - comparison */
 func ChaosSliceDefaultComparison[T comparable](value T, compare T) bool {
 	return value == compare
 }
@@ -47,7 +47,7 @@ func ChaosSliceSearchValue[T any, R any](value ...T) []R {
 	return result
 }
 
-func ChaosSliceConsume[T any](chaosSlice *ChaosSlice[T], amount ...int) {
+func ChaosSliceConsume[T any](chaosSlice *ChaosSlice[T], amount ...int) T {
 	length := len(amount)
 	increment := 1
 
@@ -58,6 +58,13 @@ func ChaosSliceConsume[T any](chaosSlice *ChaosSlice[T], amount ...int) {
 	}
 
 	chaosSlice.cursor += increment
+	return ChaosSliceGet(chaosSlice)
+}
+
+func ChaosSliceConsumeAssert[T comparable, R comparable](chaosSlice *ChaosSlice[T], expected R, operator func(any, any)) T {
+	element := ChaosSliceConsume(chaosSlice)
+	operator(element, expected)
+	return element
 }
 
 func ChaosSliceGetOffset[T any](chaosSlice *ChaosSlice[T], offset int) T {
