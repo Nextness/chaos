@@ -144,15 +144,15 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 
 	for sourceSlice.cursor < sourceSlice.count {
 		if CSMatch(sourceSlice, CSStringUint8Comparison, "/", "/") {
-			ChaosSliceConsume(sourceSlice, 2)
+			CSConsume(sourceSlice, 2)
 			for !CSMatch(sourceSlice, CSStringUint8Comparison, "\n") {
-				ChaosSliceConsume(sourceSlice)
+				CSConsume(sourceSlice)
 			}
 			continue
 		}
 
 		if CSMatch(sourceSlice, CSStringUint8Comparison, "\n") {
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			currentLine++
 			currentColumn = 0
 			continue
@@ -160,10 +160,10 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 
 		if CSMatch(sourceSlice, CSStringUint8Comparison, "/", "*", "*") {
 			nestedComment := 0
-			ChaosSliceConsume(sourceSlice, 3)
+			CSConsume(sourceSlice, 3)
 			for true {
 				if CSMatch(sourceSlice, CSStringUint8Comparison, "\n") {
-					ChaosSliceConsume(sourceSlice)
+					CSConsume(sourceSlice)
 					currentLine++
 					currentColumn = 0
 					continue
@@ -171,19 +171,19 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				if CSMatch(sourceSlice, CSStringUint8Comparison, "*", "*", "/") &&
 					nestedComment > 0 {
 					nestedComment--
-					ChaosSliceConsume(sourceSlice, 3)
+					CSConsume(sourceSlice, 3)
 					currentColumn += 3
 					continue
 				}
 				if CSMatch(sourceSlice, CSStringUint8Comparison, "*", "*", "/") {
-					ChaosSliceConsume(sourceSlice, 3)
+					CSConsume(sourceSlice, 3)
 					currentColumn += 3
 					break
 				}
 				sourceSlice.cursor++
 				if CSMatch(sourceSlice, CSStringUint8Comparison, "/", "*", "*") {
 					nestedComment++
-					ChaosSliceConsume(sourceSlice, 3)
+					CSConsume(sourceSlice, 3)
 					currentColumn += 3
 					continue
 				}
@@ -191,8 +191,8 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			continue
 		}
 
-		if unicode.IsSpace(rune(ChaosSliceGet(sourceSlice))) {
-			ChaosSliceConsume(sourceSlice)
+		if unicode.IsSpace(rune(CSGet(sourceSlice))) {
+			CSConsume(sourceSlice)
 			currentColumn++
 			continue
 		}
@@ -207,17 +207,17 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				line:   currentLine,
 				column: currentColumn,
 			}
-			ChaosSliceConsume(sourceSlice, len(strStart))
+			CSConsume(sourceSlice, len(strStart))
 
 			// TO-DO: Handle nested '«»'
 			// TO-DO: Handle interpolated strings like «hello {some-printable-variable}»
 			strEnd := []byte("»")
 			for !CSMatch(sourceSlice, CSUint8Uint8Comparison, strEnd) {
-				tmp.WriteByte(ChaosSliceGet(sourceSlice))
+				tmp.WriteByte(CSGet(sourceSlice))
 				length++
 				sourceSlice.cursor++
 			}
-			ChaosSliceConsume(sourceSlice, len(strEnd))
+			CSConsume(sourceSlice, len(strEnd))
 
 			tokens = append(tokens, Token{
 				TokenType: tokStringLiteral,
@@ -239,7 +239,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 2,
 			})
 			currentColumn += 2
-			ChaosSliceConsume(sourceSlice, 2)
+			CSConsume(sourceSlice, 2)
 			continue
 		}
 
@@ -254,7 +254,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 2,
 			})
 			currentColumn += 2
-			ChaosSliceConsume(sourceSlice, 2)
+			CSConsume(sourceSlice, 2)
 			continue
 		}
 
@@ -269,7 +269,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 3,
 			})
 			currentColumn += 3
-			ChaosSliceConsume(sourceSlice, 3)
+			CSConsume(sourceSlice, 3)
 			continue
 		}
 
@@ -284,7 +284,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -299,7 +299,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -314,7 +314,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -329,7 +329,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -344,7 +344,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -359,7 +359,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -374,7 +374,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -389,7 +389,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -404,7 +404,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -419,7 +419,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -434,7 +434,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -449,7 +449,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -464,7 +464,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
@@ -479,11 +479,11 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				Length: 1,
 			})
 			currentColumn += 1
-			ChaosSliceConsume(sourceSlice)
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		if isNum(ChaosSliceGet(sourceSlice)) {
+		if isNum(CSGet(sourceSlice)) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
@@ -493,15 +493,15 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			}
 
 			isFloat := false
-			for isNum(ChaosSliceGet(sourceSlice)) || CSMatch(sourceSlice, CSStringUint8Comparison, ".") {
+			for isNum(CSGet(sourceSlice)) || CSMatch(sourceSlice, CSStringUint8Comparison, ".") {
 				if CSMatch(sourceSlice, CSStringUint8Comparison, ".") {
 					isFloat = true
 				}
 				if !CSMatch(sourceSlice, CSStringUint8Comparison, "_") {
-					tmp.WriteByte(ChaosSliceGet(sourceSlice))
+					tmp.WriteByte(CSGet(sourceSlice))
 				}
 				currentColumn++
-				ChaosSliceConsume(sourceSlice)
+				CSConsume(sourceSlice)
 			}
 
 			number := tmp.String()
@@ -530,7 +530,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			}
 		}
 
-		if isAlpha(ChaosSliceGet(sourceSlice)) {
+		if isAlpha(CSGet(sourceSlice)) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
@@ -539,10 +539,10 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				column: currentColumn,
 			}
 
-			for isAlphanum(ChaosSliceGet(sourceSlice)) || CSMatch(sourceSlice, CSStringUint8Comparison, "_") {
-				tmp.WriteByte(ChaosSliceGet(sourceSlice))
+			for isAlphanum(CSGet(sourceSlice)) || CSMatch(sourceSlice, CSStringUint8Comparison, "_") {
+				tmp.WriteByte(CSGet(sourceSlice))
 				currentColumn++
-				ChaosSliceConsume(sourceSlice)
+				CSConsume(sourceSlice)
 			}
 
 			string := tmp.String()
@@ -653,7 +653,7 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 		fmt.Fprintf(
 			os.Stderr,
 			"[ERROR] Failed while tokenizing - unknown character '%s' at position %03d:%03d\n",
-			string(ChaosSliceGet(sourceSlice)), currentLine, currentColumn,
+			string(CSGet(sourceSlice)), currentLine, currentColumn,
 		)
 		panic("unrecheable")
 	}
