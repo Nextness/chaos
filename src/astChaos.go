@@ -120,8 +120,6 @@ func (node *Node) toString() string {
 }
 
 func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token]) Node {
-	var value []TokenType
-
 	node := Node{
 		NodeType: nodeProcDef,
 		Proc: &Proc{
@@ -131,17 +129,15 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token]) Node {
 		},
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokOpenParen)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokOpenParen) {
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokOpenParen)
 
-		for !ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokCloseParen)) {
+		for !CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokCloseParen) {
 			identifier := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 			ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokColon)
 			varType := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 
-			value = ChaosSliceSearchValue[TokenType, TokenType](tokComma)
-			if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+			if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokComma) {
 				ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokComma)
 			}
 
@@ -157,8 +153,7 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token]) Node {
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokCloseParen)
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokArrow)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokArrow) {
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokArrow)
 		identifier := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 		node.Proc.Outputs = append(node.Proc.Outputs, Node{
@@ -170,8 +165,7 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token]) Node {
 	}
 
 	ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokOpenBraket)
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokCloseBraket)
-	for !ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	for !CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokCloseBraket) {
 		statement := ChaosContentASTParseStatement(chaosSlice)
 		node.Proc.Scope = append(node.Proc.Scope, statement)
 	}
@@ -199,10 +193,8 @@ func infixBindingPower(token Token) (float64, float64) {
 
 func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) Node {
 	var lhs Node
-	var value []TokenType
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokNumberLiteral)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokNumberLiteral) {
 		expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokNumberLiteral)
 		lhs.NodeType = nodeIntLiteral
 		lhs.Literal = &Literal{
@@ -211,8 +203,7 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 		AllocatedVars[expr.Symbol] = lhs
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokStringLiteral)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokStringLiteral) {
 		expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokStringLiteral)
 		lhs.NodeType = nodeStringLiteral
 		lhs.Literal = &Literal{
@@ -221,12 +212,10 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 		AllocatedVars[expr.Symbol] = lhs
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokIdentifier) {
 		expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 
-		value = ChaosSliceSearchValue[TokenType, TokenType](tokOpenParen)
-		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+		if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokOpenParen) {
 			ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokOpenParen)
 			if _, ok := AllocatedProcs[expr.Symbol]; !ok {
 				assert[any](false, "Proc doesn't exist")
@@ -236,9 +225,8 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 				Name:   expr,
 				Inputs: []Node{},
 			}
-			for !ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokCloseParen)) {
-				value = ChaosSliceSearchValue[TokenType, TokenType](tokNumberLiteral)
-				if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+			for !CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokCloseParen) {
+				if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokNumberLiteral) {
 					expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokNumberLiteral)
 					lhs.Call.Inputs = append(lhs.Call.Inputs, Node{
 						NodeType: nodeIntLiteral,
@@ -248,8 +236,7 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 					})
 				}
 
-				value = ChaosSliceSearchValue[TokenType, TokenType](tokStringLiteral)
-				if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+				if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokStringLiteral) {
 					expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokStringLiteral)
 					lhs.Call.Inputs = append(lhs.Call.Inputs, Node{
 						NodeType: nodeIntLiteral,
@@ -259,8 +246,7 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 					})
 				}
 
-				value = ChaosSliceSearchValue[TokenType, TokenType](tokComma)
-				if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+				if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokComma) {
 					ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokComma)
 				}
 			}
@@ -273,26 +259,26 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 		}
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokOpenParen)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokOpenParen) {
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokOpenParen)
 		lhs = ChaosContentParseExpression(chaosSlice, 0.0)
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokCloseParen)
 	}
 
 	for true {
-		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokCloseParen)) || ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokSemicolon)) {
+		if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokCloseParen) ||
+			CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokSemicolon) {
 			break
 		}
 
 		var op BinOpOperation
-		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokPlus)) {
+		if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokPlus) {
 			op = opPlus
-		} else if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokMinus)) {
+		} else if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokMinus) {
 			op = opMinus
-		} else if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokStar)) {
+		} else if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokStar) {
 			op = opMult
-		} else if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokLessThan)) {
+		} else if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokLessThan) {
 			op = opLessThan
 		} else {
 			return Node{NodeType: nodeNoOp}
@@ -321,11 +307,9 @@ func ChaosContentParseExit(chaosSlice *ChaosSlice[Token]) Node {
 	ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokExit)
 
 	var message Node
-	var value []TokenType
 	status := ChaosContentParseExpression(chaosSlice, 0.0)
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokComma)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokComma) {
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokComma)
 		message = ChaosContentParseExpression(chaosSlice, 0.0)
 	}
@@ -344,17 +328,14 @@ func ChaosContentParseExit(chaosSlice *ChaosSlice[Token]) Node {
 
 func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 	var node Node
-	var value []TokenType
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokEndOfFile)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokEndOfFile) {
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokEndOfFile)
 		node.NodeType = nodeNoOp
 		return node
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokAssignment)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokIdentifier, tokAssignment) {
 		identifier := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokAssignment)
 		node.NodeType = nodeIdentifier
@@ -369,8 +350,7 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 		return node
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokColon)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokIdentifier, tokColon) {
 		identifier := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokColon)
 		node.NodeType = nodeIdentifier
@@ -383,29 +363,25 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 			Initialized: false,
 		}
 
-		value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier)
-		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+		if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokIdentifier) {
 			varType := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 			node.VarDecl.Type = varType
 			AllocatedVars[identifier.Symbol] = node
 		}
 
-		value = ChaosSliceSearchValue[TokenType, TokenType](tokSemicolon)
-		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+		if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokSemicolon) {
 			ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokSemicolon)
 			return node
 		}
-
-		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokAssignment)) {
+		if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokAssignment) {
 			ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokAssignment)
 			node.VarDecl.Initialized = true
-		} else if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokColon)) {
+		} else if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokColon) {
 			ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokColon)
 			node.VarDecl.Initialized = true
 			node.Reassignable = false
 
-			value = ChaosSliceSearchValue[TokenType, TokenType](tokProc)
-			if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+			if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokProc) {
 				ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokProc)
 				node.VarDecl.Assignment = ChaosContentParseProcDefinition(chaosSlice)
 				AllocatedProcs[identifier.Symbol] = node
@@ -425,8 +401,7 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 		return node
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokOpenParen)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokOpenParen) {
 		identifier := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokOpenParen)
 		if _, ok := AllocatedProcs[identifier.Symbol]; !ok {
@@ -439,10 +414,8 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 			Inputs: []Node{},
 		}
 
-		value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokCloseParen)
-		for !ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
-			value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokNumberLiteral)
-			if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+		for !CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokCloseParen) {
+			if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokNumberLiteral) {
 				expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokNumberLiteral)
 				node.Call.Inputs = append(node.Call.Inputs, Node{
 					NodeType: nodeIntLiteral,
@@ -452,8 +425,7 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 				})
 			}
 
-			value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokStringLiteral)
-			if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+			if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokStringLiteral) {
 				expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokStringLiteral)
 				node.Call.Inputs = append(node.Call.Inputs, Node{
 					NodeType: nodeIntLiteral,
@@ -463,8 +435,7 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 				})
 			}
 
-			value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier, tokComma)
-			if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+			if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokComma) {
 				ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokComma)
 			}
 		}
@@ -482,15 +453,11 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 }
 
 func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token]) Node {
-	var value []TokenType
-
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokIdentifier)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokIdentifier) {
 		return ChaosContentParsePrimaryExpression(chaosSlice)
 	}
 
-	value = ChaosSliceSearchValue[TokenType, TokenType](tokExit)
-	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+	if CSMatch(chaosSlice, ChaosSliceTokenTypeComparison, tokExit) {
 		return ChaosContentParseExit(chaosSlice)
 	}
 

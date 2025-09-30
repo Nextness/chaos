@@ -14,6 +14,18 @@ func ChaosSliceDefaultComparison[T comparable](value T, compare T) bool {
 	return value == compare
 }
 
+func CSUint8Uint8Comparison(value any, compare any) bool {
+	byte := castAssert[uint8](value)
+	comp := castAssert[[]uint8](compare)[0]
+	return byte == comp
+}
+
+func CSStringUint8Comparison(value any, compare any) bool {
+	byte := castAssert[uint8](value)
+	comp := castAssert[string](compare)[0]
+	return byte == comp
+}
+
 func ChaosSliceTokenTypeComparison(value any, compare any) bool {
 	token := castAssert[Token](value)
 	tokenType := castAssert[TokenType](compare)
@@ -111,6 +123,18 @@ func ChaosSliceMatch[T comparable](chaosSlice *ChaosSlice[T], value []T) bool {
 	result := true
 	for i := range length {
 		result = result && (ChaosSliceGetOffset(chaosSlice, i) == value[i])
+		if !result {
+			break
+		}
+	}
+	return result
+}
+
+func CSMatch[T any](chaosSlice *ChaosSlice[T], operator func(any, any) bool, expected ...any) bool {
+	result := true
+	for offset, expect := range expected {
+		element := ChaosSliceGetOffset(chaosSlice, offset)
+		result = result && operator(element, expect)
 		if !result {
 			break
 		}

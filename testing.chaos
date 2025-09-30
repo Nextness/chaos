@@ -45,7 +45,7 @@ something_else :: proc {
     exit 2, «something else»;
 }
 
-// result :: something_else();
+result :: something_else();
 
 new_variable_2 : F64 = 31651.00;
 
