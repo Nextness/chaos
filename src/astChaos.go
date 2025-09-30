@@ -19,11 +19,6 @@ const (
 	nodeCount
 )
 
-var _ = assert[any](
-	nodeCount == 11,
-	fmt.Sprintf("Expected 11 node types, but found %d", nodeCount),
-)
-
 type BinOpOperation int
 
 const (
@@ -88,6 +83,11 @@ type Program struct {
 
 var AllocatedVars map[string]Node = map[string]Node{}
 var AllocatedProcs map[string]Node = map[string]Node{}
+
+var _ = assert[any](
+	nodeCount == 11,
+	fmt.Sprintf("Expected 11 node types, but found %d", nodeCount),
+)
 
 func (node *Node) toString() string {
 	if node.NodeType == nodeNull {
@@ -225,47 +225,9 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
 		expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokIdentifier)
 
-		// TO-DO: This is a crappy solution - I need to rethink how I'm handling shit
-		if val, ok := AllocatedVars[expr.Symbol]; ok {
-			lhs = val
-		}
-	}
-
-	return lhs
-}
-
-func ASTParseExpression(lex *Lexer, minBp float64) Node {
-	var lhs Node
-	if lex.GetToken(0).TokenType == tokNumberLiteral {
-		expr := lex.ConsumeAssert(tokNumberLiteral)
-		lhs.NodeType = nodeIntLiteral
-		lhs.Literal = &Literal{
-			Int: expr,
-		}
-		AllocatedVars[expr.Symbol] = lhs
-	}
-
-	if lex.GetToken(0).TokenType == tokStringLiteral {
-		expr := lex.ConsumeAssert(tokStringLiteral)
-		lhs.NodeType = nodeStringLiteral
-		lhs.Literal = &Literal{
-			String: expr,
-		}
-		AllocatedVars[expr.Symbol] = lhs
-	}
-
-	if lex.GetToken(0).TokenType == tokBoolLiteral {
-		expr := lex.ConsumeAssert(tokBoolLiteral)
-		lhs.NodeType = nodeBoolLiteral
-		lhs.Literal = &Literal{
-			Boolean: expr,
-		}
-		AllocatedVars[expr.Symbol] = lhs
-	}
-
-	if lex.GetToken(0).TokenType == tokIdentifier {
-		expr := lex.ConsumeAssert(tokIdentifier)
-		if lex.GetToken(0).TokenType == tokOpenParen {
+		value = ChaosSliceSearchValue[TokenType, TokenType](tokOpenParen)
+		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+			ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokOpenParen)
 			if _, ok := AllocatedProcs[expr.Symbol]; !ok {
 				assert[any](false, "Proc doesn't exist")
 			}
@@ -274,30 +236,35 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 				Name:   expr,
 				Inputs: []Node{},
 			}
-			lex.ConsumeAssert(tokOpenParen)
-			for lex.GetToken(0).TokenType != tokCloseParen {
-				n := Node{}
-				if lex.GetToken(0).TokenType == tokNumberLiteral {
-					expr := lex.ConsumeAssert(tokNumberLiteral)
-					n.NodeType = nodeIntLiteral
-					n.Literal = &Literal{
-						Int: expr,
-					}
-					AllocatedVars[expr.Symbol] = n
-				} else if lex.GetToken(0).TokenType == tokStringLiteral {
-					expr := lex.ConsumeAssert(tokStringLiteral)
-					n.NodeType = nodeStringLiteral
-					n.Literal = &Literal{
-						String: expr,
-					}
-					AllocatedVars[expr.Symbol] = n
+			for !ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokCloseParen)) {
+				value = ChaosSliceSearchValue[TokenType, TokenType](tokNumberLiteral)
+				if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+					expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokNumberLiteral)
+					lhs.Call.Inputs = append(lhs.Call.Inputs, Node{
+						NodeType: nodeIntLiteral,
+						Literal: &Literal{
+							Int: expr,
+						},
+					})
 				}
-				if lex.GetToken(0).TokenType == tokComma {
-					lex.ConsumeAssert(tokComma)
+
+				value = ChaosSliceSearchValue[TokenType, TokenType](tokStringLiteral)
+				if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+					expr := ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokStringLiteral)
+					lhs.Call.Inputs = append(lhs.Call.Inputs, Node{
+						NodeType: nodeIntLiteral,
+						Literal: &Literal{
+							String: expr,
+						},
+					})
 				}
-				lhs.Call.Inputs = append(lhs.Call.Inputs, n)
+
+				value = ChaosSliceSearchValue[TokenType, TokenType](tokComma)
+				if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+					ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokComma)
+				}
 			}
-			lex.ConsumeAssert(tokCloseParen)
+			ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokCloseParen)
 		}
 
 		// TO-DO: This is a crappy solution - I need to rethink how I'm handling shit
@@ -306,38 +273,37 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 		}
 	}
 
-	if lex.GetToken(0).TokenType == tokOpenParen {
-		lex.ConsumeAssert(tokOpenParen)
-		lhs = ASTParseExpression(lex, 0.0)
-		lex.ConsumeAssert(tokCloseParen)
+	value = ChaosSliceSearchValue[TokenType, TokenType](tokOpenParen)
+	if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, value) {
+		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokOpenParen)
+		lhs = ChaosContentParseExpression(chaosSlice, 0.0)
+		ChaosSliceConsumeAssert(chaosSlice, ChaosSliceTokenTypeAssert, tokCloseParen)
 	}
 
-	for {
-		expr := lex.GetToken(0)
-		if expr.TokenType == tokCloseParen || expr.TokenType == tokSemicolon {
+	for true {
+		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokCloseParen)) || ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokSemicolon)) {
 			break
 		}
 
 		var op BinOpOperation
-		if expr.TokenType == tokPlus {
+		if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokPlus)) {
 			op = opPlus
-		} else if expr.TokenType == tokMinus {
+		} else if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokMinus)) {
 			op = opMinus
-		} else if expr.TokenType == tokStar {
+		} else if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokStar)) {
 			op = opMult
-		} else if expr.TokenType == tokLessThan {
+		} else if ChaosSliceMatchOp(chaosSlice, ChaosSliceTokenTypeComparison, ChaosSliceSearchValue[TokenType, TokenType](tokLessThan)) {
 			op = opLessThan
 		} else {
 			return Node{NodeType: nodeNoOp}
 		}
-
-		lex.Consume()
+		expr := ChaosSliceConsume(chaosSlice)
 		lbp, rbp := infixBindingPower(expr)
 		if almostEqual(lbp, minBp) {
 			break
 		}
 
-		rhs := ASTParseExpression(lex, rbp)
+		rhs := ChaosContentParseExpression(chaosSlice, rbp)
 		lhs = Node{
 			NodeType: nodeBinOp,
 			BinOp: &BinOp{
@@ -349,25 +315,6 @@ func ASTParseExpression(lex *Lexer, minBp float64) Node {
 	}
 
 	return lhs
-}
-
-func ASTParseProcCall(lex *Lexer) (Node, bool) {
-	if lex.MatchTokenSequence(tokIdentifier, tokOpenParen) {
-		ident := lex.ConsumeAssert(tokIdentifier)
-		if _, ok := AllocatedProcs[ident.Symbol]; !ok {
-			assert[any](false, "Proc doesn't exist")
-		}
-		lex.ConsumeAssert(tokOpenParen)
-		lex.ConsumeAssert(tokCloseParen)
-		node := Node{
-			NodeType: nodeCall,
-			Call: &Call{
-				Name: ident,
-			},
-		}
-		return node, true
-	}
-	return Node{NodeType: nodeNoOp}, false
 }
 
 func ChaosContentParseExit(chaosSlice *ChaosSlice[Token]) Node {
