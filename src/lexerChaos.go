@@ -112,7 +112,11 @@ func TokenTypeToString(tokenType TokenType) string {
 	} else if tokenType == tokArrow {
 		return "tokArrow"
 	}
-	return "unrecheable"
+	return assert[string](
+		tokCount == 30,
+		fmt.Sprintf("Expected 30 token count but found %d", tokCount),
+	)
+
 }
 
 type Position struct {
@@ -127,82 +131,74 @@ type Token struct {
 	Value     any
 }
 
-func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
+func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 	sourceSlice := &ChaosSlice[byte]{
 		data:   fileContent.Bytes(),
 		count:  fileContent.Len(),
 		cursor: 0,
 	}
 
-	var value []byte
 	tokens := []Token{}
 	currentLine := 0
 	currentColumn := 0
 
 	for sourceSlice.cursor < sourceSlice.count {
-		value = ChaosSliceSearchValue[string, byte]("//")
-		if ChaosSliceMatchOp(sourceSlice, ChaosSliceDefaultComparison, value) {
-			ChaosSliceConsume(sourceSlice, len(value))
-			value = ChaosSliceSearchValue[string, byte]("\n")
-			for !ChaosSliceMatch(sourceSlice, value) {
-				ChaosSliceConsume(sourceSlice)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "/", "/") {
+			CSConsume(sourceSlice, 2)
+			for !CSMatch(sourceSlice, CSStringUint8Comparison, "\n") {
+				CSConsume(sourceSlice)
 			}
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("\n")
-		if ChaosSliceMatch(sourceSlice, value) {
-			ChaosSliceConsume(sourceSlice)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "\n") {
+			CSConsume(sourceSlice)
 			currentLine++
 			currentColumn = 0
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("/**")
-		if ChaosSliceMatch(sourceSlice, value) {
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "/", "*", "*") {
 			nestedComment := 0
-			ChaosSliceConsume(sourceSlice, len(value))
+			CSConsume(sourceSlice, 3)
 			for true {
-				value = ChaosSliceSearchValue[string, byte]("\n")
-				if ChaosSliceMatch(sourceSlice, value) {
-					ChaosSliceConsume(sourceSlice)
+				if CSMatch(sourceSlice, CSStringUint8Comparison, "\n") {
+					CSConsume(sourceSlice)
 					currentLine++
 					currentColumn = 0
 					continue
 				}
-				value = ChaosSliceSearchValue[string, byte]("**/")
-				if ChaosSliceMatch(sourceSlice, value) && nestedComment > 0 {
+				if CSMatch(sourceSlice, CSStringUint8Comparison, "*", "*", "/") &&
+					nestedComment > 0 {
 					nestedComment--
-					ChaosSliceConsume(sourceSlice, len(value))
-					currentColumn = len(value)
+					CSConsume(sourceSlice, 3)
+					currentColumn += 3
 					continue
 				}
-				value = ChaosSliceSearchValue[string, byte]("**/")
-				if ChaosSliceMatch(sourceSlice, value) {
-					ChaosSliceConsume(sourceSlice, len(value))
-					currentColumn = len(value)
+				if CSMatch(sourceSlice, CSStringUint8Comparison, "*", "*", "/") {
+					CSConsume(sourceSlice, 3)
+					currentColumn += 3
 					break
 				}
 				sourceSlice.cursor++
-				value = ChaosSliceSearchValue[string, byte]("/**")
-				if ChaosSliceMatch(sourceSlice, value) {
+				if CSMatch(sourceSlice, CSStringUint8Comparison, "/", "*", "*") {
 					nestedComment++
-					ChaosSliceConsume(sourceSlice, len(value))
-					currentColumn = len(value)
+					CSConsume(sourceSlice, 3)
+					currentColumn += 3
 					continue
 				}
 			}
 			continue
 		}
 
-		if unicode.IsSpace(rune(ChaosSliceGet(sourceSlice))) {
-			ChaosSliceConsume(sourceSlice)
+		if unicode.IsSpace(rune(CSGet(sourceSlice))) {
+			CSConsume(sourceSlice)
 			currentColumn++
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("«")
-		if ChaosSliceMatch(sourceSlice, value) {
+		strStart := []byte("«")
+		if CSMatch(sourceSlice, CSUint8Uint8Comparison, strStart) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
@@ -211,17 +207,17 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				line:   currentLine,
 				column: currentColumn,
 			}
-			ChaosSliceConsume(sourceSlice, len(value))
+			CSConsume(sourceSlice, len(strStart))
 
 			// TO-DO: Handle nested '«»'
 			// TO-DO: Handle interpolated strings like «hello {some-printable-variable}»
-			value := ChaosSliceSearchValue[string, byte]("»")
-			for !ChaosSliceMatch(sourceSlice, value) {
-				tmp.WriteByte(ChaosSliceGet(sourceSlice))
+			strEnd := []byte("»")
+			for !CSMatch(sourceSlice, CSUint8Uint8Comparison, strEnd) {
+				tmp.WriteByte(CSGet(sourceSlice))
 				length++
 				sourceSlice.cursor++
 			}
-			ChaosSliceConsume(sourceSlice, len(value))
+			CSConsume(sourceSlice, len(strEnd))
 
 			tokens = append(tokens, Token{
 				TokenType: tokStringLiteral,
@@ -232,296 +228,262 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("->")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "-", ">") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "->",
 				TokenType: tokArrow,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 2,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 2
+			CSConsume(sourceSlice, 2)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("==")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "=", "=") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "==",
 				TokenType: tokEquals,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 2,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 2
+			CSConsume(sourceSlice, 2)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("...")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ".", ".", ".") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "...",
 				TokenType: tokEllipsis,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 3,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 3
+			CSConsume(sourceSlice, 3)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("=")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "=") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "=",
 				TokenType: tokAssignment,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("+")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "+") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "+",
 				TokenType: tokPlus,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("-")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "-") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "-",
 				TokenType: tokMinus,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte](",")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ",") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    ",",
 				TokenType: tokComma,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("<")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "<") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "<",
 				TokenType: tokLessThan,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte](">")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ">") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    ">",
 				TokenType: tokGreaterThan,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte](";")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ";") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    ";",
 				TokenType: tokSemicolon,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte](":")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ":") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    ":",
 				TokenType: tokColon,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("(")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "(") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "(",
 				TokenType: tokOpenParen,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte](")")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ")") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    ")",
 				TokenType: tokCloseParen,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("{")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "{") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "{",
 				TokenType: tokOpenBraket,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("}")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "}") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "}",
 				TokenType: tokCloseBraket,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("#")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "#") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "#",
 				TokenType: tokHash,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		value = ChaosSliceSearchValue[string, byte]("*")
-		if ChaosSliceMatch(sourceSlice, value) {
-			length := len(value)
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "*") {
 			tokens = append(tokens, Token{
-				Symbol:    string(value),
+				Symbol:    "*",
 				TokenType: tokStar,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: length,
+				Length: 1,
 			})
-			currentColumn += length
-			ChaosSliceConsume(sourceSlice)
+			currentColumn += 1
+			CSConsume(sourceSlice)
 			continue
 		}
 
-		if isNum(ChaosSliceGet(sourceSlice)) {
+		if isNum(CSGet(sourceSlice)) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
@@ -531,15 +493,15 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			}
 
 			isFloat := false
-			for isNum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte](".")) {
-				if ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte](".")) {
+			for isNum(CSGet(sourceSlice)) || CSMatch(sourceSlice, CSStringUint8Comparison, ".") {
+				if CSMatch(sourceSlice, CSStringUint8Comparison, ".") {
 					isFloat = true
 				}
-				if !ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte]("_")) {
-					tmp.WriteByte(ChaosSliceGet(sourceSlice))
+				if !CSMatch(sourceSlice, CSStringUint8Comparison, "_") {
+					tmp.WriteByte(CSGet(sourceSlice))
 				}
 				currentColumn++
-				ChaosSliceConsume(sourceSlice)
+				CSConsume(sourceSlice)
 			}
 
 			number := tmp.String()
@@ -568,7 +530,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			}
 		}
 
-		if isAlpha(ChaosSliceGet(sourceSlice)) {
+		if isAlpha(CSGet(sourceSlice)) {
 			tmp := bytes.Buffer{}
 			defer tmp.Reset()
 
@@ -577,10 +539,10 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				column: currentColumn,
 			}
 
-			for isAlphanum(ChaosSliceGet(sourceSlice)) || ChaosSliceMatch(sourceSlice, ChaosSliceSearchValue[string, byte]("_")) {
-				tmp.WriteByte(ChaosSliceGet(sourceSlice))
+			for isAlphanum(CSGet(sourceSlice)) || CSMatch(sourceSlice, CSStringUint8Comparison, "_") {
+				tmp.WriteByte(CSGet(sourceSlice))
 				currentColumn++
-				ChaosSliceConsume(sourceSlice)
+				CSConsume(sourceSlice)
 			}
 
 			string := tmp.String()
@@ -691,7 +653,7 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 		fmt.Fprintf(
 			os.Stderr,
 			"[ERROR] Failed while tokenizing - unknown character '%s' at position %03d:%03d\n",
-			string(ChaosSliceGet(sourceSlice)), currentLine, currentColumn,
+			string(CSGet(sourceSlice)), currentLine, currentColumn,
 		)
 		panic("unrecheable")
 	}
@@ -713,95 +675,4 @@ func TokenizeChaos(fileContent *bytes.Buffer) ChaosSlice[Token] {
 	}
 
 	return tokensSlice
-}
-
-type Lexer struct {
-	data     []Token
-	filepath string
-	count    int
-	cursor   int
-}
-
-func (lex *Lexer) checkBounds(offset int) {
-	assert[any](
-		lex.cursor+offset < lex.count,
-		fmt.Sprintf("Expected the cursor number '%d' to be lower than found count '%d'", lex.cursor, lex.count),
-	)
-}
-
-func (lex *Lexer) GetToken(offset int) Token {
-	lex.checkBounds(offset)
-	return lex.data[lex.cursor+offset]
-}
-
-func (lex *Lexer) MatchAt(offset int, tokTypes ...TokenType) bool {
-	for _, token := range tokTypes {
-		currentToken := lex.GetToken(offset)
-		if currentToken.TokenType == token {
-			return true
-		}
-	}
-	return false
-}
-
-func (lex *Lexer) MatchTokenSequence(tokenTypes ...TokenType) bool {
-	for offset, tokenType := range tokenTypes {
-		currentToken := lex.GetToken(offset)
-		if currentToken.TokenType != tokenType {
-			return false
-		}
-	}
-	return true
-}
-
-func (lex *Lexer) MatchTokenAndConsumeAssert(tokenType TokenType) (Token, bool) {
-	if lex.MatchAt(0, tokenType) {
-		token := lex.ConsumeAssert(tokenType)
-		return token, true
-	}
-	return Token{}, false
-}
-
-func (lex *Lexer) MatchTokenSequenceAndConsumeAssert(tokenTypes ...TokenType) bool {
-	result := true
-	for offset, tokenType := range tokenTypes {
-		currentToken := lex.GetToken(offset)
-		if currentToken.TokenType != tokenType {
-			result = false
-		}
-	}
-	if result {
-		lex.ConsumeAssertSequence(tokenTypes...)
-	}
-	return result
-}
-
-func (lex *Lexer) Consume() Token {
-	token := lex.GetToken(0)
-	lex.cursor++
-	return token
-}
-
-func (lex *Lexer) ConsumeMany(count int) {
-	lex.checkBounds(count)
-	lex.cursor += count
-}
-
-func (lex *Lexer) ConsumeAssert(tokType TokenType) Token {
-	token := lex.GetToken(0)
-	assert[any](
-		token.TokenType == tokType,
-		fmt.Sprintf(
-			"%s:%d:%d Expected %s but got %s",
-			lex.filepath, token.Position.line, token.Position.column, TokenTypeToString(tokType), TokenTypeToString(token.TokenType),
-		),
-	)
-	lex.cursor++
-	return token
-}
-
-func (lex *Lexer) ConsumeAssertSequence(tokenTypes ...TokenType) {
-	for _, tokenType := range tokenTypes {
-		lex.ConsumeAssert(tokenType)
-	}
 }

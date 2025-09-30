@@ -1,4 +1,4 @@
-value_a :: «Hello wOrld»;
+value_a := 2;
 value_b :: value_a;
 
 something :: proc (input1: String, input2: S64) -> String {
