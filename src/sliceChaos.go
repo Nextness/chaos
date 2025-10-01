@@ -28,6 +28,12 @@ func CSTokenTypeComparison(value any, compare any) bool {
 	return token.TokenType == tokenType
 }
 
+func CSNodeNodeTypeComparison(value any, compare any) bool {
+	node := castAssert[Node](value)
+	nodeType := castAssert[NodeType](compare)
+	return node.NodeType == nodeType
+}
+
 /* Operators - Asserts */
 func CSTokenTypeAssert(a any, b any) {
 	token := castAssert[Token](a)
@@ -37,6 +43,18 @@ func CSTokenTypeAssert(a any, b any) {
 		fmt.Sprintf(
 			"Expected %s but got %s",
 			TokenTypeToString(tokenType), TokenTypeToString(token.TokenType),
+		),
+	)
+}
+
+func CSNodeTypeAssert(a any, b any) {
+	node := castAssert[Node](a)
+	nodeType := castAssert[NodeType](b)
+	assert[any](
+		node.NodeType == nodeType,
+		fmt.Sprintf(
+			"Expected %s but got %s",
+			NodeTypeToString(nodeType), NodeTypeToString(node.NodeType),
 		),
 	)
 }

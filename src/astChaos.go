@@ -75,12 +75,6 @@ type Node struct {
 	Call         *Call
 }
 
-type Program struct {
-	Nodes          []Node
-	AllocatedVars  map[string]Node
-	AllocatedProcs map[string]Node
-}
-
 var AllocatedVars map[string]Node = map[string]Node{}
 var AllocatedProcs map[string]Node = map[string]Node{}
 
@@ -89,28 +83,29 @@ var _ = assert[any](
 	fmt.Sprintf("Expected 11 node types, but found %d", nodeCount),
 )
 
-func (node *Node) toString() string {
-	if node.NodeType == nodeNull {
+// TokenTypeToString
+func NodeTypeToString(nodeType NodeType) string {
+	if nodeType == nodeNull {
 		return "nodeNull"
-	} else if node.NodeType == nodeNull {
+	} else if nodeType == nodeNull {
 		return "nodeNoOp"
-	} else if node.NodeType == nodeIntLiteral {
+	} else if nodeType == nodeIntLiteral {
 		return "nodeIntLiteral"
-	} else if node.NodeType == nodeStringLiteral {
+	} else if nodeType == nodeStringLiteral {
 		return "nodeStringLiteral"
-	} else if node.NodeType == nodeFloatLiteral {
+	} else if nodeType == nodeFloatLiteral {
 		return "nodeFloatLiteral"
-	} else if node.NodeType == nodeBoolLiteral {
+	} else if nodeType == nodeBoolLiteral {
 		return "nodeBoolLiteral"
-	} else if node.NodeType == nodeIdentifier {
+	} else if nodeType == nodeIdentifier {
 		return "nodeIdentifier"
-	} else if node.NodeType == nodeExit {
+	} else if nodeType == nodeExit {
 		return "nodeExit"
-	} else if node.NodeType == nodeBinOp {
+	} else if nodeType == nodeBinOp {
 		return "nodeBinOp"
-	} else if node.NodeType == nodeProcDef {
+	} else if nodeType == nodeProcDef {
 		return "nodeProcDef"
-	} else if node.NodeType == nodeCall {
+	} else if nodeType == nodeCall {
 		return "nodeCall"
 	}
 	return assert[string](
@@ -208,6 +203,15 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 		lhs.NodeType = nodeStringLiteral
 		lhs.Literal = &Literal{
 			String: expr,
+		}
+		AllocatedVars[expr.Symbol] = lhs
+	}
+
+	if CSMatch(chaosSlice, CSTokenTypeComparison, tokBoolLiteral) {
+		expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokBoolLiteral)
+		lhs.NodeType = nodeBoolLiteral
+		lhs.Literal = &Literal{
+			Boolean: expr,
 		}
 		AllocatedVars[expr.Symbol] = lhs
 	}
@@ -464,12 +468,10 @@ func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token]) Node {
 	return Node{NodeType: nodeNoOp}
 }
 
-func ChaosContentAST(tokens *ChaosSlice[Token]) Program {
+func ChaosContentAST(tokens *ChaosSlice[Token]) *ChaosSlice[Node] {
 	assert[any](tokens.cursor == 0, "Cursor is not 0")
 
-	program := Program{
-		Nodes: []Node{},
-	}
+	nodes := []Node{}
 
 	for tokens.cursor < tokens.count {
 		node := ChaosContentASTParseStatement(tokens)
@@ -477,9 +479,12 @@ func ChaosContentAST(tokens *ChaosSlice[Token]) Program {
 			CSConsume(tokens)
 			continue
 		}
-		chaosDebug(node)
-		program.Nodes = append(program.Nodes, node)
+		nodes = append(nodes, node)
 	}
 
-	return program
+	return &ChaosSlice[Node]{
+		data:   nodes,
+		count:  len(nodes),
+		cursor: 0,
+	}
 }

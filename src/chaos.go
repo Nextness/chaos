@@ -13,7 +13,8 @@ func compileChaos(filepath string, src []byte) bool {
 	// for _, token := range tokensSlice.data {
 	// 	chaosDebug(token)
 	// }
-	ChaosContentAST(&tokensSlice)
+	program := ChaosContentAST(&tokensSlice)
+	TypeCheckChaosProgram(program)
 	// TypeCheckChaosProgram(&program)
 	//
 	// for _, node := range program.Nodes {
@@ -23,7 +24,7 @@ func compileChaos(filepath string, src []byte) bool {
 	return true
 }
 
-const debug = true
+const debug = false
 
 func main() {
 	// Handling panics so that the stacktrace from golang is not printed, only

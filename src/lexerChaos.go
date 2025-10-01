@@ -129,6 +129,7 @@ type Token struct {
 	Position  Position
 	Length    int
 	Value     any
+	Infered   bool
 }
 
 func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
