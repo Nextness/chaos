@@ -1,5 +1,5 @@
-alue :: 10;
-value_a :: value;
+value := 1239;
+value_a := value;
 value_b : U64 : 2;
 
 value_c : String : «hello world»;
@@ -8,12 +8,14 @@ value_d : String : value_c;
 value_e :: true;
 value_f :: value_e;
 
-// something :: proc (input1: String, input2: S64) -> String {
+// something :: proc (input1: String, input2: U64) -> String {
 //     exit 1, «something»;
 // }
 // 
-// a :: something(«hello world», 1);
+// a :: value_e;
 // 
+// something(«hello world», 1);
+
 // not_init_var_0: U64;
 // not_init_var_1: U64;
 // not_init_var_1 = 1;

@@ -2,6 +2,13 @@ package main
 
 import "fmt"
 
+func MakeType(typeSymbol string) Token {
+	return Token{
+		TokenType: tokIdentifier,
+		Symbol:    typeSymbol,
+	}
+}
+
 func MakeTypeList(typeSymbols ...string) []Token {
 	tokenList := []Token{}
 	for _, str := range typeSymbols {
@@ -27,6 +34,50 @@ func TypeCheckLiterals(varType Token, allowedTypes ...Token) bool {
 func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 	assert[any](program.cursor == 0, "Cursor is not 0")
 	for program.cursor < program.count {
+		if CSMatch(program, CSNodeNodeTypeComparison, nodeCall) {
+			procCall := CSConsumeAssert(program, CSNodeTypeAssert, nodeCall)
+			procName := procCall.Call.Name.Symbol
+			procDefinition := AllocatedProcs[procName].VarDecl.Assignment
+
+			if procCall.Call.Arity != procDefinition.Proc.Arity {
+				assert[any](
+					false,
+					fmt.Sprintf(
+						"The function %s expected %d arguments, but got %d arguments",
+						procName, procDefinition.Proc.Arity, procCall.Call.Arity,
+					),
+				)
+			}
+			for idx, argument := range procDefinition.Proc.Inputs {
+				input := procCall.Call.Inputs[idx]
+				if input.NodeType == nodeStringLiteral {
+					expectedType := MakeType("String")
+					if procDefinition.Proc.Inputs[idx].VarDecl.Type.Symbol != expectedType.Symbol {
+						assert[any](
+							false,
+							fmt.Sprintf(
+								"The function %s expected %s type for %s but got %s type",
+								procName, expectedType.Symbol, argument.VarDecl.Name.Symbol, procDefinition.Proc.Inputs[idx].VarDecl.Type.Symbol,
+							),
+						)
+					}
+				}
+				// if input.NodeType == nodeIntLiteral {
+				// 	allowedTypes := MakeTypeList(
+				// 		"S128", "S64", "S32", "S16", "S8", "U128", "U64", "U32", "U16", "U8",
+				// 	)
+				// 	if !TypeCheckLiterals(procDefinition.Proc.Inputs[idx].VarDecl.Type, allowedTypes...) {
+				// 		assert[any](
+				// 			false,
+				// 			fmt.Sprintf(
+				// 				"The function %s expected signed or unsigned integer type for %s but got %s type",
+				// 				procName, argument.VarDecl.Name.Symbol, procDefinition.Proc.Inputs[idx].VarDecl.Type.Symbol))
+				// 	}
+				// }
+			}
+			continue
+		}
+
 		if CSMatch(program, CSNodeNodeTypeComparison, nodeIdentifier) {
 			node := CSConsumeAssert(program, CSNodeTypeAssert, nodeIdentifier)
 
@@ -61,14 +112,6 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 			if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
 				value := node.VarDecl.Assignment.Literal.Int.Value
 				varType := node.VarDecl.Type
-				if varType.TokenType == tokInfer {
-					node.VarDecl.Type = Token{
-						TokenType: tokIdentifier,
-						Symbol:    "S64",
-						Infered:   true,
-					}
-					continue
-				}
 				if val, ok := cast[int](value); ok {
 					allowedTypes := MakeTypeList(
 						"S128", "S64", "S32", "S16", "S8", "U128", "U64", "U32", "U16", "U8",
@@ -85,14 +128,14 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 			if node.VarDecl.Assignment.NodeType == nodeStringLiteral {
 				value := node.VarDecl.Assignment.Literal.String.Value
 				varType := node.VarDecl.Type
-				if varType.TokenType == tokInfer {
-					node.VarDecl.Type = Token{
-						TokenType: tokIdentifier,
-						Symbol:    "String",
-						Infered:   true,
-					}
-					continue
-				}
+				// if varType.TokenType == tokInfer {
+				// 	node.VarDecl.Type = Token{
+				// 		TokenType: tokIdentifier,
+				// 		Symbol:    "String",
+				// 		Infered:   true,
+				// 	}
+				// 	continue
+				// }
 				if val, ok := cast[string](value); ok {
 					allowedTypes := MakeTypeList("String")
 					if !TypeCheckLiterals(varType, allowedTypes...) {
@@ -107,14 +150,14 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 			if node.VarDecl.Assignment.NodeType == nodeBoolLiteral {
 				value := node.VarDecl.Assignment.Literal.Boolean.Value
 				varType := node.VarDecl.Type
-				if varType.TokenType == tokInfer {
-					node.VarDecl.Type = Token{
-						TokenType: tokIdentifier,
-						Symbol:    "Bool",
-						Infered:   true,
-					}
-					continue
-				}
+				// if varType.TokenType == tokInfer {
+				// 	node.VarDecl.Type = Token{
+				// 		TokenType: tokIdentifier,
+				// 		Symbol:    "Bool",
+				// 		Infered:   true,
+				// 	}
+				// 	continue
+				// }
 				if val, ok := cast[bool](value); ok {
 					allowedTypes := MakeTypeList("Bool")
 					if !TypeCheckLiterals(varType, allowedTypes...) {
