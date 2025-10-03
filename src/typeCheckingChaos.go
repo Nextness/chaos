@@ -48,42 +48,30 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 					),
 				)
 			}
-			for idx, argument := range procDefinition.Proc.Inputs {
-				input := procCall.Call.Inputs[idx]
-				if input.NodeType == nodeStringLiteral {
-					expectedType := MakeType("String")
-					if procDefinition.Proc.Inputs[idx].VarDecl.Type.Symbol != expectedType.Symbol {
-						assert[any](
-							false,
-							fmt.Sprintf(
-								"The function %s expected %s type for %s but got %s type",
-								procName, expectedType.Symbol, argument.VarDecl.Name.Symbol, procDefinition.Proc.Inputs[idx].VarDecl.Type.Symbol,
-							),
-						)
-					}
-				}
-				// if input.NodeType == nodeIntLiteral {
-				// 	allowedTypes := MakeTypeList(
-				// 		"S128", "S64", "S32", "S16", "S8", "U128", "U64", "U32", "U16", "U8",
-				// 	)
-				// 	if !TypeCheckLiterals(procDefinition.Proc.Inputs[idx].VarDecl.Type, allowedTypes...) {
-				// 		assert[any](
-				// 			false,
-				// 			fmt.Sprintf(
-				// 				"The function %s expected signed or unsigned integer type for %s but got %s type",
-				// 				procName, argument.VarDecl.Name.Symbol, procDefinition.Proc.Inputs[idx].VarDecl.Type.Symbol))
-				// 	}
-				// }
-			}
 			continue
 		}
 
 		if CSMatch(program, CSNodeNodeTypeComparison, nodeIdentifier) {
 			node := CSConsumeAssert(program, CSNodeTypeAssert, nodeIdentifier)
 
+			if node.Reassigned {
+				// TO-DO: Handle reassignments
+				continue
+			}
+
 			if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 				identifier := node.VarDecl.Name.Symbol
 
+				// a := 1;
+				// (n1) b :: () a;
+				//
+				// truth table
+				// | n1 | n2 | Status   |
+				// |----|----|----------|
+				// | := | := | Ok       |
+				// | :: | := | Ok       |
+				// | :: | :: | Ok       |
+				// | := | :: | Not Okay |
 				n1 := node.Reassignable
 				n2 := node.VarDecl.Assignment.Reassignable
 				if !n1 && n2 {
@@ -96,7 +84,6 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 					node.VarDecl.Type = Token{
 						TokenType: tokIdentifier,
 						Symbol:    rhsVarType.Symbol,
-						Infered:   true,
 					}
 					continue
 				}
@@ -128,14 +115,6 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 			if node.VarDecl.Assignment.NodeType == nodeStringLiteral {
 				value := node.VarDecl.Assignment.Literal.String.Value
 				varType := node.VarDecl.Type
-				// if varType.TokenType == tokInfer {
-				// 	node.VarDecl.Type = Token{
-				// 		TokenType: tokIdentifier,
-				// 		Symbol:    "String",
-				// 		Infered:   true,
-				// 	}
-				// 	continue
-				// }
 				if val, ok := cast[string](value); ok {
 					allowedTypes := MakeTypeList("String")
 					if !TypeCheckLiterals(varType, allowedTypes...) {
@@ -150,14 +129,6 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 			if node.VarDecl.Assignment.NodeType == nodeBoolLiteral {
 				value := node.VarDecl.Assignment.Literal.Boolean.Value
 				varType := node.VarDecl.Type
-				// if varType.TokenType == tokInfer {
-				// 	node.VarDecl.Type = Token{
-				// 		TokenType: tokIdentifier,
-				// 		Symbol:    "Bool",
-				// 		Infered:   true,
-				// 	}
-				// 	continue
-				// }
 				if val, ok := cast[bool](value); ok {
 					allowedTypes := MakeTypeList("Bool")
 					if !TypeCheckLiterals(varType, allowedTypes...) {
