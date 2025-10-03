@@ -16,6 +16,7 @@ const (
 	nodeBinOp
 	nodeProcDef
 	nodeCall
+	nodeConditions
 	nodeCount
 )
 
@@ -23,6 +24,7 @@ type BinOpOperation int
 
 const (
 	opNull BinOpOperation = iota
+	opNoOp
 	opPlus
 	opMinus
 	opMult
@@ -66,6 +68,12 @@ type Call struct {
 	Arity  int
 }
 
+type Conditions struct {
+	Count       int
+	Evaluations []BinOp
+	Scopes      [][]Node
+}
+
 type Node struct {
 	NodeType     NodeType
 	Reassignable bool
@@ -77,14 +85,15 @@ type Node struct {
 	BinOp        *BinOp
 	Proc         *Proc
 	Call         *Call
+	Conditions   *Conditions
 }
 
 var AllocatedVars map[string]Node = map[string]Node{}
 var AllocatedProcs map[string]Node = map[string]Node{}
 
 var _ = assert[any](
-	nodeCount == 11,
-	fmt.Sprintf("Expected 11 node types, but found %d", nodeCount),
+	nodeCount == 12,
+	fmt.Sprintf("Expected 12 node types, but found %d", nodeCount),
 )
 
 func NodeTypeToString(nodeType NodeType) string {
@@ -110,10 +119,12 @@ func NodeTypeToString(nodeType NodeType) string {
 		return "nodeProcDef"
 	} else if nodeType == nodeCall {
 		return "nodeCall"
+	} else if nodeType == nodeConditions {
+		return "nodeConditions"
 	}
 	return assert[string](
-		nodeCount == 11,
-		fmt.Sprintf("Expected 11 node types, but found %d", nodeCount),
+		nodeCount == 12,
+		fmt.Sprintf("Expected 12 node types, but found %d", nodeCount),
 	)
 }
 
@@ -216,12 +227,9 @@ func ChaosContentParseBaseNode(chaosSlice *ChaosSlice[Token]) Node {
 		if val, ok := AllocatedVars[expr.Symbol]; ok {
 			node = val
 		}
-		return node
 	}
-	return assert[Node](
-		false,
-		fmt.Sprintf("Unexpected base node - %s", NodeTypeToString(node.NodeType)),
-	)
+
+	return node
 }
 
 func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) Node {
@@ -234,11 +242,6 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 	}
 
 	for true {
-		if CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseParen) ||
-			CSMatch(chaosSlice, CSTokenTypeComparison, tokSemicolon) {
-			break
-		}
-
 		var op BinOpOperation
 		if CSMatch(chaosSlice, CSTokenTypeComparison, tokPlus) {
 			op = opPlus
@@ -249,7 +252,7 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokLessThan) {
 			op = opLessThan
 		} else {
-			return Node{NodeType: nodeNoOp}
+			break
 		}
 
 		expr := CSConsume(chaosSlice)
@@ -270,6 +273,77 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 	}
 
 	return lhs
+}
+
+func ChaosContentParseConditionalIf(chaosSlice *ChaosSlice[Token], node *Node) {
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIf)
+	cond := ChaosContentParseExpression(chaosSlice, 0.0)
+	node.Conditions.Evaluations = append(node.Conditions.Evaluations, *cond.BinOp)
+
+	node.Conditions.Scopes = append(node.Conditions.Scopes, []Node{})
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenBraket)
+	for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseBraket) {
+		n := ChaosContentASTParseStatement(chaosSlice)
+		node.Conditions.Scopes[node.Conditions.Count] = append(node.Conditions.Scopes[node.Conditions.Count], n)
+	}
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseBraket)
+
+	node.Conditions.Count += 1
+}
+
+func ChaosContentParseConditionalElif(chaosSlice *ChaosSlice[Token], node *Node) {
+	if !CSMatch(chaosSlice, CSTokenTypeComparison, tokElif) {
+		return
+	}
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokElif)
+	cond := ChaosContentParseExpression(chaosSlice, 0.0)
+	node.Conditions.Evaluations = append(node.Conditions.Evaluations, *cond.BinOp)
+
+	node.Conditions.Scopes = append(node.Conditions.Scopes, []Node{})
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenBraket)
+	for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseBraket) {
+		n := ChaosContentASTParseStatement(chaosSlice)
+		node.Conditions.Scopes[node.Conditions.Count] = append(node.Conditions.Scopes[node.Conditions.Count], n)
+	}
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseBraket)
+
+	node.Conditions.Count += 1
+	ChaosContentParseConditionalElif(chaosSlice, node)
+}
+
+func ChaosContentParseConditionalElse(chaosSlice *ChaosSlice[Token], node *Node) {
+	if !CSMatch(chaosSlice, CSTokenTypeComparison, tokElse) {
+		return
+	}
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokElse)
+	node.Conditions.Evaluations = append(node.Conditions.Evaluations, BinOp{Operation: opNoOp})
+
+	node.Conditions.Scopes = append(node.Conditions.Scopes, []Node{})
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenBraket)
+	for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseBraket) {
+		n := ChaosContentASTParseStatement(chaosSlice)
+		node.Conditions.Scopes[node.Conditions.Count] = append(node.Conditions.Scopes[node.Conditions.Count], n)
+	}
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseBraket)
+
+	node.Conditions.Count += 1
+}
+
+func ChaosContentParseConditionalBranches(chaosSlice *ChaosSlice[Token]) Node {
+	node := Node{
+		NodeType: nodeConditions,
+		Conditions: &Conditions{
+			Count:       0,
+			Evaluations: []BinOp{},
+			Scopes:      [][]Node{},
+		},
+	}
+
+	ChaosContentParseConditionalIf(chaosSlice, &node)
+	ChaosContentParseConditionalElif(chaosSlice, &node)
+	ChaosContentParseConditionalElse(chaosSlice, &node)
+
+	return node
 }
 
 func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token]) Node {
@@ -473,6 +547,10 @@ func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token]) Node {
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokExit) {
 		return ChaosContentParseExit(chaosSlice)
+	}
+
+	if CSMatch(chaosSlice, CSTokenTypeComparison, tokIf) {
+		return ChaosContentParseConditionalBranches(chaosSlice)
 	}
 
 	return Node{NodeType: nodeNoOp}

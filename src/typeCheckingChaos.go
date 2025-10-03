@@ -51,11 +51,17 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 			continue
 		}
 
+		if CSMatch(program, CSNodeNodeTypeComparison, nodeConditions) {
+			CSConsume(program)
+			continue
+		}
+
 		if CSMatch(program, CSNodeNodeTypeComparison, nodeIdentifier) {
 			node := CSConsumeAssert(program, CSNodeTypeAssert, nodeIdentifier)
 
 			if node.Reassigned {
 				// TO-DO: Handle reassignments
+				CSConsume(program)
 				continue
 			}
 
@@ -143,6 +149,7 @@ func TypeCheckChaosProgram(program *ChaosSlice[Node]) {
 			continue
 		}
 
-		assert[any](false, fmt.Sprintf("Unrecheable - unexpected node %s", NodeTypeToString(CSGet(program).NodeType)))
+		n := CSGet(program)
+		assert[any](false, fmt.Sprintf("Unrecheable - unexpected node %s", NodeTypeToString(n.NodeType)))
 	}
 }

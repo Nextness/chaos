@@ -14,9 +14,9 @@ func compileChaos(filepath string, src []byte) bool {
 	// 	chaosDebug(token)
 	// }
 	program := ChaosContentAST(&tokensSlice)
-	// for _, node := range program.data {
-	// 	chaosDebug(node)
-	// }
+	for _, node := range program.data {
+		chaosDebug(node)
+	}
 	TypeCheckChaosProgram(program)
 
 	return true
