@@ -14,12 +14,10 @@ func compileChaos(filepath string, src []byte) bool {
 	// 	chaosDebug(token)
 	// }
 	program := ChaosContentAST(&tokensSlice)
-	TypeCheckChaosProgram(program)
-	// TypeCheckChaosProgram(&program)
-	//
-	// for _, node := range program.Nodes {
+	// for _, node := range program.data {
 	// 	chaosDebug(node)
 	// }
+	TypeCheckChaosProgram(program)
 
 	return true
 }

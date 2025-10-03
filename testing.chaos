@@ -1,5 +1,5 @@
-alue :: 10;
-value_a :: value;
+value := 1239;
+value_a := value;
 value_b : U64 : 2;
 
 value_c : String : «hello world»;
@@ -8,19 +8,21 @@ value_d : String : value_c;
 value_e :: true;
 value_f :: value_e;
 
-// something :: proc (input1: String, input2: S64) -> String {
-//     exit 1, «something»;
-// }
-// 
-// a :: something(«hello world», 1);
-// 
-// not_init_var_0: U64;
-// not_init_var_1: U64;
-// not_init_var_1 = 1;
-// 
+something :: proc (input1: String, input2: U64) -> String {
+    exit 1, «something»;
+}
+
+a :: value_e;
+
+something(«hello world», 1);
+
+not_init_var_0: U64;
+not_init_var_1: U64;
+not_init_var_1 = 1;
+
 // not_init_var_2: U64;
 // not_init_var_2 = (10 + 1) * 2;
-// 
+
 // bin_ops :: proc {
 //     result :: something();
 //     bin_op_0 :: 1 + 0; // 1
@@ -63,7 +65,7 @@ value_f :: value_e;
 // less_than_1 : Bool = a < 2;
 // less_than_2 : Bool = 3 < b;
 // less_than_3 : Bool = a < b;
-// 
-// // if 1 < 2 {
-// // }
-// 
+
+// if 1 < 2 {
+// }
+

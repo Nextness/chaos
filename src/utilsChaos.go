@@ -68,6 +68,7 @@ func chaosDebug(anything ...any) {
 }
 
 func todo[V any](args ...any) V {
+	chaosDebug(args...)
 	os.Exit(1)
 	return *new(V)
 }

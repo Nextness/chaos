@@ -57,16 +57,20 @@ type Proc struct {
 	Scope   []Node
 	Inputs  []Node
 	Outputs []Node
+	Arity   int
 }
 
 type Call struct {
 	Name   Token
 	Inputs []Node
+	Arity  int
 }
 
 type Node struct {
 	NodeType     NodeType
 	Reassignable bool
+	Reassigned   bool
+	Infered      bool
 	Literal      *Literal
 	VarDecl      *VarDecl
 	Exit         *Exit
@@ -83,7 +87,6 @@ var _ = assert[any](
 	fmt.Sprintf("Expected 11 node types, but found %d", nodeCount),
 )
 
-// TokenTypeToString
 func NodeTypeToString(nodeType NodeType) string {
 	if nodeType == nodeNull {
 		return "nodeNull"
@@ -114,61 +117,6 @@ func NodeTypeToString(nodeType NodeType) string {
 	)
 }
 
-func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token]) Node {
-	node := Node{
-		NodeType: nodeProcDef,
-		Proc: &Proc{
-			Scope:   []Node{},
-			Inputs:  []Node{},
-			Outputs: []Node{},
-		},
-	}
-
-	if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenParen) {
-		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenParen)
-
-		for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseParen) {
-			identifier := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
-			CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokColon)
-			varType := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
-
-			if CSMatch(chaosSlice, CSTokenTypeComparison, tokComma) {
-				CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokComma)
-			}
-
-			node.Proc.Inputs = append(node.Proc.Inputs, Node{
-				NodeType: nodeIdentifier,
-				VarDecl: &VarDecl{
-					Name:        identifier,
-					Type:        varType,
-					Initialized: false,
-				},
-			})
-		}
-		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseParen)
-	}
-
-	if CSMatch(chaosSlice, CSTokenTypeComparison, tokArrow) {
-		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokArrow)
-		identifier := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
-		node.Proc.Outputs = append(node.Proc.Outputs, Node{
-			NodeType: nodeIdentifier,
-			VarDecl: &VarDecl{
-				Type: identifier,
-			},
-		})
-	}
-
-	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenBraket)
-	for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseBraket) {
-		statement := ChaosContentASTParseStatement(chaosSlice)
-		node.Proc.Scope = append(node.Proc.Scope, statement)
-	}
-	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseBraket)
-
-	return node
-}
-
 func infixBindingPower(token Token) (float64, float64) {
 	switch token.TokenType {
 	case tokPlus:
@@ -186,82 +134,98 @@ func infixBindingPower(token Token) (float64, float64) {
 	return 0.0, 0.0
 }
 
-func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) Node {
-	var lhs Node
+func ChaosContentInferType(node *Node, expr Node) {
+	if node.VarDecl.Type.TokenType != tokInfer {
+		return
+	}
+	if expr.NodeType == nodeIntLiteral {
+		node.Infered = true
+		node.VarDecl.Type = MakeType("S64")
+	}
+	if expr.NodeType == nodeStringLiteral {
+		node.Infered = true
+		node.VarDecl.Type = MakeType("String")
+	}
+	if expr.NodeType == nodeBoolLiteral {
+		node.Infered = true
+		node.VarDecl.Type = MakeType("Bool")
+	}
+}
+
+func ChaosContentParseBaseNode(chaosSlice *ChaosSlice[Token]) Node {
+	var node Node
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokNumberLiteral) {
 		expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokNumberLiteral)
-		lhs.NodeType = nodeIntLiteral
-		lhs.Literal = &Literal{
+		node.NodeType = nodeIntLiteral
+		node.Literal = &Literal{
 			Int: expr,
 		}
-		AllocatedVars[expr.Symbol] = lhs
+		return node
 	}
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokStringLiteral) {
 		expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokStringLiteral)
-		lhs.NodeType = nodeStringLiteral
-		lhs.Literal = &Literal{
+		node.NodeType = nodeStringLiteral
+		node.Literal = &Literal{
 			String: expr,
 		}
-		AllocatedVars[expr.Symbol] = lhs
+		return node
 	}
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokBoolLiteral) {
 		expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokBoolLiteral)
-		lhs.NodeType = nodeBoolLiteral
-		lhs.Literal = &Literal{
+		node.NodeType = nodeBoolLiteral
+		node.Literal = &Literal{
 			Boolean: expr,
 		}
-		AllocatedVars[expr.Symbol] = lhs
+		return node
 	}
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokIdentifier) {
 		expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
+		node.NodeType = nodeIdentifier
+		node.VarDecl = &VarDecl{
+			Type: expr,
+		}
 
 		if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenParen) {
 			CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenParen)
 			if _, ok := AllocatedProcs[expr.Symbol]; !ok {
 				assert[any](false, "Proc doesn't exist")
 			}
-			lhs.NodeType = nodeCall
-			lhs.Call = &Call{
+			node.NodeType = nodeCall
+			node.Call = &Call{
 				Name:   expr,
 				Inputs: []Node{},
 			}
 			for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseParen) {
-				if CSMatch(chaosSlice, CSTokenTypeComparison, tokNumberLiteral) {
-					expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokNumberLiteral)
-					lhs.Call.Inputs = append(lhs.Call.Inputs, Node{
-						NodeType: nodeIntLiteral,
-						Literal: &Literal{
-							Int: expr,
-						},
-					})
-				}
-
-				if CSMatch(chaosSlice, CSTokenTypeComparison, tokStringLiteral) {
-					expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokStringLiteral)
-					lhs.Call.Inputs = append(lhs.Call.Inputs, Node{
-						NodeType: nodeIntLiteral,
-						Literal: &Literal{
-							String: expr,
-						},
-					})
-				}
+				n := ChaosContentParseBaseNode(chaosSlice)
+				node.Call.Inputs = append(node.Call.Inputs, n)
 
 				if CSMatch(chaosSlice, CSTokenTypeComparison, tokComma) {
 					CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokComma)
 				}
+
+				node.Call.Arity++
 			}
 			CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseParen)
 		}
 
 		// TO-DO: This is a crappy solution - I need to rethink how I'm handling shit
 		if val, ok := AllocatedVars[expr.Symbol]; ok {
-			lhs = val
+			node = val
 		}
+		return node
 	}
+	return assert[Node](
+		false,
+		fmt.Sprintf("Unexpected base node - %s", NodeTypeToString(node.NodeType)),
+	)
+}
+
+func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) Node {
+	var lhs Node = ChaosContentParseBaseNode(chaosSlice)
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenParen) {
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenParen)
@@ -287,6 +251,7 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 		} else {
 			return Node{NodeType: nodeNoOp}
 		}
+
 		expr := CSConsume(chaosSlice)
 		lbp, rbp := infixBindingPower(expr)
 		if almostEqual(lbp, minBp) {
@@ -307,12 +272,64 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64) N
 	return lhs
 }
 
+func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token]) Node {
+	node := Node{
+		NodeType: nodeProcDef,
+		Proc: &Proc{
+			Scope:   []Node{},
+			Inputs:  []Node{},
+			Outputs: []Node{},
+			Arity:   0,
+		},
+	}
+
+	if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenParen) {
+		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenParen)
+
+		for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseParen) {
+			identifier := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
+			CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokColon)
+			varType := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
+
+			if CSMatch(chaosSlice, CSTokenTypeComparison, tokComma) {
+				CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokComma)
+			}
+
+			node.Proc.Inputs = append(node.Proc.Inputs, Node{
+				NodeType: nodeIdentifier,
+				VarDecl: &VarDecl{
+					Name:        identifier,
+					Type:        varType,
+					Initialized: false,
+				},
+			})
+			node.Proc.Arity++
+		}
+		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseParen)
+	}
+
+	if CSMatch(chaosSlice, CSTokenTypeComparison, tokArrow) {
+		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokArrow)
+		identifier := ChaosContentParseBaseNode(chaosSlice)
+		node.Proc.Outputs = append(node.Proc.Outputs, identifier)
+	}
+
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenBraket)
+	for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseBraket) {
+		statement := ChaosContentASTParseStatement(chaosSlice)
+		node.Proc.Scope = append(node.Proc.Scope, statement)
+	}
+	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseBraket)
+
+	return node
+}
+
 func ChaosContentParseExit(chaosSlice *ChaosSlice[Token]) Node {
 	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokExit)
 
-	var message Node
 	status := ChaosContentParseExpression(chaosSlice, 0.0)
 
+	var message Node
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokComma) {
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokComma)
 		message = ChaosContentParseExpression(chaosSlice, 0.0)
@@ -341,8 +358,13 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokIdentifier, tokAssignment) {
 		identifier := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
+		if _, ok := AllocatedVars[identifier.Symbol]; !ok {
+			assert[any](false, fmt.Sprintf("%s has not being defined", identifier.Symbol))
+		}
+
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokAssignment)
 		node.NodeType = nodeIdentifier
+		node.Reassigned = true
 		node.Reassignable = true
 		node.VarDecl = &VarDecl{
 			Name:        identifier,
@@ -400,12 +422,16 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 		}
 
 		AllocatedVars[identifier.Symbol] = node
-		node.VarDecl.Assignment = ChaosContentParseExpression(chaosSlice, 0.0)
+
+		expr := ChaosContentParseExpression(chaosSlice, 0.0)
+		ChaosContentInferType(&node, expr)
+
+		node.VarDecl.Assignment = expr
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokSemicolon)
 		return node
 	}
 
-	if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenParen) {
+	if CSMatch(chaosSlice, CSTokenTypeComparison, tokIdentifier, tokOpenParen) {
 		identifier := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenParen)
 		if _, ok := AllocatedProcs[identifier.Symbol]; !ok {
@@ -419,29 +445,14 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 		}
 
 		for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseParen) {
-			if CSMatch(chaosSlice, CSTokenTypeComparison, tokNumberLiteral) {
-				expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokNumberLiteral)
-				node.Call.Inputs = append(node.Call.Inputs, Node{
-					NodeType: nodeIntLiteral,
-					Literal: &Literal{
-						Int: expr,
-					},
-				})
-			}
-
-			if CSMatch(chaosSlice, CSTokenTypeComparison, tokStringLiteral) {
-				expr := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokStringLiteral)
-				node.Call.Inputs = append(node.Call.Inputs, Node{
-					NodeType: nodeIntLiteral,
-					Literal: &Literal{
-						String: expr,
-					},
-				})
-			}
+			n := ChaosContentParseBaseNode(chaosSlice)
+			node.Call.Inputs = append(node.Call.Inputs, n)
 
 			if CSMatch(chaosSlice, CSTokenTypeComparison, tokComma) {
 				CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokComma)
 			}
+
+			node.Call.Arity++
 		}
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseParen)
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokSemicolon)
@@ -453,7 +464,6 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token]) Node {
 		false,
 		fmt.Sprintf("Unexpected token %s", TokenTypeToString(token.TokenType)),
 	)
-
 }
 
 func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token]) Node {
