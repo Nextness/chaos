@@ -83,22 +83,22 @@ Token :: scaffold {
     as_string: proc(*Impl) -> String;
 }
 
-Token.Token_Keyword :: struct {
+Token impl Token_Keyword :: struct {
     token_type: Token_Type;
     position: Position;
 }
 
-Token_Keyword.as_string :: proc (self: *Self) -> String {
+Token_Keyword impl as_string :: proc (self: *Self) -> String {
     preffix :: «{self.position.line:03}:{self.position.column:03}»;
-    if self.token_type == {
-        case .TOK_STRING:
-            if value != #0 {
-                token_str :: token_type_to_string[self.token_type];
-                return «{preffix} [{token_str}] "{value}"»;
-            }
-            return «{preffix} [{token_str}]»;
-        case .TOKEN_NUMBER: fallthrough;
-        case .TOKEN_BOOL: exit 1;
+    #extensive if self.token_type == {
+    case .TOK_STRING;
+        if value != #0 {
+            token_str :: token_type_to_string[self.token_type];
+            return «{preffix} [{token_str}] "{value}"»;
+        }
+        return «{preffix} [{token_str}]»;
+    case .TOKEN_NUMBER; fallthrough;
+    case .TOKEN_BOOL; exit 1;
     }
 }
 

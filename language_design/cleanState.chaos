@@ -1,15 +1,15 @@
-Context <T> :: scaffold {
+Context [T] :: scaffold {
     logger: Logger?;
 }
 
-Custom <K> :: struct {
+Custom [K] :: struct {
     value: String;
     another: U64;
     key: K;
 }
 
-some_operation <K> :: #inline proc (value: String, another: U64, key: K) -> *Custom<K> {
-    result := Custom<K>(value, another, key);
+some_operation [K] :: #inline proc (value: String, another: U64, key: K) -> *Custom[K] {
+    result := Custom[K].{value, another, key};
     print(«Got the result: {result}\n»);
     return *result;
 }
@@ -26,14 +26,15 @@ string :: #overload proc (using version: *Version) -> String {
 }
 
 new_counter :: proc -> (*U64, proc -> U64)! {
-    #if #run get-current-os() == .linux {
-        some_variable := mem.alloc(size_of U64)?;
+    #let result :: get_current_os();
+    #if result == .linux {
+        some_variable := mem.alloc(size_of U64)? as U64;
         counter :: proc (var := some_variable) -> U64 {
             return (var.*)++;
         }
         return some_variable, counter;
     }
-    #todo
+    #todo;
 }
 
 ptr, counter :: new_counter() unless |error| {
@@ -41,16 +42,18 @@ ptr, counter :: new_counter() unless |error| {
 }
 
 switch_test_new :: proc (something: Some_Enum) -> Void! {
-    label l_something if something == {
-        case .a:
-            print(«{A}\n»);
-            break_case l_something;
-        case .b:
-            print(«Something else {B}\n»);
-            break_case l_something;
-        case .c:
-            print(«String {D}s nuuutz\n»);
-            break_case l_something;
+    @something if something == {
+    case .a;
+        print(«{A}\n»);
+        break_case @something;
+    case .b;
+        print(«Something else {B}\n»);
+        break_case @something;
+    case .c;
+        print(«String {D}s nuuutz\n»);
+        break_case @something;
+    default;
+        return "error";
     }
 }
 

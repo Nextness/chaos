@@ -1,4 +1,4 @@
-main :: proc (argc: I64, argv: ...String) -> Void {
+main :: proc (argc: S64, argv: ...String) -> Void {
     error: AnyError = "null-pointer, reason can be included here";
     print(«The error is {error} - reason {error.reason}»);
     return;

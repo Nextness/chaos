@@ -1,22 +1,23 @@
 // Example 1
-vars :: proc {
+vars :: proc () -> Void {
     variable_0 :: 10;
     variable_1 := 69;
-    variable_2 : I32 : 2;
-    variable_3 : I64 = 32;
+    variable_2 : S32 : 2;
+    variable_3 : S64 = 32;
 }
 
 // Example 2
 more_vars :: proc {
     new_variable_0 :: 10;
     new_variable_1 := 69;
-    new_variable_2 : I64 : new_variable_1;
-    new_variable_3 : I64 = new_variable_2;
+    new_variable_2 : S64 : new_variable_1;
+    new_variable_3 : S64 = new_variable_2;
     exit bin_op_0, «Alguma coisa diferente!»;
 }
 
 // Example 3
-something_else :: proc {
+something_else :: proc (input1: String, input2: Bool) {
     exit 2, «something else»;
 }
-something_else();
+
+something_else(«hello», true);

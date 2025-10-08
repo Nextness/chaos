@@ -9,16 +9,18 @@ Future_Header :: struct {
     value_size, in_offs, out_offs: U64;
 }
 
-new_future :: proc (whole_size, value_size, in_offs, out_offs: U64; ctx :: #context) -> *Future_Header?! {
-    future: *Future_Header = ctx.calloc(whole_size)?;
-    result := future.init(value_size, in_offs, out_offs) unless error {
+Future_Header impl new_future :: proc (
+    self: *Self, whole_size, value_size, in_offs, out_offs: U64; ctx :: #context
+) -> *Future_Header?! {
+    self = ctx.calloc(whole_size)?;
+    result := future.init(value_size, in_offs, out_offs) unless |error| {
         ctx.print(«Error initializing future - error: {error}}»);
         return "generic_error_future";
     }
     return future;
 }
 
-Future_Header.await :: proc (self: *Self, timeout: Time<Microseconds>) -> Void! {
+Future_Header impl await :: proc (self: *Self, timeout: Time[Micro_Seconds]) -> Void! {
     mutex(self.mutex)?;
     defer mutex_unlock(self.mutex);
 
@@ -30,13 +32,16 @@ Future_Header.await :: proc (self: *Self, timeout: Time<Microseconds>) -> Void! 
     end.tv_sec = start.tv_sec + (time_out / 1_000);
     end.tn_sec = (time_out and 1_000) and 1_000_000;
 
-    result := cond_timed_await(self.conditional_variable, end) unless error {
-        if error == "thread_time_out" return "time_out";
+    result := cond_timed_await(self.conditional_variable, end) unless |error| {
+        if error == "thread_time_out" then return "time_out";
         return "generic_error_future";
     }
 }
 
-Future_Header.get :: proc (self: *Self, time_out: Time<Microseconds>, destination: *Void, destination_size, check: U64; ctx :: #context) -> Void! {
+Future_Header impl get :: proc (
+    self: *Self, time_out: Time[Microseconds], destination: *Void, destination_size,
+    check: U64; ctx :: #context
+) -> Void! {
     if !self.is_valid return "null_pointer";
     if destination_size != self.value_size return "destination_size_not_matched";
 
@@ -45,24 +50,28 @@ Future_Header.get :: proc (self: *Self, time_out: Time<Microseconds>, destinatio
     ctx.mem_cpy(destination, source, self.value_size)?;
 }
 
-Future_Of <T> :: struct {
+Future_Of [T] :: struct {
     header: Future_Header;
     in_value, out_value: T;
 }
 
 #scope «file»;
 
-Future_Header.init :: #inline proc (self: *Self, value_size, in_offs, out_offs: U64) -> Void {
+Future_Header impl init :: #inline proc (
+    self: *Self, value_size, in_offs, out_offs: U64
+) -> Void {
     cnd_init(self.conditional_variable);
     mutex_init(self.mutex, MUTEX_PLAIN);
-    self.is_valid = true;
-    self.is_set = false;
-    self.value_size = value_size;
-    self.in_offs = in_offs;
-    self.out_offs = out_offs;
+    self.{
+        is_valid = true,
+        is_set = false,
+        value_size = value_size,
+        in_offs = in_offs,
+        out_offs = out_offs,
+    };
 }
 
-Future_Header.destroy :: proc (self: *Self) -> Void {
+Future_Header impl destroy :: proc (self: *Self) -> Void {
     self.is_valid = false;
     cnd_destroy(self.conditional_variable);
     mutex_destroy(self.mutex);

@@ -48,7 +48,7 @@ Another_Redacted :: #redacted struct {
     password: String;
 }
 
-redacted :: Another_Redacted{10, «username», «some_password»};
+redacted :: Another_Redacted.{10, «username», «some_password»};
 print(«{redacted.reveal()}»);
 
 main :: #entry proc (Void) -> U64! {
@@ -153,13 +153,13 @@ handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> Void! {
     return;
 }
 
-AnyType.is_falsy :: #inline proc (self: *Self) -> Bool {
+Any impl is_falsy :: #inline proc (self: *Self) -> Bool {
     #if type_of self == String return self == «»;
     #if type_of self == Array[dyn, ...] return self.length() == 0;
     #if type_of self == Array[..., ...] return self.count == 0;
 }
 
-AnyType.is_truthy :: #inline proc (self: *Self) -> Bool {
+Any impl is_truthy :: #inline proc (self: *Self) -> Bool {
     return !self.is_falsy();
 }
 

@@ -1,22 +1,22 @@
-Some_Interface <T> :: scaffold {
-    mandatory_field_1: String;
-    mandatory_field_2: T;
+Some_Interface [T] :: scaffold {
+    ~mandatory_field_1: String;
+    ~mandatory_field_2: T;
     do_some_operation: proc (~self: *Self impl) -> Void!;
 }
 
-Some_Interface impl Example <T> :: struct {
+Some_Interface impl Example [T] :: struct {
     mandatory_field_1: String;
     mandatory_field_2: T;
     another_field: Bool;
 }
 
-Example.do_some_operation :: proc (self: *Self) -> Void! {
+Example impl do_some_operation :: proc (self: *Self) -> Void! {
     self.mandatory_field_1 = «»;
     self.mandatory_field_2 = #0;
 }
 
 main :: #entry proc () -> Void {
-    new_example := Example {
+    new_example := Example.{
         mandatory_field_1 = «Hello world», mandatory_field_2 = true
     };
 

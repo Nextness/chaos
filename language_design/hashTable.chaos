@@ -1,11 +1,11 @@
 // Copied from https://github.com/benhoyt/ht/blob/master/ht.c
 // Probably it doesn't work - used just to evaluate language. Most likely things will change...
 
-AnyType.is_in :: #overload proc (self: Self, array: Array) -> Bool {
-    #assert self != Map<..., ..., ...> || self != Array<..., ...>;
+Any impl is_in :: #overload proc (self: Self, array: Array) -> Bool {
+    #assert self != Map[..., ..., ...] || self != Array[..., ...];
     result : Bool = false;
 
-    #if type_of(array) == Array<dyn, ...> {
+    #if type_of(array) == Array[dyn, ...] {
         while element in array {
             if self == element {
                 result = true;
@@ -25,7 +25,7 @@ AnyType.is_in :: #overload proc (self: Self, array: Array) -> Bool {
     return result;
 }
 
-AnyType.is_not_in :: proc (self: *Self, array: Array) -> Bool {
+Any impl is_not_in :: proc (self: *Self, array: Array) -> Bool {
     return !self.is_in(array);
 }
 
@@ -34,7 +34,7 @@ iterator :: proc (hash_table: *Hash_Table) -> Hash_Table_Iterator {
 }
 
 Entry[Key, Value] :: struct {
-    #if (!Key.match(String, Byte, I64)) #compilation_error(«Only {allowed_types} can be passed to Entry»);
+    #if (!Key.match(.[String, Byte, S64])) #compilation_error(«Only {allowed_types} can be passed to Entry»);
 
     key: Key;
     value: Value;
@@ -46,7 +46,7 @@ Hash_Table [Key, Value] :: struct {
     size: U64 = 0;
 }
 
-init_hash_table[Key, Value] :: proc (Void; ctx :: #context) -> *Hash_Table[Key, Value]! {
+init_hash_table [Key, Value] :: proc (Void; ctx :: #context) -> *Hash_Table[Key, Value]! {
     HT :: alias Hash_Table[Key, Value];
     E  :: alias Entry[Key, Value];
 
