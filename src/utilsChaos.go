@@ -10,6 +10,15 @@ import (
 	"unicode"
 )
 
+func popLast(s []any) []any {
+	size := len(s)
+	if size <= 0 {
+		assert[any](false, "Cannot pop zero initialized slices")
+	}
+	return s[:size-1]
+
+}
+
 func isNum(b byte) bool {
 	s := rune(b)
 	return unicode.IsNumber(s)
@@ -56,15 +65,18 @@ func assert[T any](ok bool, reason string) T {
 	panic("")
 }
 
+var debugCall int = 0
+
 func chaosDebug(anything ...any) {
 	pp := func(anything any) string {
 		s, _ := json.MarshalIndent(anything, "", "\t")
 		return string(s)
 	}
-	fmt.Printf("DEBUG:\n")
+	fmt.Printf("DEBUG %03d:\n", debugCall)
 	for _, thing := range anything {
 		fmt.Printf("%s\n", pp(thing))
 	}
+	debugCall++
 }
 
 func todo[V any](args ...any) V {

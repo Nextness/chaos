@@ -74,53 +74,80 @@ func goRebuildYourSelfTek() {
 	}
 }
 
+func MakeDirIfNotExist(dirName string) {
+	var err error
+	if _, err = os.Stat(dirName); err == nil {
+		return
+	}
+	if err = os.Mkdir(dirName, 0766); err == nil {
+		return
+	}
+	fmt.Fprintf(
+		os.Stderr,
+		"Filed to create directory %s because of %s\n", dirName, err.Error(),
+	)
+	os.Exit(1)
+}
+
 func main() {
 	goRebuildYourSelfTek()
-	build_dir := "./build"
-	if _, err := os.Stat(build_dir); err != nil {
-		if err := os.Mkdir(build_dir, os.FileMode(0777)); err != nil {
-			fmt.Fprintf(os.Stderr, "Filed to create directory %s because of %s\n", build_dir, err.Error())
-			os.Exit(1)
-		}
-	}
+	MakeDirIfNotExist("./build")
 
 	programName := os.Args[0]
 	otherArgs := os.Args[1:]
 	main := "./src/"
 
+	var cmd string
+
 	if 0 >= len(otherArgs) {
-		if err := runCommand(fmt.Sprintf("go build -o ./build/main %s", main)); err != nil {
+		cmd = fmt.Sprintf("go build -o ./build/main %s", main)
+		if runCommand(cmd) != nil {
 			os.Exit(1)
-		}
-	} else {
-		for _, arg := range otherArgs {
-			if arg == "default" {
-				defaultFileChaos := "./testing.chaos"
-				if err := runCommand(fmt.Sprintf("go build -o ./build/main %s && ./build/main %s", main, defaultFileChaos)); err != nil {
-					os.Exit(1)
-				}
-			} else if arg == "run" {
-				defaultAsmFile := "./testing.asm"
-				if _, err := touchFile(defaultAsmFile); err != nil {
-					panic(fmt.Sprintf("%s not found - cannot compile", defaultAsmFile))
-				}
-				if err := runCommand(fmt.Sprintf("fasm %s testing", defaultAsmFile)); err != nil {
-					os.Exit(1)
-				}
-				os.Chmod("testing", 0744)
-				if err := runCommand(fmt.Sprint("./testing")); err != nil {
-					os.Exit(1)
-				}
-			} else if arg == "help" {
-				fmt.Printf("Help - Options:\n")
-				fmt.Printf("    default\n")
-			} else {
-				fmt.Fprintf(os.Stderr, "[ERROR] Unknown command '%s'\n", arg)
-				fmt.Printf("Usage: %s [default]\n", programName)
-				os.Exit(1)
-			}
 		}
 	}
 
-	os.Exit(0)
+	length := len(otherArgs)
+	count := 0
+	for count < length {
+		arg := otherArgs[count]
+		defaultFileChaos := "./testing"
+		switch arg {
+		case "default":
+			count++
+			cmd = fmt.Sprintf("go build -o ./build/main %s && ./build/main %s.chaos", main, defaultFileChaos)
+			if runCommand(cmd) != nil {
+				os.Exit(1)
+			}
+			continue
+
+		case "run":
+			count++
+			asmFile := fmt.Sprintf("%s.asm", defaultFileChaos)
+			if _, err := touchFile(asmFile); err != nil {
+				panic(fmt.Sprintf("%s not found - cannot compile", asmFile))
+			}
+
+			cmd = fmt.Sprintf("fasm %s testing", asmFile)
+			if runCommand(cmd) != nil {
+				os.Exit(1)
+			}
+
+			os.Chmod("testing", 0744)
+			cmd = fmt.Sprint("./testing")
+			if runCommand(cmd) != nil {
+				os.Exit(1)
+			}
+			continue
+
+		case "help":
+			fmt.Printf("Help - Options:\n")
+			fmt.Printf("    default\n")
+			os.Exit(0)
+
+		default:
+			fmt.Fprintf(os.Stderr, "[ERROR] Unknown command '%s'\n", arg)
+			fmt.Printf("Usage: %s [default]\n", programName)
+			os.Exit(1)
+		}
+	}
 }
