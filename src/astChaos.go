@@ -30,7 +30,14 @@ const (
 	opPlus
 	opMinus
 	opMult
+	opEquals
+	opNotEquals
 	opLessThan
+	opGreaterThan
+	opLessThanEquals
+	opGreaterThanEquals
+	opOr
+	opAnd
 )
 
 type VarDecl struct {
@@ -149,14 +156,17 @@ func checkIdentifierInScope(token Token, accessScopes []Scope, depth int) {
 }
 
 func infixBindingPower(token Token) (float64, float64) {
+	// TO-DO: I think there is a bug in here somewhere, or maybe
+	// in the ParseExperssion function, because the ast for the experssions
+	// are not looking correct.
 	switch token.TokenType {
-	case tokPlus:
-		fallthrough
-	case tokMinus:
+	case tokPlus, tokMinus:
 		return 1.0, 1.1
 	case tokStar:
 		return 2.0, 2.1
-	case tokLessThan:
+	case tokOr, tokAnd:
+		return 4.1, 4.0
+	case tokLessThan, tokNotEquals, tokEquals, tokGreaterThan, tokLessThanEquals, tokGreaterThanEquals:
 		return 5.1, 5.0
 	default:
 		assert[any](false, fmt.Sprintf("Unexpected token %s", TokenTypeToString(token.TokenType)))
@@ -265,6 +275,20 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64, a
 			op = opMult
 		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokLessThan) {
 			op = opLessThan
+		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokGreaterThan) {
+			op = opGreaterThan
+		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokLessThanEquals) {
+			op = opLessThanEquals
+		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokGreaterThanEquals) {
+			op = opGreaterThanEquals
+		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokEquals) {
+			op = opEquals
+		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokNotEquals) {
+			op = opNotEquals
+		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokOr) {
+			op = opOr
+		} else if CSMatch(chaosSlice, CSTokenTypeComparison, tokAnd) {
+			op = opAnd
 		} else {
 			break
 		}

@@ -21,7 +21,10 @@ const (
 	tokComma
 	tokLessThan
 	tokGreaterThan
+	tokLessThanEquals
+	tokGreaterThanEquals
 	tokEquals
+	tokNotEquals
 	tokIf
 	tokElif
 	tokElse
@@ -42,12 +45,15 @@ const (
 	tokStar
 	tokInfer
 	tokArrow
+	tokExclamation
+	tokOr
+	tokAnd
 	tokCount
 )
 
 var _ = assert[any](
-	tokCount == 30,
-	fmt.Sprintf("Expected 30 token count but found %d", tokCount),
+	tokCount == 36,
+	fmt.Sprintf("Expected 36 token count but found %d", tokCount),
 )
 
 func TokenTypeToString(tokenType TokenType) string {
@@ -69,6 +75,10 @@ func TokenTypeToString(tokenType TokenType) string {
 		return "tokLessThan"
 	} else if tokenType == tokGreaterThan {
 		return "tokGreaterThan"
+	} else if tokenType == tokLessThanEquals {
+		return "tokLessThanEquals"
+	} else if tokenType == tokGreaterThanEquals {
+		return "tokGreaterThanEquals"
 	} else if tokenType == tokIf {
 		return "tokIf"
 	} else if tokenType == tokEndOfFile {
@@ -83,6 +93,8 @@ func TokenTypeToString(tokenType TokenType) string {
 		return "tokEllipsis"
 	} else if tokenType == tokEquals {
 		return "tokEquals"
+	} else if tokenType == tokNotEquals {
+		return "tokNotEquals"
 	} else if tokenType == tokElif {
 		return "tokElif"
 	} else if tokenType == tokElse {
@@ -111,12 +123,17 @@ func TokenTypeToString(tokenType TokenType) string {
 		return "tokInfer"
 	} else if tokenType == tokArrow {
 		return "tokArrow"
+	} else if tokenType == tokExclamation {
+		return "tokExclamation"
+	} else if tokenType == tokOr {
+		return "tokOr"
+	} else if tokenType == tokAnd {
+		return "tokAnd"
 	}
 	return assert[string](
-		tokCount == 30,
-		fmt.Sprintf("Expected 30 token count but found %d", tokCount),
+		tokCount == 36,
+		fmt.Sprintf("Expected 36 token count but found %d", tokCount),
 	)
-
 }
 
 type Position struct {
@@ -228,6 +245,21 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			continue
 		}
 
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ".", ".", ".") {
+			tokens = append(tokens, Token{
+				Symbol:    "...",
+				TokenType: tokEllipsis,
+				Position: Position{
+					line:   currentLine,
+					column: currentColumn,
+				},
+				Length: 3,
+			})
+			currentColumn += 3
+			CSConsume(sourceSlice, 3)
+			continue
+		}
+
 		if CSMatch(sourceSlice, CSStringUint8Comparison, "-", ">") {
 			tokens = append(tokens, Token{
 				Symbol:    "->",
@@ -258,18 +290,78 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			continue
 		}
 
-		if CSMatch(sourceSlice, CSStringUint8Comparison, ".", ".", ".") {
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "!", "=") {
 			tokens = append(tokens, Token{
-				Symbol:    "...",
-				TokenType: tokEllipsis,
+				Symbol:    "!=",
+				TokenType: tokNotEquals,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
 				},
-				Length: 3,
+				Length: 2,
 			})
-			currentColumn += 3
-			CSConsume(sourceSlice, 3)
+			currentColumn += 2
+			CSConsume(sourceSlice, 2)
+			continue
+		}
+
+		if CSMatch(sourceSlice, CSStringUint8Comparison, ">", "=") {
+			tokens = append(tokens, Token{
+				Symbol:    ">=",
+				TokenType: tokGreaterThanEquals,
+				Position: Position{
+					line:   currentLine,
+					column: currentColumn,
+				},
+				Length: 2,
+			})
+			currentColumn += 2
+			CSConsume(sourceSlice, 2)
+			continue
+		}
+
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "<", "=") {
+			tokens = append(tokens, Token{
+				Symbol:    "<=",
+				TokenType: tokLessThanEquals,
+				Position: Position{
+					line:   currentLine,
+					column: currentColumn,
+				},
+				Length: 2,
+			})
+			currentColumn += 2
+			CSConsume(sourceSlice, 2)
+			continue
+		}
+
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "|", "|") {
+			tokens = append(tokens, Token{
+				Symbol:    "||",
+				TokenType: tokOr,
+				Position: Position{
+					line:   currentLine,
+					column: currentColumn,
+				},
+				Length: 2,
+			})
+			currentColumn += 2
+			CSConsume(sourceSlice, 2)
+			continue
+		}
+
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "&", "&") {
+			tokens = append(tokens, Token{
+				Symbol:    "&&",
+				TokenType: tokAnd,
+				Position: Position{
+					line:   currentLine,
+					column: currentColumn,
+				},
+				Length: 2,
+			})
+			currentColumn += 2
+			CSConsume(sourceSlice, 2)
 			continue
 		}
 
@@ -292,6 +384,21 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 			tokens = append(tokens, Token{
 				Symbol:    "+",
 				TokenType: tokPlus,
+				Position: Position{
+					line:   currentLine,
+					column: currentColumn,
+				},
+				Length: 1,
+			})
+			currentColumn += 1
+			CSConsume(sourceSlice)
+			continue
+		}
+
+		if CSMatch(sourceSlice, CSStringUint8Comparison, "!") {
+			tokens = append(tokens, Token{
+				Symbol:    "!",
+				TokenType: tokExclamation,
 				Position: Position{
 					line:   currentLine,
 					column: currentColumn,
