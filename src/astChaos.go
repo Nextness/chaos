@@ -375,7 +375,7 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token], accessScope 
 	}
 
 	// TO-DO: Stop using hardcoded mechanism to acquire inputs for proc
-	// definitions. This is being used for now just to make sure roc definition
+	// definitions. This is being used for now just to make sure proc definition
 	// work during development. We can't use ChaosContentParseBaseNode because
 	// it expects identifiers to exist in scopes and we don't really have scopes for
 	// input definitions.
@@ -420,6 +420,9 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token], accessScope 
 		})
 	}
 
+	depth++
+	accessScope = append(accessScope, Scope{})
+	accessScope[depth] = append(accessScope[depth], node.Proc.Inputs...)
 	currentExecution := ChaosContentParseScope(chaosSlice, accessScope, depth)
 	node.Proc.Scope = append(node.Proc.Scope, currentExecution...)
 
@@ -611,9 +614,20 @@ func ChaosContentAST(tokens *ChaosSlice[Token]) *ChaosSlice[Node] {
 		nodes = append(nodes, node)
 	}
 
+	chaosDebug(AccessScopes)
+
 	return &ChaosSlice[Node]{
 		data:   nodes,
 		count:  len(nodes),
 		cursor: 0,
 	}
 }
+
+// TO-DO: While parsing scopes, we may find a problem where we don't close the scope.
+//   This can result in a hang, which is not ideal. Probably I need to fix it later...
+//   Example:
+//   something :: proc {
+//       a :: 10;
+//       {
+//           b := a;
+//   }

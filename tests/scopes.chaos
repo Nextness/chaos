@@ -1,0 +1,11 @@
+some_operation :: proc {
+    a :: 10;
+    another_value: S64 = a;
+    if another_value < 11 {
+        exit a;
+    }
+    {
+        b := a - 1;
+    }
+    exit 0;
+}

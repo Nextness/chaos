@@ -10,7 +10,10 @@ value_d : String : value_c;
 value_e :: true;
 value_f :: value_e;
 
-something :: proc (input1: String, input2: U64) -> String {
+something :: proc (input1: String, input2: U64, inasiduhasuid: Bool) -> String {
+    a := input1;
+    b := input2;
+    c := inasiduhasuid;
     exit 1, «something»;
 }
 
