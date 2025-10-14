@@ -16,18 +16,8 @@ func compileChaos(filepath string, src []byte) bool {
 	return true
 }
 
-const debug = true
-
 func main() {
-	// Handling panics so that the stacktrace from golang is not printed, only
-	// the one for chaos compiler itself
-	if !debug {
-		defer func() {
-			if r := recover(); r != nil {
-				os.Exit(1)
-			}
-		}()
-	}
+	defer panicHandler()
 
 	programName := os.Args[0]
 	if len(os.Args) <= 1 {

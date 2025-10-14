@@ -10,14 +10,9 @@ import (
 	"unicode"
 )
 
-func popLast(s []any) []any {
-	size := len(s)
-	if size <= 0 {
-		assert[any](false, "Cannot pop zero initialized slices")
-	}
-	return s[:size-1]
+const debug = true
 
-}
+var debugCall int = 0
 
 func isNum(b byte) bool {
 	s := rune(b)
@@ -34,38 +29,64 @@ func isAlphanum(b byte) bool {
 	return unicode.IsNumber(s) || unicode.IsLetter(s)
 }
 
+func getFrames(skip int) (*runtime.Frames, int) {
+	// Stacktrace size set to 20 for now
+	progCounter := make([]uintptr, 20)
+	// Skipping Callers, Caller of Callers
+	invocationsCount := runtime.Callers(skip, progCounter)
+	return runtime.CallersFrames(progCounter[:invocationsCount]), invocationsCount
+}
+
+func customPanic() {
+	iter := 0
+	printOnce := true
+	frames, invocationsCount := getFrames(2)
+	fmt.Print("\033[1;31m[ERROR] Assertion failed - stopping execution\033[0m\n")
+	for true {
+		frame, more := frames.Next()
+		if !more {
+			break
+		}
+
+		if iter == 0 || iter == 1 || iter == 2 || iter == 3 || iter == 4 || iter == 5 || iter == invocationsCount-2 {
+			fmt.Fprintf(os.Stderr, "  %d. %s:%d %s\n", iter, filepath.Base(frame.File), frame.Line, frame.Function)
+			iter++
+			continue
+		}
+
+		if iter < invocationsCount-2 && printOnce {
+			fmt.Fprintf(os.Stderr, "  ...\n")
+			printOnce = false
+			iter++
+			continue
+		}
+	}
+}
+
 func assert[T any](ok bool, reason string) T {
 	if ok {
 		return *new(T)
 	}
-	// TODO: Improve colors/style for asserts
-	progCounter := make([]uintptr, 20)                  // Stacktrace size set to 20 for now
-	invocationsCount := runtime.Callers(2, progCounter) // Skipping Callers, Caller of Callers
-	frames := runtime.CallersFrames(progCounter[:invocationsCount])
-	iter := 0
-	printOnce := true
-	fmt.Print("\033[1;31m[ERROR] Assertion failed - stopping execution\033[0m\n")
-	for true {
-		frame, more := frames.Next()
-		if iter == 0 || iter == 1 || iter == 2 || iter == 3 || iter == 4 || iter == invocationsCount-2 {
-			fmt.Fprintf(os.Stderr, "  %d. %s:%d %s\n", iter, filepath.Base(frame.File), frame.Line, frame.Function)
-		} else if printOnce {
-			fmt.Fprintf(os.Stderr, "  ...\n")
-			printOnce = false
-		}
-		iter++
-		if !more {
-			break
-		}
-	}
+	customPanic()
 	if reason == "" {
-		reason = "Reason not provided"
+		reason = "Reason not provided..."
 	}
-	fmt.Printf("  \033[4;37mREASON:\033[0m %s\n", reason)
+	fmt.Printf("  \033[4;37mREASON\033[0m: %s\n", reason)
 	panic("")
 }
 
-var debugCall int = 0
+func panicHandler() {
+	if err := recover(); err != nil && debug {
+		frames, _ := getFrames(4) // TO-DO: This is a magic number, probably need to change later...
+		frame, _ := frames.Next()
+		if frame.Function[:11] != "main.assert" {
+			customPanic()
+			fmt.Printf("  \033[4;37mREASON\033[0m: %v\n", err)
+
+		}
+		os.Exit(1)
+	}
+}
 
 func chaosDebug(anything ...any) {
 	pp := func(anything any) string {
