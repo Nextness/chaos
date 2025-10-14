@@ -48,12 +48,13 @@ const (
 	tokExclamation
 	tokOr
 	tokAnd
+	tokThen
 	tokCount
 )
 
 var _ = assert[any](
-	tokCount == 36,
-	fmt.Sprintf("Expected 36 token count but found %d", tokCount),
+	tokCount == 37,
+	fmt.Sprintf("Expected 37 token count but found %d", tokCount),
 )
 
 func TokenTypeToString(tokenType TokenType) string {
@@ -129,10 +130,12 @@ func TokenTypeToString(tokenType TokenType) string {
 		return "tokOr"
 	} else if tokenType == tokAnd {
 		return "tokAnd"
+	} else if tokenType == tokThen {
+		return "tokThen"
 	}
 	return assert[string](
-		tokCount == 36,
-		fmt.Sprintf("Expected 36 token count but found %d", tokCount),
+		tokCount == 37,
+		fmt.Sprintf("Expected 37 token count but found %d", tokCount),
 	)
 }
 
@@ -738,6 +741,17 @@ func ChaosContentTokenize(fileContent *bytes.Buffer) ChaosSlice[Token] {
 				token := Token{
 					Symbol:    sym,
 					TokenType: tokAs,
+					Position:  position,
+					Length:    len(sym),
+				}
+				tokens = append(tokens, token)
+				continue
+			}
+
+			if sym := "then"; string == sym {
+				token := Token{
+					Symbol:    sym,
+					TokenType: tokThen,
 					Position:  position,
 					Length:    len(sym),
 				}

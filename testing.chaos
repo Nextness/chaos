@@ -1,114 +1,114 @@
-bunc_operations :: proc {
+bunch_operations :: proc {
     a :: 1;
     b :: 4;
-    if (a == 1) || (b == 2) {
-        exit 0;
-    }
-    if (a != 2) && (b == 3) {
-        exit 0;
-    }
-//    if a > 2 {
-//        exit 0;
-//    }
-//    if a >= 2 {
-//        exit 0;
-//    }
-//    if a <= 2 {
-//        exit 0;
-//    }
+
+    if a == 2 { exit 0; }
+    elif b == 3 then exit 1;
+    else f :: 3;
+
+    if (a == 1) || (b == 2) then exit 0;
+    if (a != 2) && (b == 3) then exit 0;
+    if a > 2 then exit 0;
+    if a < 3 then exit 0;
+    if a >= 2 then exit 0;
+    if a <= 2 then exit 0;
 }
 
-// {
-//     value := 1;
-//     value_a := value;
-//     value_b : U64 : 2;
-// }
-// 
-// value_c : String : «hello world»;
-// value_d : String : value_c;
-// 
-// value_e :: true;
-// value_f :: value_e;
-// 
-// something :: proc (input1: String, input2: U64, inasiduhasuid: Bool) -> String {
-//     a := input1;
-//     b := input2;
-//     c := inasiduhasuid;
-//     exit 1, «something»;
-// }
-// 
-// a :: value_e;
-// 
-// something(«hello world», 1);
-// 
-// not_init_var_0: U64;
-// not_init_var_1: U64;
-// not_init_var_1 = 1;
-// 
-// not_init_var_2: U64;
-// not_init_var_2 = (10 + 1) * 2;
-// 
-// bin_ops :: proc {
-//     {
-//         result :: something();
-//     }
-//     bin_op_0 :: 1 + 0; // 1
-//     bin_op_1 := bin_op_0 + 1; // 2
-//     bin_op_2 : S64 : 3 + 4; // 7
-//     bin_op_3 : S64 = 6 + 5; // 11
-//     bin_op_4 : S64 = bin_op_0 + bin_op_0; // 2
-//     bin_op_5 := bin_op_4 + bin_op_0; // 2 + 1 = 3
-//     bin_op_6 :: bin_op_5 + bin_op_0; // 3 + 1 = 4
-//     exit bin_op_6, «bin_op_6»;
-// }
-// 
-// vars_proc :: proc (something: S64, another_thing: String, error: Bool) {
-//     variable_0 :: 10;
-//     variable_1 := 69;
-//     variable_2 : S32 : 2;
-//     variable_3 : S64 = 32;
-// }
-// 
-// more_vars :: proc (input_1: String, input_2: Bool) {
-//     bin_op_0 :: 1 + 0;
-//     {
-//         new_variable_0 :: 10;
-//         new_variable_1 := 69;
-//         new_variable_2 : S64 : new_variable_1;
-//         new_variable_3 : S64 = new_variable_2;
-//     }
-//     exit bin_op_0, «Alguma coisa diferente!»;
-// }
-// 
-// something_else :: proc {
-//     a :: proc {
-//         some := 10;
-//         dee := some;
-//     }
-//     exit 2, «something else»;
-// }
-// 
-// procedure :: proc {
-//     if 1 < 2 {
-//         something_else();
-//         a :: 10;
-//         exit 10, «»;
-//     } elif 1 < 3 {
-//         a :: 1;
-//     } else {
-//         a :: 2;
-//     }
-// }
-// 
-// result :: something_else();
-// 
-// new_variable_2 : F64 = 31651.00;
-// 
-// a := 1;
-// b := 2;
-// 
-// less_than_0 := (10 + 1) * 1 - 2;
-// less_than_1 : Bool = a < 2;
-// less_than_2 : Bool = 3 < b;
-// less_than_3 : Bool = a < b;
-// 
+some_weird_operation :: proc (input1: String) -> Void {
+    bunch_operations();
+}
+
+{
+    value := 1;
+    value_a := value;
+    value_b : U64 : 2;
+}
+
+value_c : String : «hello world»;
+value_d : String : value_c;
+
+value_e :: true;
+value_f :: value_e;
+
+something :: proc (input1: String, input2: U64, inasiduhasuid: Bool) -> String {
+    a := input1;
+    b := input2;
+    c := inasiduhasuid;
+    exit 1, «something»;
+}
+
+a :: value_e;
+
+something(«hello world», 1);
+
+not_init_var_0: U64;
+not_init_var_1: U64;
+not_init_var_1 = 1;
+
+not_init_var_2: U64;
+not_init_var_2 = (10 + 1) * 2;
+
+bin_ops :: proc {
+    {
+        result :: something();
+    }
+    bin_op_0 :: 1 + 0; // 1
+    bin_op_1 := bin_op_0 + 1; // 2
+    bin_op_2 : S64 : 3 + 4; // 7
+    bin_op_3 : S64 = 6 + 5; // 11
+    bin_op_4 : S64 = bin_op_0 + bin_op_0; // 2
+    bin_op_5 := bin_op_4 + bin_op_0; // 2 + 1 = 3
+    bin_op_6 :: bin_op_5 + bin_op_0; // 3 + 1 = 4
+    exit bin_op_6, «bin_op_6»;
+}
+
+vars_proc :: proc (something: S64, another_thing: String, error: Bool) {
+    variable_0 :: 10;
+    variable_1 := 69;
+    variable_2 : S32 : 2;
+    variable_3 : S64 = 32;
+}
+
+more_vars :: proc (input_1: String, input_2: Bool) {
+    bin_op_0 :: 1 + 0;
+    {
+        new_variable_0 :: 10;
+        new_variable_1 := 69;
+        new_variable_2 : S64 : new_variable_1;
+        new_variable_3 : S64 = new_variable_2;
+    }
+    exit bin_op_0, «Alguma coisa diferente!»;
+}
+
+something_else :: proc {
+    a :: proc {
+        some := 10;
+        dee := some;
+    }
+    exit 2, «something else»;
+}
+
+procedure :: proc {
+    if 1 < 2 {
+        something_else();
+        a :: 10;
+        exit 10, «»;
+    } elif 1 < 3 {
+        a :: 1;
+    } else {
+        a :: 2;
+    }
+}
+
+result :: something_else();
+
+new_variable_2 : F64 = 31651.00;
+
+a := 1;
+b := 2;
+
+less_than_0 := (10 + 1) * 1 - 2;
+less_than_1 : Bool = a < 2;
+less_than_2 : Bool = 3 < b;
+less_than_3 : Bool = a < b;
+

@@ -228,7 +228,7 @@ func ChaosContentParseBaseNode(chaosSlice *ChaosSlice[Token], accessScopes []Sco
 		checkIdentifierInScope(expr, accessScopes, depth)
 		node.NodeType = nodeIdentifier
 		node.VarDecl = &VarDecl{
-			Type: expr,
+			Name: expr,
 		}
 
 		if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenParen) {
@@ -313,7 +313,8 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64, a
 	return lhs
 }
 
-func ChaosContentParseScope(chaosSlice *ChaosSlice[Token], accessScopes []Scope, depth int) Scope {
+func ChaosContentParseScope(chaosSlice *ChaosSlice[Token], accessScopes []Scope, depth int, allowThen bool) Scope {
+	var expectedThen bool = false
 	var scope Scope
 	depth++
 
@@ -322,12 +323,32 @@ func ChaosContentParseScope(chaosSlice *ChaosSlice[Token], accessScopes []Scope,
 		accessScopes = append(accessScopes, Scope{})
 	}
 
-	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenBraket)
-	for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseBraket) {
-		node := ChaosContentASTParseStatement(chaosSlice, accessScopes, depth)
-		scope = append(scope, node)
+	if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenBraket) {
+		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokOpenBraket)
+		for !CSMatch(chaosSlice, CSTokenTypeComparison, tokCloseBraket) {
+			node := ChaosContentASTParseStatement(chaosSlice, accessScopes, depth)
+			scope = append(scope, node)
+		}
+		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseBraket)
+		return scope
 	}
-	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokCloseBraket)
+
+	if CSMatch(chaosSlice, CSTokenTypeComparison, tokThen) {
+		if allowThen {
+			CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokThen)
+			expectedThen = true
+		} else {
+			assert[any](false, "The token 'then' is not expected")
+		}
+	}
+
+	n := ChaosContentASTParseStatement(chaosSlice, accessScopes, depth)
+	scope = append(scope, n)
+
+	if allowThen && !expectedThen {
+		// TO-DO: improve this warning message
+		fmt.Printf("[Warning] Expected then but found nothing\n")
+	}
 
 	return scope
 }
@@ -338,7 +359,7 @@ func ChaosContentParseConditionalIf(chaosSlice *ChaosSlice[Token], node *Node, a
 	cond := ChaosContentParseExpression(chaosSlice, 0.0, accessScope, depth)
 	node.Conditions.Evaluations = append(node.Conditions.Evaluations, *cond.BinOp)
 
-	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth)
+	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, true)
 	node.Conditions.Scopes = append(node.Conditions.Scopes, currentBranch)
 	node.Conditions.Count += 1
 }
@@ -351,7 +372,7 @@ func ChaosContentParseConditionalElif(chaosSlice *ChaosSlice[Token], node *Node,
 	cond := ChaosContentParseExpression(chaosSlice, 0.0, accessScope, depth)
 	node.Conditions.Evaluations = append(node.Conditions.Evaluations, *cond.BinOp)
 
-	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth)
+	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, true)
 	node.Conditions.Scopes = append(node.Conditions.Scopes, currentBranch)
 
 	node.Conditions.Count += 1
@@ -365,7 +386,7 @@ func ChaosContentParseConditionalElse(chaosSlice *ChaosSlice[Token], node *Node,
 	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokElse)
 	node.Conditions.Evaluations = append(node.Conditions.Evaluations, BinOp{Operation: opNoOp})
 
-	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth)
+	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, false)
 	node.Conditions.Scopes = append(node.Conditions.Scopes, currentBranch)
 	node.Conditions.Count += 1
 }
@@ -447,7 +468,7 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token], accessScope 
 	depth++
 	accessScope = append(accessScope, Scope{})
 	accessScope[depth] = append(accessScope[depth], node.Proc.Inputs...)
-	currentExecution := ChaosContentParseScope(chaosSlice, accessScope, depth)
+	currentExecution := ChaosContentParseScope(chaosSlice, accessScope, depth, false)
 	node.Proc.Scope = append(node.Proc.Scope, currentExecution...)
 
 	return node
@@ -595,7 +616,7 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token], accessSco
 
 func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token], accessScope []Scope, depth int) Node {
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokOpenBraket) {
-		scp := ChaosContentParseScope(chaosSlice, accessScope, depth)
+		scp := ChaosContentParseScope(chaosSlice, accessScope, depth, true)
 		return Node{
 			NodeType:       nodeAnonymousScope,
 			AnonymousScope: &scp,
@@ -617,34 +638,34 @@ func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token], accessScope []
 	return Node{NodeType: nodeNoOp}
 }
 
-func ChaosContentAST(tokens *ChaosSlice[Token]) *ChaosSlice[Node] {
+func ChaosContentAST(tokens *ChaosSlice[Token]) (*ChaosSlice[Node], []Scope, int) {
 	assert[any](tokens.cursor == 0, "Cursor is not 0")
-	var AccessScopes = []Scope{}
-	var Depth = 0
+	var accessScopes = []Scope{}
+	var depth = 0
 
-	scopeLength := len(AccessScopes)
-	if scopeLength-1 != Depth {
-		AccessScopes = append(AccessScopes, Scope{} /*global scope at 0th position*/)
+	scopeLength := len(accessScopes)
+	if scopeLength-1 != depth {
+		accessScopes = append(accessScopes, Scope{} /*global scope at 0th position*/)
 	}
 
 	nodes := []Node{}
 	for tokens.cursor < tokens.count {
-		node := ChaosContentASTParseStatement(tokens, AccessScopes, Depth)
+		node := ChaosContentASTParseStatement(tokens, accessScopes, depth)
 		if node.NodeType == nodeNoOp {
 			CSConsume(tokens)
 			continue
 		}
-		AccessScopes[Depth] = append(AccessScopes[Depth], node)
+		accessScopes[depth] = append(accessScopes[depth], node)
 		nodes = append(nodes, node)
 	}
 
-	chaosDebug(AccessScopes)
-
-	return &ChaosSlice[Node]{
+	program := &ChaosSlice[Node]{
 		data:   nodes,
 		count:  len(nodes),
 		cursor: 0,
 	}
+
+	return program, accessScopes, depth
 }
 
 // TO-DO: While parsing scopes, we may find a problem where we don't close the scope.
