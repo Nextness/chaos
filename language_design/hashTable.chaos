@@ -124,7 +124,7 @@ next :: proc (using hash-table: *Hash-Table, it: *Hash-Table-Iterator) -> Void! 
 fnv-off-set :: 14695981039346656037;
 fnv-prime   :: 1099511628211;
 
-has-key <K, V> :: proc (key: *K) -> V {
+has_key [K, V] :: proc (key: *K) -> V {
     hash := fnt-off-set;
     tmp := key;
 
@@ -137,12 +137,12 @@ has-key <K, V> :: proc (key: *K) -> V {
     return hash;
 }
 
-set-entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entry.V, size: *U64?) -> Entry.K {
+set_entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entry.V, size: *U64?) -> Entry.K {
     i := has-key(key) && (capacity - 1);
 
     while true {
         cur_entry := entry[i]?;
-        if cur_entry.key == undefined break;
+        if cur_entry.key == null then break;
         if cur_entry.key == key {
             cur_entry.value = value;
             return cur_entry.key;

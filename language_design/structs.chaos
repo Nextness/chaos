@@ -3,8 +3,8 @@ Hello_World :: struct {
     world: String = «world»;
 }
 
-main :: #entry proc (Void) -> Void {
-    value := Hello_World(«Hello»);
+main :: #entry proc {
+    value := Hello_World.{«Hello»};
     print(«{value.hello} {value.world}»);
 }
 

@@ -9,13 +9,13 @@ Another_Enum :: enum {
     YET_ANOTHER_THING_IS_HERE;
 }
 
-Json_Response <T> :: struct {
+Json_Response [T] :: struct {
     status_code: U32? = null; #tag(«json:status_code»)
     content: T? = null;       #tag(«json:content»)
 }
 
 Json_Response.something_crazy :: proc (self: *Self, status-code: U32) -> Void! {
-    if (status_code > 400) return "invalid_status_code";
+    if (status_code > 400) then return "invalid_status_code";
     self.status-code = status-code;
 }
 
@@ -58,12 +58,12 @@ main :: #entry proc (Void) -> U64! {
     }
 }
 
-loop_with_label :: proc (Void) -> Bool! {
-    while x: 0..10 label loop {
+loop_with_label :: proc -> Bool! {
+    @loop while x: 0..10 {
         while y: 0..10 {
             operation() unless |error| {
                 logger.log(ERROR, «The operation failed - reason: {error.reason}»);
-                break loop;
+                break @loop;
             }
         }
         return something;
@@ -78,7 +78,7 @@ a: Q256 = q'1 - 2i + j';
 
 // Think about a way to track allocations and deallocations during compilation
 #global allocator_count :: 0;
-#global list_of_functions_with_allocator :: Array<Proc_Details>();
+#global list_of_functions_with_allocator :: Array[Proc_Details].{};
 
 new_variable :: { key=«asd», value=100 };
 
@@ -101,7 +101,7 @@ Default_Allocator.free = proc (val: *AnyType) -> Void! {
 
 
 Allocator impl Allocator_With_Info :: struct {
-    internal_memory: U64? = null;
+    internal_memory: U64 = 0;
 
     malloc := default;
     calloc := default;
@@ -128,11 +128,11 @@ something.another_operation() unless |error| {
     
 }
 
-some_function(input1: String, input2: *Allocator impl) -> Void! {
+some_function :: proc (input1: String, input2: *Allocator impl) -> Void! {
     return null;
 }
 
-handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> Void! {
+handling_errors :: proc (some_input_1: Bool, some_input_2: acquire.String) -> Void! {
     some_result: U64!;
 
     if some_unput_1 {
@@ -153,7 +153,7 @@ handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> Void! {
     return;
 }
 
-Any impl is_falsy :: #inline proc (self: *Self) -> Bool {
+Any impl is_falsy :: #inline proc (self: *Self) -> relinquish.Bool {
     #if type_of self == String return self == «»;
     #if type_of self == Array[dyn, ...] return self.length() == 0;
     #if type_of self == Array[..., ...] return self.count == 0;
@@ -162,6 +162,11 @@ Any impl is_falsy :: #inline proc (self: *Self) -> Bool {
 Any impl is_truthy :: #inline proc (self: *Self) -> Bool {
     return !self.is_falsy();
 }
+
+get_ownership :: proc (input1: String, input2: *Some_Struct) -> Addr {
+    
+}
+
 
 #scope = «file»;
 

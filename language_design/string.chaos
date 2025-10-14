@@ -1,11 +1,11 @@
 MAX_LEN :: 4096;
 
-length :: proc (str: String, max_length: U64? = MAX_LEN) -> I64! {
+length :: proc (str: String, max_length: U64? = MAX_LEN) -> S64! {
     init_pos := &str;
     while str != «\0» {
         str++;
         #if max_length != undefined {
-            if max_length == 0 return "max_length_hit";
+            if max_length == 0 then return "max_length_hit";
             max_length--;
         }
     }
@@ -17,7 +17,7 @@ copy :: proc (str: &String, max_length: U64? = MAX_LEN) -> String! {
     while str != «\0» {
         tmp++ = str++;
         #if max_length != undefined {
-            if max_length == 0 return "max_length_hit";
+            if max_length == 0 then return "max_length_hit";
             max_length--;
         }
     }
@@ -27,4 +27,3 @@ copy :: proc (str: &String, max_length: U64? = MAX_LEN) -> String! {
 #module string;
 #import «core/numbers»;
 #import «core/errors»;
-

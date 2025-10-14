@@ -1,5 +1,5 @@
 Context [T] :: scaffold {
-    logger: Logger?;
+    logger: Logger;
 }
 
 Custom [K] :: struct {
@@ -21,12 +21,12 @@ Version :: struct {
 
 string :: #overload proc (using version: *Version) -> String {
     version_string := «{major}.{minor}.{fix}»;
-    #if (phase != null) version_string = «{version_string}-{phase}»;
+    if phase != null then version_string = «{version_string}-{phase}»;
     return version_string;
 }
 
 new_counter :: proc -> (*U64, proc -> U64)! {
-    #let result :: get_current_os();
+    #let result :: #run get_current_os();
     #if result == .linux {
         some_variable := mem.alloc(size_of U64)? as U64;
         counter :: proc (var := some_variable) -> U64 {
@@ -45,13 +45,13 @@ switch_test_new :: proc (something: Some_Enum) -> Void! {
     @something if something == {
     case .a;
         print(«{A}\n»);
-        break_case @something;
+        break @something;
     case .b;
         print(«Something else {B}\n»);
-        break_case @something;
+        break @something;
     case .c;
         print(«String {D}s nuuutz\n»);
-        break_case @something;
+        break @something;
     default;
         return "error";
     }
