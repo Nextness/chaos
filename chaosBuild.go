@@ -109,19 +109,39 @@ func main() {
 	defaultCompilation := flag.Bool("default", false, "Running default file for development purposes (requires DEBUG=true)")
 	filename := flag.String("c", "", "Chaos file to be compiled")
 	runChaosBin := flag.Bool("r", false, "Run binary after compilation")
+	runTests := flag.Bool("test", false, "Run unit tests")
 
 	flag.Parse()
 
 	MakeDirIfNotExist("./build")
 
-	src := "./src/"
+	srcDir := "./src/"
+	testsDir := "./tests/"
 	compilerLocation := "./build/chaosc"
 
 	if _, err := touchFile(compilerLocation); err != nil {
-		cmd := fmt.Sprintf("go build -o %s %s", compilerLocation, src)
+		cmd := fmt.Sprintf("go build -o %s %s", compilerLocation, srcDir)
 		if runCommand(cmd) != nil {
 			os.Exit(1)
 		}
+	}
+
+	if *runTests {
+		files, _ := os.ReadDir(testsDir)
+		for idx, file := range files {
+			fmt.Print("-----------------------------------------------------------------------\n")
+			iteration := idx + 1
+			filename := file.Name()
+			fmt.Printf("%03d: Running the file %s\n", iteration, filename)
+			cmd := fmt.Sprintf("%s %s%s", compilerLocation, testsDir, filename)
+			if runCommand(cmd) != nil {
+				fmt.Fprintf(os.Stderr, "[ERROR] Failed to run %s during unit tests\n", filename)
+				continue
+			}
+			fmt.Printf("Success running file %s\n", filename)
+		}
+		fmt.Print("-----------------------------------------------------------------------\n")
+		os.Exit(0)
 	}
 
 	defaultFile := ""

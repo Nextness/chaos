@@ -16,5 +16,3 @@ runtime1 := comptime1;
 runtime2: S64 = 2;
 runtime3: S64 = runtime2;
 comptime2 :: comptime1;
-
-// TO-DO: Implement tests for comp time failures

@@ -7,4 +7,4 @@ bin_op_4 : S64 = bin_op_0 + bin_op_0;                     // 2
 bin_op_5 := bin_op_4 + bin_op_0;                          // 2 + 1 = 3
 bin_op_6 := bin_op_5 + bin_op_0;                          // 3 + 1 = 4
 bin_op_7 :: (bin_op_0 + 3) * 2;                           // (1 + 3) * 2 = 8
-bin_op_8 : S64 = (bin_op_4 + bin_op_7) * (1 + bion_op_1); // (2 + 8) * (1 + 2) = 30
+bin_op_8 : S64 = (bin_op_4 + bin_op_7) * (1 + bin_op_1);  // (2 + 8) * (1 + 2) = 30
