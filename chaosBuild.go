@@ -1,10 +1,15 @@
+// This code was basically copied from https://github.com/tsoding/nob.h
 package main
 
 import (
 	"bytes"
+	"errors"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -14,31 +19,38 @@ func runCommand(command string) error {
 	cmdBuffer.WriteString(command)
 	defer cmdBuffer.Reset()
 
-	cmd := exec.Command("bash", "-c", cmdBuffer.String())
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Fprintf(
-			os.Stderr,
-			"Failed to execute '%s' - error %s:\n\n%s\n",
-			command,
-			err.Error(),
-			string(out),
-		)
-		return err
+	if runtime.GOOS == "linux" {
+		cmd := exec.Command("bash", "-c", cmdBuffer.String())
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			fmt.Fprintf(
+				os.Stderr,
+				"Failed to execute '%s' - error %s:\n\n%s\n",
+				command,
+				err.Error(),
+				string(out),
+			)
+			return err
+		}
+		fmt.Printf("%s\n", string(out))
 	}
-	fmt.Printf("%s\n", string(out))
+
 	return nil
 }
 
 func touchFile(name string) (*time.Time, error) {
-	file, err := os.Stat(name)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to touch file %s becuase of %s\n", name, err.Error())
-		return nil, err
+	if runtime.GOOS == "linux" {
+		file, err := os.Stat(name)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to touch file %s becuase of %s\n", name, err.Error())
+			return nil, err
+		}
+		stat := file.Sys().(*syscall.Stat_t)
+		ctime := time.Unix(int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec))
+		return &ctime, nil
 	}
-	stat := file.Sys().(*syscall.Stat_t)
-	ctime := time.Unix(int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec))
-	return &ctime, nil
+
+	return nil, errors.New("OS Not supported")
 }
 
 func goRebuildYourSelfTek() {
@@ -89,64 +101,63 @@ func MakeDirIfNotExist(dirName string) {
 	os.Exit(1)
 }
 
+const DEBUG = true
+
 func main() {
 	goRebuildYourSelfTek()
+
+	defaultCompilation := flag.Bool("default", false, "Running default file for development purposes (requires DEBUG=true)")
+	filename := flag.String("c", "", "Chaos file to be compiled")
+	runChaosBin := flag.Bool("r", false, "Run binary after compilation")
+
+	flag.Parse()
+
 	MakeDirIfNotExist("./build")
 
-	programName := os.Args[0]
-	otherArgs := os.Args[1:]
-	main := "./src/"
+	src := "./src/"
+	compilerLocation := "./build/chaosc"
 
-	var cmd string
-
-	if 0 >= len(otherArgs) {
-		cmd = fmt.Sprintf("go build -o ./build/main %s", main)
+	if _, err := touchFile(compilerLocation); err != nil {
+		cmd := fmt.Sprintf("go build -o %s %s", compilerLocation, src)
 		if runCommand(cmd) != nil {
 			os.Exit(1)
 		}
 	}
 
-	length := len(otherArgs)
-	count := 0
-	for count < length {
-		arg := otherArgs[count]
-		defaultFileChaos := "./testing"
-		switch arg {
-		case "default":
-			count++
-			cmd = fmt.Sprintf("go build -o ./build/main %s && ./build/main %s.chaos", main, defaultFileChaos)
-			if runCommand(cmd) != nil {
-				os.Exit(1)
-			}
-			continue
+	defaultFile := ""
+	if *defaultCompilation && DEBUG {
+		defaultFile = "testing.chaos"
+		cmd := fmt.Sprintf("%s %s", compilerLocation, defaultFile)
+		if runCommand(cmd) != nil {
+			os.Exit(1)
+		}
+	}
 
-		case "run":
-			count++
-			asmFile := fmt.Sprintf("%s.asm", defaultFileChaos)
-			if _, err := touchFile(asmFile); err != nil {
-				panic(fmt.Sprintf("%s not found - cannot compile", asmFile))
-			}
+	if *filename != "" {
+		cmd := fmt.Sprintf("%s %s", compilerLocation, *filename)
+		if runCommand(cmd) != nil {
+			os.Exit(1)
+		}
+	}
 
-			cmd = fmt.Sprintf("fasm %s testing", asmFile)
-			if runCommand(cmd) != nil {
-				os.Exit(1)
-			}
+	if *runChaosBin && (*filename != "" || defaultFile != "") {
+		file := strings.TrimSuffix(*filename, ".chaos")
+		fasmFile := fmt.Sprintf("%s.asm", file)
+		if _, err := touchFile(fasmFile); err != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] Did not find the fasm file '%s'. Make sure it exists.\n", fasmFile)
+			os.Exit(1)
+		}
 
-			os.Chmod("testing", 0744)
-			cmd = fmt.Sprint("./testing")
-			if runCommand(cmd) != nil {
-				os.Exit(1)
-			}
-			continue
+		cmd := fmt.Sprintf("fasm %s testing", fasmFile)
+		if runCommand(cmd) != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] Failed to compile '%s'.\n", fasmFile)
+			os.Exit(1)
+		}
 
-		case "help":
-			fmt.Printf("Help - Options:\n")
-			fmt.Printf("    default\n")
-			os.Exit(0)
-
-		default:
-			fmt.Fprintf(os.Stderr, "[ERROR] Unknown command '%s'\n", arg)
-			fmt.Printf("Usage: %s [default]\n", programName)
+		os.Chmod("testing", 0744)
+		cmd = fmt.Sprintf("%s", file)
+		if runCommand(cmd) != nil {
+			fmt.Fprintf(os.Stderr, "[ERROR] Failed to run '%s'.\n", file)
 			os.Exit(1)
 		}
 	}
