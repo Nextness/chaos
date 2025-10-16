@@ -5,6 +5,7 @@ vars :: proc (input1: String, input2: Bool) -> Void {
     variable_2 : S32 : 2;
     variable_3 : S64 = 32;
     variable_4 := input1;
+    return;
 }
 
 // Example 2
