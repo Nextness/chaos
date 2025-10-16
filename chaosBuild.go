@@ -119,11 +119,9 @@ func main() {
 	testsDir := "./tests/"
 	compilerLocation := "./build/chaosc"
 
-	if _, err := touchFile(compilerLocation); err != nil {
-		cmd := fmt.Sprintf("go build -o %s %s", compilerLocation, srcDir)
-		if runCommand(cmd) != nil {
-			os.Exit(1)
-		}
+	cmd := fmt.Sprintf("go build -o %s %s", compilerLocation, srcDir)
+	if runCommand(cmd) != nil {
+		os.Exit(1)
 	}
 
 	if *runTests {
@@ -146,7 +144,7 @@ func main() {
 
 	defaultFile := ""
 	if *defaultCompilation && DEBUG {
-		defaultFile = "testing.chaos"
+		defaultFile = "main.chaos"
 		cmd := fmt.Sprintf("%s %s", compilerLocation, defaultFile)
 		if runCommand(cmd) != nil {
 			os.Exit(1)
