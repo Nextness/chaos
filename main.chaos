@@ -19,15 +19,8 @@ some_weird_operation :: proc (input1: String) -> Void {
     return bunch_operations();
 }
 
-{
-    value := 1;
-    value_a := value;
-    value_b : U64 : 2;
-}
-
 value_c : String : «hello world»;
 value_d : String : value_c;
-
 value_e :: true;
 value_f :: value_e;
 

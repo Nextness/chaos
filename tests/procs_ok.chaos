@@ -1,11 +1,11 @@
 // Example 1
-vars :: proc (input1: String, input2: Bool) -> Void {
+vars :: proc (input1: String, input2: Bool) -> S64 {
     variable_0 :: 10;
     variable_1 := 69;
     variable_2 : S32 : 2;
     variable_3 : S64 = 32;
     variable_4 := input1;
-    return;
+    return variable_4;
 }
 
 // Example 2

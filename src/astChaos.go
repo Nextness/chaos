@@ -324,6 +324,7 @@ func ChaosContentParseExpression(chaosSlice *ChaosSlice[Token], minBp float64, a
 }
 
 func ChaosContentParseScope(chaosSlice *ChaosSlice[Token], accessScopes []Scope, depth int, allowThen bool, isFunction bool) Scope {
+	assert[any](isFunction, "Cannot create scopes outside of functions")
 	var expectedThen bool = false
 	var scope Scope
 	depth++
@@ -363,18 +364,18 @@ func ChaosContentParseScope(chaosSlice *ChaosSlice[Token], accessScopes []Scope,
 	return scope
 }
 
-func ChaosContentParseConditionalIf(chaosSlice *ChaosSlice[Token], node *Node, accessScope []Scope, depth int) {
+func ChaosContentParseConditionalIf(chaosSlice *ChaosSlice[Token], node *Node, accessScope []Scope, depth int, isFunction bool) {
 	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIf)
 
 	cond := ChaosContentParseExpression(chaosSlice, 0.0, accessScope, depth)
 	node.Conditions.Evaluations = append(node.Conditions.Evaluations, *cond.BinOp)
 
-	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, true, false)
+	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, true, isFunction)
 	node.Conditions.Scopes = append(node.Conditions.Scopes, currentBranch)
 	node.Conditions.Count += 1
 }
 
-func ChaosContentParseConditionalElif(chaosSlice *ChaosSlice[Token], node *Node, accessScope []Scope, depth int) {
+func ChaosContentParseConditionalElif(chaosSlice *ChaosSlice[Token], node *Node, accessScope []Scope, depth int, isFunction bool) {
 	if !CSMatch(chaosSlice, CSTokenTypeComparison, tokElif) {
 		return
 	}
@@ -382,26 +383,26 @@ func ChaosContentParseConditionalElif(chaosSlice *ChaosSlice[Token], node *Node,
 	cond := ChaosContentParseExpression(chaosSlice, 0.0, accessScope, depth)
 	node.Conditions.Evaluations = append(node.Conditions.Evaluations, *cond.BinOp)
 
-	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, true, false)
+	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, true, isFunction)
 	node.Conditions.Scopes = append(node.Conditions.Scopes, currentBranch)
 
 	node.Conditions.Count += 1
-	ChaosContentParseConditionalElif(chaosSlice, node, accessScope, depth)
+	ChaosContentParseConditionalElif(chaosSlice, node, accessScope, depth, isFunction)
 }
 
-func ChaosContentParseConditionalElse(chaosSlice *ChaosSlice[Token], node *Node, accessScope []Scope, depth int) {
+func ChaosContentParseConditionalElse(chaosSlice *ChaosSlice[Token], node *Node, accessScope []Scope, depth int, isFunction bool) {
 	if !CSMatch(chaosSlice, CSTokenTypeComparison, tokElse) {
 		return
 	}
 	CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokElse)
 	node.Conditions.Evaluations = append(node.Conditions.Evaluations, BinOp{Operation: opNoOp})
 
-	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, false, false)
+	currentBranch := ChaosContentParseScope(chaosSlice, accessScope, depth, false, isFunction)
 	node.Conditions.Scopes = append(node.Conditions.Scopes, currentBranch)
 	node.Conditions.Count += 1
 }
 
-func ChaosContentParseConditionalBranches(chaosSlice *ChaosSlice[Token], accessScope []Scope, depth int) Node {
+func ChaosContentParseConditionalBranches(chaosSlice *ChaosSlice[Token], accessScope []Scope, depth int, isFunction bool) Node {
 	node := Node{
 		NodeType: nodeConditions,
 		Conditions: &Conditions{
@@ -411,14 +412,14 @@ func ChaosContentParseConditionalBranches(chaosSlice *ChaosSlice[Token], accessS
 		},
 	}
 
-	ChaosContentParseConditionalIf(chaosSlice, &node, accessScope, depth)
-	ChaosContentParseConditionalElif(chaosSlice, &node, accessScope, depth)
-	ChaosContentParseConditionalElse(chaosSlice, &node, accessScope, depth)
+	ChaosContentParseConditionalIf(chaosSlice, &node, accessScope, depth, isFunction)
+	ChaosContentParseConditionalElif(chaosSlice, &node, accessScope, depth, isFunction)
+	ChaosContentParseConditionalElse(chaosSlice, &node, accessScope, depth, isFunction)
 
 	return node
 }
 
-func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token], accessScope []Scope, depth int) Node {
+func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token], accessScope []Scope, depth int, isFunction bool) Node {
 	node := Node{
 		NodeType: nodeProcDef,
 		Proc: &Proc{
@@ -478,7 +479,7 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token], accessScope 
 	depth++
 	accessScope = append(accessScope, Scope{})
 	accessScope[depth] = append(accessScope[depth], node.Proc.Inputs...)
-	currentExecution := ChaosContentParseScope(chaosSlice, accessScope, depth, false, true)
+	currentExecution := ChaosContentParseScope(chaosSlice, accessScope, depth, false, isFunction)
 	node.Proc.Scope = append(node.Proc.Scope, currentExecution...)
 
 	return node
@@ -569,7 +570,7 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token], accessSco
 
 			if CSMatch(chaosSlice, CSTokenTypeComparison, tokProc) {
 				CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokProc)
-				node.VarDecl.Assignment = ChaosContentParseProcDefinition(chaosSlice, accessScope, depth)
+				node.VarDecl.Assignment = ChaosContentParseProcDefinition(chaosSlice, accessScope, depth, true)
 				accessScope[depth] = append(accessScope[depth], node)
 				return node
 			}
@@ -643,7 +644,7 @@ func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token], accessScope []
 
 	if CSMatch(chaosSlice, CSTokenTypeComparison, tokIf) {
 		if depth > 1 {
-			return ChaosContentParseConditionalBranches(chaosSlice, accessScope, depth)
+			return ChaosContentParseConditionalBranches(chaosSlice, accessScope, depth, isFunction)
 		}
 		assert[any](false, "Cannot have if statements at global scope.")
 	}
