@@ -80,7 +80,21 @@ func CSGet[T any](chaosSlice *ChaosSlice[T], offset ...int) T {
 	CSCheckBounds(chaosSlice, increment)
 	var result T = chaosSlice.data[chaosSlice.cursor+increment]
 	return result
+}
 
+func CSGetPointer[T any](chaosSlice *ChaosSlice[T], offset ...int) *T {
+	length := len(offset)
+	increment := 0
+
+	if length == 1 {
+		increment = offset[0]
+	} else if length > 1 {
+		assert[any](false, "Only 1 argument or none is allowed")
+	}
+
+	CSCheckBounds(chaosSlice, increment)
+
+	return &chaosSlice.data[chaosSlice.cursor+increment]
 }
 
 func CSMatch[T any](chaosSlice *ChaosSlice[T], operator func(any, any) bool, expected ...any) bool {
