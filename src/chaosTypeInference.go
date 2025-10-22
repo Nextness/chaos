@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	_ "os"
+)
 
 func ChaosInferTypes(program *ChaosSlice[Node], scope Scope) {
 	assert[any](program.cursor == 0, "Cursor is not 0")
@@ -18,32 +21,45 @@ func ChaosInferTypes(program *ChaosSlice[Node], scope Scope) {
 
 		if node.VarDecl.Assignment.NodeType == nodeIntLiteral {
 			node.VarDecl.Type = MakeType("S64")
-			// for idx, n := range scope {
-			// 	if n.VarDecl.Name.Symbol == node.VarDecl.Name.Symbol {
-			// 		scope[idx].VarDecl.Type = MakeType("S64")
-			// 		break
-			// 	}
-			// }
-			chaosDebug(scope)
+			for idx, n := range scope {
+				if n.VarDecl.Name.Symbol == node.VarDecl.Name.Symbol {
+					scope[idx].VarDecl.Type = MakeType("S64")
+					break
+				}
+			}
+			CSConsume(program)
 			continue
 		}
 
 		if node.VarDecl.Assignment.NodeType == nodeStringLiteral {
 			node.VarDecl.Type = MakeType("String")
+			for idx, n := range scope {
+				if n.VarDecl.Name.Symbol == node.VarDecl.Name.Symbol {
+					scope[idx].VarDecl.Type = MakeType("String")
+					break
+				}
+			}
 			CSConsume(program)
 			continue
 		}
 
 		if node.VarDecl.Assignment.NodeType == nodeBoolLiteral {
 			node.VarDecl.Type = MakeType("Bool")
+			for idx, n := range scope {
+				if n.VarDecl.Name.Symbol == node.VarDecl.Name.Symbol {
+					scope[idx].VarDecl.Type = MakeType("Bool")
+					break
+				}
+			}
 			CSConsume(program)
 			continue
 		}
 
 		if node.VarDecl.Assignment.NodeType == nodeIdentifier {
 			rhs := node.VarDecl
+			lhs := node.VarDecl.Assignment
 			for _, n := range scope {
-				if rhs.Name.Symbol == n.VarDecl.Name.Symbol {
+				if lhs.NodeType == nodeIdentifier && lhs.VarDecl.Name.Symbol == n.VarDecl.Name.Symbol {
 					rhs.Type = n.VarDecl.Type
 					break
 				}
