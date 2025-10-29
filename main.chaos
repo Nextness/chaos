@@ -1,3 +1,7 @@
+function :: proc -> String {
+    return «»;
+}
+
 value1 :: 10;
 value2 :: «something»;
 value3 :: true;
@@ -5,6 +9,8 @@ value3 :: true;
 value4 :: value1;
 value5 :: value2;
 value6 :: value3;
+
+function_call := function();
 
 new_value_1: S64 = value1;
 new_value_2: String = value2;
