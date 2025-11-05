@@ -11,7 +11,7 @@ func compileChaos(filepath string, src []byte) bool {
 	fileContent := bytes.NewBuffer(src)
 	tokensSlice := ChaosContentTokenize(fileContent)
 	program, scope := ChaosContentAST(&tokensSlice)
-	ChaosInferTypes(program, scope)
+	ChaosInferAndCheckType(program, scope)
 	// ChaosTypeCheck(program, scope)
 	// chaosDebug(program.data)
 	return true
