@@ -230,12 +230,79 @@ func InferAndTypeCheckIdentifier(program *ChaosSlice[Node], scope Scope) {
 	assert[any](false, fmt.Sprintf("Unexpected node - %s", NodeTypeToString(node.NodeType)))
 }
 
+func TypeCheckExit(program *ChaosSlice[Node], scope Scope) {
+	node := CSGet(program)
+
+	// TO-DO: Later we should not allow all the types in here.
+	// Probably just U8 and S8. I'm not sure about this, since we can just
+	// mod by 256 - I should think about it later.
+	allowedTypes := MakeTypeList(
+		"S128", "S64", "S32", "S16", "S8", "U128", "U64", "U32", "U16", "U8",
+	)
+
+	condition1 := node.Exit.Status.NodeType == nodeIntLiteral
+	condition2 := node.Exit.Status.NodeType == nodeIdentifier
+	condition3 := false
+	if condition2 {
+		for _, n := range scope {
+			if node.Exit.Status.VarDecl.Name.Symbol == n.VarDecl.Name.Symbol {
+				condition3 = (TypeCheckLiterals(n.VarDecl.Type, allowedTypes...))
+				break
+			}
+		}
+	}
+
+	// TO-DO: improve this fucking shit, because
+	// the error message sucks and it doesn't tell anything
+	// to the user when there is an actual error...
+	if !condition1 && (!condition2 || !condition3) {
+		assert[any](
+			false,
+			fmt.Sprintf("Exit expects Integer, but got %s", NodeTypeToString(node.Exit.Status.NodeType)),
+		)
+	}
+
+	if node.Exit.Message.NodeType != nodeNull {
+		allowedTypes := MakeTypeList("String")
+
+		condition1 := node.Exit.Message.NodeType == nodeStringLiteral
+		condition2 := node.Exit.Message.NodeType == nodeIdentifier
+		condition3 := false
+		if condition2 {
+			for _, n := range scope {
+				if node.Exit.Message.VarDecl.Name.Symbol == n.VarDecl.Name.Symbol {
+					condition3 = (TypeCheckLiterals(n.VarDecl.Type, allowedTypes...))
+					break
+				}
+			}
+		}
+
+		// TO-DO: improve this fucking shit, because
+		// the error message sucks and it doesn't tell anything
+		// to the user when there is an actual error...
+		if !condition1 && (!condition2 || !condition3) {
+			assert[any](
+				false,
+				fmt.Sprintf("Exit expects String, but got %s", NodeTypeToString(node.Exit.Message.NodeType)),
+			)
+		}
+	}
+
+	return
+}
+
 func ChaosInferAndCheckType(program *ChaosSlice[Node], scope Scope) {
 	assert[any](program.cursor == 0, "Cursor is not 0")
 
 	for program.cursor < program.count {
 		if CSMatch(program, CSNodeNodeTypeComparison, nodeIdentifier) {
 			InferAndTypeCheckIdentifier(program, scope)
+			CSConsume(program)
+			continue
+		}
+
+		if CSMatch(program, CSNodeNodeTypeComparison, nodeExit) {
+			TypeCheckExit(program, scope)
 			CSConsume(program)
 			continue
 		}
