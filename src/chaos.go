@@ -10,9 +10,8 @@ import (
 func compileChaos(filepath string, src []byte) bool {
 	fileContent := bytes.NewBuffer(src)
 	tokensSlice := ChaosContentTokenize(fileContent)
-	/* program, scope, depth := */ ChaosContentAST(&tokensSlice)
-	// TypeCheckChaosProgram(program, scope, depth)
-	// chaosDebug(program.data)
+	program, scope := ChaosContentAST(&tokensSlice)
+	ChaosInferAndCheckType(program, scope)
 	return true
 }
 

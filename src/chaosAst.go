@@ -185,24 +185,6 @@ func infixBindingPower(token Token) (float64, float64) {
 	return 0.0, 0.0
 }
 
-func ChaosContentInferType(node *Node, expr Node) {
-	if node.VarDecl.Type.TokenType != tokInfer {
-		return
-	}
-	if expr.NodeType == nodeIntLiteral {
-		node.Infered = true
-		node.VarDecl.Type = MakeType("S64")
-	}
-	if expr.NodeType == nodeStringLiteral {
-		node.Infered = true
-		node.VarDecl.Type = MakeType("String")
-	}
-	if expr.NodeType == nodeBoolLiteral {
-		node.Infered = true
-		node.VarDecl.Type = MakeType("Bool")
-	}
-}
-
 func ChaosContentParseBaseNode(chaosSlice *ChaosSlice[Token], accessScopes []Scope, depth int) Node {
 	var node Node
 
@@ -474,6 +456,15 @@ func ChaosContentParseProcDefinition(chaosSlice *ChaosSlice[Token], accessScope 
 				Initialized: false,
 			},
 		})
+	} else {
+		node.Proc.Outputs = append(node.Proc.Outputs, Node{
+			NodeType: nodeIdentifier,
+			VarDecl: &VarDecl{
+				Type:        MakeType("Void"),
+				Initialized: false,
+			},
+		})
+
 	}
 
 	depth++
@@ -552,12 +543,11 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token], accessSco
 		if CSMatch(chaosSlice, CSTokenTypeComparison, tokIdentifier) {
 			varType := CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokIdentifier)
 			node.VarDecl.Type = varType
-			accessScope[depth] = append(accessScope[depth], node)
-		}
-
-		if CSMatch(chaosSlice, CSTokenTypeComparison, tokSemicolon) {
-			CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokSemicolon)
-			return node
+			if CSMatch(chaosSlice, CSTokenTypeComparison, tokSemicolon) {
+				CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokSemicolon)
+				accessScope[depth] = append(accessScope[depth], node)
+				return node
+			}
 		}
 
 		if CSMatch(chaosSlice, CSTokenTypeComparison, tokAssignment) {
@@ -585,7 +575,6 @@ func ChaosContentParsePrimaryExpression(chaosSlice *ChaosSlice[Token], accessSco
 		accessScope[depth] = append(accessScope[depth], node)
 
 		expr := ChaosContentParseExpression(chaosSlice, 0.0, accessScope, depth)
-		ChaosContentInferType(&node, expr)
 
 		node.VarDecl.Assignment = expr
 		CSConsumeAssert(chaosSlice, CSTokenTypeAssert, tokSemicolon)
@@ -668,7 +657,7 @@ func ChaosContentASTParseStatement(chaosSlice *ChaosSlice[Token], accessScope []
 	return Node{NodeType: nodeNoOp}
 }
 
-func ChaosContentAST(tokens *ChaosSlice[Token]) (*ChaosSlice[Node], []Scope, int) {
+func ChaosContentAST(tokens *ChaosSlice[Token]) (*ChaosSlice[Node], Scope) {
 	assert[any](tokens.cursor == 0, "Cursor is not 0")
 	var accessScopes = []Scope{}
 	var depth = 0
@@ -695,7 +684,8 @@ func ChaosContentAST(tokens *ChaosSlice[Token]) (*ChaosSlice[Node], []Scope, int
 		cursor: 0,
 	}
 
-	return program, accessScopes, depth
+	assert[any](len(accessScopes) >= 1, "Access scope should never be less than 1")
+	return program, accessScopes[0]
 }
 
 // TO-DO: While parsing scopes, we may find a problem where we don't close the scope.
