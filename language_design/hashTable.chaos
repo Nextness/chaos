@@ -33,8 +33,10 @@ iterator :: proc (hash_table: *Hash_Table) -> Hash_Table_Iterator {
     return Hash_Table_Iterator(hash_table, 0);
 }
 
-Entry[Key, Value] :: struct {
-    #if (!Key.match(.[String, Byte, S64])) #compilation_error(«Only {allowed_types} can be passed to Entry»);
+Entry [Key, Value] :: struct {
+    #if !Key.match[Type](String, Byte, S64) {
+        #compilation_error(«Only {allowed_types} can be passed to Entry»);
+    }
 
     key: Key;
     value: Value;
@@ -46,7 +48,7 @@ Hash_Table [Key, Value] :: struct {
     size: U64 = 0;
 }
 
-init_hash_table [Key, Value] :: proc (Void; ctx :: #context) -> *Hash_Table[Key, Value]! {
+init_hash_table [Key, Value] :: proc (Void; ctx :: #context) -> relinquish *Hash_Table[Key, Value]! {
     HT :: alias Hash_Table[Key, Value];
     E  :: alias Entry[Key, Value];
 
@@ -60,10 +62,10 @@ init_hash_table [Key, Value] :: proc (Void; ctx :: #context) -> *Hash_Table[Key,
         return "null_pointer";
     }
 
-    return table;
+    return relinquish table;
 }
 
-destroy :: proc (using hash_table: *Hash_Table; ctx :: #context) -> Void! {
+destroy :: proc (acquire using hash_table: *Hash_Table; ctx :: #context) -> Void! {
     while i: 0..capacity {
         ctx.free(entry[i]?.key as *Void);
     }
@@ -76,31 +78,28 @@ get :: proc (using hash_table: Hash_Table, key: Hash_Table.Key) -> Hash_Table.Va
     i := hash && (capacity - 1);
 
     while has_key in entry {
-        if (has_key == undefined) break;
-        if (key == has_key.key) return has_key.value;
+        if has_key == null then break;
+        if key == has_key.key then return has_key.value;
     }
 
     return "not_found - key is not present";
 }
 
-expand :: proc (using hash-table: Hash-Table) -> Void! {
-    new-capacity :: capacity * 2;
-    if (new-capacity < capacity) return "overflow";
+expand :: proc (acquire using hash_table: *Hash_Table) -> Void! {
+    new_capacity :: capacity * 2;
+    if new_capacity < capacity then return "overflow";
 
-    new-entry := calloc?(new-capacity, size-of Entry<Hash-Table.V>);
-
+    new_entry := calloc(new_capacity, size_of Entry[Hash_Table.V])?;
     while i: 0..capacity {
-        local-entry :: entry[i]?;
-        if key != undefined {
-            set-entry(new-entry, new-capacity, key, value, undefined);
-        }
+        local_entry :: entry[i]?;
+        if key != null then set_entry(new_entry, new_capacity, key, value, null);
     }
 
-    entry = new-entry;
-    capacity = new-capacity;
+    entry = new_entry;
+    capacity = new_capacity;
 }
 
-set :: proc (using hash-table: *Hash-Table, key: Hash-Table.K, value: Hash-Table.V) -> Hash-Table.K! {
+set :: proc (acquire using hash-table: *Hash-Table, key: Hash-Table.K, value: Hash-Table.V) -> Hash-Table.K! {
     if (size >= capacity / 2) expand(hash-table)?;
     key :: set-entry(entry, capacity, key, value, size);
     return key;

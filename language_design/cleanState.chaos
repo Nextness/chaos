@@ -25,19 +25,33 @@ string :: #overload proc (using version: *Version) -> String {
     return version_string;
 }
 
-new_counter :: proc -> (*U64, proc -> U64)! {
+some_function_with_acquire :: proc (acquire some_struct: *Some_Struct) -> String! {
+    ...;
+}
+
+at_another_point :: proc (input1: String, input2: U64) -> String {
+    new_struct: *Some_Struct;
+    acquire new_struct = malloc(size_of(Some_Struct)) unless |error| {
+        logger.error(«{error}: {error.reason()}»);
+        return «unknown»;
+    }
+    result := some_function_with_acquire(relinquish new_struct)?;
+    return result;
+}
+
+new_counter :: proc -> (relinquish *U64, *proc -> U64)! {
     #let result :: #run get_current_os();
     #if result == .linux {
-        some_variable := mem.alloc(size_of U64)? as U64;
+        some_variable: U64 = acquire malloc(size_of U64)?;
         counter :: proc (var := some_variable) -> U64 {
             return (var.*)++;
         }
-        return some_variable, counter;
+        return relinquish some_variable, counter;
     }
     #todo;
 }
 
-ptr, counter :: new_counter() unless |error| {
+acquire ptr, counter :: new_counter() unless |error| {
     exit 69, «failed be create a new counter»;
 }
 
@@ -59,7 +73,7 @@ switch_test_new :: proc (something: Some_Enum) -> Void! {
 
 optional_return_assignment :: proc (value: String) -> (Bool, #optional String) {
     result := some_operation(value);
-    if result != undefined return true, «valid»;
+    if result != null then return true, «valid»;
     return false, «invalid»;
 }
 

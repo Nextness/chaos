@@ -1,20 +1,19 @@
 // Copyright
 
 get_user_by_username :: proc (username: String, session: Session) -> Async[User]! {
-    if username.length() >= 4096 return "large-text";
+    if username.length() >= 4096 then return "large-text";
     get_user_query :: «SELECT username FROM user_database WHERE username={username}»;
     async_user := perform_query(get_user_query, session);
     return async_user;
 }
 
 get_user :: proc (username: String) -> User! {
-    task :: proc -> User! {
+    current_user := async_task(proc -> User! {
         global_session :: get_global_session()?;
         return get_user_by_username(username, global_session);
-    }
+    });
 
-    current_user := async_task(task);
-    user :: await(current_user) unless error {
+    user :: await(current_user) unless |error| {
         logger(ERROR, «Failed to get user {username}»);
         return "failed-to-get-user";
     }

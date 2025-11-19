@@ -6,22 +6,22 @@ is_uppercase :: #overload proc (val: Byte) -> Bool {
     
 }
 
-is_uppercase :: #overload proc(val: #char) -> Bool {
+is_uppercase :: #overload proc(val: #char String) -> Bool {
     
 }
 
 Lexer_Error_Config :: struct {
     error_msg: String;
-    examples: Array<dyn, String?>;
-    example_count: I64;
+    examples: Array[dyn, String?];
+    example_count: U64;
 }
 
 new_lexer_error :: proc (error_msg: String) -> Lexer_Error_Config {
-    return Lexer_Error_Config(
+    return Lexer_Error_Config.{
         error_msg = error_msg,
-        examples = Array<dyn, String>(),
+        examples = Array[dyn, String].{},
         example_count = 0,
-    );
+    };
 }
 
 Lexer_Error_Config.new_example :: proc (self: *Self, examples: ...String) -> Void {
@@ -45,7 +45,7 @@ Lexer_Error_Config.new_example :: proc (self: *Self, examples: ...String) -> Voi
 get_something :: proc (id: &String) -> U64! {
     id :: «»; // This should fail, since it is a reference, and references cannot be assigned.
               // In a sense, this value is immutable.
-    result: I64 = some_operation(id);
+    result: S64 = some_operation(id);
     return result;
 }
 

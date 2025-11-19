@@ -1,6 +1,6 @@
 Some_Interface [T] :: scaffold {
-    ~mandatory_field_1: String;
-    ~mandatory_field_2: T;
+    mandatory_field_1: String;
+    mandatory_field_2: T;
     do_some_operation: proc (~self: *Self impl) -> Void!;
 }
 

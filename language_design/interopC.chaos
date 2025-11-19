@@ -1,4 +1,3 @@
-printf              :: #extern(«c») «printf» proc;
-window_should_close :: #extern(«c») «windowShouldClose» proc;
-Some_Struct         :: #extern(«c») «SomeStruct» struct;
-
+printf              :: #extern «c» proc (fmt: C_Str, args: Variadic[C_String]) -> Void;
+window_should_close :: #extern «c» proc -> Bool;
+Some_Struct         :: #extern «c» struct;

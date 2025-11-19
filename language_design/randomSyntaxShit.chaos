@@ -14,7 +14,7 @@ Json_Response [T] :: struct {
     content: T? = null;       #tag(«json:content»)
 }
 
-Json_Response.something_crazy :: proc (self: *Self, status-code: U32) -> Void! {
+Json_Response impl something_crazy :: proc (self: *Self, status-code: U32) -> Void! {
     if (status_code > 400) then return "invalid_status_code";
     self.status-code = status-code;
 }
@@ -24,7 +24,12 @@ result :: response.something_crazy(401) unless |error| {
     exit 1;
 }
 
-AnyType.reveal :: proc (self: *Self) -> String {
+global_variable :: 100;
+function_with_access_to_global_var :: proc [global_variable] () -> U64 {
+    
+}
+
+Any impl reveal :: proc (self: *Self) -> String {
     #let result = «<redacted>»;
     #if chaos_flags.CHAOS_DEBUG {
         result = self.value.to_string();
@@ -37,7 +42,7 @@ Some_Struct :: struct {
     password: #redacted String;
 }
 
-some_struct := Some_Struct {
+some_struct := Some_Struct.{
     username = «username»,
     password = get_env_var(«ENV_VAR_NAME», «None»)?,
 };
@@ -80,7 +85,7 @@ a: Q256 = q'1 - 2i + j';
 #global allocator_count :: 0;
 #global list_of_functions_with_allocator :: Array[Proc_Details].{};
 
-new_variable :: { key=«asd», value=100 };
+new_variable :: .{ key=«asd», value=100 };
 
 Allocator :: scaffold {
     malloc:  proc (~size: U64) -> *Void!;
@@ -132,7 +137,7 @@ some_function :: proc (input1: String, input2: *Allocator impl) -> Void! {
     return null;
 }
 
-handling_errors :: proc (some_input_1: Bool, some_input_2: acquire.String) -> Void! {
+handling_errors :: proc (some_input_1: Bool, acquire some_input_2: String) -> Void! {
     some_result: U64!;
 
     if some_unput_1 {
@@ -153,7 +158,9 @@ handling_errors :: proc (some_input_1: Bool, some_input_2: acquire.String) -> Vo
     return;
 }
 
-Any impl is_falsy :: #inline proc (self: *Self) -> relinquish.Bool {
+handling_error(true, relinquish «something»)?;
+
+Any impl is_falsy :: #inline proc (self: *Self) -> Bool {
     #if type_of self == String return self == «»;
     #if type_of self == Array[dyn, ...] return self.length() == 0;
     #if type_of self == Array[..., ...] return self.count == 0;
@@ -163,7 +170,37 @@ Any impl is_truthy :: #inline proc (self: *Self) -> Bool {
     return !self.is_falsy();
 }
 
-get_ownership :: proc (input1: String, input2: *Some_Struct) -> Addr {
+get_ownership :: proc (input1: *String?, input2: *Some_Struct?) -> (relinquish Addr[Another_Struct]!) {
+    input1 ?= «undefined»;
+
+    value_a, value_b: New_Struct = #0;
+    value_b: *Another_Struct? = malloc(size_of Another_Struct, zero_initialize = true) unless |error| {
+        print(«Failed to allocate memoery: {error.reason}»);
+        return error;
+    }
+
+    if input2 == null {
+        value_a :: do_a_bund_of_operations();
+        value_b :: more_operations(a) unless |error| {
+            print(«Something failed here: {error.reason}»);
+            return "failed_to_get_ownership"
+        }
+    }
+
+    return *value_b;
+}
+
+capture_groups :: proc (something: String, another_thing: *New_Struct) -> *Another_Struct {
+    another_crazy_op :: proc (s: String) |a = another_thing| -> Bool {
+        ...;
+    }
+
+    if another_crazy_op(something) {
+        ...;
+    }
+}
+
+New_Struct :: struct {
     
 }
 
