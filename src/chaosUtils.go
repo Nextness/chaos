@@ -13,6 +13,8 @@ import (
 const debug = true
 
 var debugCall int = 0
+var triggerCustomPanic bool = false
+var printWarningOnce = false
 
 func isNum(b byte) bool {
 	s := rune(b)
@@ -63,10 +65,23 @@ func customPanic() {
 	}
 }
 
+func warning(ok bool, msg string) {
+	if ok {
+		return
+	}
+	if !printWarningOnce {
+		fmt.Print("\033[1;33m[WARNING] Something weird is happening - but not an error\033[0m\n")
+		printWarningOnce = true
+	}
+	fmt.Printf("  \033[1;33mREASON:\033[0m %s\n", msg)
+
+}
+
 func assert[T any](ok bool, reason string) T {
 	if ok {
 		return *new(T)
 	}
+	triggerCustomPanic = true
 	customPanic()
 	if reason == "" {
 		reason = "Reason not provided..."
@@ -77,12 +92,9 @@ func assert[T any](ok bool, reason string) T {
 
 func panicHandler() {
 	if err := recover(); err != nil && debug {
-		frames, _ := getFrames(4) // TO-DO: This is a magic number, probably need to change later...
-		frame, _ := frames.Next()
-		if frame.Function[:11] != "main.assert" {
+		if !triggerCustomPanic {
 			customPanic()
 			fmt.Printf("  \033[4;37mREASON\033[0m: %v\n", err)
-
 		}
 		os.Exit(1)
 	}

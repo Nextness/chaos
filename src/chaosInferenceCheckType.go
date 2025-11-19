@@ -217,13 +217,15 @@ func InferAndTypeCheckIdentifier(program *ChaosSlice[Node], scope Scope) {
 		return
 	}
 
+	if node.NodeType == nodeIdentifier && node.VarDecl.Assignment.NodeType == nodeBinOp {
+		warning(false, "Skipping type inference for binary operations")
+		return
+	}
+
 	// TO-DO: Actually handle type inference for functions.
 	// For now I don't really know what I want skipping it.
 	if node.NodeType == nodeIdentifier && node.VarDecl.Assignment.NodeType == nodeProcDef {
-		if warnOnce {
-			fmt.Printf("[WARNING] Skipping type inference for proc definition\n")
-			warnOnce = false
-		}
+		warning(false, "Skipping type inference for proc definition")
 		return
 	}
 

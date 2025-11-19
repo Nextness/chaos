@@ -2,6 +2,9 @@ function :: proc -> String {
     return «»;
 }
 
+// not_initialized: U64;
+// not_initialized = 1;
+
 value1 :: 10;
 value2 :: «something»;
 value3 :: true;
@@ -15,3 +18,8 @@ function_call := function();
 new_value_1: S64 = value1;
 new_value_2: String = value2;
 new_value_3: Bool = value3;
+
+a :: 1 + 1;
+
+exit value1, value2;
+
