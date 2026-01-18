@@ -1,59 +1,60 @@
-Context [T] :: scaffold {
-    logger: Logger;
-}
-
-Custom [K] :: struct {
-    value: String;
-    another: U64;
-    key: K;
-}
-
-some_operation [K] :: #inline proc (value: String, another: U64, key: K) -> *Custom[K] {
-    result := Custom[K].{value, another, key};
+#inline some_operation :: proc <K> (value: String, another: U64, key: K) -> *Custom<K> {
+    result := Custom<K>.{value, another, key};
     print(«Got the result: {result}\n»);
     return *result;
 }
 
-Version :: struct {
-    major, minor, fix: U64;
-    phase: String? = null;
+Vector2 :: struct <T> {
+    #if !match(T, Numbers) {
+        #compilation_error();
+    }
+    x, y: T;
 }
 
-string :: #overload proc (using version: *Version) -> String {
+#overload + :: proc (lhs: Vector2, rhs: Vector2) -> Vector2 {
+    return .{
+        x = lhs.x + rhs.x,
+        y = lhs.y + rhs.y
+    };
+}
+
+Version :: struct {
+    major, minor, fix: U64;
+    phase: *String? = null;
+}
+
+#overload string :: proc (using version: *Version) -> String {
     version_string := «{major}.{minor}.{fix}»;
     if phase != null then version_string = «{version_string}-{phase}»;
     return version_string;
 }
 
-some_function_with_acquire :: proc (acquire some_struct: *Some_Struct) -> String! {
-    ...;
-}
-
 at_another_point :: proc (input1: String, input2: U64) -> String {
     new_struct: *Some_Struct;
-    acquire new_struct = malloc(size_of(Some_Struct)) unless |error| {
+    new_struct = malloc(size_of Some_Struct) unless |error| {
         logger.error(«{error}: {error.reason()}»);
         return «unknown»;
     }
-    result := some_function_with_acquire(relinquish new_struct)?;
     return result;
 }
 
-new_counter :: proc -> (relinquish *U64, *proc -> U64)! {
+new_counter :: proc -> (*U64, *proc -> U64)! {
     #let result :: #run get_current_os();
     #if result == .linux {
-        some_variable: U64 = acquire malloc(size_of U64)?;
+        some_variable: *U64 = malloc(size_of U64)?;
         counter :: proc (var := some_variable) -> U64 {
-            return (var.*)++;
+            return ++(var.*);
         }
-        return relinquish some_variable, counter;
+        return some_variable, counter;
     }
     #todo;
 }
 
-acquire ptr, counter :: new_counter() unless |error| {
+ptr, counter :: new_counter() unless |error| {
     exit 69, «failed be create a new counter»;
 }
+
+some_error :: error;
 
 switch_test_new :: proc (something: Some_Enum) -> Void! {
     @something if something == {
@@ -67,7 +68,7 @@ switch_test_new :: proc (something: Some_Enum) -> Void! {
         print(«String {D}s nuuutz\n»);
         break @something;
     default;
-        return "error";
+        return some_error!;
     }
 }
 
@@ -80,5 +81,5 @@ optional_return_assignment :: proc (value: String) -> (Bool, #optional String) {
 // This will only return the boolean value. Unless specified another argument, which 
 // in this case, will be a string.
 result := optional_return_assignment(«something that works»);
-result1, result2 :: optional_return-assignment(«somethig that doesn't work»);
+result1, result2 :: optional_return_assignment(«somethig that doesn't work»);
 

@@ -1,4 +1,4 @@
-MAX_LEN :: 4096;
+#inline MAX_LEN :: 4096;
 
 length :: proc (str: String, max_length: U64? = MAX_LEN) -> S64! {
     init_pos := &str;
@@ -25,5 +25,5 @@ copy :: proc (str: &String, max_length: U64? = MAX_LEN) -> String! {
 }
 
 #module string;
-#import «core/numbers»;
-#import «core/errors»;
+#import core.numbers;
+#import core.errors;

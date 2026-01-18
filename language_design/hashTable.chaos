@@ -1,79 +1,47 @@
 // Copied from https://github.com/benhoyt/ht/blob/master/ht.c
 // Probably it doesn't work - used just to evaluate language. Most likely things will change...
 
-Any impl is_in :: #overload proc (self: Self, array: Array) -> Bool {
-    #assert self != Map[..., ..., ...] || self != Array[..., ...];
-    result : Bool = false;
-
-    #if type_of(array) == Array[dyn, ...] {
-        while element in array {
-            if self == element {
-                result = true;
-                break;
-            }
-        }
-    } #elif type_of(array) == Array<..., ...> {
-        len :: length(array);
-        for i := 0 while i < len evaluate i++ {
-            if array[i] == element {
-                result = true;
-                break;
-            }
-        }
-    }
-
-    return result;
-}
-
-Any impl is_not_in :: proc (self: *Self, array: Array) -> Bool {
-    return !self.is_in(array);
-}
+generic_error :: error;
+out_of_memory :: error;
+not_found :: error;
 
 iterator :: proc (hash_table: *Hash_Table) -> Hash_Table_Iterator {
     return Hash_Table_Iterator(hash_table, 0);
 }
 
-Entry [Key, Value] :: struct {
-    #if !Key.match[Type](String, Byte, S64) {
-        #compilation_error(«Only {allowed_types} can be passed to Entry»);
-    }
-
-    key: Key;
-    value: Value;
+Entry :: struct <K: Type, V: Type> {
+    key: K;
+    value: V;
 }
 
-Hash_Table [Key, Value] :: struct {
-    entries: *Entry[Key, Value];
+Hash_Table :: struct <K: Type, V: Type> {
+    entries: *Entry<K, V>;
     capacity: U64 = 256;
     size: U64 = 0;
 }
 
-init_hash_table [Key, Value] :: proc (Void; ctx :: #context) -> relinquish *Hash_Table[Key, Value]! {
-    HT :: alias Hash_Table[Key, Value];
-    E  :: alias Entry[Key, Value];
+init_hash_table :: proc <K: Type, V: Type> (logger_state: *Logger_State) -> *Hash_Table<K, V>! {
+    table: *HT = malloc(size_of Hash_Table<K, V>) unless |err| {
+        logger(logger_state, .ERROR, «Failed to allocate memory, buy more RAM»);
+        return out_of_memory!;
+    }
+    err_defer free(table);
 
-    table: *HT = ctx.alloc(size_of HT) unless |error| {
-        ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
-        return "null_pointer";
+    entry.table = calloc(table.capacity, size_of Entry<K, V>) unless |err| {
+        logger(logger_state, .ERROR, «Failed to allocate memory, buy more RAM»);
+        return out_of_memory!;
     }
 
-    entry.table = ctx.calloc(table.capacity, size_of E) unless |error| {
-        ctx.logger(ERROR, «Failed to allocate memory, buy more RAM»);
-        return "null_pointer";
-    }
-
-    return relinquish table;
+    return table;
 }
 
-destroy :: proc (acquire using hash_table: *Hash_Table; ctx :: #context) -> Void! {
-    while i: 0..capacity {
-        ctx.free(entry[i]?.key as *Void);
-    }
-    ctx.free(entries);
-    ctx.free(hash_table);
+destroy :: proc (using hash_table: *Hash_Table) -> Void! {
+    while i: 0..capacity then ctx.free(entry[i]?.key as Addr);
+    free(entries);
+    free(hash_table);
 }
 
-get :: proc (using hash_table: Hash_Table, key: Hash_Table.Key) -> Hash_Table.Value! {
+get :: proc (using hash_table: Hash_Table, key: hash_table.Key) -> hash_table.Value! {
     hash :: hash_key(key);
     i := hash && (capacity - 1);
 
@@ -82,10 +50,10 @@ get :: proc (using hash_table: Hash_Table, key: Hash_Table.Key) -> Hash_Table.Va
         if key == has_key.key then return has_key.value;
     }
 
-    return "not_found - key is not present";
+    return not_found!;
 }
 
-expand :: proc (acquire using hash_table: *Hash_Table) -> Void! {
+expand :: proc (using hash_table: *Hash_Table) -> Void! {
     new_capacity :: capacity * 2;
     if new_capacity < capacity then return "overflow";
 
@@ -99,9 +67,9 @@ expand :: proc (acquire using hash_table: *Hash_Table) -> Void! {
     capacity = new_capacity;
 }
 
-set :: proc (acquire using hash-table: *Hash-Table, key: Hash-Table.K, value: Hash-Table.V) -> Hash-Table.K! {
-    if (size >= capacity / 2) expand(hash-table)?;
-    key :: set-entry(entry, capacity, key, value, size);
+set :: proc (using hash_table: *Hash_Table, key: Hash_Table.K, value: Hash_Table.V) -> Hash_Table.K! {
+    if size >= capacity / 2 then expand(hash_table)?;
+    key :: set_entry(entry, capacity, key, value, size);
     return key;
 }
 
@@ -115,29 +83,28 @@ next :: proc (using hash-table: *Hash-Table, it: *Hash-Table-Iterator) -> Void! 
             return;
         }
     }
-    return "out-of-bounds";
+    return @out_of_bounds;
 }
 
 #[scope=«file»];
-
 fnv-off-set :: 14695981039346656037;
 fnv-prime   :: 1099511628211;
 
-has_key [K, V] :: proc (key: *K) -> V {
-    hash := fnt-off-set;
+has_key :: proc <Key, Value> (key: *Key) -> Value {
+    hash := fnt_off_set;
     tmp := key;
 
     while i: 0..tmp.length() {
-        current-char := tmp[i];
+        current_char := tmp[i];
         hash ^= current-char as U64;
-        hash *= fnv-prime;
+        hash *= fnv_prime;
     }
 
     return hash;
 }
 
 set_entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entry.V, size: *U64?) -> Entry.K {
-    i := has-key(key) && (capacity - 1);
+    i := has_key(key) && (capacity - 1);
 
     while true {
         cur_entry := entry[i]?;
@@ -149,9 +116,9 @@ set_entry :: proc (using entry: Entry, capacity: U64, key: *Entry.K, value: Entr
         i++;
     }
 
-    if size == undefined {
+    if size == null {
         key = strdup(key);
-        size.*++;
+        (size.*)++;
     }
 
     cur_entry := entry[i]?;

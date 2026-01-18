@@ -1,19 +1,19 @@
 // Got from https://github.com/biaofuxmu/linked_list/blob/master/double_list/double_list.c
 // to use as example
 
-length :: #inline proc (dll: &Double_Linked_List) -> U64 {
+#inline length :: proc (dll: *Double_Linked_List) -> U64 {
     return dll.*.count as U64;
 }
 
-head :: #inline proc (dll: &Double_Linked_List) -> *Node! {
-    return dll.head != undefined ? dll.head : "null_pointer";
+#inline head :: proc (dll: *Double_Linked_List) -> *Node! {
+    return dll.head != null ? dll.head : "null_pointer";
 }
 
-tail :: #inline proc (dll: &Double_Linked_List) -> *Node! {
-    return dll.tail != undefined ? dll.tail : "null_pointer";
+#inline tail :: proc (dll: *Double_Linked_List) -> *Node! {
+    return dll.tail != null ? dll.tail : "null_pointer";
 }
 
-print :: proc (dll: &Double_Linked_List) -> Void {
+print :: proc (dll: *Double_Linked_List) -> Void {
     node: *Node = dll.head;
     while i: 0..dll.count {
         pad := i * 2;
@@ -22,38 +22,41 @@ print :: proc (dll: &Double_Linked_List) -> Void {
     }
 }
 
-Double_Linked_List <C = U64, T> :: struct {
-    count: C = 0;
+Double_Linked_List :: struct <C: num.Ints, T: Type> {
+    count: C = #0;
     head: *Node<T>?;
     tail: *Node<T>?;
-
-    #run {
-        if !C.matches(num.Ints) {
-            #compilation_error «{Self} only accepts {num.Ints}»;
-        }
-    }
 }
 
-Node <T> :: struct {
+Node :: struct <T: Type> {
     data: *T;
     prev: *Node<T>?;
     next: *Node<T>?;
 }
 
-init_node <T> :: proc (data: T) -> *Node<T>! {
-    ND :: alias Node<T>;
-    new_node: *ND = alloc(size_of(ND)) unless |error| {
-        logger(ERROR, «Failed to allocate node _ {error}»);
-        return "out_of_memory :: you are poor and don't have enough RAM lol";
+Err : Named_Scope : {
+    out_of_memory :: error <D: #ct String> {
+        name := «Out of memory»;
+        reason := «Some reason for the error»;
+        details := D;
+    }
+}
+
+init_node :: proc <T> -> *Node<T>! {
+    new_node: *Node<T> = alloc(size_of Node<T>) unless |err| {
+        logger(logger_state, .ERROR, «Failed to allocate node - {err}»)
+        return Err.@out_of_memory;
     }
 
-    logger(TRACE, «Allocated memory for node: {new_node.address}»);
-    new_node.data = data;
+    logger(logger_state, .TRACE, «Allocated memory for node: {new_node.address}»);
     return new_node;
 }
 
 push_head :: proc (node: *Node, data: Node.T) -> Void! {
-    new_node := init_node(data)?;
+    new_node := init_node(data) unless |err| {
+        if err == Err.@out_of_memory then return report_oom(err);
+        else return err;
+    }
     if dll.count == 0 {
         dll.head = newNode;
         dll.tail = newNode;
@@ -66,14 +69,20 @@ push_head :: proc (node: *Node, data: Node.T) -> Void! {
 }
 
 insert_node :: proc (node: *Node, data: Node.T, index: U64) -> Void! {
-    if (index < 0 or index > dll.count) return "out_of_bounds :: doesn't know how to measure...";
+    if index < 0 || index > dll.count {
+        return "out_of_bounds: doesn't know how to measure...";
+    }
 
-    if (index == 0 return) push_head(dll, data);
-    elif (index == dll.count) return push_tail(dll, data);
+    if index == 0           then return push_head(dll, data);
+    elif index == dll.count then return push_tail(dll, data);
 
     tmp: *Node<Node.T>;
-    if index <= (dll.count / 2) while (i: 0..index) tmp = tmp.next;
-    else while (i: 0..dll.count) tmp = tmp.prev;
+    if index <= (dll.count / 2) then
+        while i: 0..index then
+            tmp = tmp.next;
+    else then
+        while i: 0..dll.count then
+            tmp = tmp.prev;
 
     new_node := init_node(data)?;
     tmp.next.prev = new_node;

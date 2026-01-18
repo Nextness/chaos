@@ -1,7 +1,12 @@
 // Copyright
 
-get_user_by_username :: proc (username: String, session: Session) -> Async[User]! {
-    if username.length() >= 4096 then return "large-text";
+Async_Error :: error {
+    USER_NOT_FOUND;
+    USERNAME_TOO_LARGE;
+}
+
+get_user_by_username :: proc (username: String, session: Session) -> Async<User>! {
+    if length(username) >= 4096 then return Async_Error.USERNAME_TOO_LARGE;
     get_user_query :: «SELECT username FROM user_database WHERE username={username}»;
     async_user := perform_query(get_user_query, session);
     return async_user;
@@ -13,9 +18,9 @@ get_user :: proc (username: String) -> User! {
         return get_user_by_username(username, global_session);
     });
 
-    user :: await(current_user) unless |error| {
-        logger(ERROR, «Failed to get user {username}»);
-        return "failed-to-get-user";
+    user :: await(current_user) unless |err| {
+        logger(log_state, .ERROR, «Failed to get user {username}»);
+        return Async_Error.USER_NOT_FOUND;
     }
 
     return user;

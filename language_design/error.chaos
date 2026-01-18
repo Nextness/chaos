@@ -1,9 +1,11 @@
-main :: proc (argc: S64, argv: ...String) -> Void {
-    error: AnyError = "null-pointer, reason can be included here";
-    print(«The error is {error} - reason {error.reason}»);
+some_error :: error;
+
+#entry main :: proc (argc: S64, argv: ...String) -> Void {
+    err: Error = some_error!;
+    print(«The error is {err} - reason {err.reason}»);
     return;
 }
 
 #module errors;
-#import «core::fmt::io.chaos»;
+#import «core/fmt/io.chaos»;
 

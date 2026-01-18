@@ -1,26 +1,27 @@
 Logger_Level :: enum_array {
-    trace: U64;
-    debug;
-    info;
-    warning;
-    error;
-    critical;
-    disabled;
+    TRACE: U64;
+    DEBUG;
+    INFO;
+    WARNING;
+    ERROR;
+    CRITICAL;
+    DISABLED;
 }
 
 Log :: scaffold {
     date_format: String = «%YEAR-%MONTH-%DAY %hour:%minute:%second»;
-    output: Array<dyn, Stream> = .[STD_OUT];
+    output: [dyn]Stream = [STR_OUT];
     include_os_name: Bool = false;
-    log_level: Any = undefined;
-    log: proc (~self: *Self impl, ~log_level: Enum_Array[U64], ~msg: String) -> Void;
+    log_level: Logger_Level = .WARNING;
+
+    log: proc (~self: *impl Self, ~log_level: Enum_Array<U64>, ~msg: String);
 }
 
-Log impl Logger :: struct {
+Log :: struct impl Logger {
     date_format := default;
     output := default;
     include_os_name := default;
-    log_level: Logger_Level = .info;
+    log_level: Logger_Level = .INFO;
 }
 
 Logger impl log :: proc (self: *Self, log_level: Logger_Level, message: String) {

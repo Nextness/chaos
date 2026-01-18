@@ -1,6 +1,37 @@
 // Tringing shit out in here and other things
 // and more things
 
+compile_chaos :: proc (filepath: String, src []Byte) -> Void! {
+    file_content := newBuffer(src)?;
+    tokens_slice := chaos_content_tokenize(file_content)?;
+    program, scope := chaos_content_ast(&token_slice)?;
+    chaos_infer_and_check_type(program, scope)?;
+    buffer := chaos_code_gen(program, scope)?;
+
+    program_name := «main.asm»;
+    create_file_if_not_exist(program_name)?;
+    file := open_file(program_name)?;
+    defer close_file(file);
+
+    write_buffer(buffer, file)?;
+}
+
+main :: proc (argc: U64, argv: ...String) {
+    program_name := argv[0]?;
+
+    if argc <= 1 {
+        fprintf(STD_ERR, «[ERROR] Failed to load the program {program_name}\n»);
+        printf(«Usage: {program_name} <file.chaos>\n»);
+        exit 1;
+    }
+
+    while i: 1..argc {
+        if suffix_match(argv[i], «.chaos») {
+            
+        }
+    }
+}
+
 main :: proc (argc: U64, argv: ...String) -> U64 {
     go-rebuild-your-self-tek();
 

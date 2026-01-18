@@ -1,55 +1,48 @@
-Flag-Type :: enum-array {
+Flag_Type :: enum_array {
     BOOL;
     UINT64;
     SIZE;
     STR;
 }
-#assert length(Flag-Type) == 4, «Exhaustive FlagValue definition»;
+#assert length(Flag_Type) == 4, «Exhaustive FlagValue definition»;
 
-Flag-Value :: union {
-    as-str: String;
-    as-uint64: U64;
-    as-bool: Bool;
-    as-size: Size;
+Flag_Value :: union {
+    as_str: String;
+    as_uint64: U64;
+    as_bool: Bool;
+    as_size: Size;
 }
 
 Flag :: struct {
-    flag-type: Flag-Type;
+    flag_type: Flag_Type;
     name: *String;
     description: *String;
-    value: Flag-Value;
-    definition: Flag-Value;
+    value: Flag_Value;
+    definition: Flag_Value;
 }
 
-FLAG-CAP :: 256;
+FLAG_CAP :: 256;
 
-Flag-Content :: struct {
-    flags: Array<dyn, Flag>;
-    flags-count: U64;
-    flag-error: AnyError;
-    program-name: &String;
-    rest-argc: I64;
-    rest-argv: Array<dyn,String>;
+Flag_Content :: struct {
+    flags:        [dyn]Flag;
+    flags_count:  U64;
+    flag_error:   Error;
+    program_name: &String;
+    rest_argc:    S64;
+    rest_argv:    [dyn]String;
 }
 
-global flag-global-context: Flag-Context;
+flag_global_context: Flag_Context;
 
-new-flag :: proc (flag-type: Flag-Type, name: Name, description: String) -> Flag! {
-    ctx := flag-global-context;
-    assert ctx.flags-count < FLAG-CAP, «Expected maximum of {FLAG-CAP} flags, but found {ctx.flags-count}»;
+new_flag :: proc (flag_type: Flag_Type, name: Name, description: String) -> Flag! {
+    ctx := flag_global_context;
+    assert ctx.flags_count < FLAG_CAP, «Expected maximum of {FLAG_CAP} flags, but found {ctx.flags_count}»;
 
-    ctx.flags-count++;
-    flag: *Flag = ctx.flags[flags-count]?;
-    mem-set(flag, 0, size-of flags);
+    ctx.flags_count++;
+    flag: *Flag = ctx.flags[flags_count]?;
+    mem_set(flag, 0, size_of flags);
     flag.name = name;
     flag.description = description;
     return flag;
 }
-
-proc flag-name
-    expects val as *String or U64 or Bool or Size
-    returns String
-executes
-    ...;
-end-proc
 

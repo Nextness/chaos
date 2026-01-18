@@ -1,14 +1,14 @@
-Node [T] :: struct {
-    value: T? = undefined;
-    next: *Node?[T] = undefined;
+Node :: struct <T: Type> {
+    value: *T? = null;
+    next: *Node<T>? = null;
 }
 
-init_node [T] :: proc -> *Node[T]! {
-    node_head := alloc(size_of Node[T])?;
+init_node :: proc <T: Type> :: proc -> *Node<T>! {
+    node_head :: malloc(size_of Node<T>)?;
     return node_head;
 }
 
-insert :: proc (n: *Node, value: Node.T) -> Void {
+insert :: proc (n: *Node, value: n.T) -> Void {
     current_node := n;
     while current_node != null then current_node = current_node.next;
     current_node.next = value;

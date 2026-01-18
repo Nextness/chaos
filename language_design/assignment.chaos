@@ -22,7 +22,7 @@ something_else :: proc (some_variable_name: S64, another_variable: Bool) -> Void
     exit 0, «Complete action»;
 }
 
-main :: #entry proc (argc: S64, argv: Array[String]) -> Void {
+#entry main :: proc (argc: S64, argv: []String) -> Void {
     string_literal :: «something»;
     another_string :: string_literal;
     infered_int := 10;

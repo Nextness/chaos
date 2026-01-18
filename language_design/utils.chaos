@@ -12,19 +12,19 @@ is_uppercase :: #overload proc(val: #char String) -> Bool {
 
 Lexer_Error_Config :: struct {
     error_msg: String;
-    examples: Array[dyn, String?];
+    examples: [dyn]String?;
     example_count: U64;
 }
 
 new_lexer_error :: proc (error_msg: String) -> Lexer_Error_Config {
-    return Lexer_Error_Config.{
+    return .{
         error_msg = error_msg,
-        examples = Array[dyn, String].{},
+        examples = [dyn]String.{},
         example_count = 0,
     };
 }
 
-Lexer_Error_Config.new_example :: proc (self: *Self, examples: ...String) -> Void {
+new_example :: proc (error_config: *Lexer_Error_Config, examples: ...String) {
     example_len :: length(examples);
     assert example > 0;
 
