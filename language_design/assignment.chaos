@@ -10,7 +10,7 @@ something_else :: proc (some_variable_name: S64, another_variable: Bool) -> Void
     some_variable: String;
     something1: U64 = some_minus;
     some_string :: «something should be here»;
-    something: U64  /** something in  here**/ = 1;
+    something: U64  /** something in  here **/ = 1;
 
     if something == 2 {
         some_value: String = «somethings»;
@@ -22,7 +22,7 @@ something_else :: proc (some_variable_name: S64, another_variable: Bool) -> Void
     exit 0, «Complete action»;
 }
 
-#entry main :: proc (argc: S64, argv: []String) -> Void {
+#entry main :: proc (argc: S64, argv: ...String) -> Void {
     string_literal :: «something»;
     another_string :: string_literal;
     infered_int := 10;

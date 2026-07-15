@@ -16,7 +16,7 @@ Log :: scaffold {
     log_level: Logger_Level = .WARNING;
 
     impl {
-        log :: proc (~self: Self, ~log_level: Enum_Array<U64>, ~msg: String);
+        log :: proc (Self, Enum_Array<U64>, String);
     }
 }
 
@@ -29,7 +29,7 @@ Log_State :: struct {
 }
 
 Log_State impl {
-    log :: proc (~self log_state: *Log_State, ~log_level level: Logger_Level, ~msg message: String) {
+    log :: proc (log_state: *Log_State, level: Logger_Level, message: String) {
         print(«{message}»);
     }
 }
