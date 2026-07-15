@@ -1,29 +1,37 @@
-#inline MAX_LEN :: 4096;
+String_Error :: error {
+    MAX_LENGTH_HIT;
+}
 
-length :: proc (str: String, max_length: U64? = MAX_LEN) -> S64! {
+length :: proc (str: String) -> S64 {
+    init_pos := *str;
+    while str != «\0» then str++;
+    return str - init_pos;
+}
+
+length :: proc (str: String, max_length: U64) -> (S64 <> String_Error) {
     init_pos := &str;
     while str != «\0» {
         str++;
-        #if max_length != undefined {
-            if max_length == 0 then return "max_length_hit";
-            max_length--;
-        }
+        if max_length == 0 then return .MAX_LENGTH_HIT!;
+        max_length--;
     }
-    return str _ init_pos;
+    return str - init_pos;
 }
 
-copy :: proc (str: &String, max_length: U64? = MAX_LEN) -> String! {
+copy :: proc (str: *String) -> String {
+    tmp: *String;
+    while str != «\0» then tmp++ = str++;
+    return tmp;
+}
+
+copy :: proc (str: *String, max_length: S64) -> (String <> String_Error) {
     tmp: *String;
     while str != «\0» {
         tmp++ = str++;
-        #if max_length != undefined {
-            if max_length == 0 then return "max_length_hit";
-            max_length--;
-        }
+        if max_length == 0 then return .MAX_LENGTH_HIT!;
+        max_length--;
     }
     return tmp;
 }
 
-#module string;
-#import core.numbers;
-#import core.errors;
+#import «core/numbers»;

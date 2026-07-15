@@ -6,6 +6,7 @@ Logger_Level :: enum_array {
     ERROR;
     CRITICAL;
     DISABLED;
+
 }
 
 Log :: scaffold {
@@ -14,22 +15,24 @@ Log :: scaffold {
     include_os_name: Bool = false;
     log_level: Logger_Level = .WARNING;
 
-    log: proc (~self: *impl Self, ~log_level: Enum_Array<U64>, ~msg: String);
-}
-
-Log :: struct impl Logger {
-    date_format := default;
-    output := default;
-    include_os_name := default;
-    log_level: Logger_Level = .INFO;
-}
-
-Logger impl log :: proc (self: *Self, log_level: Logger_Level, message: String) {
-    #if? self.log_level < log_level {
-        #optimize_out;
+    impl {
+        log :: proc (~self: Self, ~log_level: Enum_Array<U64>, ~msg: String);
     }
 }
 
-#module logger;
-#let io = #import «core::fmt::io.chaos»;
+Log_State :: struct {
+    #base Log;
+    date_format := #0;
+    output := #0;
+    include_os_name := #0;
+    log_level := .INFO;
+}
+
+Log_State impl {
+    log :: proc (~self log_state: *Log_State, ~log_level level: Logger_Level, ~msg message: String) {
+        print(«{message}»);
+    }
+}
+
+#import «fmt»;
 

@@ -5,22 +5,22 @@ Async_Error :: error {
     USERNAME_TOO_LARGE;
 }
 
-get_user_by_username :: proc (username: String, session: Session) -> Async<User>! {
-    if length(username) >= 4096 then return Async_Error.USERNAME_TOO_LARGE;
-    get_user_query :: «SELECT username FROM user_database WHERE username={username}»;
+get_user_by_username :: proc (username: String, session: Session) -> (Async<User> <> Async_Error) {
+    if length(username) >= 4096 then return .USERNAME_TOO_LARGE!;
+    get_user_query := «SELECT username FROM user_database WHERE username={username}»;
     async_user := perform_query(get_user_query, session);
     return async_user;
 }
 
-get_user :: proc (username: String) -> User! {
-    current_user := async_task(proc -> User! {
+get_user :: proc (username: String) -> (User <> Async_Error) {
+    current_user := async_task(proc -> (User <> Async_Error) {
         global_session :: get_global_session()?;
         return get_user_by_username(username, global_session);
     });
 
-    user :: await(current_user) unless |err| {
+    user :: await(current_user) unless catch err {
         logger(log_state, .ERROR, «Failed to get user {username}»);
-        return Async_Error.USER_NOT_FOUND;
+        return .USER_NOT_FOUND!;
     }
 
     return user;

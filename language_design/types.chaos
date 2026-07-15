@@ -1,16 +1,21 @@
 // Numbers
+Any_Integer :: S8 | S16 | S32 | S64 | S128;
 
-Ints       :: type_union { S8   | S16 | S32 | S64 | S128; }
-UInts      :: type_union { U8   | U16 | U32 | U64 | U128; }
-Floats     :: type_union { F16  | F32 | F64 | F128; }
-Complex    :: type_union { C64  | C128; }
-Quaternion :: type_union { Q128 | Q256; }
+Any_UInteger :: U8 | U16 | U32 | U64 | U128;
 
-Natural    :: type_union { Ints    | UInts; }
-Real       :: type_union { Natural | Floats; }
-Any_Number :: type_union { Real    | Complex | Quaternion; }
+Any_Float :: F16 | F32 | F64 | F128;
 
-Matrix :: struct <T: Any_Number, R: Literal<Natural>, C: R> {
+Any_Complex :: C64 | C128;
+
+Any_Quaternion :: Q128 | Q256;
+
+Any_Natural :: Any_Integer | Any_UInteger;
+
+Any_Real :: Any_Natural | Any_Float;
+
+Any_Number :: Any_Real | Any_Complex | Quaternion;
+
+Matrix <T: "{Any_Number}", R: "{Any_Natural}", C: R.V> :: struct {
     #while r: 1..R+1 {
         #insert «row_{r}: [{C}]{T};\n»;
     }

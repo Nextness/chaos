@@ -1,17 +1,74 @@
-Node :: struct <T: Type> {
-    value: *T? = null;
+Node <T: Type> :: struct {
+    data: *T? = null;
     next: *Node<T>? = null;
 }
 
-init_node :: proc <T: Type> :: proc -> *Node<T>! {
-    node_head :: malloc(size_of Node<T>)?;
-    return node_head;
+List <T: Type> :: struct {
+    head: *Node<T>? = null;
 }
 
-insert :: proc (n: *Node, value: n.T) -> Void {
-    current_node := n;
-    while current_node != null then current_node = current_node.next;
-    current_node.next = value;
+new <T: Type> :: proc (data: T) -> (*Node<T> <> Error) {
+    node := malloc(type_of(Node<T>))?;
+    node.data = data;
+    node.next = null;
+    return node;
+}
+
+make <T: Type> :: proc -> (*List<T> <> Error) {
+    list := malloc(type_of(List<T>))?;
+    return list;
+}
+
+insert :: proc (list: *List, data: list.T) -> Error {
+    if list.head == null {
+        list.head = new_node(data)?;
+        return;
+    }
+    current := list.head;
+    while current != null {
+        current = current.next;
+    }
+    current.next = new_node(data)?;
+}
+
+remove :: proc (list: *List, data: list.T) -> Error {
+    current  := list.head;
+    previous := current;
+    while current != null {
+        if current.data != null {
+            previous.data = current.next;
+            if current == list.head then list.head = current.next;
+            free(current)?;
+            return;
+        }
+        previous = current;
+        current  = current.next;
+    }
+}
+
+reverse :: proc (list: *List) {
+    reversed: Addr = null;
+    tmp:      Addr = null;
+
+    current := list.head;
+    while current != null {
+        tmp = current;
+        current = current.next;
+        tmp.next = reversed;
+        reversed = tmp;
+    }
+    list.head = reversed;
+}
+
+destroy :: proc (list: *List) -> Error {
+    current := list.head;
+    next := current;
+    while current != null {
+        next = current.next;
+        free(current)?;
+        current = next;
+    }
+    free(list)?;
 }
 
 #module linkedList;

@@ -11,31 +11,34 @@
 
 #scope(«file»)
 
-header(«Documentation for RandomSyntaxShit»)
-lastUpdated(today())
-moduleName(«randomSyntaxShit»)
-track(«everything»)
+#import «randomSyntaxShit»;
+
+header(«Documentation for RandomSyntaxShit»);
+lastUpdated(today());
+moduleName(«randomSyntaxShit»);
+track(«everything»);
 
 // Above is metadata about the program
 
-proc main() do
-    includeIndex(true)
+main :: proc {
+    includeIndex(true);
 
-    section(«Context Description»)
+    section(«Context Description»);
 
-    paragraph(«Some information about context, and shit...», bold(«more information and details, but using bold text»))
+    paragraph(«Some information about context, and shit...», bold(«more information and details, but using bold text»));
 
-    paragraph(codeBlock(Context.definition))
+    paragraph(codeBlock(Context.definition));
 
-    paragraph(«More information about the context and the fields + how to use»)
+    paragraph(«More information about the context and the fields + how to use»);
 
-    if hasChanged(Context.definition) do
-        print(«[WARNING] Context has changed and requires documentation updates»)
-        doShouldFail()
-    endif
+    if hasChanged(Context.definition) {
+        print(«[WARNING] Context has changed and requires documentation updates»);
+        doShouldFail();
+    }
 
-    subSection(«Example on Context»)
+    subSection(«Example on Context»);
 
+    linkExamples := linkTo(«./random2.chaos.example», «random2 examples») catch 
     if let linkExamples := linkTo(«./random2.chaos.example», «random2 examples») catch err do
         print(«[ERROR] The path for the link doesn't exist»)
         doShouldFail()
@@ -43,9 +46,9 @@ proc main() do
     paragraph(«More information about example can be found in {linkExamples}»)
 
     section(«Another section about switch statements»)
-endproc
+}
 
-#import «random.chaos»
-#import «core::date.chaos»
-#import «core::docs.chaos»
+#import «random.chaos»;
+#import «core::date.chaos»;
+#import «core::docs.chaos»;
 

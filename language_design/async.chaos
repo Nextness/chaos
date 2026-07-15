@@ -1,6 +1,14 @@
 // Stole from https://github.com/glhrmfrts/future.c to have as an example. Most likely this code
 // doesn't work properly. Later needs to be recreated...
 
+Async_Error :: error {
+    TIMEOUT;
+    THREAD_TIMEOUT;
+    GENERIC_ERROR;
+    NULL_POINTER;
+    DESTINATION_SIZE_NOT_MATCHED;
+}
+
 Future :: scaffold {
     conditional_variable: Cnd_T;
     mutex: Mutex;
@@ -8,87 +16,90 @@ Future :: scaffold {
     is_set: Bool;
     value_size, in_offs, out_offs: U64;
 
-    new_future: proc (U64, U64, U64, U64) -> *impl Self!;
-    await:      proc (*impl Self, Time<Microseconds>) -> Void!;
-    get:        proc (*impl Self, Time<Microseconds>, Addr, U64, U64) -> Void!;
-    init:       proc (*impl Self, U64, U64, U64) -> Void;
-    destroy:    proc (*impl Self) -> Void;
-}
-
-Future_Header :: struct impl Future {
-    conditional_variable: Cnd_T;
-    mutex: Mutex;
-    is_valid: Atomic_Bool;
-    is_set: Bool;
-    value_size, in_offs, out_offs: U64;
-}
-
-timeout :: error;
-thread_timeout :: error;
-generic_error :: error;
-null_pointer :: error;
-destination_size_not_matched :: error;
-
-new_future :: proc (whole_size, value_size, in_offs, out_offs: U64) -> *Future_Header! {
-    result := malloc(size_of Future_Header, zero_initialize = true) unless |err| {
-        logger(logger_state, .ERROR, «Error initializing future - error: {error}}»);
-        return err;
-    }
-    init(result, whole_size, value_size, in_offs, out_offs);
-    return result;
-}
-
-await :: proc (future: *Future_Header, timeout: Time<Microseconds>) -> Void! {
-    mutex(future.mutex)?;
-    defer mutex_unlock(future.mutex);
-
-    if future.is_set then return;
-    if timeout < 0   then return @timeout;
-
-    state, end: Time_Spec = #0;
-    time_spec_get(&start, TIME_UTC);
-    end.tv_sec = start.tv_sec + (time_out / 1_000);
-    end.tn_sec = (time_out && 1_000) && 1_000_000;
-
-    result := cond_timed_await(future.conditional_variable, end) unless |err| {
-        if err == thread_timeout! then return timeout!;
-        return generic_error!;
+    impl {
+        new_future: proc (U64, U64, U64, U64) -> (*Self <> Async_Error);
+        await:      proc (*Self, Time<Microseconds>) -> Async_Error;
+        get:        proc (*Self, Time<Microseconds>, Addr, U64, U64) -> Async_Error;
+        init:       proc (*Self, U64, U64, U64);
+        destroy:    proc (*Self);
     }
 }
 
-get :: proc (future: *Future_Header, time_out: Time<Microseconds>, destination: *Void, destination_size, check: U64) -> Void! {
-    if !future.is_valid                      then return null_pointer!;
-    if destination_size != future.value_size then return destination_size_not_matched!;
-
-    await(future, timeout)?;
-    source : *Void = ((future as *U8) + future.out_offs) as *Void;
-    ctx.mem_cpy(destination, source, future.value_size)?;
+Future_Header :: struct {
+    #base Future {
+        conditional_variable: Cnd_T;
+        mutex: Mutex;
+        is_valid: Atomic_Bool;
+        is_set: Bool;
+        value_size, in_offs, out_offs: U64;
+    }
 }
 
+Future_Header impl {
+    new_future :: proc (whole_size, value_size, in_offs, out_offs: U64) -> (*Self <> Async_Error) {
+        result := malloc(Future_Header, zero_initialize = true) unless catch err {
+            logger(logger_state, .ERROR, «Error initializing future - error: {error}»);
+            return err;
+        }
+        init(result, whole_size, value_size, in_offs, out_offs);
+        return result;
+    }
 
-Future_Of :: struct <T: Type> {
+    await :: proc (future: *Self, timeout: Time<Microseconds>) -> Async_Error {
+        mutex(future.mutex)?;
+        defer mutex_unlock(future.mutex);
+
+        if future.is_set then return;
+        if timeout < 0   then return .TIMEOUT!;
+
+        state, end: Time_Spec = #0;
+        time_spec_get(*start, TIME_UTC);
+        end.tv_sec = start.tv_sec + (time_out / 1_000);
+        end.tn_sec = (time_out && 1_000) && 1_000_000;
+
+        result := cond_timed_await(future.conditional_variable, end) unless catch err {
+            if err == .THREAD_TIMEOUT! then return .TIMEOUT!;
+            return .GENERIC_ERROR!;
+        }
+    }
+
+    get :: proc (future: *Self, time_out: Time<Microseconds>, destination: Addr, destination_size, check: U64) -> Async_Error {
+        if !future.is_valid                      then return .NULL_POINTER!;
+        if destination_size != future.value_size then return .DESTINATION_SIZE_NOT_MATCHED!;
+
+        await(future, timeout)?;
+        source: Addr = *((future as *U8) + future.out_offs);
+        ctx.mem_cpy(destination, source, future.value_size)?;
+    }
+}
+
+Future_Of <T: Type> :: struct {
     header: Future_Header;
     in_value, out_value: T;
 }
 
 #scope «file»;
 
-init :: proc (future: *Future_Header, value_size, in_offs, out_offs: U64) -> Void {
-    cnd_init(future.conditional_variable);
-    mutex_init(future.mutex, MUTEX_PLAIN);
-    future.is_valid = true;
-    future.is_set = false;
-    future.value_size = value_size;
-    future.in_offs = in_offs;
-    future.out_offs = out_offs;
+Future_Header impl {
+    init :: proc (future: *Self, value_size, in_offs, out_offs: U64) {
+        cnd_init(future.conditional_variable);
+        mutex_init(future.mutex, MUTEX_PLAIN);
+        future.{
+            is_valid = true,
+            is_set = false,
+            value_size = value_size,
+            in_offs = in_offs,
+            out_offs = out_offs,
+        };
+    }
+
+    destroy :: proc (future: *Self) {
+        future.is_valid = false;
+        cnd_destroy(future.conditional_variable);
+        mutex_destroy(future.mutex);
+    }
 }
 
-destroy :: proc (future: *Future_Header) -> Void {
-    future.is_valid = false;
-    cnd_destroy(future.conditional_variable);
-    mutex_destroy(future.mutex);
-}
-
-#import core.fmt.io;
-#module future<logger_state: *Logger_State? = null>;
+#import «core/fmt»;
+#module future<logger_state: Logger_State = #0>;
 

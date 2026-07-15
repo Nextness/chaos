@@ -1,3 +1,14 @@
+chaos_tokenizer :: proc (file_content: *Buffer) -> ([dyn]Token <> Error) {
+    tokens: [dyn]Buffer;
+    content := string(file_content);
+    content_len := len(file_content;)
+    single_tokens: [?]#char String = .{«=», «+», « »};
+
+    pos: Size = 0
+    while pos < content_len {
+    }
+}
+
 proc chaos-tokenizer
     expects file-content as &Buffer
     returns (Array using Token)!;

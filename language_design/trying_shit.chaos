@@ -1,0 +1,47 @@
+#entry main :: proc {
+    options       :: Options.{ .{100, 30.0}, .{200, 27.0}, .{300, 25.0} };
+    demands       :: [?]S64.{100, 200, 300};
+    probabilities :: [?]F64.{0.5, 0.3, 0.2};
+
+    results: [dyn][dyn]F64 = #0;
+    for option: options {
+        values: [dyn]F64 = #0;
+        for demand: demands then append(*values, calculate_profit(option[0], option[1], demand));
+        append(*results, values);
+    }
+    print(«%\n», results);
+
+    for result: results {
+        tmp := 0.0;
+        #zipped for r, p: result, probabilities then tmp += r * p;
+        print(«%\n», tmp);
+    }
+}
+
+calculate_profit :: proc (amount_bought: S64, cost_per_unit: F64, demand: S64) -> F64 {
+    cost_to_buy   :: amount_bought.F64 * cost_per_unit;
+    current_stock :: amount_bought - demand;
+
+    if current_stock < 0 {
+        total_sold  :: amount_bought.F64 * PRICE_PER_UNIT;
+        demand_loss :: (abs(current_stock) - demand).F64;
+        return total_sold - cost_to_buy - demand_loss;
+    }
+
+    if current_stock > 0 {
+        total_sold     :: demand.F64 * PRICE_PER_UNIT;
+        total_not_sold :: current_stock.F64 * SALVAGE_VALUE_PER_UNIT;
+        return total_sold - cost_to_buy + total_not_sold;
+    }
+
+    total_sold :: demand.F64 * PRICE_PER_UNIT;
+    return total_sold - cost_to_buy;
+}
+
+PRICE_PER_UNIT               :: 50.0;
+SALVAGE_VALUE_PER_UNIT       :: 10.0;
+LOSS_DEMAND_NOT_MET_PER_UNIT :: 5.0;
+
+Options :: alias [dyn]struct(S64, F64);
+
+#import «math»;

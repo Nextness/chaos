@@ -1,3 +1,11 @@
-#extern «c, printf» printf                         :: proc (fmt: C<String>, args: ...C<String>) -> Void;
-#extern «c, WindowShouldClose» window_should_close :: proc -> Bool;
-#extern «c, Some_Struct» Some_Struct               :: struct;
+#entry main :: proc (argc: S64, argv: []String) {
+    some_c_struct: #c Some_Struct;
+    some_c_struct.a = 100;
+
+    another_c_struct := #c Some_Struct.{
+        100, 100, 200, true
+    };
+
+    #c printf(«Hello world, %\n», 10);
+    return;
+}

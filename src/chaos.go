@@ -12,6 +12,20 @@ func compileChaos(filepath string, src []byte) bool {
 	tokensSlice := ChaosContentTokenize(fileContent)
 	program, scope := ChaosContentAST(&tokensSlice)
 	ChaosInferAndCheckType(program, scope)
+	buffer := ChaosCodeGen(program, scope)
+
+	program_name := "main.asm"
+	file, err := os.Create(program_name)
+	defer file.Close()
+
+	if err != nil {
+		assert[any](false, fmt.Sprintf("Could not create the file %s", program_name))
+	}
+
+	if _, err := buffer.WriteTo(file); err != nil {
+		assert[any](false, fmt.Sprintf("Could not write to file %s", program_name))
+	}
+
 	return true
 }
 

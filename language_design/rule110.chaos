@@ -1,0 +1,80 @@
+/********************************************************************************************
+ * Got this example from https://github.com/THuouRY/Rule110_C/tree/main as a reference      *
+ *   to test if the language would actually work with a actually good and complete example. *
+ *   I think it looks alright.                                                              *
+ ********************************************************************************************/
+
+#entry main :: proc -> S64 {
+  next := random_row<ROW_SIZE>();
+
+  for i := 0; i < ITERATIONS; ++i {
+    print_row(next);
+    next = next_row(next);
+  }
+  
+  return 0;
+}
+
+ROW_SIZE   :: 50;
+ITERATIONS :: 100;
+
+cell_image :: .{
+    [Cell.D] = « »,
+    [Cell.A] = «*»,
+};
+
+patterns : [8, U8]Cell : .{
+    [pattern(.D, .D, .D)] = .D,
+    [pattern(.D, .D, .A)] = .A,
+    [pattern(.D, .A, .D)] = .A,
+    [pattern(.D, .A, .A)] = .A,
+    [pattern(.A, .D, .D)] = .D,
+    [pattern(.A, .D, .A)] = .A,
+    [pattern(.A, .A, .D)] = .A,
+    [pattern(.A, .A, .A)] = .D,
+};
+
+Cell :: enum_array {
+    D: U8 = 0;
+    A;
+}
+
+#inline pattern :: proc (A, B, C: Cell) -> U8 {
+    return A.U8 << 2 || B.U8 << 1 || C.U8;
+}
+
+Row <V: "{Any_Number}"> :: struct {
+    cells: [V, U64]Cell \ Array_Boundry_Check;
+}
+
+next_row <V: "{Any_Number}"> :: proc (previous: Row<V>) -> Row<V> {
+    next: Row<V> = #0;
+    for i := 1; i < ROW_SIZE-1; ++i {
+        A := prev.cells[i-1];
+        B := prev.cells[i];
+        C := prev.cells[(i+1) % ROW_SIZE];
+        index := @pattern(A, B, C);
+        next.cells[i] = patterns[index];
+    }
+    return next;
+}
+
+print_row :: proc (r: Row) {
+    print(«|», endline=«»);
+    for i := 0; i < r.V; ++i {
+        putc(cell_image[r.cells[i]], .STDOUT);
+    }
+    print(«|»);
+}
+
+random_row <V: "{Any_Number}"> :: proc -> Row<V> {
+    out: Row<V> = #0;
+    for i := 0; i < out.V; ++i {
+        out.cells[i] = rand() % 2;
+    }
+    return out;
+}
+
+
+#import «default»;
+#import «random»;

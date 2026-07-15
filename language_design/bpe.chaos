@@ -1,20 +1,24 @@
 // Trying real life code to validate syntax
 // from Tsoding: https://github.com/tsodin/bpe/blob/main/src/bpe.cg
 
-dump_tokens :: proc (file_path: String, tokens: *Tokens) -> Void! {
+Bpe_Error :: error {
+    GENERIC;
+}
+
+dump_tokens :: proc (file_path: String, tokens: *Tokens) -> Void | Bpe_Error {
     return write_entire_file(file_path, tokens.items, tokens.count * size_of tokens.items);
 }
 
-load_tokens :: proc (file_path: String, tokens: *Tokens, tmp_sb: *String_Builder) -> Void! {
+load_tokens :: proc (file_path: String, tokens: *Tokens, tmp_sb: *String_Builder) -> Void | Bpe_Error {
     tmp_sb.count = 0;
     read_entire_file(file_path, tmp_sb);
-    if (tmp_sb.count % size_of tokens.items) != 0 then return "generic_error";
+    if (tmp_sb.count % size_of tokens.items) != 0 then return .GENERIC!;;
 
     items_count: *U32 = tmp_sb.items as *Void;
     while i: 0..items_count then da_append(tokens, items[i]?);
 }
 
-load_pairs :: proc (file_path: String, pairs: *Pairs, tmp_sb: *String_Builder, version: U64) -> Void! {
+load_pairs :: proc (file_path: String, pairs: *Pairs, tmp_sb: *String_Builder, version: U64) -> Void | Bpe_Error {
     tmp_sb := 0;
     read_entire_file(file_path, tmp_sb);
     data := sb_to_sv(tmp_sb)?;
@@ -28,7 +32,7 @@ load_pairs :: proc (file_path: String, pairs: *Pairs, tmp_sb: *String_Builder, v
 
     version = data.data[3] unless |error| {
         logger(ERROR, «invalid data»);
-        return "invalid_data";
+        return .INVALID_DATA!;
     }
 
     data.data  += magic_count;
@@ -42,7 +46,7 @@ load_pairs :: proc (file_path: String, pairs: *Pairs, tmp_sb: *String_Builder, v
         parse_pairs_v1(file_path, pairs, data);
         break_case;
     default;
-        return "generic_error";
+        return .GENERIC_ERROR!;
     }
 
     magic_prefix_v0 :: sv_from_parts(«\0\0\0\0», 4);
@@ -51,6 +55,6 @@ load_pairs :: proc (file_path: String, pairs: *Pairs, tmp_sb: *String_Builder, v
         parse_pair_v0(file_path, pairs, data);
     }
 
-    return "generic_error";
+    return .GENERIC_ERROR!;
 }
 

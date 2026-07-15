@@ -1,3 +1,4 @@
+@new_test_suite(tear_up, tear_down) {
 first_test_suit :: test (tear_up: Tear_Up, tear_down: Tear_Down) {
     first_test_name :: proc (t: *Unit_Test) {
         something :: some_condition_must_happen(«abc»);
@@ -5,8 +6,10 @@ first_test_suit :: test (tear_up: Tear_Up, tear_down: Tear_Down) {
     }
 
     second_test_name :: proc (t: *Unit_Test) {
-        if !error from some_condition_must_happen(«ab») {
-            assert false, «Expected an error, but found nothing»;
+        some_confidition_must_happen(«ab») unless {
+            return assert true; /** Error is expected, do nothing **/
         }
+        assert false, «Expected an error, but found nothing»;
     }
+}
 }

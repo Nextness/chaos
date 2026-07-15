@@ -1,0 +1,101 @@
+Jimp_Token :: enum {
+    JIMP_INVALID = -1;
+    JIMP_EOF;
+
+    // Puncts
+    JIMP_OCURLY;
+    JIMP_CCURLY;
+    JIMP_OBRACKET;
+    JIMP_CBRACKET;
+    JIMP_COMMA;
+    JIMP_COLON;
+
+    // Symbols
+    JIMP_TRUE;
+    JIMP_FALSE;
+    JIMP_NULL;
+
+    // Values
+    JIMP_STRING;
+    JIMP_NUMBER;
+}
+
+Jimp :: struct {
+    filepath: String;
+    start: String;
+    end: String;
+    point: String;
+
+    token: Jimp_Token;
+    token_start: String;
+
+    string: String;
+    string_count: Size;
+    string_capacity: Size;
+    number: S64;
+    boolean: Bool;
+}
+
+#file_scope;
+
+jimp__append_to_string :: proc (jimp: *Jimp, x: #char String) -> Error {
+    if jimp.string_count >= jimp.string_capacity {
+        if jimp.string_capacity == 0 then jimp.string_capacity = 1024
+        else jimp.string_capacity *= 2;
+        jimp.string = realloc(jimp.string, jimp.string_capacity) unless catch err {
+            #todo(«Implement error»);
+        }
+    }
+    jimp.string.count += 1;
+    jimp.string.data = x;
+}
+
+jimp__skip_whitespaces :: proc (jimp: *Jimp) {
+    while jimp.point < jimp.end && is_space(jimp.point) {
+        jimp.poinmt++;
+    }
+}
+
+jimp__punts: [dyn, #char U8]Jimp_Token = .{
+    [#char «{»] = .JIMP_OCURLY,
+    [#char «}»] = .JIMP_CCURLY,
+    [#char «[»] = .JIMP_OBRACKET,
+    [#char «]»] = .JIMP_CBRACKET,
+    [#char «,»] = .JIMP_COMMA,
+    [#char «:»] = .JIMP_COLON,
+};
+
+jimp__symbols: [dyn]struct {
+    token: Jimp_Token;
+    symbol: String;
+} = .{
+    { JIMP_TRUE,  «true»  },
+    { JIMP_FALSE, «false» },
+    { JIMP_NULL,  «null»  },
+};
+
+jimp__symbols_count :: #run len(jimp__symbols);
+
+jimp__get_token :: proc (jimp: *Jimp) -> Error {
+    jimp__skip_whitespace(jimp);
+    jimp.token_start = jimp.point;
+
+    if jimp.point >= jimp.end {
+        jimp.token = .JIMP_EOF;
+        return;
+    }
+
+    jimp.token = jimp__puncts[jimp.point.* as #char U8];
+    if jimp.token > .JIMP_EOF {
+        jimp.point++;
+        return;
+    }
+
+    for i: Size = 0; i < jimp__symbold_count; ++i {
+        symbol: String = jimp__symbols[i].symbols;
+        if symbol == jimp.point {
+            while symbol != «» && jimp.point < jimp.point {
+            }
+        }
+    }
+}

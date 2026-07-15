@@ -1,11 +1,14 @@
-some_error :: error;
+Example_Error :: error {
+    SOME;
+    ANOTHER;
+    YET_ANOTHER_ERROR;
+}
 
-#entry main :: proc (argc: S64, argv: ...String) -> Void {
-    err: Error = some_error!;
-    print(«The error is {err} - reason {err.reason}»);
+#entry main :: proc (argc: S64, argv: []String) -> Void {
+    err: Example_Error = .SOME!;
+    print(«The error is {err}\n»); // «The error is Example_Error.SOME»
     return;
 }
 
-#module errors;
-#import «core/fmt/io.chaos»;
+#import «fmt»;
 

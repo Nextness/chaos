@@ -1,6 +1,31 @@
 package main
 
+import (
+	"bytes"
+	"fmt"
+)
+
 const entryPoint string = "main"
+
+func ChaosCodeGen(program *ChaosSlice[Node], scope Scope) *bytes.Buffer {
+	writeBuffer := bytes.Buffer{}
+	headerBuffer := bytes.Buffer{}
+
+	headerBuffer.WriteString("format ELF64 executable 3\n\n")
+	headerBuffer.WriteString(fmt.Sprintf("entry %s\n\n", entryPoint))
+	headerBuffer.WriteString("segment readable executable\n\n")
+	headerBuffer.WriteString(fmt.Sprintf("%s:\n", entryPoint))
+
+	// strCount := 0
+
+	for _, node := range program.data {
+		chaosDebug(node)
+	}
+
+	headerBuffer.WriteTo(&writeBuffer)
+
+	return &writeBuffer
+}
 
 // func GenerateCode(prog *Program) *bytes.Buffer {
 // 	buffer := bytes.Buffer{}

@@ -5,12 +5,12 @@
     return dll.*.count as U64;
 }
 
-#inline head :: proc (dll: *Double_Linked_List) -> *Node! {
-    return dll.head != null ? dll.head : "null_pointer";
+#inline head :: proc (dll: *Double_Linked_List) -> (*Node! <> Dll_Error) {
+    return ifx dll.head != null then dll.hear else .NULL_POINTER;
 }
 
-#inline tail :: proc (dll: *Double_Linked_List) -> *Node! {
-    return dll.tail != null ? dll.tail : "null_pointer";
+#inline tail :: proc (dll: *Double_Linked_List) -> (*Node <> Dll_Error) {
+    return ifx dll.tail != null then dll.tail else .NULL_POINTER;
 }
 
 print :: proc (dll: *Double_Linked_List) -> Void {
@@ -34,29 +34,27 @@ Node :: struct <T: Type> {
     next: *Node<T>?;
 }
 
-Err : Named_Scope : {
-    out_of_memory :: error <D: #ct String> {
-        name := «Out of memory»;
-        reason := «Some reason for the error»;
-        details := D;
-    }
+Dll_Error :: error {
+    NULL_POINTER;
+    OUT_OF_MEMORY;
+    OUT_OF_BOUNDS;
 }
 
-init_node :: proc <T> -> *Node<T>! {
-    new_node: *Node<T> = alloc(size_of Node<T>) unless |err| {
-        logger(logger_state, .ERROR, «Failed to allocate node - {err}»)
-        return Err.@out_of_memory;
+init_node <T: Any> :: proc -> (*Node<T> <> Dll_Error) {
+    new_node: *Node<T> = alloc(size_of Nonde<T>) unless catch err {
+        logger(logger_state, .ERROR, «% Failed to allocate node at %\n», #location, #proc_name);
+        return .OUT_OF_MEMORY!;
     }
-
-    logger(logger_state, .TRACE, «Allocated memory for node: {new_node.address}»);
+    logger(logger_state, .TRACE, «% Allocated memory for node % at %\n», #location, *new_node, #proc_name);
     return new_node;
 }
 
-push_head :: proc (node: *Node, data: Node.T) -> Void! {
-    new_node := init_node(data) unless |err| {
-        if err == Err.@out_of_memory then return report_oom(err);
+push_head :: proc (node: *Node, data: Node.T) -> (Void <> Dll_Error) {
+    new_node := init_node(data) unless catch err {
+        if err == .OUT_OF_MEMORY! then return report_oom(err);
         else return err;
     }
+
     if dll.count == 0 {
         dll.head = newNode;
         dll.tail = newNode;
@@ -65,24 +63,24 @@ push_head :: proc (node: *Node, data: Node.T) -> Void! {
         dll.head.prev = new_node;
         dll.head = newNode;
     }
+
     dll.count++;
 }
 
-insert_node :: proc (node: *Node, data: Node.T, index: U64) -> Void! {
+insert_node :: proc (node: *Node, data: Node.T, index: U64) -> (Void <> Dll_Error) {
     if index < 0 || index > dll.count {
-        return "out_of_bounds: doesn't know how to measure...";
+        return .OUT_OF_BOUNDS!;
     }
 
-    if index == 0           then return push_head(dll, data);
+    if   index == 0         then return push_head(dll, data);
     elif index == dll.count then return push_tail(dll, data);
 
-    tmp: *Node<Node.T>;
-    if index <= (dll.count / 2) then
-        while i: 0..index then
-            tmp = tmp.next;
-    else then
-        while i: 0..dll.count then
-            tmp = tmp.prev;
+    tmp: *Node<Node.T> = ...;
+    if index <= (dll.count / 2) {
+        while i: 0..index then tmp = tmp.next;
+    } else {
+        while i: 0..dll.count then tmp = tmp.prev;
+    }
 
     new_node := init_node(data)?;
     tmp.next.prev = new_node;

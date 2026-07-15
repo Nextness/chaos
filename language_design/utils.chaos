@@ -1,12 +1,12 @@
-is_uppercase :: #overload proc (val: String) -> Bool {
+is_uppercase :: proc (val: String) -> Bool {
     
 }
 
-is_uppercase :: #overload proc (val: Byte) -> Bool {
+is_uppercase :: proc (val: Byte) -> Bool {
     
 }
 
-is_uppercase :: #overload proc(val: #char String) -> Bool {
+is_uppercase :: proc(val: #char String) -> Bool {
     
 }
 
@@ -40,12 +40,5 @@ new_example :: proc (error_config: *Lexer_Error_Config, examples: ...String) {
         tmp :: «{pad}    {example}»;
         self.examples.append(tmp);
     }
-}
-
-get_something :: proc (id: &String) -> U64! {
-    id :: «»; // This should fail, since it is a reference, and references cannot be assigned.
-              // In a sense, this value is immutable.
-    result: S64 = some_operation(id);
-    return result;
 }
 

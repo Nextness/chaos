@@ -1,7 +1,7 @@
 // Tringing shit out in here and other things
 // and more things
 
-compile_chaos :: proc (filepath: String, src []Byte) -> Void! {
+compile_chaos :: proc (filepath: String, src: [dyn]Byte) -> Void | Error {
     file_content := newBuffer(src)?;
     tokens_slice := chaos_content_tokenize(file_content)?;
     program, scope := chaos_content_ast(&token_slice)?;
@@ -20,7 +20,7 @@ main :: proc (argc: U64, argv: ...String) {
     program_name := argv[0]?;
 
     if argc <= 1 {
-        fprintf(STD_ERR, «[ERROR] Failed to load the program {program_name}\n»);
+        fprintf(.STD_ERR, «[ERROR] Failed to load the program {program_name}\n»);
         printf(«Usage: {program_name} <file.chaos>\n»);
         exit 1;
     }
@@ -30,6 +30,54 @@ main :: proc (argc: U64, argv: ...String) {
             
         }
     }
+}
+
+#entry main :: proc {
+    go_rebuild_yourself_tek();
+
+    build_dir :: «./../build/»;
+    os.stat(build_dir) unless catch {
+        os.mkdir(build_dir) unless catch err {
+            print(«Failed to create directory '{build-dir}' because of {err}», stream=.STR_ERR);
+            return 1;
+        }
+    }
+
+    main :: «./chaos.chaos»;
+    program_name :: assert argv[0];
+    other_args :: argv[1..] unless catch err {
+        print(«Failed to get other args because of {err}», stream=.STR_ERR);
+        return 1;
+    }
+
+    new_command := init_new_command();
+    defer de_init(new_command);
+
+    if length(other_args) <= 0 {
+        append(new_command, «chaosc build -o {build_dir} {main}»);
+        run_and_reset(new_command) unless catch err {
+            print(«Failed to run command {new_command} because of {err}»);
+            return 1;
+        }
+        return 0;
+    }
+
+    while arg: other_args {
+        if arg == «default» {
+            default_file_chaos :: «./assignment.chaos»;
+            append(new_command, «chaosc build -o {build_dir} {main} && ./../build/main»);
+            run_and_reset(new_command) unless catch err {
+                print(«Failed to run command {new_command} because of {err}»);
+                return 1;
+            }
+        } else {
+            print(«Unknown command '{arg}'», stream=.STR-ERR);
+            print(«Usage: {program_name} [default]»)
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 main :: proc (argc: U64, argv: ...String) -> U64 {

@@ -1,16 +1,17 @@
-Some_Interface :: scaffold <T> {
+Some_Interface <T: Type> :: scaffold {
     mandatory_field_1: String;
     mandatory_field_2: T;
-    do_some_operation: proc (*impl Self) -> Void!;
+    do_some_operation: proc (*impl Self) -> Void;
 }
 
-Example :: struct impl Some_Interface <T: Type> {
+Example <T: Type> :: struct {
+    #base impl Some_Interface;
     mandatory_field_1: String;
     mandatory_field_2: T;
     another_field: Bool;
 }
 
-do_some_operation :: proc (example: *Example) -> Void! {
+do_some_operation :: proc (example: *Example) -> Void {
     example.mandatory_field_1 = «»;
     example.mandatory_field_2 = #0;
 }

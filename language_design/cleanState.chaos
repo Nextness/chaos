@@ -1,29 +1,19 @@
-#inline some_operation :: proc <K> (value: String, another: U64, key: K) -> *Custom<K> {
+some_operation <K: Type> :: macro (value: String, another: U64, key: K) -> *Custom<K> {
     result := Custom<K>.{value, another, key};
     print(«Got the result: {result}\n»);
     return *result;
 }
 
-Vector2 :: struct <T> {
-    #if !match(T, Numbers) {
-        #compilation_error();
-    }
+Vector2 <T: num.Number> :: struct {
     x, y: T;
-}
-
-#overload + :: proc (lhs: Vector2, rhs: Vector2) -> Vector2 {
-    return .{
-        x = lhs.x + rhs.x,
-        y = lhs.y + rhs.y
-    };
 }
 
 Version :: struct {
     major, minor, fix: U64;
-    phase: *String? = null;
+    phase: String;
 }
 
-#overload string :: proc (using version: *Version) -> String {
+string :: proc (using version: *Version) -> String {
     version_string := «{major}.{minor}.{fix}»;
     if phase != null then version_string = «{version_string}-{phase}»;
     return version_string;
@@ -31,14 +21,14 @@ Version :: struct {
 
 at_another_point :: proc (input1: String, input2: U64) -> String {
     new_struct: *Some_Struct;
-    new_struct = malloc(size_of Some_Struct) unless |error| {
-        logger.error(«{error}: {error.reason()}»);
+    new_struct = malloc(size_of Some_Struct) unless catch err {
+        log(.ERROR, «{error}: {error.reason()}»);
         return «unknown»;
     }
     return result;
 }
 
-new_counter :: proc -> (*U64, *proc -> U64)! {
+new_counter :: proc -> ((*U64, *proc -> U64) <> Error) {
     #let result :: #run get_current_os();
     #if result == .linux {
         some_variable: *U64 = malloc(size_of U64)?;
@@ -50,29 +40,31 @@ new_counter :: proc -> (*U64, *proc -> U64)! {
     #todo;
 }
 
-ptr, counter :: new_counter() unless |error| {
-    exit 69, «failed be create a new counter»;
+ptr, counter := new_counter() unless catch err {
+    exit 69, «failed be create a new counter: {err}»;
 }
 
-some_error :: error;
+New_Error :: error {
+    SOME_ERROR;
+}
 
-switch_test_new :: proc (something: Some_Enum) -> Void! {
-    @something if something == {
+switch_test_new :: proc (some: Some_Enum) -> (Void <> Error) {
+    'something if some == {
     case .a;
         print(«{A}\n»);
-        break @something;
+        break 'something;
     case .b;
         print(«Something else {B}\n»);
-        break @something;
+        break 'something;
     case .c;
         print(«String {D}s nuuutz\n»);
-        break @something;
-    default;
-        return some_error!;
+        break 'something;
+    case default;
+        return .SOME_ERROR!;
     }
 }
 
-optional_return_assignment :: proc (value: String) -> (Bool, #optional String) {
+optional_return_assignment :: proc (value: String) -> Bool, #optional String {
     result := some_operation(value);
     if result != null then return true, «valid»;
     return false, «invalid»;
@@ -81,5 +73,5 @@ optional_return_assignment :: proc (value: String) -> (Bool, #optional String) {
 // This will only return the boolean value. Unless specified another argument, which 
 // in this case, will be a string.
 result := optional_return_assignment(«something that works»);
-result1, result2 :: optional_return_assignment(«somethig that doesn't work»);
+result1, result2 := optional_return_assignment(«somethig that doesn't work»);
 

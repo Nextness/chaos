@@ -4,37 +4,37 @@
  *  When we call AnotherEnum.somethingInHere we will have 482518638 [1cc2a66e3]
 **/
 Another_Enum :: enum {
-    SOMETHING_IN_HERE : #unique = iota;
+    SOMETHING_IN_HERE: S64 = iota;
     ANOTHER_THING_HERE;
     YET_ANOTHER_THING_IS_HERE;
 }
 
-Json_Response :: struct <T: Type> {
-    status_code: U32? = #0; #tag(«json:status_code»)
-    content:     T    = #0; #tag(«json:content»)
+Random_Error :: error {
+    GENERIC;
+    FAILED_TO_GENERATE_STRING;
+    INVALID_STATUS_CODE;
+    OPERATION_FAILED;
 }
 
-something_crazy :: proc (json: *Json_Response, status_code: U32) -> Void! {
-    if status_code > 400 then return "invalid_status_code";
+Json_Response <T: Type> :: struct {
+    status_code: U32 = #0;
+    content:     T   = #0;
+}
+
+something_crazy :: proc (json: *Json_Response, status_code: U32) -> (Void <> Random_Error) {
+    if status_code > 400 then return .INVALID_STATUS_CODE!;
     json.status_code = status_code;
 }
 
 response := Json_Response<String>.{};
-result :: something_crazy(response, 401) unless |error| {
+result :: #run something_crazy(response, 401);
+ifl result catch err {
     exit 1;
-}
-
-reveal :: proc (value: Any) -> String {
-    result := «<redacted>»;
-    #if chaos_flags.CHAOS_DEBUG {
-        result = to_string(value);
-    }
-    return result;
 }
 
 Some_Struct :: struct {
     username: String;
-    password: String #redacted;
+    password: String; &redacted
 }
 
 some_struct := Some_Struct.{
@@ -42,113 +42,54 @@ some_struct := Some_Struct.{
     password = get_env_var(«ENV_VAR_NAME», «None»)?,
 };
 
-Another_Redacted :: struct #redacted {
-    id:       U64;
-    username: String;
-    password: String;
+Another_Redacted :: struct {
+    id       &redacted: U64;
+    username &redacted: String;
+    password &redacted: String;
 }
 
 redacted :: Another_Redacted.{10, «username», «some_password»};
 print(«{redacted.reveal()}»);
 
-#entry main :: proc (Void) -> U64! {
-    window := initialize_with(100, 100, «Window») unless |error| {
+#entry main :: proc -> (U64 <> Error) {
+    window := initialize_with(100, 100, «Window») unless catch err {
         print(«Something went wrong in here - {error}»);
         return 1;
     }
 }
 
 loop_with_label :: proc -> Bool! {
-    loop: while x: 0..10 {
+    'loop while x: 0..10 {
         while y: 0..10 {
-            operation() unless |error| {
-                logger.log(ERROR, «The operation failed - reason: {error.reason}»);
-                break loop;
+            operation() unless catch err {
+                logger.log(ERROR, «The operation failed - reason: {err}»);
+                break 'loop;
             }
         }
         return something;
     }
-    return "operation_failed - Because you suck!";
+    return .OPERATION_FAILED!;
 }
 
-complex: C64 = c'100 + 10i' * 10; // result should be c'1000 + 100i'
-complex_2: C64 = c'1-i' * c'1+i'; // result shoulb be c'2'
-a: Q256 = q'1 - 2i + j';
+complex: C64 = c«100 + 10i» * c«10»; // result should be c'1000 + 100i'
+complex_2: C64 = c«1-i» * c«1+i»; // result shoulb be c'2'
+a: Q256 = q«1 - 2i + j - 0.1k»;
 
 
-// Think about a way to track allocations and deallocations during compilation
-#global allocator_count :: 0;
-#global list_of_functions_with_allocator :: Array[Proc_Details].{};
+handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> (Void <> Random_Error) {
+    #local some_result, err;
 
-new_variable :: .{ key=«asd», value=100 };
-
-Allocator :: scaffold {
-    malloc:  proc (~size: U64) -> *Void!;
-    calloc:  proc () -> *Void;
-    realloc: proc () -> *Void;
-    free:    proc (~val: *AnyType) -> Void!;
-}
-
-Allocator :: struct impl Default_Allocator {}
-
-Default_Allocator.malloc = proc (size: U64) -> *Void! {
-    
-}
-
-Default_Allocator.free = proc (val: *AnyType) -> Void! {
-    
-}
-
-
-Allocator impl Allocator_With_Info :: struct {
-    internal_memory: U64 = 0;
-
-    malloc := default;
-    calloc := default;
-    realloc := default;
-    free := default;
-    another_operation: proc (self: *Self) -> I64!;
-}
-
-Allocator_With_Info.malloc = proc (size: U64) -> *Void! {
-    #not_implemented
-}
-
-Allocator_With_Info.free = proc (val: *AnyType) -> Void! {
-    #not_implemented
-}
-
-Allocator_With_Info.another_operation :: proc (self: *Self) -> Void!{
-    #not_implemented
-}
-
-something := Allocator_With_Info(internal_memory = 0);
-result := something.malloc(100)?;
-something.another_operation() unless |error| {
-    
-}
-
-some_function :: proc (input1: String, input2: *Allocator impl) -> Void! {
-    return null;
-}
-
-generic_error :: error;
-
-handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> Void! {
-    some_result: U64!;
-
-    if some_unput_1 {
-        some_result = optional_operation_with_possible_error();
-        if catch some_result |err| {
+    if some_input_1 {
+        some_result := optional_operation_with_possible_error() unless catch err {
             print(«{some_input_2} has failed: {err}\n»);
-            return generic_error!;
+            return .GENERIC!;
         }
         return;
     }
 
-    some_result = operation_with_possible_error() unless |err| {
+    some_result := operation_with_possible_error() unless catch err {
         print(«{some_input_2} has failed: {err}\n»);
-        return generic_error!;
+        return .GENERIC!;
     }
     print(«{some_input_2} was successful\n»);
 
@@ -158,10 +99,12 @@ handling_errors :: proc (some_input_1: Bool, some_input_2: String) -> Void! {
 handling_error(true, «something»)?;
 
 #inline is_falsy :: proc (value: Any, other_checks: *proc? (Any) -> Bool = null) -> Bool {
-    if type_of(value)      == String   then return self == «»;
-    if type_of(value)      == [dyn]Any then return self.length() == 0;
-    if type_of(value)      == [?]Any   then return self.count == 0;
-    if other_checks(value) != null     then return other_checks(value);
+    if type_of value == {
+        case String   then return self == «»;
+        case [dyn]Any then return self.length() == 0;
+        case [?]Any   then return self.count == 0;
+    }
+    if other_checks != null then return other_checks(value);
     return false;
 }
 
@@ -169,24 +112,23 @@ handling_error(true, «something»)?;
     return !is_falsy(value, other_checkes = other_checks);
 }
 
-get_ownership :: proc (input1: *String?, input2: *Some_Struct?) -> Addr<Another_Struct>! {
-    input1 ?= «undefined»;
+get_ownership :: proc (input1: *String?, input2: *Some_Struct?) -> (*Another_Struct <> Error) {
+    if input1 != null then input1 = «undefined»;
 
-    value_a, value_b: New_Struct = #0;
-    value_b: *Another_Struct? = malloc(size_of Another_Struct, zero_initialize = true) unless |error| {
-        print(«Failed to allocate memoery: {error.reason}»);
-        return error;
+    value_b := malloc(Another_Struct) unless catch err {
+        print(«Failed to allocate memoery: {err.reason}»);
+        return err;
     }
+    err_defer free(value_b);
 
     if input2 == null {
-        value_a :: do_a_bund_of_operations();
-        value_b :: more_operations(a) unless |error| {
-            print(«Something failed here: {error.reason}»);
-            return failed_to_get_ownership!;
+        value_b = more_operations(input1, input2) unless catch err {
+            print(«Something failed here: {err.reason}»);
+            return .FAILED_TO_GET_OWNERSHIP!;
         }
     }
 
-    return &value_b;
+    return value_b;
 }
 
 capture_groups :: proc (something: String, another_thing: *New_Struct) -> *Another_Struct {
@@ -199,19 +141,27 @@ capture_groups :: proc (something: String, another_thing: *New_Struct) -> *Anoth
     }
 }
 
-failed_to_generate_string :: error;
-
-String_Limit :: constraint <L: Logger> {
-    #inline MAX_SIZE :: 4096;
-    if length(it) >= MAX_SIZE {
-        log(Err, Logger, «String length must be less than {MAX_SIZE}»);
+String_Limit :: constraint (L: Logger) {
+    MAX_SIZE :: 4096;
+    if length(string(this)) >= MAX_SIZE {
+        log(.ERROR, L, «String length must be less than {MAX_SIZE}»);
         assert false;
     }
 }
 
-some_proc_with_generic :: proc <K: "String" | impl string> (input1: Bool, input2: K \ String_Limit<Current_Logger>) -> *String! {
+some_proc_with_generic <K: "String" | impl string> :: proc (
+    input1: Bool,
+    input2: K with String_Limit(Current_Logger)
+) -> (result: *String <> err: Random_Error) {
+    return ifx input1 then *string(input2)
+           else .FAILED_TO_GENERATE_STRING!;
+}
+
+some_proc_with_generic <K: "String" | impl string> :: proc (
+    input1: Bool, input2: K \ String_Limit(Current_Logger)
+) -> *String | Random_Error {
     if input1 then return *string(input2);
-    return failed_to_generate_string!;
+    return .FAILED_TO_GENERATE_STRING!;
 }
 
 some_proc_with_generic(true, Some_Struct_With_String_Proc.{})?;
@@ -220,8 +170,97 @@ some_proc_with_generic<Struct_Without_String_Proc>(true, Struct_Without_String_P
 
 #scope = «file»;
 
-#module random;
-#import «core::allocator.chaos»;
-#import «core::logger.chaos»;
-num :: #import «core::numbers.chaos»;
+#import «allocator»;
+#import «logger»;
+num :: #import «numbers»;
+ray :: #import «raylib» as #h;
+
+#let(«cto») WINDOW_CONTEXT_COUNT := 0;
+new_window_context :: macro (body: #Scope_Proc, window_should_close := ray.WindowShouldClose, close_window := ray.CloseWindow) {
+    #hook(what = #current_macro_name, triggered_when = «called») {
+        #if WINDOW_CONTEXT_COUNT == 0 WINDOW_CONTEXT_COUNT++;
+        #else #compile_error(«You can't have nested Window Contexts»);
+        #defer WINDOW_CONTEXT_COUNT--;
+    }
+
+    while !window_should_close() then `body;
+    close_window();
+}
+
+#let «cto» DRAWING_CONTEXT_COUNT := 0;
+new_draw_context :: macro (body: #Scope_Proc_Like, begin_drawing := ray.BeginDrawing, end_drawing := ray.EndDrawing) {
+    #hook(what = #current_macro_name, triggered_when = «called») {
+        #if DRAWING_CONTEXT_COUNT == 0 DRAWING_CONTEXT_COUNT++;
+        #else #compile_error(«You can't have nested Drawing Contexts»);
+        #defer DRAWING_CONTEXT_COUNT--;
+    }
+
+    begin_drawing();
+    `body;
+    end_drawing();
+}
+
+some_weird_macro :: macro #ast {
+    #when '[' 'identifier' ']' {
+        #set 'identifier' := «Weird shit»;
+    }
+}
+
+@some_weird_macro(something);
+
+#entry main :: proc -> S64 {
+    scren_width, screen_height :: 800, 450;
+
+    ray.InitWindow(scren_width, screen_height «raylib from chaos»);
+    ray.SetTargetFPS(60);
+
+    @new_window_context() {
+        @new_draw_context() {
+            ray.ClearBackground(ray.RAYWHITE);
+            ray.DrawLineEx(ray.Vector2.{ 0, 0 }, ray.Vector2.{ screenWidth, screenHeight }, 2.0, ray.RED);
+            ray.DrawLineEx(ray.Vector2.{ 0, screenHeight }, ray.Vector2.{ screenWidth, 0 }, 2.0, ray.RED);
+            ray.DrawText(«example base code template», 260, 400, 20, ray.LIGHTGRAY);
+        }
+    }
+
+    return 0;
+}
+
+
+
+New_Struct <K: Any> :: scaffold {
+    something: String;
+    another: K;
+
+    impl {
+        do_something <V: String | U64> :: proc (String, Bool, Self, Self.K) -> (Bool <> Error);
+    }
+}
+
+Another_Struct <V: String | F32> :: scaffold {
+    first_field: V;
+    second_field: String;
+
+    impl {
+        another_thing :: proc (*Self, Self.V) -> String;
+    }
+}
+
+The_Struct <K: Any, V: String | F32> :: struct {
+    #base New_Struct;
+    something: String;
+    another: K;
+
+    #base Another_Struct;
+    first_field: V;
+    second_field: String;
+}
+
+New_Struct impl {
+    do_something <V: String | U64> :: proc (input1: String, input2: Bool, input3: Self, input4: Self.K) -> (Bool <> Error) {
+
+    }
+}
+
+do_something<String>(...);
 
