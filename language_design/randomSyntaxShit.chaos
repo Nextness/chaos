@@ -247,13 +247,14 @@ Another_Struct <V: String | F32> :: scaffold {
 }
 
 The_Struct <K: Any, V: String | F32> :: struct {
-    #base New_Struct;
-    something: String;
-    another: K;
-
-    #base Another_Struct;
-    first_field: V;
-    second_field: String;
+    #base New_Struct {
+        something: String;
+        another: K;
+    }
+    #base Another_Struct {
+        first_field: V;
+        second_field: String;
+    }
 }
 
 New_Struct impl {
