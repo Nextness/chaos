@@ -77,9 +77,9 @@ func TestTokenize(t *testing.T) {
 
 		// ─── Integer literals ─────────────────────────────────────────────
 		{
-			name:  "integers",
-			input: "0 42 1_000_000",
-			want:  []TokenKind{TkInt, TkInt, TkInt, TkEOF},
+			name:   "integers",
+			input:  "0 42 1_000_000",
+			want:   []TokenKind{TkInt, TkInt, TkInt, TkEOF},
 			values: []any{"0", "42", "1_000_000", nil},
 		},
 		{
@@ -97,29 +97,29 @@ func TestTokenize(t *testing.T) {
 
 		// ─── Float literals ───────────────────────────────────────────────
 		{
-			name:  "floats",
-			input: "3.14 .5 1.0 0.0",
-			want:  []TokenKind{TkFloat, TkFloat, TkFloat, TkFloat, TkEOF},
+			name:   "floats",
+			input:  "3.14 .5 1.0 0.0",
+			want:   []TokenKind{TkFloat, TkFloat, TkFloat, TkFloat, TkEOF},
 			values: []any{"3.14", ".5", "1.0", "0.0", nil},
 		},
 		{
-			name:  "float with underscore",
-			input: "1_000.5",
-			want:  []TokenKind{TkFloat, TkEOF},
+			name:   "float with underscore",
+			input:  "1_000.5",
+			want:   []TokenKind{TkFloat, TkEOF},
 			values: []any{"1_000.5", nil},
 		},
 
 		// ─── String literals ──────────────────────────────────────────────
 		{
-			name:  "strings",
-			input: `«hello» «» «a b c»`,
-			want:  []TokenKind{TkString, TkString, TkString, TkEOF},
+			name:   "strings",
+			input:  `«hello» «» «a b c»`,
+			want:   []TokenKind{TkString, TkString, TkString, TkEOF},
 			values: []any{"hello", "", "a b c", nil},
 		},
 		{
-			name:  "string with newline",
-			input: "«hello\nworld»",
-			want:  []TokenKind{TkString, TkEOF},
+			name:   "string with newline",
+			input:  "«hello\nworld»",
+			want:   []TokenKind{TkString, TkEOF},
 			values: []any{"hello\nworld", nil},
 		},
 
@@ -467,6 +467,22 @@ func TestNumericDotSequences(t *testing.T) {
 			wantValues:  []string{"1._2", ""},
 			wantErrors:  1,
 			wantErrSpan: Span{Start: 2, End: 3},
+		},
+		{
+			name:        "underscore before decimal point",
+			input:       "1_.0",
+			wantKinds:   []TokenKind{TkFloat, TkEOF},
+			wantValues:  []string{"1_.0", ""},
+			wantErrors:  1,
+			wantErrSpan: Span{Start: 1, End: 2},
+		},
+		{
+			name:        "float with no digit after decimal point",
+			input:       "1.",
+			wantKinds:   []TokenKind{TkFloat, TkEOF},
+			wantValues:  []string{"1.", ""},
+			wantErrors:  1,
+			wantErrSpan: Span{Start: 1, End: 2},
 		},
 	}
 

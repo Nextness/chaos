@@ -20,9 +20,9 @@ go build chaosBuild.go       # bootstrap build binary
 
 ```bash
 go build ./...               # build
-go test ./...                # run all tests (99.1% coverage)
+go test ./...                # run all tests (87.6% coverage)
 go vet ./...                 # static analysis
-go run . file.chaos          # tokenize a file (slog output)
+go run . file.chaos          # tokenize and parse a file (slog output)
 ```
 
 - Separate `go.mod` (module `chaos_new`), no external deps, only stdlib.
@@ -44,18 +44,18 @@ go run . file.chaos          # tokenize a file (slog output)
 
 ### New compiler pipeline (`src_new_impl/`)
 
-`tokenizer.go` → (parser not yet implemented)
+`tokenizer.go` → `parser.go` → (semantic analysis not yet implemented)
 
 - Tokenizer produces `[]Token` + `DiagnosticList` (error recovery continues past `TkError` tokens).
 - Custom data structures: `Span{File, Start, End}` (half-open), `SourceManager` (FileID → file path, source bytes, line offsets).
-- `Token.Value` is `string` for all literal tokens (int, float, string, true/false). Type conversion deferred to semantic phase.
+- `Token.Value` is `string` for all literal tokens (int, float, string, true/false). BoolExpr in the AST stores a Go `bool`; the token-to-bool conversion happens during parsing, not during tokenization.
 - String literals use Unicode guillemets `«like this»` (2 bytes each: 0xC2 0xAB / 0xC2 0xBB).
 - `::` = compile-time assignment, `:=` = runtime assignment (in old compiler too, but only mutability is recorded).
 
 ## Source layout
 
 - `src/` — old compiler (Go, package `main`, ~2600 lines across 8 files). Active but incomplete.
-- `src_new_impl/` — new compiler implementation (Go, package `main`, ~1500 lines across 11 files). Tokenizer complete, parser not yet built.
+- `src_new_impl/` — new compiler implementation (Go, package `main`, ~4,700 lines across 13 files). Tokenizer and parser complete. Roughly 2,200 production lines across 7 non-test files, with the remainder (~2,400) in test files.
 - `chaosBuild.go` — separate bootstrap binary (not part of `src/`).
 - `language_design/` — speculative design sketches. **Not implemented.** Features here (structs, generics, async, C interop, modules, self-hosted compiler) do not exist in either compiler.
 - `main.chaos` and `main2.chaos` — scratch files for development, not canonical examples.
@@ -85,6 +85,7 @@ go run . file.chaos          # tokenize a file (slog output)
 - `TokenKind.String()` panics for out-of-range values (catches enum/name-table mismatch).
 - Diagnostic for `..` (two dots) in numeric literals: `1..0` flags `.0` as error. `...` ellipsis is handled correctly.
 - Emit helpers: `emitN(kind, start, n)` handles all token lengths (1, 2, 3 characters).
+- Numeric validation rejects underscores before decimal point (`1_.0`) and floats with no digit after the dot (`1.`).
 
 ## .gitignore quirk
 
@@ -93,8 +94,8 @@ The `.gitignore` uses `*` (ignore everything) then `!/**/` and `!*.*` to un-igno
 ## Project state
 
 - Solo/experimental project, no CI, no linting, no formatting, no pre-commit.
-- Two compilers exist: `src/` (old, incomplete pipeline) and `src_new_impl/` (new, tokenizer complete).
+- Two compilers exist: `src/` (old, incomplete pipeline) and `src_new_impl/` (new, tokenizer and parser complete).
 - Goal: eventually self-host the compiler in Chaos itself.
 - LICENSE: "Not to be used in any form" — closed source.
-- Full defect audit at `report.md` (P0-P2 defects, architectural recommendations).
+- Full defect audit at `report.md` (P0-P2 defects, architectural recommendations for the legacy compiler only).
 - OpenCode agent config at `.opencode/agent/developer.md` (write/edit/bash require permission).

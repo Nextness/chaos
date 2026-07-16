@@ -8,8 +8,10 @@ import (
 // returning the ParseResult. FileID is always 0.
 func parseTestCase(t *testing.T, source string) ParseResult {
 	t.Helper()
-	tokens, _ := Tokenize([]byte(source), 0)
-	return ParseProgram(tokens)
+	tokens, diags := Tokenize([]byte(source), 0)
+	result := ParseProgram(tokens)
+	result.Diags = append(result.Diags, diags...)
+	return result
 }
 
 // parseOneDecl parses source and returns the first declaration, failing if
@@ -1098,5 +1100,165 @@ func TestRegressionPrecedenceOldCompiler(t *testing.T) {
 	}
 	if left.Op != BinaryOpMul {
 		t.Errorf("left op = %d, want %d (BinaryOpMul)", left.Op, BinaryOpMul)
+	}
+}
+
+func TestRegressionLeftAssociativity(t *testing.T) {
+	// 10 - 3 - 2 should parse as (10 - 3) - 2, not 10 - (3 - 2)
+	expr := parseExpr(t, "10 - 3 - 2")
+	e, ok := expr.(*BinaryExpr)
+	if !ok {
+		t.Fatalf("expected *BinaryExpr, got %T", expr)
+	}
+	if e.Op != BinaryOpSub {
+		t.Errorf("top op = %d, want %d (BinaryOpSub)", e.Op, BinaryOpSub)
+	}
+	// Left operand should be a BinaryExpr (10 - 3), not IntExpr (10)
+	left, ok := e.Left.(*BinaryExpr)
+	if !ok {
+		t.Fatalf("left type = %T, want *BinaryExpr", e.Left)
+	}
+	if left.Op != BinaryOpSub {
+		t.Errorf("left op = %d, want %d (BinaryOpSub)", left.Op, BinaryOpSub)
+	}
+	// Right operand should be IntExpr (2)
+	_, ok = e.Right.(*IntExpr)
+	if !ok {
+		t.Fatalf("right type = %T, want *IntExpr", e.Right)
+	}
+}
+
+func TestRegressionChainedCallStmt(t *testing.T) {
+	// f()(); should parse as a chained call expression statement
+	stmt := parseOneStmt(t, "f()();")
+	e, ok := stmt.(*ExprStmt)
+	if !ok {
+		t.Fatalf("expected *ExprStmt, got %T", stmt)
+	}
+	call, ok := e.Expr.(*CallExpr)
+	if !ok {
+		t.Fatalf("expected *CallExpr, got %T", e.Expr)
+	}
+	inner, ok := call.Func.(*CallExpr)
+	if !ok {
+		t.Fatalf("func type = %T, want *CallExpr", call.Func)
+	}
+	if len(inner.Args) != 0 {
+		t.Errorf("inner args = %d, want 0", len(inner.Args))
+	}
+}
+
+func TestRegressionBareProcInBody(t *testing.T) {
+	// main :: proc { proc } should not hang; it should produce diagnostics
+	result := parseTestCase(t, "main :: proc { proc }")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for bare 'proc' in body, got none")
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+}
+
+func TestRegressionMalformedProcResult(t *testing.T) {
+	// f :: proc -> S64, { return 0; } should produce a diagnostic
+	result := parseTestCase(t, "f :: proc -> S64, { return 0; }")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for malformed proc result, got none")
+	}
+}
+
+func TestRegressionElseIfSpan(t *testing.T) {
+	// "else if" is invalid syntax — must use "elif". The parser should emit
+	// an error but still produce a parse tree for recovery.
+	source := "main :: proc { if true { } else if false { } }"
+	result := parseTestCase(t, source)
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for 'else if', got none")
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if len(proc.Body.Stmts) != 1 {
+		t.Fatalf("expected 1 stmt, got %d", len(proc.Body.Stmts))
+	}
+	ifs, ok := proc.Body.Stmts[0].(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", proc.Body.Stmts[0])
+	}
+	if ifs.ElseBody == nil {
+		t.Fatal("ElseBody = nil, want non-nil")
+	}
+	// The else body span should be larger than just the "if" keyword (3 bytes)
+	if ifs.ElseBody.nodeSpan().End-ifs.ElseBody.nodeSpan().Start <= 3 {
+		t.Errorf("ElseBody span too small: %#v", ifs.ElseBody.nodeSpan())
+	}
+	// The parent IfStmt span should cover the full else if branch
+	if ifs.nodeSpan().End <= ifs.Body.nodeSpan().End {
+		t.Error("IfStmt span should extend past the if body to include else if")
+	}
+}
+
+func TestRegressionTrailingCommaParam(t *testing.T) {
+	// Trailing comma in parameter list should produce an error
+	// pointing at the comma, not at the closing parenthesis.
+	source := "f :: proc (x: S64,) { }"
+	result := parseTestCase(t, source)
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for trailing comma in parameter list")
+	}
+	// The diagnostic should point at the comma (offset 17)
+	if result.Diags[0].Span.Start != 17 || result.Diags[0].Span.End != 18 {
+		t.Errorf("diagnostic span = %#v, want offset 17-18 (the comma)", result.Diags[0].Span)
+	}
+	if result.Diags[0].Message != "trailing comma after parameter" {
+		t.Errorf("diagnostic message = %q, want %q", result.Diags[0].Message, "trailing comma after parameter")
+	}
+	// Verify the parameter was still parsed (error recovery)
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if len(proc.Params) != 1 {
+		t.Fatalf("Params = %d, want 1", len(proc.Params))
+	}
+	if proc.Params[0].Name != "x" {
+		t.Errorf("param name = %q, want %q", proc.Params[0].Name, "x")
+	}
+}
+
+func TestRegressionTrailingCommaArg(t *testing.T) {
+	// Trailing comma in call argument list should produce an error
+	// pointing at the comma, not at the closing parenthesis.
+	source := "main :: proc { f(1,); }"
+	result := parseTestCase(t, source)
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for trailing comma in call argument")
+	}
+	// The diagnostic should point at the comma (offset 18)
+	if result.Diags[0].Span.Start != 18 || result.Diags[0].Span.End != 19 {
+		t.Errorf("diagnostic span = %#v, want offset 18-19 (the comma)", result.Diags[0].Span)
+	}
+	if result.Diags[0].Message != "trailing comma in call argument" {
+		t.Errorf("diagnostic message = %q, want %q", result.Diags[0].Message, "trailing comma in call argument")
+	}
+	// Verify the argument was still parsed (error recovery)
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if len(proc.Body.Stmts) != 1 {
+		t.Fatalf("expected 1 stmt, got %d", len(proc.Body.Stmts))
+	}
+	exprStmt, ok := proc.Body.Stmts[0].(*ExprStmt)
+	if !ok {
+		t.Fatalf("expected *ExprStmt, got %T", proc.Body.Stmts[0])
+	}
+	call, ok := exprStmt.Expr.(*CallExpr)
+	if !ok {
+		t.Fatalf("expected *CallExpr, got %T", exprStmt.Expr)
+	}
+	if len(call.Args) != 1 {
+		t.Fatalf("Args = %d, want 1", len(call.Args))
 	}
 }

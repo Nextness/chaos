@@ -5,11 +5,51 @@ listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.3.0`.
+- The current version is `0.4.1`.
 - Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
+
+## 0.4.1 - 2026-07-16
+
+### Fixed
+
+- Parser no longer hangs on bare `proc` inside a block body (e.g., `main ::
+  proc { proc }`). The `syncStmt` set no longer includes `TkProc`, and
+  `parseBlock` has a real progress guard that consumes a token when
+  `parseStmt` returns nil without advancing.
+- Binary operators are now left-associative: `10 - 3 - 2` parses as `(10 -
+  3) - 2` instead of `10 - (3 - 2)`. The right-operand binding power is
+  `bp + 1`.
+- Chained calls as expression statements (e.g., `f()();`) now parse
+  correctly.
+- `else if` (as opposed to `elif`) now produces an error diagnostic instead
+  of a warning. The parser still constructs a synthetic `BlockStmt` for error
+  recovery.
+- Trailing commas in parameter lists (e.g., `(x: S64,)`) and call arguments
+  (e.g., `f(1,)`) now produce error diagnostics instead of being silently
+  accepted.
+- Malformed procedure result lists (e.g., `-> S64,`) now emit a diagnostic
+  for the missing type after the comma instead of silently accepting the
+  declaration.
+- Tokenizer now rejects underscores immediately before the decimal point
+  (e.g., `1_.0`) and floats with no digit after the decimal point (e.g.,
+  `1.`).
+- `SourceManager.Lookup` now guards against negative `FileID` values,
+  returning `nil` instead of panicking.
+- `Param` no longer implements the `Expr` interface (it is only a `Node`).
+- `Program` now implements `Node` with a `nodeSpan()` method.
+- `ExprStmt` moved from `parser.go` to `ast.go` alongside the other AST
+  types.
+- `parseTestCase` in parser tests now merges tokenizer diagnostics into the
+  result, so lexical errors do not silently pass parser tests.
+
+### Changed
+
+- Updated `AGENTS.md` and `CHANGELOG.md` to reflect current coverage (87.6%),
+  parser availability, source counts, and the legacy-compiler scope of
+  `report.md`.
 
 ## 0.4.0 - 2026-07-16
 

@@ -8,12 +8,13 @@ package main
 //	program        = decl*
 //	decl           = var_decl | proc_decl
 //	var_decl       = ident ( "::" ( "proc" ... | expr ) | ":=" expr | ":" ident ("=" expr)? ) ";"
-//	proc_decl      = ident "::" "proc" param_list result_spec? block
+//	proc_decl      = ident "::" "proc" param_list? result_spec? block
 //	param_list     = "(" (param ("," param)*)? ")"
 //	param          = ident ":" ident
 //	result_spec    = "->" ident ("," ident)*
 //	block          = "{" stmt* "}"
-//	stmt           = var_decl | proc_decl | assign_stmt | return_stmt | exit_stmt | if_stmt | block | ";"
+//	stmt           = var_decl | proc_decl | assign_stmt | return_stmt | exit_stmt | if_stmt | block | call_stmt | ";"
+//	call_stmt      = ident "(" arg_list? ")" ("(" arg_list? ")")* ";"
 //	assign_stmt    = ident "=" expr ";"
 //	return_stmt    = "return" expr? ";"
 //	exit_stmt      = "exit" expr ("," expr)? ";"
@@ -26,6 +27,7 @@ package main
 //	mul_expr       = unary_expr (mul_op unary_expr)*
 //	unary_expr     = unary_op unary_expr | postfix_expr
 //	postfix_expr   = primary_expr ("(" arg_list? ")")*
+//	arg_list       = expr ("," expr)*
 //	primary_expr   = ident | int | float | string | "true" | "false" | "(" expr ")"
 type Parser struct {
 	tokens  TokenList
@@ -126,7 +128,7 @@ func (p *Parser) syncStmt() {
 		switch tok.Kind {
 		case TkEOF, TkRBrace, TkSemicolon:
 			return
-		case TkIdent, TkReturn, TkExit, TkIf, TkProc, TkLBrace:
+		case TkIdent, TkReturn, TkExit, TkIf, TkLBrace:
 			return
 		}
 		p.bump()
@@ -307,7 +309,12 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 				break
 			}
 			params = append(params, param)
-			if !p.match(TkComma) {
+			if !p.at(TkComma) {
+				break
+			}
+			commaTok := p.bump()
+			if p.at(TkRParen) {
+				p.diags.Error(commaTok.Span, "trailing comma after parameter")
 				break
 			}
 		}
@@ -329,6 +336,7 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 			for p.match(TkComma) {
 				next := p.parseTypeExpr()
 				if next == nil {
+					p.diags.Error(p.peek().Span, "expected return type after ','")
 					break
 				}
 				results = append(results, next)
@@ -462,6 +470,11 @@ func (p *Parser) parseIdentStmt() Stmt {
 		// Call expression used as a statement: f(args);
 		p.bump() // consume "("
 		expr := p.parseCallArgs(&IdentExpr{Span_: nameTok.Span, Name: name}, nameTok.Span)
+		// Handle chained calls: f()()
+		for p.at(TkLParen) {
+			p.bump() // consume "("
+			expr = p.parseCallArgs(expr, expr.nodeSpan())
+		}
 		p.expect(TkSemicolon)
 		// Wrap in an expression statement.
 		return &ExprStmt{
@@ -499,9 +512,9 @@ func (p *Parser) parseAssignStmt(nameTok Token, name string) Stmt {
 	}
 	p.expect(TkSemicolon)
 	return &AssignStmt{
-		Span_:  spanUnion(nameTok.Span, value.nodeSpan()),
-		Name:   name,
-		Value:  value,
+		Span_: spanUnion(nameTok.Span, value.nodeSpan()),
+		Name:  name,
+		Value: value,
 	}
 }
 
@@ -530,8 +543,8 @@ func (p *Parser) parseReturnStmt() Stmt {
 	}
 	p.expect(TkSemicolon)
 	return &ReturnStmt{
-		Span_:  spanUnion(tok.Span, value.nodeSpan()),
-		Value:  value,
+		Span_: spanUnion(tok.Span, value.nodeSpan()),
+		Value: value,
 	}
 }
 
@@ -611,11 +624,12 @@ func (p *Parser) parseIfStmt() Stmt {
 		p.bump() // consume "else"
 		// Check for elif (else + if)
 		if p.at(TkIf) {
-			// "else if" should be "elif" - emit a warning but parse it
-			p.diags.Warn(p.peek().Span, "use 'elif' instead of 'else if'")
+			// "else if" is not valid syntax — must use "elif"
+			p.diags.Error(p.peek().Span, "use 'elif' instead of 'else if'")
+			innerIf := p.parseIfStmt()
 			elseBody = &BlockStmt{
-				Span_: p.peek().Span,
-				Stmts: []Stmt{p.parseIfStmt()},
+				Span_: innerIf.nodeSpan(),
+				Stmts: []Stmt{innerIf},
 			}
 		} else {
 			elseBody = p.parseBlock()
@@ -652,15 +666,15 @@ func (p *Parser) parseBlock() *BlockStmt {
 	var stmts []Stmt
 
 	for !p.at(TkRBrace) && !p.at(TkEOF) {
+		before := p.pos
 		stmt := p.parseStmt()
 		if stmt != nil {
 			stmts = append(stmts, stmt)
 		}
-		// Skip empty statements (stray semicolons already handled in parseStmt)
-		// If parseStmt returned nil without consuming, skip one token
-		if p.peek().Kind != TkRBrace && p.peek().Kind != TkEOF {
-			// Check if we're stuck (no progress)
-			// This shouldn't happen as parseStmt always consumes or reports
+		// If no progress was made (parseStmt returned nil without consuming),
+		// consume one token to guarantee forward motion.
+		if p.pos == before && p.peek().Kind != TkRBrace && p.peek().Kind != TkEOF {
+			p.bump()
 		}
 	}
 
@@ -748,7 +762,7 @@ func (p *Parser) parseExpr(minBp int) Expr {
 			break
 		}
 
-		right := p.parseExpr(bp)
+		right := p.parseExpr(bp + 1)
 		if right == nil {
 			p.diags.Error(p.peek().Span, "expected expression after operator")
 			break
@@ -856,7 +870,12 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 			break
 		}
 		args = append(args, arg)
-		if !p.match(TkComma) {
+		if !p.at(TkComma) {
+			break
+		}
+		commaTok := p.bump()
+		if p.at(TkRParen) {
+			p.diags.Error(commaTok.Span, "trailing comma in call argument")
 			break
 		}
 	}
@@ -915,13 +934,3 @@ func spanUnion(a, b Span) Span {
 	}
 	return Span{File: a.File, Start: start, End: end}
 }
-
-// ExprStmt is a statement that wraps an expression (e.g., a call used as a
-// statement).
-type ExprStmt struct {
-	Span_ Span
-	Expr  Expr
-}
-
-func (s *ExprStmt) nodeSpan() Span { return s.Span_ }
-func (s *ExprStmt) stmtNode()      {}

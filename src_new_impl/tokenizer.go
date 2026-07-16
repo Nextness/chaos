@@ -369,6 +369,7 @@ func isDigit(b byte) bool {
 func (t *Tokenizer) scanNumber() Token {
 	start := t.pos
 	isFloat := false
+	sawDigitAfterDot := false
 	lastWasDigit := false
 	lastWasUnderscore := false
 
@@ -377,6 +378,9 @@ func (t *Tokenizer) scanNumber() Token {
 		if isDigit(b) {
 			lastWasDigit = true
 			lastWasUnderscore = false
+			if isFloat {
+				sawDigitAfterDot = true
+			}
 			t.advance()
 			continue
 		}
@@ -410,6 +414,10 @@ func (t *Tokenizer) scanNumber() Token {
 				break
 			}
 			isFloat = true
+			if lastWasUnderscore {
+				span := Span{File: t.file, Start: t.pos - 1, End: t.pos}
+				t.diags.Error(span, "misplaced underscore before decimal point")
+			}
 			lastWasUnderscore = false
 			lastWasDigit = false // reset so we require digits after the dot
 			t.advance()
@@ -422,6 +430,12 @@ func (t *Tokenizer) scanNumber() Token {
 	if lastWasUnderscore {
 		span := Span{File: t.file, Start: t.pos - 1, End: t.pos}
 		t.diags.Error(span, "trailing underscore in numeric literal")
+	}
+
+	// Reject float with no digit after decimal point (e.g. "1.")
+	if isFloat && !sawDigitAfterDot {
+		span := Span{File: t.file, Start: t.pos - 1, End: t.pos}
+		t.diags.Error(span, "expected digit after decimal point")
 	}
 
 	raw := t.source[start:t.pos]

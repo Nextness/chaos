@@ -32,7 +32,7 @@ func (sm *SourceManager) Register(path string, source []byte) FileID {
 
 // Lookup returns the SourceFile for a given FileID, or nil if unknown.
 func (sm *SourceManager) Lookup(id FileID) *SourceFile {
-	if int(id) < len(sm.files) {
+	if id >= 0 && int(id) < len(sm.files) {
 		return &sm.files[id]
 	}
 	return nil

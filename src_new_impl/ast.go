@@ -88,18 +88,18 @@ func (e *BoolExpr) exprNode()      {}
 type BinaryOp uint8
 
 const (
-	BinaryOpAdd  BinaryOp = iota // +
-	BinaryOpSub                  // -
-	BinaryOpMul                  // *
-	BinaryOpDiv                  // /
-	BinaryOpLt                   // <
-	BinaryOpGt                   // >
-	BinaryOpLe                   // <=
-	BinaryOpGe                   // >=
-	BinaryOpEq                   // ==
-	BinaryOpNeq                  // !=
-	BinaryOpAnd                  // &&
-	BinaryOpOr                   // ||
+	BinaryOpAdd BinaryOp = iota // +
+	BinaryOpSub                 // -
+	BinaryOpMul                 // *
+	BinaryOpDiv                 // /
+	BinaryOpLt                  // <
+	BinaryOpGt                  // >
+	BinaryOpLe                  // <=
+	BinaryOpGe                  // >=
+	BinaryOpEq                  // ==
+	BinaryOpNeq                 // !=
+	BinaryOpAnd                 // &&
+	BinaryOpOr                  // ||
 )
 
 // BinaryExpr is a binary operation: left op right.
@@ -216,11 +216,11 @@ func (s *ExitStmt) stmtNode()      {}
 //   - Elif holds the elif branches (each with its own Condition, Body, and nested Elif).
 //   - ElseBody is nil when there is no else branch.
 type IfStmt struct {
-	Span_      Span
-	Condition  Expr
-	Body       *BlockStmt
-	Elif       []*IfStmt // elif branches (each must have a Condition)
-	ElseBody   *BlockStmt // optional else branch
+	Span_     Span
+	Condition Expr
+	Body      *BlockStmt
+	Elif      []*IfStmt  // elif branches (each must have a Condition)
+	ElseBody  *BlockStmt // optional else branch
 }
 
 func (s *IfStmt) nodeSpan() Span { return s.Span_ }
@@ -259,7 +259,6 @@ type Param struct {
 }
 
 func (p Param) nodeSpan() Span { return p.Span_ }
-func (p Param) exprNode()      {} // type expressions are parsed as Expr
 
 // ──────────────────────────────────────────────
 // Program
@@ -269,3 +268,20 @@ func (p Param) exprNode()      {} // type expressions are parsed as Expr
 type Program struct {
 	Decls []Decl
 }
+
+func (p *Program) nodeSpan() Span {
+	if len(p.Decls) == 0 {
+		return Span{}
+	}
+	return spanUnion(p.Decls[0].nodeSpan(), p.Decls[len(p.Decls)-1].nodeSpan())
+}
+
+// ExprStmt is a statement that wraps an expression (e.g., a call used as a
+// statement).
+type ExprStmt struct {
+	Span_ Span
+	Expr  Expr
+}
+
+func (s *ExprStmt) nodeSpan() Span { return s.Span_ }
+func (s *ExprStmt) stmtNode()      {}

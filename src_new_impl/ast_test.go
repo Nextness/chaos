@@ -30,6 +30,8 @@ func TestNodeSpanAccessors(t *testing.T) {
 		{name: "BlockStmt", node: &BlockStmt{Span_: span}, want: span},
 		{name: "ProcDecl", node: &ProcDecl{Span_: span, Name: "main", Body: &BlockStmt{Span_: span}}, want: span},
 		{name: "ExprStmt", node: &ExprStmt{Span_: span, Expr: &IntExpr{Span_: span, Value: "1"}}, want: span},
+		{name: "Param", node: Param{Span_: span, Name: "x", Type: &IdentExpr{Span_: span, Name: "S64"}}, want: span},
+		{name: "Program", node: &Program{Decls: []Decl{&VarDecl{Span_: span, Name: "x"}}}, want: span},
 	}
 
 	for _, tt := range tests {
