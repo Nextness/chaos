@@ -11,6 +11,47 @@ listed under an explicit semantic version.
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
 
+## 0.4.0 - 2026-07-16
+
+### Added
+
+- AST node types (`ast.go`): `Expr`, `Stmt`, `Decl` interfaces with concrete
+  structs for all language constructs: `IdentExpr`, `IntExpr`, `FloatExpr`,
+  `StringExpr`, `BoolExpr`, `BinaryExpr`, `UnaryExpr`, `CallExpr`,
+  `ParenExpr`, `ErrorExpr`, `VarDecl`, `AssignStmt`, `ReturnStmt`,
+  `ExitStmt`, `IfStmt`, `BlockStmt`, `ProcDecl`, `Param`, `ExprStmt`, and
+  `Program`. Every node carries a `Span` for source-location diagnostics.
+  Binary and unary operators are typed enums (`BinaryOp`, `UnaryOp`).
+- Recursive-descent parser with a correct Pratt expression parser
+  (`parser.go`). Supports the full grammar subset:
+  - Variable declarations (`::`, `:=`, `: T`, `: T = expr`)
+  - Procedure declarations with parameters, return types, and body
+  - Assignments, return (with and without value), exit (with optional message)
+  - If/elif/else conditionals
+  - Full expression support: integers, floats, strings, booleans,
+    identifiers, unary (`-`, `!`), binary (arithmetic, comparison, logical),
+    parenthesized groups, and function calls with full-expression arguments
+  - Error recovery with diagnostic collection (no panics)
+- `ExprStmt` node type for expression-position statements (e.g., bare calls
+  used as statements).
+- `spanUnion` helper for computing the union of two `Span` values.
+- `tokenPrecedence` and `tokToBinaryOp` mapping functions.
+- Unit tests for all AST node types, type assertions, span accessors,
+  operator enumeration, `spanUnion`, `tokToBinaryOp`, `tokenPrecedence`.
+- Comprehensive parser tests covering: empty input, all declaration forms,
+  all statement forms, expression literals, binary operators, unary operators,
+  function calls with full-expression arguments, operator precedence
+  (including the old-compiler regression test), paren grouping, chained
+  calls, if/elif/else, nested blocks, error recovery, stray semicolons, and
+  span correctness.
+
+### Changed
+
+- The compiler pipeline now runs the parser after tokenization. Parse
+  diagnostics are rendered and cause exit code 1 on errors.
+- The `Parser` struct replaces the old compiler's `ChaosSlice` cursor
+  pattern with a simple `tokens`/`pos`/`diags` model.
+
 ## 0.3.0 - 2026-07-16
 
 ### Added

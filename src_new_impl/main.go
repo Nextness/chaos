@@ -89,5 +89,14 @@ func run(programName string, args []string, logOutput io.Writer) int {
 		logger.LogAttrs(ctx, slog.LevelInfo, "token", attributes...)
 	}
 
+	// Parse the tokens into an AST.
+	result := ParseProgram(tokens)
+	if len(result.Diags) > 0 {
+		RenderAll(logger, result.Diags, source, sf.LineOffsets)
+		if result.Diags.HasErrors() {
+			return 1
+		}
+	}
+
 	return 0
 }
