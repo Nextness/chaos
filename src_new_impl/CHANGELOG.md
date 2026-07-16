@@ -5,11 +5,30 @@ listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.2.0`.
-- Every new addition increments the minor version (`0.1.0` → `0.2.0`).
+- The current version is `0.3.0`.
+- Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
-  version (`0.2.0` → `0.2.1`).
+  version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
+
+## 0.3.0 - 2026-07-16
+
+### Added
+
+- Comprehensive unit tests for diagnostic severity mapping, diagnostic lists,
+  line-offset calculation, source coordinates, structured rendering, caret
+  alignment, span clamping, and multi-diagnostic output.
+- Unit tests for source registration and lookup, token-kind names and invalid
+  values, raw token text, and keyword lookup.
+- Regression tests for numeric dot sequences, including `1...0`, `1..0`,
+  consecutive floats, and misplaced underscores after a decimal point.
+- Boundary tests for tokenizer lookahead, EOF handling, rune decoding,
+  identifier checks, and zero-padded unknown-byte diagnostics.
+- Tests for invalid log levels, text-handler attributes, CLI help, invalid
+  flags, invalid logging configuration, argument validation, missing files,
+  and tokenizer failures in the compiler driver.
+- Coverage-profile verification. The package now has 99.1% statement coverage,
+  exceeding the 85% target.
 
 ## 0.2.0 - 2026-07-16
 

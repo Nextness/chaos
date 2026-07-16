@@ -430,3 +430,115 @@ func TestSpanRanges(t *testing.T) {
 		}
 	}
 }
+
+func TestNumericDotSequences(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		wantKinds   []TokenKind
+		wantValues  []string
+		wantErrors  int
+		wantErrSpan Span
+	}{
+		{
+			name:       "ellipsis after integer",
+			input:      "1...0",
+			wantKinds:  []TokenKind{TkInt, TkEllipsis, TkInt, TkEOF},
+			wantValues: []string{"1", "", "0", ""},
+		},
+		{
+			name:        "two dots after integer",
+			input:       "1..0",
+			wantKinds:   []TokenKind{TkInt, TkDot, TkFloat, TkEOF},
+			wantValues:  []string{"1", "", ".0", ""},
+			wantErrors:  1,
+			wantErrSpan: Span{Start: 2, End: 4},
+		},
+		{
+			name:       "float followed by leading-dot float",
+			input:      "1.2.3",
+			wantKinds:  []TokenKind{TkFloat, TkFloat, TkEOF},
+			wantValues: []string{"1.2", ".3", ""},
+		},
+		{
+			name:        "underscore immediately after dot",
+			input:       "1._2",
+			wantKinds:   []TokenKind{TkFloat, TkEOF},
+			wantValues:  []string{"1._2", ""},
+			wantErrors:  1,
+			wantErrSpan: Span{Start: 2, End: 3},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens, diagnostics := Tokenize([]byte(tt.input), 0)
+			if len(tokens) != len(tt.wantKinds) {
+				t.Fatalf("token count = %d, want %d\n%s", len(tokens), len(tt.wantKinds), dumpTokens(tokens))
+			}
+			for i, wantKind := range tt.wantKinds {
+				if tokens[i].Kind != wantKind {
+					t.Errorf("token[%d].Kind = %s, want %s", i, tokens[i].Kind, wantKind)
+				}
+				if tokens[i].Value != tt.wantValues[i] {
+					t.Errorf("token[%d].Value = %q, want %q", i, tokens[i].Value, tt.wantValues[i])
+				}
+			}
+			if len(diagnostics) != tt.wantErrors {
+				t.Fatalf("diagnostic count = %d, want %d", len(diagnostics), tt.wantErrors)
+			}
+			if tt.wantErrors > 0 && diagnostics[0].Span != tt.wantErrSpan {
+				t.Errorf("diagnostic span = %#v, want %#v", diagnostics[0].Span, tt.wantErrSpan)
+			}
+		})
+	}
+}
+
+func TestTokenizerBoundaryHelpers(t *testing.T) {
+	tokenizer := NewTokenizer([]byte("a"), 7)
+	if got := tokenizer.peek(); got != 'a' {
+		t.Errorf("peek() = %q, want %q", got, 'a')
+	}
+	if got := tokenizer.peekN(-1); got != 0 {
+		t.Errorf("peekN(-1) = %d, want 0", got)
+	}
+	if got := tokenizer.peekN(1); got != 0 {
+		t.Errorf("peekN(1) = %d, want 0", got)
+	}
+
+	tokenizer.advance()
+	if got := tokenizer.peek(); got != 0 {
+		t.Errorf("peek() at EOF = %d, want 0", got)
+	}
+	if r, size := tokenizer.peekRune(); r != '\uFFFD' || size != 0 {
+		t.Errorf("peekRune() at EOF = %q, %d; want RuneError, 0", r, size)
+	}
+	if tokenizer.isIdentStart() {
+		t.Error("isIdentStart() at EOF = true, want false")
+	}
+	if tokenizer.isIdentCont() {
+		t.Error("isIdentCont() at EOF = true, want false")
+	}
+
+	tokenizer.advance()
+	if tokenizer.pos != len(tokenizer.source) {
+		t.Errorf("advance() past EOF moved position to %d", tokenizer.pos)
+	}
+}
+
+func TestUnknownCharacterDiagnosticPadsHexByte(t *testing.T) {
+	tokens, diagnostics := Tokenize([]byte{0x01}, 4)
+	if len(tokens) != 2 || tokens[0].Kind != TkError || tokens[1].Kind != TkEOF {
+		t.Fatalf("tokens = %s", dumpTokens(tokens))
+	}
+	if len(diagnostics) != 1 {
+		t.Fatalf("diagnostic count = %d, want 1", len(diagnostics))
+	}
+	wantMessage := "unexpected character '\\x01' (0x01)"
+	if diagnostics[0].Message != wantMessage {
+		t.Errorf("diagnostic message = %q, want %q", diagnostics[0].Message, wantMessage)
+	}
+	if diagnostics[0].Span != (Span{File: 4, Start: 0, End: 1}) {
+		t.Errorf("diagnostic span = %#v", diagnostics[0].Span)
+	}
+}

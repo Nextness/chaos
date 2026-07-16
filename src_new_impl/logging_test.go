@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -49,6 +50,19 @@ func TestLogFlagsRejectInvalidFormat(t *testing.T) {
 	}
 }
 
+func TestLogFlagsRejectInvalidLevel(t *testing.T) {
+	flags := flag.NewFlagSet("test", flag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	logging := registerLogFlags(flags)
+
+	if err := flags.Parse([]string{"-log-level=verbose"}); err != nil {
+		t.Fatalf("parse logging flags: %v", err)
+	}
+	if _, err := logging.config(); err == nil {
+		t.Fatal("expected invalid log level to return an error")
+	}
+}
+
 func TestJSONLoggerEmitsStructuredAttributes(t *testing.T) {
 	var output bytes.Buffer
 	logger := newLogger(&output, logConfig{Level: slog.LevelInfo, Format: logFormatJSON})
@@ -70,6 +84,17 @@ func TestJSONLoggerEmitsStructuredAttributes(t *testing.T) {
 	}
 	if record["line"] != float64(3) {
 		t.Errorf("line = %v, want 3", record["line"])
+	}
+}
+
+func TestTextLoggerEmitsStructuredAttributes(t *testing.T) {
+	var output bytes.Buffer
+	logger := newLogger(&output, logConfig{Level: slog.LevelInfo, Format: logFormatText})
+	logger.Info("token", slog.String("kind", "identifier"))
+
+	text := output.String()
+	if !strings.Contains(text, "level=INFO") || !strings.Contains(text, "msg=token") || !strings.Contains(text, "kind=identifier") {
+		t.Errorf("unexpected text log record: %s", text)
 	}
 }
 
@@ -101,5 +126,41 @@ func TestRunEmitsStructuredTokenLogs(t *testing.T) {
 	}
 	if recordCount != 5 {
 		t.Errorf("record count = %d, want 5", recordCount)
+	}
+}
+
+func TestRunControlAndFailurePaths(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	invalidSourcePath := filepath.Join(temporaryDirectory, "invalid.chaos")
+	if err := os.WriteFile(invalidSourcePath, []byte("%"), 0o600); err != nil {
+		t.Fatalf("write invalid source: %v", err)
+	}
+
+	tests := []struct {
+		name       string
+		args       []string
+		wantCode   int
+		wantOutput string
+	}{
+		{name: "help", args: []string{"-h"}, wantCode: 0, wantOutput: "log-format"},
+		{name: "unknown flag", args: []string{"-unknown"}, wantCode: 2, wantOutput: "flag provided but not defined"},
+		{name: "invalid log format", args: []string{"-log-format=yaml", "source.chaos"}, wantCode: 2, wantOutput: "invalid logging configuration"},
+		{name: "invalid log level", args: []string{"-log-level=verbose", "source.chaos"}, wantCode: 2, wantOutput: "invalid logging configuration"},
+		{name: "missing source argument", args: nil, wantCode: 2, wantOutput: "exactly one Chaos source file is required"},
+		{name: "too many source arguments", args: []string{"one.chaos", "two.chaos"}, wantCode: 2, wantOutput: "argument_count=2"},
+		{name: "missing source file", args: []string{filepath.Join(temporaryDirectory, "missing.chaos")}, wantCode: 1, wantOutput: "failed to read Chaos source"},
+		{name: "tokenizer diagnostic", args: []string{invalidSourcePath}, wantCode: 1, wantOutput: "unexpected character"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var output bytes.Buffer
+			if got := run("chaosc", tt.args, &output); got != tt.wantCode {
+				t.Errorf("run() = %d, want %d", got, tt.wantCode)
+			}
+			if !strings.Contains(output.String(), tt.wantOutput) {
+				t.Errorf("output %q does not contain %q", output.String(), tt.wantOutput)
+			}
+		})
 	}
 }
