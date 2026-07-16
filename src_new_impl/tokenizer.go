@@ -1,30 +1,14 @@
 package main
 
 import (
+	"strconv"
 	"unicode"
 	"unicode/utf8"
 )
 
-// ─── Tokenizer ───────────────────────────────────────────────────────────────
-
 // Tokenizer converts a source buffer into a TokenList. It is a stateful
 // cursor-based scanner that reports errors via a DiagnosticList instead of
 // panicking.
-//
-// Design decisions that differ from the old lexer:
-//   - No custom ChaosSlice[T] wrapper; uses a plain struct with a `pos` int.
-//   - No `any` boxing for comparisons; direct byte/string matching.
-//   - Byte offsets (Span) instead of line/column pairs; line/col is derived
-//     lazily via a line-offset table for diagnostics.
-//   - Int and float literals are separate token kinds (TkInt, TkFloat).
-//   - Numeric literals store their raw text; parsing to a concrete type is
-//     deferred to the semantic phase (avoids host-int truncation).
-//   - String literals use full guillemet matching (multibyte « »).
-//   - Unterminated strings/comments produce an error token and recover.
-//   - Comments and whitespace are skipped iteratively (no recursion).
-//   - After an error token, scanning continues (no early EOF).
-//   - EOF is always safe: every scan loop checks bounds before reading.
-//   - Block comments handle nesting correctly.
 type Tokenizer struct {
 	source  []byte // the full source buffer
 	pos     int    // current byte offset in source
@@ -65,8 +49,6 @@ func (t *Tokenizer) Tokenize() (TokenList, DiagnosticList) {
 	return t.tokens, t.diags
 }
 
-// ─── Core scanning ───────────────────────────────────────────────────────────
-
 // peek returns the byte at the current position, or 0 if at EOF.
 func (t *Tokenizer) peek() byte {
 	if t.pos >= len(t.source) {
@@ -90,12 +72,8 @@ func (t *Tokenizer) advance() {
 	}
 }
 
-// ─── Trivia skipping (iterative — no recursion) ──────────────────────────────
-
 // skipTrivia advances past whitespace, line comments (//), and block
 // comments (/** ... **/). It returns the first non-trivia byte position.
-// Unlike the old lexer, this is purely iterative — no recursive calls to
-// next() — so a file full of consecutive comments cannot overflow the stack.
 func (t *Tokenizer) skipTrivia() {
 	for t.pos < len(t.source) {
 		b := t.source[t.pos]
@@ -106,7 +84,7 @@ func (t *Tokenizer) skipTrivia() {
 			continue
 		}
 
-		// Line comment //  — consume until newline or EOF
+		// Line comment '//' consume until newline or EOF
 		if b == '/' && t.peekN(1) == '/' {
 			t.advance()
 			t.advance()
@@ -116,14 +94,14 @@ func (t *Tokenizer) skipTrivia() {
 			continue
 		}
 
-		// Block comment /** ... **/  — handle nesting
+		// Block comment '/** ... **/' handle nesting
 		if b == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
 			t.advance()
 			t.advance()
 			t.advance()
 			depth := 1
 			for t.pos < len(t.source) && depth > 0 {
-				// Check open before advance (fixes P0-16)
+				// Check open before advance
 				if t.source[t.pos] == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
 					depth++
 					t.advance()
@@ -151,8 +129,6 @@ func (t *Tokenizer) skipTrivia() {
 	}
 }
 
-// ─── Token dispatch ──────────────────────────────────────────────────────────
-
 // makeToken creates a token with the given kind spanning from start to current
 // pos. Span is half-open [start, t.pos).
 func (t *Tokenizer) makeToken(kind TokenKind, start int) Token {
@@ -164,7 +140,7 @@ func (t *Tokenizer) makeToken(kind TokenKind, start int) Token {
 }
 
 // makeTokenValue creates a token with a parsed value.
-func (t *Tokenizer) makeTokenValue(kind TokenKind, start int, value any) Token {
+func (t *Tokenizer) makeTokenValue(kind TokenKind, start int, value string) Token {
 	tok := t.makeToken(kind, start)
 	tok.Value = value
 	return tok
@@ -202,93 +178,88 @@ func (t *Tokenizer) next() Token {
 	// Multi-character operators (must be checked before single-char)
 	switch {
 	case b == ':' && t.peekN(1) == ':':
-		return t.emitDouble(TkCompTimeAssign, start, 2)
+		return t.emitN(TkCompTimeAssign, start, 2)
 	case b == ':' && t.peekN(1) == '=':
-		return t.emitDouble(TkInfer, start, 2)
+		return t.emitN(TkInfer, start, 2)
 	case b == '=' && t.peekN(1) == '=':
-		return t.emitDouble(TkEq, start, 2)
+		return t.emitN(TkEq, start, 2)
 	case b == '!' && t.peekN(1) == '=':
-		return t.emitDouble(TkNeq, start, 2)
+		return t.emitN(TkNeq, start, 2)
 	case b == '<' && t.peekN(1) == '=':
-		return t.emitDouble(TkLe, start, 2)
+		return t.emitN(TkLe, start, 2)
 	case b == '>' && t.peekN(1) == '=':
-		return t.emitDouble(TkGe, start, 2)
+		return t.emitN(TkGe, start, 2)
 	case b == '&' && t.peekN(1) == '&':
-		return t.emitDouble(TkAnd, start, 2)
+		return t.emitN(TkAnd, start, 2)
 	case b == '|' && t.peekN(1) == '|':
-		return t.emitDouble(TkOr, start, 2)
+		return t.emitN(TkOr, start, 2)
 	case b == '-' && t.peekN(1) == '>':
-		return t.emitDouble(TkArrow, start, 2)
+		return t.emitN(TkArrow, start, 2)
 	case b == '.' && t.peekN(1) == '.' && t.peekN(2) == '.':
-		return t.emitDouble(TkEllipsis, start, 3)
+		return t.emitN(TkEllipsis, start, 3)
 	}
 
 	// Single-character tokens
 	switch b {
 	case '=':
-		return t.emitSingle(TkAssign, start)
+		return t.emitN(TkAssign, start, 1)
 	case '+':
-		return t.emitSingle(TkPlus, start)
+		return t.emitN(TkPlus, start, 1)
 	case '-':
-		return t.emitSingle(TkMinus, start)
+		return t.emitN(TkMinus, start, 1)
 	case '*':
-		return t.emitSingle(TkStar, start)
+		return t.emitN(TkStar, start, 1)
 	case '/':
-		return t.emitSingle(TkSlash, start)
+		return t.emitN(TkSlash, start, 1)
 	case '<':
-		return t.emitSingle(TkLt, start)
+		return t.emitN(TkLt, start, 1)
 	case '>':
-		return t.emitSingle(TkGt, start)
+		return t.emitN(TkGt, start, 1)
 	case '!':
-		return t.emitSingle(TkNot, start)
+		return t.emitN(TkNot, start, 1)
 	case '|':
-		return t.emitSingle(TkPipe, start)
+		return t.emitN(TkPipe, start, 1)
 	case '(':
-		return t.emitSingle(TkLParen, start)
+		return t.emitN(TkLParen, start, 1)
 	case ')':
-		return t.emitSingle(TkRParen, start)
+		return t.emitN(TkRParen, start, 1)
 	case '{':
-		return t.emitSingle(TkLBrace, start)
+		return t.emitN(TkLBrace, start, 1)
 	case '}':
-		return t.emitSingle(TkRBrace, start)
+		return t.emitN(TkRBrace, start, 1)
 	case ';':
-		return t.emitSingle(TkSemicolon, start)
+		return t.emitN(TkSemicolon, start, 1)
 	case ':':
-		return t.emitSingle(TkColon, start)
+		return t.emitN(TkColon, start, 1)
 	case ',':
-		return t.emitSingle(TkComma, start)
+		return t.emitN(TkComma, start, 1)
 	case '.':
-		return t.emitSingle(TkDot, start)
+		return t.emitN(TkDot, start, 1)
 	case '#':
-		return t.emitSingle(TkHash, start)
+		return t.emitN(TkHash, start, 1)
 	case '?':
-		return t.emitSingle(TkQuestion, start)
+		return t.emitN(TkQuestion, start, 1)
 	case '@':
-		return t.emitSingle(TkAt, start)
+		return t.emitN(TkAt, start, 1)
 	}
 
 	// Unknown character
 	t.advance()
 	span := Span{File: t.file, Start: start, End: t.pos}
-	t.diags.Errorf(span, "unexpected character %q (0x%02x)", b, b)
+	hexValue := strconv.FormatUint(uint64(b), 16)
+	if len(hexValue) == 1 {
+		hexValue = "0" + hexValue
+	}
+	t.diags.Error(span, "unexpected character "+strconv.QuoteRuneToASCII(rune(b))+" (0x"+hexValue+")")
 	return Token{Kind: TkError, Span: span, Raw: t.source[start:t.pos]}
 }
 
-// ─── Emit helpers ────────────────────────────────────────────────────────────
-
-func (t *Tokenizer) emitSingle(kind TokenKind, start int) Token {
-	t.advance()
-	return t.makeToken(kind, start)
-}
-
-func (t *Tokenizer) emitDouble(kind TokenKind, start int, n int) Token {
+func (t *Tokenizer) emitN(kind TokenKind, start int, n int) Token {
 	for i := 0; i < n; i++ {
 		t.advance()
 	}
 	return t.makeToken(kind, start)
 }
-
-// ─── String scanning ─────────────────────────────────────────────────────────
 
 func (t *Tokenizer) scanString() Token {
 	start := t.pos
@@ -321,8 +292,6 @@ func (t *Tokenizer) scanString() Token {
 	t.diags.Error(span, "unterminated string literal")
 	return Token{Kind: TkError, Span: span, Raw: t.source[start:t.pos]}
 }
-
-// ─── Identifier / keyword scanning ───────────────────────────────────────────
 
 // peekRune decodes the UTF-8 rune at the current position without advancing.
 func (t *Tokenizer) peekRune() (rune, int) {
@@ -383,17 +352,15 @@ func (t *Tokenizer) scanIdentOrKeyword() Token {
 
 	if kind, ok := LookupKeyword(text); ok {
 		if kind == TkTrue {
-			return t.makeTokenValue(kind, start, true)
+			return t.makeTokenValue(kind, start, "true")
 		}
 		if kind == TkFalse {
-			return t.makeTokenValue(kind, start, false)
+			return t.makeTokenValue(kind, start, "false")
 		}
 		return t.makeToken(kind, start)
 	}
 	return t.makeToken(TkIdent, start)
 }
-
-// ─── Number scanning ─────────────────────────────────────────────────────────
 
 func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
@@ -427,8 +394,20 @@ func (t *Tokenizer) scanNumber() Token {
 			continue
 		}
 		if b == '.' && !isFloat {
-			if t.peekN(1) == '.' {
+			if t.peekN(1) == '.' && t.peekN(2) == '.' {
 				break // ellipsis, not a float
+			}
+			if t.peekN(1) == '.' {
+				// Two dots (not three): "1..0" is invalid syntax.
+				// Emit a diagnostic pointing at the second dot and any
+				// following digits (e.g. ".0" in "1..0").
+				end := t.pos + 2
+				for end < len(t.source) && isDigit(t.source[end]) {
+					end++
+				}
+				span := Span{File: t.file, Start: t.pos + 1, End: end}
+				t.diags.Error(span, "invalid syntax: cannot start a float literal with '.' after '.'")
+				break
 			}
 			isFloat = true
 			lastWasUnderscore = false
@@ -437,11 +416,6 @@ func (t *Tokenizer) scanNumber() Token {
 			continue
 		}
 		break
-	}
-
-	// If we only consumed a dot with no digits, that's just a dot token.
-	if start == t.pos-1 && t.source[start] == '.' {
-		return t.emitSingle(TkDot, start)
 	}
 
 	// Reject trailing underscore (e.g. "1_")
@@ -467,8 +441,6 @@ func (t *Tokenizer) scanNumber() Token {
 		Value: string(raw),
 	}
 }
-
-// ─── Convenience ─────────────────────────────────────────────────────────────
 
 // Tokenize is a convenience function that creates a tokenizer, runs it, and
 // returns the tokens and diagnostics.

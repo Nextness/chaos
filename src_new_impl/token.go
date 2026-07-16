@@ -1,6 +1,6 @@
 package main
 
-// ─── File identity ───────────────────────────────────────────────────────────
+import "strconv"
 
 // FileID uniquely identifies a source file within a compilation session.
 type FileID int32
@@ -38,8 +38,6 @@ func (sm *SourceManager) Lookup(id FileID) *SourceFile {
 	return nil
 }
 
-// ─── Span ────────────────────────────────────────────────────────────────────
-
 // Span represents a half-open byte range [Start, End) in a source file.
 // Start is the byte offset of the first byte (inclusive); End is the byte
 // offset of the first byte *after* the span (exclusive). An empty span has
@@ -50,14 +48,12 @@ type Span struct {
 	End   int // exclusive
 }
 
-// ─── TokenKind ───────────────────────────────────────────────────────────────
-
 type TokenKind uint8
 
 const (
 	// Special
 	TkEOF   TokenKind = iota // end of file / end of input
-	TkError                   // invalid token (produced during error recovery)
+	TkError                  // invalid token (produced during error recovery)
 
 	// Literals
 	TkIdent  // identifier
@@ -173,43 +169,39 @@ func (k TokenKind) String() string {
 	if int(k) < len(tokenKindNames) {
 		return tokenKindNames[k]
 	}
-	return "unknown"
+	panic("TokenKind.String: " + strconv.Itoa(int(k)) + " has no entry in tokenKindNames")
 }
 
-// ─── Token ───────────────────────────────────────────────────────────────────
-
 // Token represents one lexical token with its source span and raw text.
-//
-// Value carries the decoded literal:
-//   - TkInt, TkFloat: raw source text as string (parsing deferred to semantic phase)
+// Value carries the decoded literal text:
+//   - TkInt, TkFloat: raw source text as string
 //   - TkString: inner text (without guillemets) as string
-//   - TkTrue, TkFalse: bool
-//   - all others: nil
+//   - TkTrue, TkFalse: "true" or "false" (same as Raw)
+//   - all others: empty string (callers check Kind to determine if Value is set)
 type Token struct {
 	Kind  TokenKind
 	Span  Span
 	Raw   []byte // raw source bytes (slice into the original source buffer)
-	Value any    // parsed literal: string, bool, or nil
+	Value string // decoded literal text, empty for non-literal tokens
 }
 
 // Text returns the raw source text of the token.
-func (t Token) Text() string { return string(t.Raw) }
-
-// ─── Token list ──────────────────────────────────────────────────────────────
+func (t Token) Text() string {
+	return string(t.Raw)
+}
 
 // TokenList is a simple slice of tokens produced by the tokenizer.
 type TokenList []Token
 
-// ─── Keyword lookup ──────────────────────────────────────────────────────────
-
+// This is a global variable that is initialized by the compiler
 var keywordTokens map[string]TokenKind
 
 func init() {
-	keywordTokens = make(map[string]TokenKind, 16)
-	for _, entry := range []struct {
+	type keywordEntry struct {
 		text string
 		kind TokenKind
-	}{
+	}
+	keywordEntries := []keywordEntry{
 		{"true", TkTrue},
 		{"false", TkFalse},
 		{"exit", TkExit},
@@ -220,7 +212,9 @@ func init() {
 		{"then", TkThen},
 		{"return", TkReturn},
 		{"as", TkAs},
-	} {
+	}
+	keywordTokens = make(map[string]TokenKind, 16)
+	for _, entry := range keywordEntries {
 		keywordTokens[entry.text] = entry.kind
 	}
 }

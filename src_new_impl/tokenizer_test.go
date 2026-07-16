@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -64,7 +65,7 @@ func TestTokenize(t *testing.T) {
 				TkProc, TkThen, TkReturn, TkAs,
 				TkEOF,
 			},
-			values: []any{true, false, nil, nil, nil, nil, nil, nil, nil, nil, nil},
+			values: []any{"true", "false", nil, nil, nil, nil, nil, nil, nil, nil, nil},
 		},
 
 		// ─── Identifiers ──────────────────────────────────────────────────
@@ -299,15 +300,20 @@ func TestTokenize(t *testing.T) {
 }
 
 func dumpTokens(tokens []Token) string {
-	var s string
+	var output strings.Builder
 	for i, tok := range tokens {
-		s += fmt.Sprintf("  [%d] %s", i, tok.Kind)
-		if tok.Value != nil {
-			s += fmt.Sprintf("(%v)", tok.Value)
+		output.WriteString("  [")
+		output.WriteString(strconv.Itoa(i))
+		output.WriteString("] ")
+		output.WriteString(tok.Kind.String())
+		if tok.Value != "" {
+			output.WriteByte('(')
+			output.WriteString(tok.Value)
+			output.WriteByte(')')
 		}
-		s += "\n"
+		output.WriteByte('\n')
 	}
-	return s
+	return output.String()
 }
 
 func TestUnterminatedString(t *testing.T) {

@@ -1,53 +1,93 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"errors"
+	"flag"
+	"io"
+	"log/slog"
 	"os"
+	"path/filepath"
 )
 
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintf(os.Stderr, "Usage: %s <file.chaos>\n", os.Args[0])
-		os.Exit(1)
+	os.Exit(run(filepath.Base(os.Args[0]), os.Args[1:], os.Stderr))
+}
+
+func run(programName string, args []string, logOutput io.Writer) int {
+	flags := flag.NewFlagSet(programName, flag.ContinueOnError)
+	flags.SetOutput(logOutput)
+	logging := registerLogFlags(flags)
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
 	}
 
-	filepath := os.Args[1]
-	source, err := os.ReadFile(filepath)
+	config, err := logging.config()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading %s: %v\n", filepath, err)
-		os.Exit(1)
+		// This logger is created just for the case where the actual logger is configured incorrectly
+		inline_logger := newLogger(logOutput, logConfig{Level: slog.LevelInfo, Format: logFormatText})
+		inline_logger.Error("invalid logging configuration", slog.Any("error", err))
+		return 2
+	}
+	logger := newLogger(logOutput, config)
+
+	if flags.NArg() != 1 {
+		logger.Error(
+			"exactly one Chaos source file is required",
+			slog.String("usage", programName+" [logging flags] <file.chaos>"),
+			slog.Int("argument_count", flags.NArg()),
+		)
+		return 2
+	}
+
+	path := flags.Arg(0)
+	source, err := os.ReadFile(path)
+	if err != nil {
+		logger.Error(
+			"failed to read Chaos source",
+			slog.String("path", path),
+			slog.Any("error", err),
+		)
+		return 1
 	}
 
 	sm := &SourceManager{}
-	fileID := sm.Register(filepath, source)
+	fileID := sm.Register(path, source)
 	sf := sm.Lookup(fileID)
 
 	tokens, diags := Tokenize(source, fileID)
 
 	if len(diags) > 0 {
-		RenderAll(diags, source, sf.LineOffsets)
+		RenderAll(logger, diags, source, sf.LineOffsets)
 		if diags.HasErrors() {
-			os.Exit(1)
+			return 1
 		}
 	}
 
-	// Print tokens
+	ctx := context.Background()
 	for _, tok := range tokens {
 		line, col := offsetToLineCol(tok.Span.Start, sf.LineOffsets)
+		attributes := []slog.Attr{
+			slog.Int("file", int(tok.Span.File)),
+			slog.Int("line", line),
+			slog.Int("column", col),
+			slog.String("kind", tok.Kind.String()),
+			slog.Int("span_start", tok.Span.Start),
+			slog.Int("span_end", tok.Span.End),
+		}
 		if tok.Kind == TkEOF {
-			fmt.Printf("%3d:%-3d  %-16s  EOF\n", line, col, tok.Kind.String())
-			continue
-		}
-		if tok.Kind == TkInt || tok.Kind == TkFloat || tok.Kind == TkString {
-			val := ""
-			if tok.Value != nil {
-				val = fmt.Sprintf(" %v", tok.Value)
-			}
-			fmt.Printf("%3d:%-3d  %-16s  %s%s\n", line, col, tok.Kind.String(), string(tok.Raw), val)
-		} else if tok.Kind == TkTrue || tok.Kind == TkFalse {
-			fmt.Printf("%3d:%-3d  %-16s  %v\n", line, col, tok.Kind.String(), tok.Value)
+			attributes = append(attributes, slog.Bool("eof", true))
 		} else {
-			fmt.Printf("%3d:%-3d  %-16s  %s\n", line, col, tok.Kind.String(), string(tok.Raw))
+			attributes = append(attributes, slog.String("raw", string(tok.Raw)))
 		}
+		if tok.Value != "" {
+			attributes = append(attributes, slog.String("value", tok.Value))
+		}
+		logger.LogAttrs(ctx, slog.LevelInfo, "token", attributes...)
 	}
+
+	return 0
 }

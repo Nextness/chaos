@@ -1,16 +1,15 @@
 package main
 
 import (
-	"fmt"
-	"os"
+	"context"
+	"log/slog"
+	"strings"
 )
-
-// ─── Severity ────────────────────────────────────────────────────────────────
 
 type Severity uint8
 
 const (
-	SeverityError   Severity = iota
+	SeverityError Severity = iota
 	SeverityWarning
 	SeverityNote
 )
@@ -28,7 +27,16 @@ func (s Severity) String() string {
 	}
 }
 
-// ─── Diagnostic ──────────────────────────────────────────────────────────────
+func (s Severity) LogLevel() slog.Level {
+	switch s {
+	case SeverityError:
+		return slog.LevelError
+	case SeverityWarning:
+		return slog.LevelWarn
+	default:
+		return slog.LevelInfo
+	}
+}
 
 // Diagnostic is a single compiler message associated with a source location.
 type Diagnostic struct {
@@ -37,18 +45,12 @@ type Diagnostic struct {
 	Message  string
 }
 
-// ─── DiagnosticList ──────────────────────────────────────────────────────────
-
 // DiagnosticList is a growing list of diagnostics. The tokenizer appends to it
 // instead of panicking. The driver checks whether any errors were reported.
 type DiagnosticList []Diagnostic
 
 func (d *DiagnosticList) Error(span Span, msg string) {
 	*d = append(*d, Diagnostic{Severity: SeverityError, Span: span, Message: msg})
-}
-
-func (d *DiagnosticList) Errorf(span Span, format string, args ...any) {
-	d.Error(span, fmt.Sprintf(format, args...))
 }
 
 func (d *DiagnosticList) Warn(span Span, msg string) {
@@ -64,32 +66,20 @@ func (d *DiagnosticList) HasErrors() bool {
 	return false
 }
 
-// ─── Rendering ───────────────────────────────────────────────────────────────
-
-const colorRed = "\033[1;31m"
-const colorYellow = "\033[1;33m"
-const colorCyan = "\033[1;36m"
-const colorReset = "\033[0m"
-
-// Render writes a human-readable diagnostic to stderr. It requires a
-// line-index table to compute line:column from byte offsets.
-func (d Diagnostic) Render(source []byte, lineOffsets []int) {
+// Render emits a structured diagnostic log record. It requires a line-index
+// table to compute line:column from byte offsets.
+func (d Diagnostic) Render(logger *slog.Logger, source []byte, lineOffsets []int) {
 	line, col := offsetToLineCol(d.Span.Start, lineOffsets)
-	var color string
-	switch d.Severity {
-	case SeverityError:
-		color = colorRed
-	case SeverityWarning:
-		color = colorYellow
-	default:
-		color = colorCyan
+	attributes := []slog.Attr{
+		slog.String("diagnostic", d.Severity.String()),
+		slog.Int("file", int(d.Span.File)),
+		slog.Int("line", line),
+		slog.Int("column", col),
+		slog.Int("span_start", d.Span.Start),
+		slog.Int("span_end", d.Span.End),
 	}
-	fmt.Fprintf(os.Stderr, "%s[%s]%s %d:%d:%d: %s\n",
-		color, d.Severity, colorReset,
-		int(d.Span.File), line, col, d.Message,
-	)
 
-	// Print a source line with a caret underline.
+	// Attach the source line and caret underline to the same record.
 	// Span is half-open [Start, End); End may equal len(source).
 	if d.Span.Start < len(source) && d.Span.End <= len(source) && d.Span.Start < d.Span.End {
 		// Find the line start
@@ -102,7 +92,8 @@ func (d Diagnostic) Render(source []byte, lineOffsets []int) {
 			lineEnd++
 		}
 		if lineStart < lineEnd {
-			fmt.Fprintf(os.Stderr, "  %s\n", string(source[lineStart:lineEnd]))
+			attributes = append(attributes, slog.String("source_line", string(source[lineStart:lineEnd])))
+
 			// Caret underline: half-open [caretStart, caretEnd)
 			caretStart := d.Span.Start - lineStart
 			caretEnd := d.Span.End - lineStart
@@ -112,31 +103,31 @@ func (d Diagnostic) Render(source []byte, lineOffsets []int) {
 			if caretEnd <= caretStart {
 				caretEnd = caretStart + 1
 			}
-			fmt.Fprintf(os.Stderr, "  ")
+
+			var underline strings.Builder
 			for i := 0; i < caretStart; i++ {
 				if source[lineStart+i] == '\t' {
-					fmt.Fprintf(os.Stderr, "\t")
+					underline.WriteByte('\t')
 				} else {
-					fmt.Fprintf(os.Stderr, " ")
+					underline.WriteByte(' ')
 				}
 			}
-			fmt.Fprintf(os.Stderr, "%s", colorRed)
 			for i := caretStart; i < caretEnd; i++ {
-				fmt.Fprintf(os.Stderr, "^")
+				underline.WriteByte('^')
 			}
-			fmt.Fprintf(os.Stderr, "%s\n", colorReset)
+			attributes = append(attributes, slog.String("underline", underline.String()))
 		}
 	}
+
+	logger.LogAttrs(context.Background(), d.Severity.LogLevel(), d.Message, attributes...)
 }
 
-// RenderAll writes all diagnostics to stderr.
-func RenderAll(diags DiagnosticList, source []byte, lineOffsets []int) {
+// RenderAll emits all diagnostics through logger.
+func RenderAll(logger *slog.Logger, diags DiagnosticList, source []byte, lineOffsets []int) {
 	for _, d := range diags {
-		d.Render(source, lineOffsets)
+		d.Render(logger, source, lineOffsets)
 	}
 }
-
-// ─── Line offset table ───────────────────────────────────────────────────────
 
 // BuildLineOffsets builds a table of byte offsets for each line start (0-indexed).
 // lineOffsets[0] is always 0. The table is used by offsetToLineCol.
