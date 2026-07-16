@@ -5,16 +5,49 @@ package main
 // FileID uniquely identifies a source file within a compilation session.
 type FileID int32
 
+// SourceFile represents a single source file known to the compiler.
+type SourceFile struct {
+	ID          FileID
+	Path        string
+	Source      []byte
+	LineOffsets []int // cached line-start byte offsets (see BuildLineOffsets)
+}
+
+// SourceManager maps FileID values to SourceFile records.
+type SourceManager struct {
+	files []SourceFile
+}
+
+// Register adds a source file and returns its FileID.
+func (sm *SourceManager) Register(path string, source []byte) FileID {
+	id := FileID(len(sm.files))
+	sm.files = append(sm.files, SourceFile{
+		ID:          id,
+		Path:        path,
+		Source:      source,
+		LineOffsets: BuildLineOffsets(source),
+	})
+	return id
+}
+
+// Lookup returns the SourceFile for a given FileID, or nil if unknown.
+func (sm *SourceManager) Lookup(id FileID) *SourceFile {
+	if int(id) < len(sm.files) {
+		return &sm.files[id]
+	}
+	return nil
+}
+
 // ─── Span ────────────────────────────────────────────────────────────────────
 
-// Span represents a contiguous byte range in a source file. This is the
-// canonical position type for every token, AST node, and diagnostic. The
-// tokenizer converts line/column tracking into byte offsets so that later
-// phases never need to re-derive positions.
+// Span represents a half-open byte range [Start, End) in a source file.
+// Start is the byte offset of the first byte (inclusive); End is the byte
+// offset of the first byte *after* the span (exclusive). An empty span has
+// Start == End. The EOF sentinel span is {File, len, len}.
 type Span struct {
 	File  FileID
-	Start int // byte offset of the first byte (inclusive)
-	End   int // byte offset of the last byte (inclusive); End < Start means empty
+	Start int // inclusive
+	End   int // exclusive
 }
 
 // ─── TokenKind ───────────────────────────────────────────────────────────────
@@ -28,9 +61,9 @@ const (
 
 	// Literals
 	TkIdent  // identifier
-	TkInt    // integer literal (parsed as string, not host int)
-	TkFloat  // float literal (parsed as string)
-	TkString // string literal «...»
+	TkInt    // integer literal (raw text stored in Value)
+	TkFloat  // float literal (raw text stored in Value)
+	TkString // string literal «...» (inner text stored in Value)
 	TkTrue   // keyword true
 	TkFalse  // keyword false
 
@@ -40,14 +73,14 @@ const (
 	TkCompTimeAssign // ::
 
 	// Delimiters
-	TkLParen   // (
-	TkRParen   // )
-	TkLBrace   // {
-	TkRBrace   // }
+	TkLParen    // (
+	TkRParen    // )
+	TkLBrace    // {
+	TkRBrace    // }
 	TkSemicolon // ;
-	TkColon    // :
-	TkComma    // ,
-	TkDot      // .
+	TkColon     // :
+	TkComma     // ,
+	TkDot       // .
 
 	// Arithmetic
 	TkPlus  // +
@@ -88,52 +121,52 @@ const (
 )
 
 var tokenKindNames = [...]string{
-	TkEOF:           "EOF",
-	TkError:         "Error",
-	TkIdent:         "identifier",
-	TkInt:           "integer literal",
-	TkFloat:         "float literal",
-	TkString:        "string literal",
-	TkTrue:          "true",
-	TkFalse:         "false",
-	TkAssign:        "=",
-	TkInfer:         ":=",
+	TkEOF:            "EOF",
+	TkError:          "Error",
+	TkIdent:          "identifier",
+	TkInt:            "integer literal",
+	TkFloat:          "float literal",
+	TkString:         "string literal",
+	TkTrue:           "true",
+	TkFalse:          "false",
+	TkAssign:         "=",
+	TkInfer:          ":=",
 	TkCompTimeAssign: "::",
-	TkLParen:        "(",
-	TkRParen:        ")",
-	TkLBrace:        "{",
-	TkRBrace:        "}",
-	TkSemicolon:     ";",
-	TkColon:         ":",
-	TkComma:         ",",
-	TkDot:           ".",
-	TkPlus:          "+",
-	TkMinus:         "-",
-	TkStar:          "*",
-	TkSlash:         "/",
-	TkEq:            "==",
-	TkNeq:           "!=",
-	TkLt:            "<",
-	TkGt:            ">",
-	TkLe:            "<=",
-	TkGe:            ">=",
-	TkAnd:           "&&",
-	TkOr:            "||",
-	TkNot:           "!",
-	TkArrow:         "->",
-	TkEllipsis:      "...",
-	TkHash:          "#",
-	TkQuestion:      "?",
-	TkAt:            "@",
-	TkPipe:          "|",
-	TkExit:          "exit",
-	TkIf:            "if",
-	TkElif:          "elif",
-	TkElse:          "else",
-	TkProc:          "proc",
-	TkThen:          "then",
-	TkReturn:        "return",
-	TkAs:            "as",
+	TkLParen:         "(",
+	TkRParen:         ")",
+	TkLBrace:         "{",
+	TkRBrace:         "}",
+	TkSemicolon:      ";",
+	TkColon:          ":",
+	TkComma:          ",",
+	TkDot:            ".",
+	TkPlus:           "+",
+	TkMinus:          "-",
+	TkStar:           "*",
+	TkSlash:          "/",
+	TkEq:             "==",
+	TkNeq:            "!=",
+	TkLt:             "<",
+	TkGt:             ">",
+	TkLe:             "<=",
+	TkGe:             ">=",
+	TkAnd:            "&&",
+	TkOr:             "||",
+	TkNot:            "!",
+	TkArrow:          "->",
+	TkEllipsis:       "...",
+	TkHash:           "#",
+	TkQuestion:       "?",
+	TkAt:             "@",
+	TkPipe:           "|",
+	TkExit:           "exit",
+	TkIf:             "if",
+	TkElif:           "elif",
+	TkElse:           "else",
+	TkProc:           "proc",
+	TkThen:           "then",
+	TkReturn:         "return",
+	TkAs:             "as",
 }
 
 func (k TokenKind) String() string {
@@ -145,29 +178,22 @@ func (k TokenKind) String() string {
 
 // ─── Token ───────────────────────────────────────────────────────────────────
 
-// Text returns the raw source text of the token. It is only valid when the
-// tokenizer retains the source buffer (see Tokenizer.Source).
-func (t Token) Text() string { return string(t.Raw) }
-
 // Token represents one lexical token with its source span and raw text.
-// The Value field carries the parsed literal for int/float/string/bool tokens.
+//
+// Value carries the decoded literal:
+//   - TkInt, TkFloat: raw source text as string (parsing deferred to semantic phase)
+//   - TkString: inner text (without guillemets) as string
+//   - TkTrue, TkFalse: bool
+//   - all others: nil
 type Token struct {
 	Kind  TokenKind
 	Span  Span
 	Raw   []byte // raw source bytes (slice into the original source buffer)
-	Value any    // parsed value: int64, float64, string, bool, or nil
+	Value any    // parsed literal: string, bool, or nil
 }
 
-// ─── Position ────────────────────────────────────────────────────────────────
-
-// Position is a human-readable 1-based line:column location. It is computed
-// lazily from a Span via a line-index table. Tokenizer methods that need to
-// format diagnostics use this during scanning; after tokenization, positions
-// are derived from Spans.
-type Position struct {
-	Line   int // 1-based
-	Column int // 1-based byte column
-}
+// Text returns the raw source text of the token.
+func (t Token) Text() string { return string(t.Raw) }
 
 // ─── Token list ──────────────────────────────────────────────────────────────
 
@@ -176,8 +202,6 @@ type TokenList []Token
 
 // ─── Keyword lookup ──────────────────────────────────────────────────────────
 
-// keywordTokens maps identifier text to the corresponding keyword TokenKind.
-// It is nil for identifiers that are not keywords.
 var keywordTokens map[string]TokenKind
 
 func init() {

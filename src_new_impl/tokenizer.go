@@ -21,38 +21,45 @@ import (
 //     deferred to the semantic phase (avoids host-int truncation).
 //   - String literals use full guillemet matching (multibyte « »).
 //   - Unterminated strings/comments produce an error token and recover.
+//   - Comments and whitespace are skipped iteratively (no recursion).
+//   - After an error token, scanning continues (no early EOF).
 //   - EOF is always safe: every scan loop checks bounds before reading.
 //   - Block comments handle nesting correctly.
-//   - Line/column tracking is maintained during scanning for diagnostics.
 type Tokenizer struct {
-	source []byte   // the full source buffer
-	pos    int      // current byte offset in source
-	file   FileID   // file identity for Span
-	line   int      // 1-based line at pos
-	col    int      // 1-based byte column at pos
-	diags  DiagnosticList
-	tokens TokenList
+	source  []byte // the full source buffer
+	pos     int    // current byte offset in source
+	file    FileID // file identity for Span
+	diags   DiagnosticList
+	tokens  TokenList
+	lastPos int // position before the current token, used for progress guard
 }
 
 // NewTokenizer creates a tokenizer for the given source buffer.
+// The tokenizer is single-use: call Tokenize exactly once.
 func NewTokenizer(source []byte, file FileID) *Tokenizer {
 	return &Tokenizer{
 		source: source,
 		file:   file,
-		line:   1,
-		col:    1,
 	}
 }
 
 // Tokenize runs the scanner and returns the token list and any diagnostics.
+// After this call, the tokenizer should not be reused.
 func (t *Tokenizer) Tokenize() (TokenList, DiagnosticList) {
 	t.tokens = nil
 	t.diags = nil
+	t.pos = 0
+
 	for {
 		tok := t.next()
 		t.tokens = append(t.tokens, tok)
-		if tok.Kind == TkEOF || tok.Kind == TkError {
+		if tok.Kind == TkEOF {
 			break
+		}
+		// Error recovery: continue scanning, but guarantee progress to
+		// avoid infinite loops on unrecognizable input.
+		if tok.Kind == TkError && t.pos == t.lastPos {
+			t.advance()
 		}
 	}
 	return t.tokens, t.diags
@@ -76,64 +83,82 @@ func (t *Tokenizer) peekN(n int) byte {
 	return t.source[t.pos+n]
 }
 
-// advance consumes one byte and updates line/column tracking.
+// advance consumes one byte.
 func (t *Tokenizer) advance() {
-	if t.pos >= len(t.source) {
-		return
-	}
-	if t.source[t.pos] == '\n' {
-		t.line++
-		t.col = 1
-	} else {
-		t.col++
-	}
-	t.pos++
-}
-
-// advanceRune consumes one full UTF-8 rune from the current position and
-// updates line/column tracking. For ASCII bytes this is equivalent to
-// advance(); for multi-byte runes it advances by the full encoded width.
-func (t *Tokenizer) advanceRune() {
-	if t.pos >= len(t.source) {
-		return
-	}
-	if t.source[t.pos] == '\n' {
-		t.line++
-		t.col = 1
+	if t.pos < len(t.source) {
 		t.pos++
-		return
 	}
-	_, size := utf8.DecodeRune(t.source[t.pos:])
-	if size <= 0 {
-		size = 1 // safety: advance at least 1 byte
-	}
-	t.pos += size
-	t.col++
 }
 
-// skipWhitespace advances past spaces, tabs, carriage returns (but not newlines,
-// which are handled by advance). Newlines are consumed by advance but are not
-// significant tokens in Chaos — they are whitespace.
-func (t *Tokenizer) skipWhitespace() {
+// ─── Trivia skipping (iterative — no recursion) ──────────────────────────────
+
+// skipTrivia advances past whitespace, line comments (//), and block
+// comments (/** ... **/). It returns the first non-trivia byte position.
+// Unlike the old lexer, this is purely iterative — no recursive calls to
+// next() — so a file full of consecutive comments cannot overflow the stack.
+func (t *Tokenizer) skipTrivia() {
 	for t.pos < len(t.source) {
 		b := t.source[t.pos]
-		if b == ' ' || b == '\t' || b == '\r' {
+
+		// Whitespace
+		if b == ' ' || b == '\t' || b == '\r' || b == '\n' {
 			t.advance()
 			continue
 		}
-		if b == '\n' {
+
+		// Line comment //  — consume until newline or EOF
+		if b == '/' && t.peekN(1) == '/' {
 			t.advance()
+			t.advance()
+			for t.pos < len(t.source) && t.source[t.pos] != '\n' {
+				t.advance()
+			}
 			continue
 		}
+
+		// Block comment /** ... **/  — handle nesting
+		if b == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
+			t.advance()
+			t.advance()
+			t.advance()
+			depth := 1
+			for t.pos < len(t.source) && depth > 0 {
+				// Check open before advance (fixes P0-16)
+				if t.source[t.pos] == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
+					depth++
+					t.advance()
+					t.advance()
+					t.advance()
+					continue
+				}
+				if t.source[t.pos] == '*' && t.peekN(1) == '*' && t.peekN(2) == '/' {
+					depth--
+					t.advance()
+					t.advance()
+					t.advance()
+					continue
+				}
+				t.advance()
+			}
+			if depth > 0 {
+				t.diags.Error(Span{File: t.file, Start: t.pos, End: t.pos}, "unterminated block comment")
+			}
+			continue
+		}
+
+		// Not trivia
 		break
 	}
 }
 
-// makeToken creates a token with the given kind spanning from start to current pos.
+// ─── Token dispatch ──────────────────────────────────────────────────────────
+
+// makeToken creates a token with the given kind spanning from start to current
+// pos. Span is half-open [start, t.pos).
 func (t *Tokenizer) makeToken(kind TokenKind, start int) Token {
 	return Token{
 		Kind: kind,
-		Span: Span{File: t.file, Start: start, End: t.pos - 1},
+		Span: Span{File: t.file, Start: start, End: t.pos},
 		Raw:  t.source[start:t.pos],
 	}
 }
@@ -145,30 +170,19 @@ func (t *Tokenizer) makeTokenValue(kind TokenKind, start int, value any) Token {
 	return tok
 }
 
-// ─── Token dispatch ──────────────────────────────────────────────────────────
-
 func (t *Tokenizer) next() Token {
-	t.skipWhitespace()
+	t.lastPos = t.pos
+	t.skipTrivia()
 
 	start := t.pos
 	if start >= len(t.source) {
 		return Token{
 			Kind: TkEOF,
-			Span: Span{File: t.file, Start: start, End: start - 1},
+			Span: Span{File: t.file, Start: start, End: start},
 		}
 	}
 
 	b := t.source[start]
-
-	// Line comment: //
-	if b == '/' && t.peekN(1) == '/' {
-		return t.scanLineComment()
-	}
-
-	// Block comment: /** ... **/
-	if b == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
-		return t.scanBlockComment()
-	}
 
 	// String literal: « ... »
 	if b == 0xC2 && t.peekN(1) == 0xAB { // « = U+00AB = 0xC2 0xAB in UTF-8
@@ -255,7 +269,7 @@ func (t *Tokenizer) next() Token {
 
 	// Unknown character
 	t.advance()
-	span := Span{File: t.file, Start: start, End: t.pos - 1}
+	span := Span{File: t.file, Start: start, End: t.pos}
 	t.diags.Errorf(span, "unexpected character %q (0x%02x)", b, b)
 	return Token{Kind: TkError, Span: span, Raw: t.source[start:t.pos]}
 }
@@ -274,58 +288,6 @@ func (t *Tokenizer) emitDouble(kind TokenKind, start int, n int) Token {
 	return t.makeToken(kind, start)
 }
 
-// ─── Comment scanning ────────────────────────────────────────────────────────
-
-func (t *Tokenizer) scanLineComment() Token {
-	// consume //
-	t.advance()
-	t.advance()
-	for t.pos < len(t.source) {
-		if t.source[t.pos] == '\n' {
-			break
-		}
-		t.advance()
-	}
-	// Line comments are not tokens; recurse to get the next real token.
-	return t.next()
-}
-
-func (t *Tokenizer) scanBlockComment() Token {
-	start := t.pos
-	// consume /**
-	t.advance()
-	t.advance()
-	t.advance()
-	depth := 1
-	for t.pos < len(t.source) {
-		// Check for /** opener before advancing (fixes P0-16: nested opener
-		// immediately after outer opener was missed by the old lexer).
-		if t.source[t.pos] == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
-			depth++
-			t.advance()
-			t.advance()
-			t.advance()
-			continue
-		}
-		if t.source[t.pos] == '*' && t.peekN(1) == '*' && t.peekN(2) == '/' {
-			depth--
-			t.advance()
-			t.advance()
-			t.advance()
-			if depth == 0 {
-				// Block comments are not tokens; recurse.
-				return t.next()
-			}
-			continue
-		}
-		t.advance()
-	}
-	// Unterminated block comment
-	span := Span{File: t.file, Start: start, End: t.pos - 1}
-	t.diags.Error(span, "unterminated block comment")
-	return Token{Kind: TkError, Span: span, Raw: t.source[start:t.pos]}
-}
-
 // ─── String scanning ─────────────────────────────────────────────────────────
 
 func (t *Tokenizer) scanString() Token {
@@ -334,34 +296,28 @@ func (t *Tokenizer) scanString() Token {
 	t.advance()
 	t.advance()
 
-	// Track string start for diagnostics
-	strStart := t.pos
+	strStart := t.pos // start of inner text (after opening «)
 
 	for t.pos < len(t.source) {
 		// Check for closing » (0xC2 0xBB)
 		if t.source[t.pos] == 0xC2 && t.peekN(1) == 0xBB {
 			t.advance()
 			t.advance()
-			// Raw includes the guillemets; value is the inner text.
 			raw := t.source[start:t.pos]
-			inner := t.source[strStart : t.pos-2]
+			inner := t.source[strStart : t.pos-2] // exclude closing »
 			return Token{
 				Kind:  TkString,
-				Span:  Span{File: t.file, Start: start, End: t.pos - 1},
+				Span:  Span{File: t.file, Start: start, End: t.pos},
 				Raw:   raw,
 				Value: string(inner),
 			}
 		}
-		// Handle newlines inside strings (allowed in Chaos)
-		if t.source[t.pos] == '\n' {
-			t.advance()
-			continue
-		}
+		// Newlines are allowed inside strings
 		t.advance()
 	}
 
 	// Unterminated string
-	span := Span{File: t.file, Start: start, End: t.pos - 1}
+	span := Span{File: t.file, Start: start, End: t.pos}
 	t.diags.Error(span, "unterminated string literal")
 	return Token{Kind: TkError, Span: span, Raw: t.source[start:t.pos]}
 }
@@ -369,8 +325,6 @@ func (t *Tokenizer) scanString() Token {
 // ─── Identifier / keyword scanning ───────────────────────────────────────────
 
 // peekRune decodes the UTF-8 rune at the current position without advancing.
-// It returns the rune and its byte width. If the encoding is invalid or at EOF,
-// it returns utf8.RuneError and 1 (so the caller can still advance past it).
 func (t *Tokenizer) peekRune() (rune, int) {
 	if t.pos >= len(t.source) {
 		return utf8.RuneError, 0
@@ -379,14 +333,13 @@ func (t *Tokenizer) peekRune() (rune, int) {
 	return r, size
 }
 
-// isIdentByte returns true if the byte at the current position starts an
-// identifier character (letter, digit, underscore, or non-ASCII letter).
+// isIdentStart returns true if the byte at the current position starts an
+// identifier character (ASCII letter, underscore, or non-ASCII letter).
 func (t *Tokenizer) isIdentStart() bool {
 	if t.pos >= len(t.source) {
 		return false
 	}
 	b := t.source[t.pos]
-	// ASCII fast path
 	if b >= 'a' && b <= 'z' {
 		return true
 	}
@@ -396,7 +349,6 @@ func (t *Tokenizer) isIdentStart() bool {
 	if b == '_' {
 		return true
 	}
-	// Non-ASCII: decode the full rune and check
 	if b >= 0x80 {
 		r, _ := t.peekRune()
 		return unicode.IsLetter(r)
@@ -411,7 +363,7 @@ func (t *Tokenizer) isIdentCont() bool {
 		return false
 	}
 	b := t.source[t.pos]
-	// UTF-8 continuation bytes (0x80-0xBF) are always part of the current rune.
+	// UTF-8 continuation bytes are always part of the current rune.
 	if b >= 0x80 && b <= 0xBF {
 		return true
 	}
@@ -430,7 +382,6 @@ func (t *Tokenizer) scanIdentOrKeyword() Token {
 	text := string(raw)
 
 	if kind, ok := LookupKeyword(text); ok {
-		// true and false carry a bool value
 		if kind == TkTrue {
 			return t.makeTokenValue(kind, start, true)
 		}
@@ -451,34 +402,52 @@ func isDigit(b byte) bool {
 func (t *Tokenizer) scanNumber() Token {
 	start := t.pos
 	isFloat := false
+	lastWasDigit := false
+	lastWasUnderscore := false
 
-	// Consume digits and optional underscores.
 	for t.pos < len(t.source) {
 		b := t.source[t.pos]
 		if isDigit(b) {
+			lastWasDigit = true
+			lastWasUnderscore = false
 			t.advance()
 			continue
 		}
 		if b == '_' {
-			// Underscore separators: skip but don't stop.
+			if !lastWasDigit {
+				// Underscore must follow a digit: reject 1__2, _5, etc.
+				span := Span{File: t.file, Start: t.pos, End: t.pos + 1}
+				t.diags.Error(span, "misplaced underscore in numeric literal")
+				// Consume the bad underscore and continue scanning
+				// so subsequent digits are still part of the literal.
+			}
+			lastWasDigit = false
+			lastWasUnderscore = true
 			t.advance()
 			continue
 		}
 		if b == '.' && !isFloat {
-			// Check that the dot is not followed by another dot (ellipsis)
 			if t.peekN(1) == '.' {
-				break
+				break // ellipsis, not a float
 			}
 			isFloat = true
+			lastWasUnderscore = false
+			lastWasDigit = false // reset so we require digits after the dot
 			t.advance()
 			continue
 		}
 		break
 	}
 
-	// If we only consumed a dot with no digits after it, that's just a dot token.
+	// If we only consumed a dot with no digits, that's just a dot token.
 	if start == t.pos-1 && t.source[start] == '.' {
 		return t.emitSingle(TkDot, start)
+	}
+
+	// Reject trailing underscore (e.g. "1_")
+	if lastWasUnderscore {
+		span := Span{File: t.file, Start: t.pos - 1, End: t.pos}
+		t.diags.Error(span, "trailing underscore in numeric literal")
 	}
 
 	raw := t.source[start:t.pos]
@@ -486,14 +455,14 @@ func (t *Tokenizer) scanNumber() Token {
 	if isFloat {
 		return Token{
 			Kind:  TkFloat,
-			Span:  Span{File: t.file, Start: start, End: t.pos - 1},
+			Span:  Span{File: t.file, Start: start, End: t.pos},
 			Raw:   raw,
 			Value: string(raw),
 		}
 	}
 	return Token{
 		Kind:  TkInt,
-		Span:  Span{File: t.file, Start: start, End: t.pos - 1},
+		Span:  Span{File: t.file, Start: start, End: t.pos},
 		Raw:   raw,
 		Value: string(raw),
 	}

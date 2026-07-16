@@ -18,12 +18,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	lineOffsets := BuildLineOffsets(source)
+	sm := &SourceManager{}
+	fileID := sm.Register(filepath, source)
+	sf := sm.Lookup(fileID)
 
-	tokens, diags := Tokenize(source, 0)
+	tokens, diags := Tokenize(source, fileID)
 
 	if len(diags) > 0 {
-		RenderAll(diags, source, lineOffsets)
+		RenderAll(diags, source, sf.LineOffsets)
 		if diags.HasErrors() {
 			os.Exit(1)
 		}
@@ -31,7 +33,7 @@ func main() {
 
 	// Print tokens
 	for _, tok := range tokens {
-		line, col := offsetToLineCol(tok.Span.Start, lineOffsets)
+		line, col := offsetToLineCol(tok.Span.Start, sf.LineOffsets)
 		if tok.Kind == TkEOF {
 			fmt.Printf("%3d:%-3d  %-16s  EOF\n", line, col, tok.Kind.String())
 			continue

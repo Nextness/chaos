@@ -90,7 +90,8 @@ func (d Diagnostic) Render(source []byte, lineOffsets []int) {
 	)
 
 	// Print a source line with a caret underline.
-	if d.Span.Start < len(source) && d.Span.End <= len(source) && d.Span.Start <= d.Span.End {
+	// Span is half-open [Start, End); End may equal len(source).
+	if d.Span.Start < len(source) && d.Span.End <= len(source) && d.Span.Start < d.Span.End {
 		// Find the line start
 		lineStart := d.Span.Start
 		for lineStart > 0 && source[lineStart-1] != '\n' {
@@ -102,13 +103,13 @@ func (d Diagnostic) Render(source []byte, lineOffsets []int) {
 		}
 		if lineStart < lineEnd {
 			fmt.Fprintf(os.Stderr, "  %s\n", string(source[lineStart:lineEnd]))
-			// Caret underline
+			// Caret underline: half-open [caretStart, caretEnd)
 			caretStart := d.Span.Start - lineStart
 			caretEnd := d.Span.End - lineStart
 			if caretEnd > lineEnd-lineStart {
 				caretEnd = lineEnd - lineStart
 			}
-			if caretEnd < caretStart {
+			if caretEnd <= caretStart {
 				caretEnd = caretStart + 1
 			}
 			fmt.Fprintf(os.Stderr, "  ")
