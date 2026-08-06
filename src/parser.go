@@ -63,10 +63,6 @@ func ParseProgram(tokens TokenList) ParseResult {
 	return ParseResult{Program: p.program, Diags: p.diags}
 }
 
-// ──────────────────────────────────────────────
-// Parser helpers
-// ──────────────────────────────────────────────
-
 // peek returns the current token without consuming it.
 func (p *Parser) peek() Token {
 	if p.pos < len(p.tokens) {
@@ -90,7 +86,7 @@ func (p *Parser) expect(kind TokenKind) Token {
 	if tok.Kind == kind {
 		return p.bump()
 	}
-	p.diags.Error(tok.Span, "expected "+kind.String()+", got "+tok.Kind.String())
+	p.diags.Error(tok.Span, "expected "+kind.String()+", got "+tok.Kind.String(), "add '"+kind.String()+"' here")
 	return p.bump()
 }
 
@@ -135,10 +131,6 @@ func (p *Parser) syncStmt() {
 	}
 }
 
-// ──────────────────────────────────────────────
-// Declarations
-// ──────────────────────────────────────────────
-
 // parseDecl tries to parse a top-level declaration. Returns (decl, true) on
 // success, or (nil, false) on failure (caller must make progress).
 func (p *Parser) parseDecl() (Decl, bool) {
@@ -150,7 +142,7 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	if !p.at(TkIdent) {
 		tok := p.peek()
 		if tok.Kind != TkEOF {
-			p.diags.Error(tok.Span, "expected declaration, got "+tok.Kind.String())
+			p.diags.Error(tok.Span, "expected declaration, got "+tok.Kind.String(), "start the line with an identifier followed by '::', ':', or ':='")
 		}
 		return nil, false
 	}
@@ -169,7 +161,7 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		if p.at(TkAssign) {
 			// This is actually ident := (infer), but we consumed : not :=
 			// This shouldn't happen because the tokenizer correctly emits TkInfer
-			p.diags.Error(p.peek().Span, "unexpected '=' after ':', did you mean ':='?")
+			p.diags.Error(p.peek().Span, "unexpected '=' after ':', did you mean ':='?", "use ':=' instead of ':' followed by '='")
 			return nil, false
 		}
 		return p.parseTypedVarDecl(nameTok, name)
@@ -182,7 +174,7 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	// Not a declaration — maybe a reassignment or expression statement
 	// At top level, these are errors.
 	tok := p.peek()
-	p.diags.Error(tok.Span, "expected '::', ':', or ':=' after identifier in declaration")
+	p.diags.Error(tok.Span, "expected '::', ':', or ':=' after identifier in declaration", "add '::', ':', or ':=' after the identifier")
 	return nil, false
 }
 
@@ -197,7 +189,7 @@ func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool
 	// Compile-time variable: ident "::" expr ";"
 	init := p.parseExpr(0)
 	if init == nil {
-		p.diags.Error(p.peek().Span, "expected expression after '::'")
+		p.diags.Error(p.peek().Span, "expected expression after '::'", "add an expression after '::'")
 		return nil, false
 	}
 	p.expect(TkSemicolon)
@@ -216,7 +208,7 @@ func (p *Parser) parseInferVarDecl(nameTok Token, name string) (Decl, bool) {
 	init := p.parseExpr(0)
 	if init == nil {
 		// If we can't parse an expression, emit error and try to recover
-		p.diags.Error(p.peek().Span, "expected expression after ':='")
+		p.diags.Error(p.peek().Span, "expected expression after ':='", "add an expression after ':='")
 		p.syncStmt()
 		if p.at(TkSemicolon) {
 			p.bump()
@@ -245,7 +237,7 @@ func (p *Parser) parseInferVarDecl(nameTok Token, name string) (Decl, bool) {
 func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 	typeExpr := p.parseTypeExpr()
 	if typeExpr == nil {
-		p.diags.Error(p.peek().Span, "expected type after ':'")
+		p.diags.Error(p.peek().Span, "expected type after ':'", "add a type name after ':'")
 		p.syncStmt()
 		if p.at(TkSemicolon) {
 			p.bump()
@@ -263,7 +255,7 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 	if p.match(TkAssign) {
 		init = p.parseExpr(0)
 		if init == nil {
-			p.diags.Error(p.peek().Span, "expected expression after '='")
+			p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
 		}
 	}
 
@@ -314,7 +306,7 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 			}
 			commaTok := p.bump()
 			if p.at(TkRParen) {
-				p.diags.Error(commaTok.Span, "trailing comma after parameter")
+				p.diags.Error(commaTok.Span, "trailing comma after parameter", "remove the trailing comma")
 				break
 			}
 		}
@@ -330,13 +322,13 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 		// At least one result type
 		first := p.parseTypeExpr()
 		if first == nil {
-			p.diags.Error(p.peek().Span, "expected return type after '->'")
+			p.diags.Error(p.peek().Span, "expected return type after '->'", "add a return type after '->'")
 		} else {
 			results = append(results, first)
 			for p.match(TkComma) {
 				next := p.parseTypeExpr()
 				if next == nil {
-					p.diags.Error(p.peek().Span, "expected return type after ','")
+					p.diags.Error(p.peek().Span, "expected return type after ','", "add a return type after ','")
 					break
 				}
 				results = append(results, next)
@@ -347,7 +339,7 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 	// Body
 	body := p.parseBlock()
 	if body == nil {
-		p.diags.Error(p.peek().Span, "expected procedure body '{'")
+		p.diags.Error(p.peek().Span, "expected procedure body '{'", "add a '{' block for the procedure body")
 		return nil, false
 	}
 
@@ -364,21 +356,21 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 // parseParam parses a single parameter: ident ":" type
 func (p *Parser) parseParam() (Param, bool) {
 	if !p.at(TkIdent) {
-		p.diags.Error(p.peek().Span, "expected parameter name")
+		p.diags.Error(p.peek().Span, "expected parameter name", "add a parameter name")
 		return Param{}, false
 	}
 	nameTok := p.bump()
 	name := nameTok.Text()
 
 	if !p.at(TkColon) {
-		p.diags.Error(p.peek().Span, "expected ':' after parameter name")
+		p.diags.Error(p.peek().Span, "expected ':' after parameter name", "add ':' after the parameter name")
 		return Param{Span_: nameTok.Span, Name: name}, true
 	}
 	p.bump() // consume ":"
 
 	typeExpr := p.parseTypeExpr()
 	if typeExpr == nil {
-		p.diags.Error(p.peek().Span, "expected parameter type after ':'")
+		p.diags.Error(p.peek().Span, "expected parameter type after ':'", "add a type after ':'")
 		return Param{Span_: nameTok.Span, Name: name}, true
 	}
 
@@ -388,10 +380,6 @@ func (p *Parser) parseParam() (Param, bool) {
 		Type:  typeExpr,
 	}, true
 }
-
-// ──────────────────────────────────────────────
-// Statements
-// ──────────────────────────────────────────────
 
 // parseStmt parses a single statement.
 func (p *Parser) parseStmt() Stmt {
@@ -420,7 +408,7 @@ func (p *Parser) parseStmt() Stmt {
 	default:
 		tok := p.peek()
 		if tok.Kind != TkEOF && tok.Kind != TkRBrace {
-			p.diags.Error(tok.Span, "unexpected token "+tok.Kind.String()+" in statement")
+			p.diags.Error(tok.Span, "unexpected token "+tok.Kind.String()+" in statement", "remove the token or start a valid statement")
 			p.syncStmt()
 			if p.at(TkSemicolon) {
 				p.bump()
@@ -487,7 +475,7 @@ func (p *Parser) parseIdentStmt() Stmt {
 		// Could be an expression statement (e.g., a function call without
 		// parens — not currently supported). Emit error.
 		tok := p.peek()
-		p.diags.Error(tok.Span, "unexpected token after identifier '"+name+"'")
+		p.diags.Error(tok.Span, "unexpected token after identifier '"+name+"'", "add '=', ':=', '::', or '(' after the identifier")
 		p.syncStmt()
 		if p.at(TkSemicolon) {
 			p.bump()
@@ -500,7 +488,7 @@ func (p *Parser) parseIdentStmt() Stmt {
 func (p *Parser) parseAssignStmt(nameTok Token, name string) Stmt {
 	value := p.parseExpr(0)
 	if value == nil {
-		p.diags.Error(p.peek().Span, "expected expression after '='")
+		p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
 		p.syncStmt()
 		if p.at(TkSemicolon) {
 			p.bump()
@@ -532,7 +520,7 @@ func (p *Parser) parseReturnStmt() Stmt {
 
 	value := p.parseExpr(0)
 	if value == nil {
-		p.diags.Error(p.peek().Span, "expected expression or ';' after 'return'")
+		p.diags.Error(p.peek().Span, "expected expression or ';' after 'return'", "add an expression or ';' after 'return'")
 		p.syncStmt()
 		if p.at(TkSemicolon) {
 			p.bump()
@@ -554,7 +542,7 @@ func (p *Parser) parseExitStmt() Stmt {
 
 	status := p.parseExpr(0)
 	if status == nil {
-		p.diags.Error(p.peek().Span, "expected expression after 'exit'")
+		p.diags.Error(p.peek().Span, "expected expression after 'exit'", "add an expression after 'exit'")
 		p.syncStmt()
 		if p.at(TkSemicolon) {
 			p.bump()
@@ -566,7 +554,7 @@ func (p *Parser) parseExitStmt() Stmt {
 	if p.match(TkComma) {
 		message = p.parseExpr(0)
 		if message == nil {
-			p.diags.Error(p.peek().Span, "expected expression after ',' in exit")
+			p.diags.Error(p.peek().Span, "expected expression after ',' in exit", "add an expression after ','")
 		}
 	}
 
@@ -589,13 +577,13 @@ func (p *Parser) parseIfStmt() Stmt {
 
 	cond := p.parseExpr(0)
 	if cond == nil {
-		p.diags.Error(p.peek().Span, "expected condition after 'if'")
+		p.diags.Error(p.peek().Span, "expected condition after 'if'", "add a condition after 'if'")
 		cond = &ErrorExpr{Span_: p.peek().Span}
 	}
 
 	body := p.parseBlock()
 	if body == nil {
-		p.diags.Error(p.peek().Span, "expected block after 'if' condition")
+		p.diags.Error(p.peek().Span, "expected block after 'if' condition", "add a '{' block after the condition")
 		body = &BlockStmt{Span_: p.peek().Span}
 	}
 
@@ -604,12 +592,12 @@ func (p *Parser) parseIfStmt() Stmt {
 		elifTok := p.bump() // consume "elif"
 		elifCond := p.parseExpr(0)
 		if elifCond == nil {
-			p.diags.Error(p.peek().Span, "expected condition after 'elif'")
+			p.diags.Error(p.peek().Span, "expected condition after 'elif'", "add a condition after 'elif'")
 			elifCond = &ErrorExpr{Span_: p.peek().Span}
 		}
 		elifBody := p.parseBlock()
 		if elifBody == nil {
-			p.diags.Error(p.peek().Span, "expected block after 'elif' condition")
+			p.diags.Error(p.peek().Span, "expected block after 'elif' condition", "add a '{' block after the condition")
 			elifBody = &BlockStmt{Span_: p.peek().Span}
 		}
 		elifs = append(elifs, &IfStmt{
@@ -625,7 +613,7 @@ func (p *Parser) parseIfStmt() Stmt {
 		// Check for elif (else + if)
 		if p.at(TkIf) {
 			// "else if" is not valid syntax — must use "elif"
-			p.diags.Error(p.peek().Span, "use 'elif' instead of 'else if'")
+			p.diags.Error(p.peek().Span, "use 'elif' instead of 'else if'", "replace 'else if' with 'elif'")
 			innerIf := p.parseIfStmt()
 			elseBody = &BlockStmt{
 				Span_: innerIf.nodeSpan(),
@@ -634,7 +622,7 @@ func (p *Parser) parseIfStmt() Stmt {
 		} else {
 			elseBody = p.parseBlock()
 			if elseBody == nil {
-				p.diags.Error(p.peek().Span, "expected block after 'else'")
+				p.diags.Error(p.peek().Span, "expected block after 'else'", "add a '{' block after 'else'")
 				elseBody = &BlockStmt{Span_: p.peek().Span}
 			}
 		}
@@ -685,10 +673,6 @@ func (p *Parser) parseBlock() *BlockStmt {
 		Stmts: stmts,
 	}
 }
-
-// ──────────────────────────────────────────────
-// Expression parser (Pratt)
-// ──────────────────────────────────────────────
 
 // Precedence levels (lower = binds weaker).
 const (
@@ -758,13 +742,13 @@ func (p *Parser) parseExpr(minBp int) Expr {
 		// Binary operator
 		op := tokToBinaryOp(tok.Kind)
 		if op < 0 {
-			p.diags.Error(tok.Span, "unexpected token "+tok.Kind.String()+" in expression")
+			p.diags.Error(tok.Span, "unexpected token "+tok.Kind.String()+" in expression", "remove the token or add a valid operator")
 			break
 		}
 
 		right := p.parseExpr(bp + 1)
 		if right == nil {
-			p.diags.Error(p.peek().Span, "expected expression after operator")
+			p.diags.Error(p.peek().Span, "expected expression after operator", "add an expression after the operator")
 			break
 		}
 
@@ -792,7 +776,7 @@ func (p *Parser) parsePrimaryExpr() Expr {
 		}
 		operand := p.parseExpr(precUnary)
 		if operand == nil {
-			p.diags.Error(p.peek().Span, "expected expression after unary operator")
+			p.diags.Error(p.peek().Span, "expected expression after unary operator", "add an expression after the unary operator")
 			return &ErrorExpr{Span_: tok.Span}
 		}
 		return &UnaryExpr{
@@ -844,7 +828,7 @@ func (p *Parser) parseAtom() Expr {
 		p.bump() // consume "("
 		inner := p.parseExpr(0)
 		if inner == nil {
-			p.diags.Error(p.peek().Span, "expected expression after '('")
+			p.diags.Error(p.peek().Span, "expected expression after '('", "add an expression after '('")
 			p.expect(TkRParen)
 			return &ErrorExpr{Span_: tok.Span}
 		}
@@ -866,7 +850,7 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 	for !p.at(TkRParen) && !p.at(TkEOF) {
 		arg := p.parseExpr(0)
 		if arg == nil {
-			p.diags.Error(p.peek().Span, "expected expression in call argument")
+			p.diags.Error(p.peek().Span, "expected expression in call argument", "add an expression as the call argument")
 			break
 		}
 		args = append(args, arg)
@@ -875,7 +859,7 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 		}
 		commaTok := p.bump()
 		if p.at(TkRParen) {
-			p.diags.Error(commaTok.Span, "trailing comma in call argument")
+			p.diags.Error(commaTok.Span, "trailing comma in call argument", "remove the trailing comma")
 			break
 		}
 	}
@@ -886,10 +870,6 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 		Args:  args,
 	}
 }
-
-// ──────────────────────────────────────────────
-// Helpers
-// ──────────────────────────────────────────────
 
 // tokToBinaryOp maps a token kind to a BinaryOp, or -1 if not a binary op.
 func tokToBinaryOp(kind TokenKind) int {

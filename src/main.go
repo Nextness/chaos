@@ -1,0 +1,61 @@
+package main
+
+import (
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+)
+
+func main() {
+	os.Exit(run(filepath.Base(os.Args[0]), os.Args[1:], os.Stderr))
+}
+
+func run(programName string, args []string, output io.Writer) int {
+	flags := flag.NewFlagSet(programName, flag.ContinueOnError)
+	flags.SetOutput(output)
+	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 2
+	}
+
+	if flags.NArg() != 1 {
+		fmt.Fprintf(output, "[ERROR] exactly one Chaos source file is required (got %d arguments; usage: %s <file.chaos>)\n", flags.NArg(), programName)
+		return 2
+	}
+
+	path := flags.Arg(0)
+	source, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(output, "[ERROR] failed to read Chaos source %q: %v\n", path, err)
+		return 1
+	}
+
+	sm := &SourceManager{}
+	fileID := sm.Register(path, source)
+	sf := sm.Lookup(fileID)
+
+	tokens, diags := Tokenize(source, fileID)
+
+	if len(diags) > 0 {
+		RenderAll(output, diags, sf)
+		if diags.HasErrors() {
+			return 1
+		}
+	}
+
+	// Parse the tokens into an AST.
+	result := ParseProgram(tokens)
+	if len(result.Diags) > 0 {
+		RenderAll(output, result.Diags, sf)
+		if result.Diags.HasErrors() {
+			return 1
+		}
+	}
+
+	return 0
+}

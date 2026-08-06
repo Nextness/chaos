@@ -1,15 +1,39 @@
 # Change Log
 
-This file records changes to `src_new_impl`. Every group of changes must be
+This file records changes to `src`. Every group of changes must be
 listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.4.1`.
+- The current version is `0.5.0`.
 - Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
+
+## 0.5.0 - 2026-08-06
+
+### Added
+
+- Every diagnostic now carries a `Suggestion` describing how to fix the
+  problem. The tokenizer and parser attach a suggestion to each error.
+
+### Changed
+
+- Replaced `log/slog` output with compact, rust-like printf diagnostics.
+  Each diagnostic renders as `[ERROR] line:col:file - reason` followed by
+  the source line, a caret underline aligned to the error span, and a
+  `-> suggestion` line. The suggestion is still emitted when the span has
+  no source context (for example at EOF).
+- Removed the `-log-level`, `-log-format`, and `-log-source` flags and the
+  `logging.go` module. The driver writes diagnostics and driver errors
+  directly to stderr with `fmt.Fprintf`.
+- Removed the token debug logging from the driver; a successful compile now
+  produces no output.
+- `Diagnostic.Render` and `RenderAll` now write to an `io.Writer` given a
+  `*SourceFile` instead of emitting slog records.
+- `DiagnosticList.Error` and `DiagnosticList.Warn` now require a suggestion
+  argument.
 
 ## 0.4.1 - 2026-07-16
 

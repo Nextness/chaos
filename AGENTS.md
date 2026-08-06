@@ -22,13 +22,12 @@ go build chaosBuild.go       # bootstrap build binary
 go build ./...               # build
 go test ./...                # run all tests (87.6% coverage)
 go vet ./...                 # static analysis
-go run . file.chaos          # tokenize and parse a file (slog output)
+go run . file.chaos          # tokenize and parse a file (diagnostics to stderr)
 ```
 
 - Separate `go.mod` (module `chaos_new`), no external deps, only stdlib.
-- Uses `log/slog` for all output. No `fmt.Printf`/`Fprintf`/`Sprintf`.
-- Flags: `-log-level`, `-log-format` (text/json), `-log-source`.
-- Diagnostics use `slog` levels (Error/Info/Warn) with structured attributes (severity, span, source line, caret underline).
+- Diagnostics and driver errors are written to stderr with `fmt.Fprintf` in a compact rust-like format: `[ERROR] line:col:file - reason`, the source line, a caret underline, and a `-> suggestion` line. No `log/slog` is used.
+- A successful compile produces no output.
 
 ## Architecture
 

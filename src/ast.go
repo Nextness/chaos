@@ -1,5 +1,3 @@
-package main
-
 // AST node types for the Chaos language.
 //
 // The parser produces an unresolved syntax tree: identifiers are stored as
@@ -7,6 +5,7 @@ package main
 // separate passes that consume this tree.
 //
 // Every node carries a Span for source-location diagnostics.
+package main
 
 // Node is the common interface implemented by all AST nodes.
 type Node interface {
@@ -31,18 +30,17 @@ type Decl interface {
 	declNode()
 }
 
-// ──────────────────────────────────────────────
-// Literal expressions
-// ──────────────────────────────────────────────
-
 // IdentExpr is a reference to a named entity.
 type IdentExpr struct {
 	Span_ Span
 	Name  string
 }
 
-func (e *IdentExpr) nodeSpan() Span { return e.Span_ }
-func (e *IdentExpr) exprNode()      {}
+func (e *IdentExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *IdentExpr) exprNode() {}
 
 // IntExpr is an integer literal. Value is the raw source text (e.g. "42", "1_000").
 type IntExpr struct {
@@ -77,12 +75,11 @@ type BoolExpr struct {
 	Value bool
 }
 
-func (e *BoolExpr) nodeSpan() Span { return e.Span_ }
-func (e *BoolExpr) exprNode()      {}
+func (e *BoolExpr) nodeSpan() Span {
+	return e.Span_
+}
 
-// ──────────────────────────────────────────────
-// Compound expressions
-// ──────────────────────────────────────────────
+func (e *BoolExpr) exprNode() {}
 
 // BinaryOp enumerates all binary operators.
 type BinaryOp uint8
@@ -110,8 +107,11 @@ type BinaryExpr struct {
 	Right Expr
 }
 
-func (e *BinaryExpr) nodeSpan() Span { return e.Span_ }
-func (e *BinaryExpr) exprNode()      {}
+func (e *BinaryExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *BinaryExpr) exprNode() {}
 
 // UnaryOp enumerates unary operators.
 type UnaryOp uint8
@@ -128,8 +128,10 @@ type UnaryExpr struct {
 	Operand Expr
 }
 
-func (e *UnaryExpr) nodeSpan() Span { return e.Span_ }
-func (e *UnaryExpr) exprNode()      {}
+func (e *UnaryExpr) nodeSpan() Span {
+	return e.Span_
+}
+func (e *UnaryExpr) exprNode() {}
 
 // CallExpr is a function call: func(args...).
 type CallExpr struct {
@@ -138,8 +140,11 @@ type CallExpr struct {
 	Args  []Expr
 }
 
-func (e *CallExpr) nodeSpan() Span { return e.Span_ }
-func (e *CallExpr) exprNode()      {}
+func (e *CallExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *CallExpr) exprNode() {}
 
 // ParenExpr is a parenthesized expression: (expr).
 type ParenExpr struct {
@@ -147,8 +152,11 @@ type ParenExpr struct {
 	Inner Expr
 }
 
-func (e *ParenExpr) nodeSpan() Span { return e.Span_ }
-func (e *ParenExpr) exprNode()      {}
+func (e *ParenExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *ParenExpr) exprNode() {}
 
 // ErrorExpr is a placeholder inserted when the parser encounters an error
 // during expression parsing. It allows the parser to continue and collect
@@ -157,12 +165,11 @@ type ErrorExpr struct {
 	Span_ Span
 }
 
-func (e *ErrorExpr) nodeSpan() Span { return e.Span_ }
-func (e *ErrorExpr) exprNode()      {}
+func (e *ErrorExpr) nodeSpan() Span {
+	return e.Span_
+}
 
-// ──────────────────────────────────────────────
-// Statements
-// ──────────────────────────────────────────────
+func (e *ErrorExpr) exprNode() {}
 
 // VarDecl is a variable or constant declaration.
 //
@@ -179,9 +186,13 @@ type VarDecl struct {
 	CompileTime bool // compile-time constant (::)
 }
 
-func (d *VarDecl) nodeSpan() Span { return d.Span_ }
-func (d *VarDecl) stmtNode()      {}
-func (d *VarDecl) declNode()      {}
+func (d *VarDecl) nodeSpan() Span {
+	return d.Span_
+}
+
+func (d *VarDecl) stmtNode() {}
+
+func (d *VarDecl) declNode() {}
 
 // AssignStmt is a reassignment: name = expr.
 type AssignStmt struct {
@@ -190,8 +201,11 @@ type AssignStmt struct {
 	Value Expr
 }
 
-func (s *AssignStmt) nodeSpan() Span { return s.Span_ }
-func (s *AssignStmt) stmtNode()      {}
+func (s *AssignStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *AssignStmt) stmtNode() {}
 
 // ReturnStmt is a return statement. Value is nil for void returns.
 type ReturnStmt struct {
@@ -199,8 +213,11 @@ type ReturnStmt struct {
 	Value Expr // nil for bare "return;"
 }
 
-func (s *ReturnStmt) nodeSpan() Span { return s.Span_ }
-func (s *ReturnStmt) stmtNode()      {}
+func (s *ReturnStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *ReturnStmt) stmtNode() {}
 
 // ExitStmt is an exit statement. Message is nil when no message is provided.
 type ExitStmt struct {
@@ -209,8 +226,11 @@ type ExitStmt struct {
 	Message Expr // nil if no message
 }
 
-func (s *ExitStmt) nodeSpan() Span { return s.Span_ }
-func (s *ExitStmt) stmtNode()      {}
+func (s *ExitStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *ExitStmt) stmtNode() {}
 
 // IfStmt is an if/elif/else chain.
 //   - Elif holds the elif branches (each with its own Condition, Body, and nested Elif).
@@ -223,8 +243,11 @@ type IfStmt struct {
 	ElseBody  *BlockStmt // optional else branch
 }
 
-func (s *IfStmt) nodeSpan() Span { return s.Span_ }
-func (s *IfStmt) stmtNode()      {}
+func (s *IfStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *IfStmt) stmtNode() {}
 
 // BlockStmt is a braced block of statements.
 type BlockStmt struct {
@@ -232,8 +255,11 @@ type BlockStmt struct {
 	Stmts []Stmt
 }
 
-func (s *BlockStmt) nodeSpan() Span { return s.Span_ }
-func (s *BlockStmt) stmtNode()      {}
+func (s *BlockStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *BlockStmt) stmtNode() {}
 
 // ProcDecl is a procedure declaration.
 //
@@ -247,9 +273,12 @@ type ProcDecl struct {
 	Body    *BlockStmt
 }
 
-func (d *ProcDecl) nodeSpan() Span { return d.Span_ }
-func (d *ProcDecl) stmtNode()      {}
-func (d *ProcDecl) declNode()      {}
+func (d *ProcDecl) nodeSpan() Span {
+	return d.Span_
+}
+
+func (d *ProcDecl) stmtNode() {}
+func (d *ProcDecl) declNode() {}
 
 // Param is a single procedure parameter.
 type Param struct {
@@ -258,11 +287,9 @@ type Param struct {
 	Type  Expr // type expression
 }
 
-func (p Param) nodeSpan() Span { return p.Span_ }
-
-// ──────────────────────────────────────────────
-// Program
-// ──────────────────────────────────────────────
+func (p Param) nodeSpan() Span {
+	return p.Span_
+}
 
 // Program is the root of the AST. It holds a list of top-level declarations.
 type Program struct {
@@ -283,5 +310,8 @@ type ExprStmt struct {
 	Expr  Expr
 }
 
-func (s *ExprStmt) nodeSpan() Span { return s.Span_ }
-func (s *ExprStmt) stmtNode()      {}
+func (s *ExprStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *ExprStmt) stmtNode() {}
