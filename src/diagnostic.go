@@ -1,8 +1,8 @@
 package main
 
 import (
-	"context"
-	"log/slog"
+	"fmt"
+	"io"
 	"strings"
 )
 
@@ -27,34 +27,27 @@ func (s Severity) String() string {
 	}
 }
 
-func (s Severity) LogLevel() slog.Level {
-	switch s {
-	case SeverityError:
-		return slog.LevelError
-	case SeverityWarning:
-		return slog.LevelWarn
-	default:
-		return slog.LevelInfo
-	}
-}
-
 // Diagnostic is a single compiler message associated with a source location.
+// Message states the reason for the diagnostic; Suggestion is an optional
+// hint describing how to fix the problem.
 type Diagnostic struct {
-	Severity Severity
-	Span     Span
-	Message  string
+	Severity   Severity
+	Span       Span
+	Message    string
+	Suggestion string
 }
 
-// DiagnosticList is a growing list of diagnostics. The tokenizer appends to it
-// instead of panicking. The driver checks whether any errors were reported.
+// DiagnosticList is a growing list of diagnostics. The tokenizer and parser
+// append to it instead of panicking. The driver checks whether any errors
+// were reported.
 type DiagnosticList []Diagnostic
 
-func (d *DiagnosticList) Error(span Span, msg string) {
-	*d = append(*d, Diagnostic{Severity: SeverityError, Span: span, Message: msg})
+func (d *DiagnosticList) Error(span Span, msg, suggestion string) {
+	*d = append(*d, Diagnostic{Severity: SeverityError, Span: span, Message: msg, Suggestion: suggestion})
 }
 
-func (d *DiagnosticList) Warn(span Span, msg string) {
-	*d = append(*d, Diagnostic{Severity: SeverityWarning, Span: span, Message: msg})
+func (d *DiagnosticList) Warn(span Span, msg, suggestion string) {
+	*d = append(*d, Diagnostic{Severity: SeverityWarning, Span: span, Message: msg, Suggestion: suggestion})
 }
 
 func (d *DiagnosticList) HasErrors() bool {
@@ -66,33 +59,32 @@ func (d *DiagnosticList) HasErrors() bool {
 	return false
 }
 
-// Render emits a structured diagnostic log record. It requires a line-index
-// table to compute line:column from byte offsets.
-func (d Diagnostic) Render(logger *slog.Logger, source []byte, lineOffsets []int) {
-	line, col := offsetToLineCol(d.Span.Start, lineOffsets)
-	attributes := []slog.Attr{
-		slog.String("diagnostic", d.Severity.String()),
-		slog.Int("file", int(d.Span.File)),
-		slog.Int("line", line),
-		slog.Int("column", col),
-		slog.Int("span_start", d.Span.Start),
-		slog.Int("span_end", d.Span.End),
-	}
+// Render writes a compact, rust-like diagnostic to w:
+//
+//	[ERROR] 1:5:file.chaos - reason
+//	 source line
+//	 ^^^ -> suggestion
+//
+// The caret underline is aligned with the diagnostic span. The source context
+// is omitted when the span is empty or falls outside the source buffer; the
+// suggestion is still emitted in that case.
+func (d Diagnostic) Render(w io.Writer, sf *SourceFile) {
+	line, col := offsetToLineCol(d.Span.Start, sf.LineOffsets)
+	fmt.Fprintf(w, "[%s] %d:%d:%s - %s\n", strings.ToUpper(d.Severity.String()), line, col, sf.Path, d.Message)
 
-	// Attach the source line and caret underline to the same record.
 	// Span is half-open [Start, End); End may equal len(source).
-	if d.Span.Start < len(source) && d.Span.End <= len(source) && d.Span.Start < d.Span.End {
-		// Find the line start
+	if d.Span.Start < len(sf.Source) && d.Span.End <= len(sf.Source) && d.Span.Start < d.Span.End {
+		// Find the line boundaries around the span start.
 		lineStart := d.Span.Start
-		for lineStart > 0 && source[lineStart-1] != '\n' {
+		for lineStart > 0 && sf.Source[lineStart-1] != '\n' {
 			lineStart--
 		}
 		lineEnd := d.Span.Start
-		for lineEnd < len(source) && source[lineEnd] != '\n' {
+		for lineEnd < len(sf.Source) && sf.Source[lineEnd] != '\n' {
 			lineEnd++
 		}
 		if lineStart < lineEnd {
-			attributes = append(attributes, slog.String("source_line", string(source[lineStart:lineEnd])))
+			fmt.Fprintf(w, " %s\n", string(sf.Source[lineStart:lineEnd]))
 
 			// Caret underline: half-open [caretStart, caretEnd)
 			caretStart := d.Span.Start - lineStart
@@ -105,8 +97,9 @@ func (d Diagnostic) Render(logger *slog.Logger, source []byte, lineOffsets []int
 			}
 
 			var underline strings.Builder
+			underline.WriteByte(' ')
 			for i := 0; i < caretStart; i++ {
-				if source[lineStart+i] == '\t' {
+				if sf.Source[lineStart+i] == '\t' {
 					underline.WriteByte('\t')
 				} else {
 					underline.WriteByte(' ')
@@ -115,17 +108,23 @@ func (d Diagnostic) Render(logger *slog.Logger, source []byte, lineOffsets []int
 			for i := caretStart; i < caretEnd; i++ {
 				underline.WriteByte('^')
 			}
-			attributes = append(attributes, slog.String("underline", underline.String()))
+			if d.Suggestion != "" {
+				fmt.Fprintf(w, "%s -> %s\n", underline.String(), d.Suggestion)
+			} else {
+				fmt.Fprintf(w, "%s\n", underline.String())
+			}
+			return
 		}
 	}
-
-	logger.LogAttrs(context.Background(), d.Severity.LogLevel(), d.Message, attributes...)
+	if d.Suggestion != "" {
+		fmt.Fprintf(w, " -> %s\n", d.Suggestion)
+	}
 }
 
-// RenderAll emits all diagnostics through logger.
-func RenderAll(logger *slog.Logger, diags DiagnosticList, source []byte, lineOffsets []int) {
+// RenderAll writes all diagnostics to w in order.
+func RenderAll(w io.Writer, diags DiagnosticList, sf *SourceFile) {
 	for _, d := range diags {
-		d.Render(logger, source, lineOffsets)
+		d.Render(w, sf)
 	}
 }
 

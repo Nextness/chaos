@@ -119,7 +119,7 @@ func (t *Tokenizer) skipTrivia() {
 				t.advance()
 			}
 			if depth > 0 {
-				t.diags.Error(Span{File: t.file, Start: t.pos, End: t.pos}, "unterminated block comment")
+				t.diags.Error(Span{File: t.file, Start: t.pos, End: t.pos}, "unterminated block comment", "add a closing '**/' to end the comment")
 			}
 			continue
 		}
@@ -250,7 +250,7 @@ func (t *Tokenizer) next() Token {
 	if len(hexValue) == 1 {
 		hexValue = "0" + hexValue
 	}
-	t.diags.Error(span, "unexpected character "+strconv.QuoteRuneToASCII(rune(b))+" (0x"+hexValue+")")
+	t.diags.Error(span, "unexpected character "+strconv.QuoteRuneToASCII(rune(b))+" (0x"+hexValue+")", "remove the character or replace it with a valid token")
 	return Token{Kind: TkError, Span: span, Raw: t.source[start:t.pos]}
 }
 
@@ -289,7 +289,7 @@ func (t *Tokenizer) scanString() Token {
 
 	// Unterminated string
 	span := Span{File: t.file, Start: start, End: t.pos}
-	t.diags.Error(span, "unterminated string literal")
+	t.diags.Error(span, "unterminated string literal", "close the string with '»'")
 	return Token{Kind: TkError, Span: span, Raw: t.source[start:t.pos]}
 }
 
@@ -369,6 +369,7 @@ func isDigit(b byte) bool {
 func (t *Tokenizer) scanNumber() Token {
 	start := t.pos
 	isFloat := false
+	sawDigitAfterDot := false
 	lastWasDigit := false
 	lastWasUnderscore := false
 
@@ -377,6 +378,9 @@ func (t *Tokenizer) scanNumber() Token {
 		if isDigit(b) {
 			lastWasDigit = true
 			lastWasUnderscore = false
+			if isFloat {
+				sawDigitAfterDot = true
+			}
 			t.advance()
 			continue
 		}
@@ -384,7 +388,7 @@ func (t *Tokenizer) scanNumber() Token {
 			if !lastWasDigit {
 				// Underscore must follow a digit: reject 1__2, _5, etc.
 				span := Span{File: t.file, Start: t.pos, End: t.pos + 1}
-				t.diags.Error(span, "misplaced underscore in numeric literal")
+				t.diags.Error(span, "misplaced underscore in numeric literal", "remove the underscore or place it between digits")
 				// Consume the bad underscore and continue scanning
 				// so subsequent digits are still part of the literal.
 			}
@@ -406,10 +410,14 @@ func (t *Tokenizer) scanNumber() Token {
 					end++
 				}
 				span := Span{File: t.file, Start: t.pos + 1, End: end}
-				t.diags.Error(span, "invalid syntax: cannot start a float literal with '.' after '.'")
+				t.diags.Error(span, "invalid syntax: cannot start a float literal with '.' after '.'", "remove the extra '.'")
 				break
 			}
 			isFloat = true
+			if lastWasUnderscore {
+				span := Span{File: t.file, Start: t.pos - 1, End: t.pos}
+				t.diags.Error(span, "misplaced underscore before decimal point", "remove the underscore before the decimal point")
+			}
 			lastWasUnderscore = false
 			lastWasDigit = false // reset so we require digits after the dot
 			t.advance()
@@ -421,7 +429,13 @@ func (t *Tokenizer) scanNumber() Token {
 	// Reject trailing underscore (e.g. "1_")
 	if lastWasUnderscore {
 		span := Span{File: t.file, Start: t.pos - 1, End: t.pos}
-		t.diags.Error(span, "trailing underscore in numeric literal")
+		t.diags.Error(span, "trailing underscore in numeric literal", "remove the trailing underscore")
+	}
+
+	// Reject float with no digit after decimal point (e.g. "1.")
+	if isFloat && !sawDigitAfterDot {
+		span := Span{File: t.file, Start: t.pos - 1, End: t.pos}
+		t.diags.Error(span, "expected digit after decimal point", "add a digit after the decimal point")
 	}
 
 	raw := t.source[start:t.pos]

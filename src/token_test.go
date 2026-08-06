@@ -26,6 +26,9 @@ func TestSourceManagerRegisterAndLookup(t *testing.T) {
 	if got := manager.Lookup(99); got != nil {
 		t.Errorf("unknown file lookup = %#v, want nil", got)
 	}
+	if got := manager.Lookup(-1); got != nil {
+		t.Errorf("negative file lookup = %#v, want nil", got)
+	}
 }
 
 func TestTokenKindString(t *testing.T) {
