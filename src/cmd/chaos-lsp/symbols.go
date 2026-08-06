@@ -1,0 +1,80 @@
+package main
+
+import (
+	"encoding/json"
+
+	"chaos_new/compiler"
+)
+
+// LSP DocumentSymbol kinds used by the server.
+const (
+	symbolKindFunction = 12
+	symbolKindVariable = 13
+	symbolKindConstant = 14
+)
+
+// nameSpan derives the byte span of a declaration or parameter name. Every
+// decl/param span starts at its name token, so the name is
+// [Span_.Start, Span_.Start + len(Name)).
+func nameSpan(span compiler.Span, name string) compiler.Span {
+	return compiler.Span{File: span.File, Start: span.Start, End: span.Start + len(name)}
+}
+
+// toLSPRange converts a compiler range to an LSP range.
+func toLSPRange(r compiler.Range) Range {
+	return Range{
+		Start: Position{Line: r.Start.Line, Character: r.Start.Character},
+		End:   Position{Line: r.End.Line, Character: r.End.Character},
+	}
+}
+
+// documentSymbols walks the top-level declarations and produces the document
+// outline.
+func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []DocumentSymbol {
+	var out []DocumentSymbol
+	for _, decl := range program.Decls {
+		switch d := decl.(type) {
+		case *compiler.ProcDecl:
+			out = append(out, DocumentSymbol{
+				Name:           d.Name,
+				Kind:           symbolKindFunction,
+				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+			})
+		case *compiler.VarDecl:
+			kind := symbolKindVariable
+			if d.CompileTime {
+				kind = symbolKindConstant
+			}
+			out = append(out, DocumentSymbol{
+				Name:           d.Name,
+				Kind:           kind,
+				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+			})
+		}
+	}
+	return out
+}
+
+// handleDocumentSymbol handles textDocument/documentSymbol.
+func (s *Server) handleDocumentSymbol(msg message) Response {
+	var params DocumentSymbolParams
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		return errorResponse(msg.ID, -32602, "invalid params")
+	}
+	s.mu.Lock()
+	doc := s.documents[params.TextDocument.URI]
+	s.mu.Unlock()
+	if doc == nil {
+		return errorResponse(msg.ID, -32603, "document not open")
+	}
+	tokens, _ := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
+	result := compiler.ParseProgramTolerant(tokens)
+	symbols := documentSymbols(result.Program, doc.sf)
+	out, err := json.Marshal(symbols)
+	if err != nil {
+		return errorResponse(msg.ID, -32603, "internal error")
+	}
+	return Response{JSONRPC: "2.0", ID: msg.ID, Result: out}
+}

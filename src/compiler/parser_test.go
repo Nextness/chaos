@@ -1,4 +1,4 @@
-package main
+package compiler
 
 import (
 	"testing"
@@ -10,6 +10,16 @@ func parseTestCase(t *testing.T, source string) ParseResult {
 	t.Helper()
 	tokens, diags := Tokenize([]byte(source), 0)
 	result := ParseProgram(tokens)
+	result.Diags = append(result.Diags, diags...)
+	return result
+}
+
+// parseTolerantTestCase is a helper that tokenizes and parses a source string
+// in tolerant mode, returning the ParseResult. FileID is always 0.
+func parseTolerantTestCase(t *testing.T, source string) ParseResult {
+	t.Helper()
+	tokens, diags := Tokenize([]byte(source), 0)
+	result := ParseProgramTolerant(tokens)
 	result.Diags = append(result.Diags, diags...)
 	return result
 }
@@ -1260,5 +1270,110 @@ func TestRegressionTrailingCommaArg(t *testing.T) {
 	}
 	if len(call.Args) != 1 {
 		t.Fatalf("Args = %d, want 1", len(call.Args))
+	}
+}
+
+// ──────────────────────────────────────────────
+// Tolerant mode
+// ──────────────────────────────────────────────
+
+func TestTolerantEntryProc(t *testing.T) {
+	result := parseTolerantTestCase(t, "main :: #entry proc { return 0; }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if proc.Name != "main" {
+		t.Errorf("Name = %q, want %q", proc.Name, "main")
+	}
+}
+
+func TestTolerantImportDirective(t *testing.T) {
+	result := parseTolerantTestCase(t, "#import «fmt.chaos»;")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 0 {
+		t.Fatalf("Decls = %d, want 0", len(result.Program.Decls))
+	}
+}
+
+func TestTolerantStructAndEnum(t *testing.T) {
+	source := "Foo :: struct { x: S64; }\nBar :: enum { A, B }"
+	result := parseTolerantTestCase(t, source)
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 0 {
+		t.Fatalf("Decls = %d, want 0", len(result.Program.Decls))
+	}
+}
+
+func TestTolerantUnknownStmtSkipped(t *testing.T) {
+	result := parseTolerantTestCase(t, "main :: proc { for i := 0; i < 10; i := i + 1 { exit 1; } return; }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if len(proc.Body.Stmts) != 1 {
+		t.Fatalf("Stmts = %d, want 1 (the return)", len(proc.Body.Stmts))
+	}
+}
+
+func TestTolerantStrictStillErrors(t *testing.T) {
+	strict := parseTestCase(t, "main :: #entry proc { return 0; }")
+	if !strict.Diags.HasErrors() {
+		t.Error("strict mode should error on #entry proc, got none")
+	}
+	strictStruct := parseTestCase(t, "Foo :: struct { x: S64; }")
+	if !strictStruct.Diags.HasErrors() {
+		t.Error("strict mode should error on struct, got none")
+	}
+}
+
+func TestTolerantCommentsDoNotChangeParse(t *testing.T) {
+	withComments := parseTolerantTestCase(t, "// header\nx :: 42; /** inline **/ y := 1;")
+	withoutComments := parseTolerantTestCase(t, "x :: 42; y := 1;")
+	if withComments.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", withComments.Diags)
+	}
+	if len(withComments.Program.Decls) != len(withoutComments.Program.Decls) {
+		t.Fatalf("decl count with comments = %d, want %d", len(withComments.Program.Decls), len(withoutComments.Program.Decls))
+	}
+}
+
+func TestTolerantBracelessFormDoesNotSwallowNextDecl(t *testing.T) {
+	result := parseTolerantTestCase(t, "Foo :: struct; x :: 42;")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1 (x :: 42)", len(result.Program.Decls))
+	}
+	decl, ok := result.Program.Decls[0].(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", result.Program.Decls[0])
+	}
+	if decl.Name != "x" {
+		t.Errorf("Name = %q, want %q", decl.Name, "x")
+	}
+}
+
+func TestTolerantRealErrorsStillSurface(t *testing.T) {
+	result := parseTolerantTestCase(t, "x := ;")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for 'x := ;', got none")
 	}
 }

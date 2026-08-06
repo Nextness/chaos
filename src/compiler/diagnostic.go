@@ -1,4 +1,4 @@
-package main
+package compiler
 
 import (
 	"fmt"
@@ -69,7 +69,7 @@ func (d *DiagnosticList) HasErrors() bool {
 // is omitted when the span is empty or falls outside the source buffer; the
 // suggestion is still emitted in that case.
 func (d Diagnostic) Render(w io.Writer, sf *SourceFile) {
-	line, col := offsetToLineCol(d.Span.Start, sf.LineOffsets)
+	line, col := OffsetToLineCol(d.Span.Start, sf.LineOffsets)
 	fmt.Fprintf(w, "[%s] %d:%d:%s - %s\n", strings.ToUpper(d.Severity.String()), line, col, sf.Path, d.Message)
 
 	// Span is half-open [Start, End); End may equal len(source).
@@ -129,7 +129,7 @@ func RenderAll(w io.Writer, diags DiagnosticList, sf *SourceFile) {
 }
 
 // BuildLineOffsets builds a table of byte offsets for each line start (0-indexed).
-// lineOffsets[0] is always 0. The table is used by offsetToLineCol.
+// lineOffsets[0] is always 0. The table is used by OffsetToLineCol.
 func BuildLineOffsets(source []byte) []int {
 	var offsets []int
 	offsets = append(offsets, 0)
@@ -139,24 +139,4 @@ func BuildLineOffsets(source []byte) []int {
 		}
 	}
 	return offsets
-}
-
-// offsetToLineCol converts a byte offset to 1-based line/column.
-func offsetToLineCol(offset int, lineOffsets []int) (int, int) {
-	if len(lineOffsets) == 0 {
-		return 1, offset + 1
-	}
-	// Binary search for the last line offset <= offset.
-	lo, hi := 0, len(lineOffsets)-1
-	for lo < hi {
-		mid := (lo + hi + 1) / 2
-		if lineOffsets[mid] <= offset {
-			lo = mid
-		} else {
-			hi = mid - 1
-		}
-	}
-	line := lo + 1
-	col := offset - lineOffsets[lo] + 1
-	return line, col
 }

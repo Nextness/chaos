@@ -1,4 +1,4 @@
-package main
+package compiler
 
 // Parser is a hand-written recursive-descent parser with a correct Pratt
 // expression parser.
@@ -34,6 +34,11 @@ type Parser struct {
 	pos     int
 	diags   DiagnosticList
 	program *Program
+
+	// tolerant enables editor-friendly parsing: unknown top-level forms
+	// (directives, structs, enums) and unknown statement keywords are skipped
+	// without diagnostics instead of erroring.
+	tolerant bool
 }
 
 // ParseResult holds the results of parsing a token list.
@@ -63,10 +68,62 @@ func ParseProgram(tokens TokenList) ParseResult {
 	return ParseResult{Program: p.program, Diags: p.diags}
 }
 
-// peek returns the current token without consuming it.
+// ParseProgramTolerant parses a complete token list into a Program, skipping
+// language forms the strict parser does not understand (directives, structs,
+// enums, unknown statement keywords). It is intended for editor use where
+// real-world files may use newer syntax. It uses its own loop so tolerant
+// skips that consume their terminator do not lose the next declaration: after
+// a failed parseDecl, a token is bumped only if no progress was made.
+func ParseProgramTolerant(tokens TokenList) ParseResult {
+	p := &Parser{
+		tokens:   tokens,
+		program:  &Program{},
+		tolerant: true,
+	}
+	for p.pos < len(p.tokens)-1 { // -1 to leave EOF
+		if tok := p.peek(); tok.Kind == TkEOF {
+			break
+		}
+		before := p.pos
+		decl, ok := p.parseDecl()
+		if ok {
+			p.program.Decls = append(p.program.Decls, decl)
+		} else if p.pos == before {
+			// Skip one token on error to guarantee progress, but only if the
+			// failed parse made no progress.
+			p.bump()
+		}
+	}
+	return ParseResult{Program: p.program, Diags: p.diags}
+}
+
+// peek returns the current token without consuming it. Comment tokens are
+// skipped transparently so existing parse logic is unaffected.
 func (p *Parser) peek() Token {
+	for p.pos < len(p.tokens) && p.tokens[p.pos].Kind == TkComment {
+		p.pos++
+	}
 	if p.pos < len(p.tokens) {
 		return p.tokens[p.pos]
+	}
+	return Token{Kind: TkEOF}
+}
+
+// peekN returns the token n positions ahead of the current token, skipping
+// comment tokens. It does not consume anything.
+func (p *Parser) peekN(n int) Token {
+	idx := p.pos
+	for idx < len(p.tokens) && p.tokens[idx].Kind == TkComment {
+		idx++
+	}
+	for i := 0; i < n; i++ {
+		idx++
+		for idx < len(p.tokens) && p.tokens[idx].Kind == TkComment {
+			idx++
+		}
+	}
+	if idx < len(p.tokens) {
+		return p.tokens[idx]
 	}
 	return Token{Kind: TkEOF}
 }
@@ -131,12 +188,83 @@ func (p *Parser) syncStmt() {
 	}
 }
 
+// skipToMatchedBraces skips tokens from the current position until the
+// matching '}', a depth-0 ';', or EOF. The depth-0 ';' stop prevents
+// brace-less forms from swallowing the rest of the file. An unmatched '}' at
+// depth 0 is left for the enclosing block.
+func (p *Parser) skipToMatchedBraces() {
+	depth := 0
+	for {
+		tok := p.peek()
+		switch tok.Kind {
+		case TkEOF:
+			return
+		case TkSemicolon:
+			if depth == 0 {
+				p.bump()
+				return
+			}
+		case TkLBrace:
+			depth++
+		case TkRBrace:
+			if depth == 0 {
+				// Unmatched '}' — belongs to an enclosing block.
+				return
+			}
+			depth--
+			p.bump()
+			if depth == 0 {
+				// Matched the opening brace.
+				return
+			}
+			continue
+		}
+		p.bump()
+	}
+}
+
+// skipToMatchedBrace skips tokens from the current position until the
+// matching '}' or EOF, ignoring semicolons. Used for known-but-unimplemented
+// statement keywords (for, while) whose headers may contain semicolons.
+func (p *Parser) skipToMatchedBrace() {
+	depth := 0
+	for {
+		tok := p.peek()
+		switch tok.Kind {
+		case TkEOF:
+			return
+		case TkLBrace:
+			depth++
+		case TkRBrace:
+			if depth == 0 {
+				// Unmatched '}' — belongs to an enclosing block.
+				return
+			}
+			depth--
+			p.bump()
+			if depth == 0 {
+				// Matched the opening brace.
+				return
+			}
+			continue
+		}
+		p.bump()
+	}
+}
+
 // parseDecl tries to parse a top-level declaration. Returns (decl, true) on
 // success, or (nil, false) on failure (caller must make progress).
 func (p *Parser) parseDecl() (Decl, bool) {
 	// Skip stray semicolons at top level
 	for p.at(TkSemicolon) {
 		p.bump()
+	}
+
+	// Tolerant mode: skip top-level directives (#import «fmt.chaos»; etc.)
+	// without emitting a diagnostic.
+	if p.tolerant && p.at(TkHash) {
+		p.skipToMatchedBraces()
+		return nil, false
 	}
 
 	if !p.at(TkIdent) {
@@ -153,6 +281,27 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	// Must be followed by :: or : to be a declaration
 	if p.at(TkCompTimeAssign) {
 		p.bump()
+		// Tolerant mode: handle forms the strict parser rejects.
+		if p.tolerant {
+			// ident :: #entry proc {...} — the canonical entry point. Skip
+			// the directive tokens, then parse the procedure normally so
+			// `main` stays in the symbol index.
+			if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "entry" {
+				p.bump() // consume '#'
+				p.bump() // consume TkDirec("entry")
+				if p.at(TkProc) {
+					p.bump() // consume "proc"
+					return p.parseProcDecl(nameTok, name)
+				}
+				p.skipToMatchedBraces()
+				return nil, false
+			}
+			// ident :: struct {...} / ident :: enum {...}
+			if p.at(TkIdent) && (p.peek().Text() == "struct" || p.peek().Text() == "enum") {
+				p.skipToMatchedBraces()
+				return nil, false
+			}
+		}
 		return p.parseProcOrVarDecl(nameTok, name, true)
 	}
 	if p.at(TkColon) {
@@ -406,6 +555,11 @@ func (p *Parser) parseStmt() Stmt {
 		return p.parseIdentStmt()
 
 	default:
+		// Tolerant mode: skip directives (#foo ...;) inside bodies.
+		if p.tolerant && p.at(TkHash) {
+			p.skipToMatchedBraces()
+			return nil
+		}
 		tok := p.peek()
 		if tok.Kind != TkEOF && tok.Kind != TkRBrace {
 			p.diags.Error(tok.Span, "unexpected token "+tok.Kind.String()+" in statement", "remove the token or start a valid statement")
@@ -471,6 +625,13 @@ func (p *Parser) parseIdentStmt() Stmt {
 		}
 
 	default:
+		// Tolerant mode: skip known-but-unimplemented statement keywords
+		// (for, while) as balanced blocks. Other unknown ident-led
+		// statements still error.
+		if p.tolerant && (name == "for" || name == "while") {
+			p.skipToMatchedBrace()
+			return nil
+		}
 		// Bare identifier without assignment/declaration prefix.
 		// Could be an expression statement (e.g., a function call without
 		// parens — not currently supported). Emit error.

@@ -1,4 +1,4 @@
-package main
+package compiler
 
 import "strconv"
 
@@ -114,6 +114,10 @@ const (
 	TkThen
 	TkReturn
 	TkAs
+
+	// Compile-time directives and comments
+	TkDirec   // compile-time directive name after '#'
+	TkComment // comment token (// line or /** ... **/ block)
 )
 
 var tokenKindNames = [...]string{
@@ -163,6 +167,8 @@ var tokenKindNames = [...]string{
 	TkThen:           "then",
 	TkReturn:         "return",
 	TkAs:             "as",
+	TkDirec:          "directive",
+	TkComment:        "comment",
 }
 
 func (k TokenKind) String() string {

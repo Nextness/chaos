@@ -1,16 +1,27 @@
 # Chaos compiler build
 #
-# Builds the `chaosc` compiler binary into ./build.
+# Builds the `chaosc` compiler binary and the `chaos-lsp` language server
+# binary into ./build.
 
-.PHONY: all clean
+.PHONY: all test vet clean
 
-all: build/chaosc
+all: build/chaosc build/chaos-lsp
 
-SRC := $(wildcard src/*.go)
+SRC := $(shell find src -name '*.go')
 
 build/chaosc: $(SRC) src/go.mod
 	mkdir -p build
-	go build -C src -o ../build/chaosc .
+	go build -C src -o ../build/chaosc ./cmd/chaosc
+
+build/chaos-lsp: $(SRC) src/go.mod
+	mkdir -p build
+	go build -C src -o ../build/chaos-lsp ./cmd/chaos-lsp
+
+test: $(SRC)
+	go test -C src ./...
+
+vet: $(SRC)
+	go vet -C src ./...
 
 clean:
 	rm -rf build

@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"chaos_new/compiler"
 )
 
 func main() {
@@ -35,23 +37,23 @@ func run(programName string, args []string, output io.Writer) int {
 		return 1
 	}
 
-	sm := &SourceManager{}
+	sm := &compiler.SourceManager{}
 	fileID := sm.Register(path, source)
 	sf := sm.Lookup(fileID)
 
-	tokens, diags := Tokenize(source, fileID)
+	tokens, diags := compiler.Tokenize(source, fileID)
 
 	if len(diags) > 0 {
-		RenderAll(output, diags, sf)
+		compiler.RenderAll(output, diags, sf)
 		if diags.HasErrors() {
 			return 1
 		}
 	}
 
 	// Parse the tokens into an AST.
-	result := ParseProgram(tokens)
+	result := compiler.ParseProgram(tokens)
 	if len(result.Diags) > 0 {
-		RenderAll(output, result.Diags, sf)
+		compiler.RenderAll(output, result.Diags, sf)
 		if result.Diags.HasErrors() {
 			return 1
 		}

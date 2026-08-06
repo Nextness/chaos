@@ -1,4 +1,4 @@
-package main
+package compiler
 
 import (
 	"strconv"
@@ -16,6 +16,10 @@ type Tokenizer struct {
 	diags   DiagnosticList
 	tokens  TokenList
 	lastPos int // position before the current token, used for progress guard
+
+	// pendingDirec is set when a '#' is immediately followed by an identifier
+	// start; the next token is then scanned as a TkDirec directive name.
+	pendingDirec bool
 }
 
 // NewTokenizer creates a tokenizer for the given source buffer.
@@ -72,8 +76,8 @@ func (t *Tokenizer) advance() {
 	}
 }
 
-// skipTrivia advances past whitespace, line comments (//), and block
-// comments (/** ... **/). It returns the first non-trivia byte position.
+// skipTrivia advances past whitespace. Comments are not trivia: they are
+// emitted as TkComment tokens by scanComment so the LSP can highlight them.
 func (t *Tokenizer) skipTrivia() {
 	for t.pos < len(t.source) {
 		b := t.source[t.pos]
@@ -84,49 +88,57 @@ func (t *Tokenizer) skipTrivia() {
 			continue
 		}
 
-		// Line comment '//' consume until newline or EOF
-		if b == '/' && t.peekN(1) == '/' {
-			t.advance()
-			t.advance()
-			for t.pos < len(t.source) && t.source[t.pos] != '\n' {
-				t.advance()
-			}
-			continue
-		}
-
-		// Block comment '/** ... **/' handle nesting
-		if b == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
-			t.advance()
-			t.advance()
-			t.advance()
-			depth := 1
-			for t.pos < len(t.source) && depth > 0 {
-				// Check open before advance
-				if t.source[t.pos] == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
-					depth++
-					t.advance()
-					t.advance()
-					t.advance()
-					continue
-				}
-				if t.source[t.pos] == '*' && t.peekN(1) == '*' && t.peekN(2) == '/' {
-					depth--
-					t.advance()
-					t.advance()
-					t.advance()
-					continue
-				}
-				t.advance()
-			}
-			if depth > 0 {
-				t.diags.Error(Span{File: t.file, Start: t.pos, End: t.pos}, "unterminated block comment", "add a closing '**/' to end the comment")
-			}
-			continue
-		}
-
 		// Not trivia
 		break
 	}
+}
+
+// scanComment scans a comment starting at the current position and returns a
+// token. Line comments (//) and block comments (/** ... **/) both produce
+// TkComment tokens. An unterminated block comment produces a TkError token
+// plus a diagnostic; scanComment always advances pos so the TkError-only
+// progress guard in Tokenize cannot stall.
+func (t *Tokenizer) scanComment() Token {
+	start := t.pos
+
+	// Line comment '//' consume until newline or EOF
+	if t.source[t.pos] == '/' && t.peekN(1) == '/' {
+		t.advance()
+		t.advance()
+		for t.pos < len(t.source) && t.source[t.pos] != '\n' {
+			t.advance()
+		}
+		return t.makeToken(TkComment, start)
+	}
+
+	// Block comment '/** ... **/' handle nesting
+	t.advance()
+	t.advance()
+	t.advance()
+	depth := 1
+	for t.pos < len(t.source) && depth > 0 {
+		// Check open before advance
+		if t.source[t.pos] == '/' && t.peekN(1) == '*' && t.peekN(2) == '*' {
+			depth++
+			t.advance()
+			t.advance()
+			t.advance()
+			continue
+		}
+		if t.source[t.pos] == '*' && t.peekN(1) == '*' && t.peekN(2) == '/' {
+			depth--
+			t.advance()
+			t.advance()
+			t.advance()
+			continue
+		}
+		t.advance()
+	}
+	if depth > 0 {
+		t.diags.Error(Span{File: t.file, Start: t.pos, End: t.pos}, "unterminated block comment", "add a closing '**/' to end the comment")
+		return Token{Kind: TkError, Span: Span{File: t.file, Start: start, End: t.pos}, Raw: t.source[start:t.pos]}
+	}
+	return t.makeToken(TkComment, start)
 }
 
 // makeToken creates a token with the given kind spanning from start to current
@@ -158,6 +170,16 @@ func (t *Tokenizer) next() Token {
 		}
 	}
 
+	// A directive name follows a '#' with no intervening whitespace. Scan it
+	// directly as TkDirec, bypassing keyword lookup so #proc and #true stay
+	// directives.
+	if t.pendingDirec {
+		t.pendingDirec = false
+		if t.isIdentStart() {
+			return t.scanDirec()
+		}
+	}
+
 	b := t.source[start]
 
 	// String literal: « ... »
@@ -173,6 +195,11 @@ func (t *Tokenizer) next() Token {
 	// Numeric literals
 	if isDigit(b) || (b == '.' && isDigit(t.peekN(1))) {
 		return t.scanNumber()
+	}
+
+	// Comments: // line and /** ... **/ block
+	if b == '/' && (t.peekN(1) == '/' || (t.peekN(1) == '*' && t.peekN(2) == '*')) {
+		return t.scanComment()
 	}
 
 	// Multi-character operators (must be checked before single-char)
@@ -236,6 +263,12 @@ func (t *Tokenizer) next() Token {
 	case '.':
 		return t.emitN(TkDot, start, 1)
 	case '#':
+		// Compile-time directive: #<name> becomes TkHash + TkDirec(name).
+		// If the byte after '#' starts an identifier, the next token is
+		// scanned as a directive name.
+		if t.isIdentStartAt(t.pos + 1) {
+			t.pendingDirec = true
+		}
 		return t.emitN(TkHash, start, 1)
 	case '?':
 		return t.emitN(TkQuestion, start, 1)
@@ -305,10 +338,16 @@ func (t *Tokenizer) peekRune() (rune, int) {
 // isIdentStart returns true if the byte at the current position starts an
 // identifier character (ASCII letter, underscore, or non-ASCII letter).
 func (t *Tokenizer) isIdentStart() bool {
-	if t.pos >= len(t.source) {
+	return t.isIdentStartAt(t.pos)
+}
+
+// isIdentStartAt returns true if the byte at the given position starts an
+// identifier character.
+func (t *Tokenizer) isIdentStartAt(pos int) bool {
+	if pos >= len(t.source) {
 		return false
 	}
-	b := t.source[t.pos]
+	b := t.source[pos]
 	if b >= 'a' && b <= 'z' {
 		return true
 	}
@@ -319,7 +358,7 @@ func (t *Tokenizer) isIdentStart() bool {
 		return true
 	}
 	if b >= 0x80 {
-		r, _ := t.peekRune()
+		r, _ := utf8.DecodeRune(t.source[pos:])
 		return unicode.IsLetter(r)
 	}
 	return false
@@ -360,6 +399,18 @@ func (t *Tokenizer) scanIdentOrKeyword() Token {
 		return t.makeToken(kind, start)
 	}
 	return t.makeToken(TkIdent, start)
+}
+
+// scanDirec scans a compile-time directive name after '#'. The name is scanned
+// directly, bypassing LookupKeyword/scanIdentOrKeyword, so #proc and #true
+// stay directives.
+func (t *Tokenizer) scanDirec() Token {
+	start := t.pos
+	for t.pos < len(t.source) && t.isIdentCont() {
+		t.advance()
+	}
+	raw := t.source[start:t.pos]
+	return t.makeTokenValue(TkDirec, start, string(raw))
 }
 
 func isDigit(b byte) bool {

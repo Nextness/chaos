@@ -1,4 +1,4 @@
-package main
+package compiler
 
 import (
 	"bytes"
@@ -72,8 +72,8 @@ func TestLineOffsetsAndCoordinates(t *testing.T) {
 		})
 	}
 
-	if line, column := offsetToLineCol(4, nil); line != 1 || column != 5 {
-		t.Errorf("offsetToLineCol(4, nil) = %d:%d, want 1:5", line, column)
+	if line, column := OffsetToLineCol(4, nil); line != 1 || column != 5 {
+		t.Errorf("OffsetToLineCol(4, nil) = %d:%d, want 1:5", line, column)
 	}
 
 	offsets := BuildLineOffsets([]byte("ab\ncd\nef"))
@@ -89,9 +89,9 @@ func TestLineOffsetsAndCoordinates(t *testing.T) {
 		{offset: 8, line: 3, column: 3},
 	}
 	for _, coordinate := range coordinates {
-		line, column := offsetToLineCol(coordinate.offset, offsets)
+		line, column := OffsetToLineCol(coordinate.offset, offsets)
 		if line != coordinate.line || column != coordinate.column {
-			t.Errorf("offsetToLineCol(%d) = %d:%d, want %d:%d", coordinate.offset, line, column, coordinate.line, coordinate.column)
+			t.Errorf("OffsetToLineCol(%d) = %d:%d, want %d:%d", coordinate.offset, line, column, coordinate.line, coordinate.column)
 		}
 	}
 }

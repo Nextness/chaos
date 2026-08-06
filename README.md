@@ -5,9 +5,12 @@ A language created for no particular reason other than try to include things I w
 ## How to build it?
 
 ```bash
-$ go build chaosBuild.go # Bootstrap the build binary
-$ ./chaosBuild           # Run the build binary
+$ make                  # build both binaries into ./build
+$ make build/chaosc     # build the compiler CLI
+$ make build/chaos-lsp  # build the language server
 ```
+
+`make test` runs the Go test suite; `make vet` runs static analysis.
 
 # Objectives
 
@@ -16,12 +19,14 @@ $ ./chaosBuild           # Run the build binary
 
 # How it works?
 
-This is the basic. For more examples look at *examples*...
+The `chaosc` CLI tokenizes and parses a `.chaos` file and reports diagnostics.
+The `chaos-lsp` language server, wired into Neovim, surfaces diagnostics,
+document symbols, semantic highlighting, go-to-definition, references, hover,
+and completion for the supported language subset.
 
-```chaos
-// ./build/main ./<file_name>.chaos
-// Hello world
-```
+The hello-world example below is illustrative: it parses under the language
+server's tolerant mode, but the strict CLI still rejects it and there is no
+codegen yet.
 
 ```chaos
 main :: #entry proc {
@@ -30,4 +35,3 @@ main :: #entry proc {
 
 #import «fmt.chaos»;
 ```
-

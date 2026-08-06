@@ -1,4 +1,4 @@
-package main
+package compiler
 
 import (
 	"strconv"
@@ -127,27 +127,57 @@ func TestTokenize(t *testing.T) {
 		{
 			name:  "line comment",
 			input: "// hello\n42",
-			want:  []TokenKind{TkInt, TkEOF},
+			want:  []TokenKind{TkComment, TkInt, TkEOF},
 		},
 		{
 			name:  "line comment at EOF",
 			input: "// hello",
-			want:  []TokenKind{TkEOF},
+			want:  []TokenKind{TkComment, TkEOF},
 		},
 		{
 			name:  "block comment",
 			input: "/** comment **/42",
-			want:  []TokenKind{TkInt, TkEOF},
+			want:  []TokenKind{TkComment, TkInt, TkEOF},
 		},
 		{
 			name:  "nested block comment",
 			input: "/** outer /** inner **/ still outer **/42",
-			want:  []TokenKind{TkInt, TkEOF},
+			want:  []TokenKind{TkComment, TkInt, TkEOF},
 		},
 		{
 			name:  "consecutive comments",
 			input: "// line1\n// line2\n/** block **/42",
-			want:  []TokenKind{TkInt, TkEOF},
+			want:  []TokenKind{TkComment, TkComment, TkComment, TkInt, TkEOF},
+		},
+
+		// ─── Compile-time directives ──────────────────────────────────────
+		{
+			name:   "directive",
+			input:  "#entry",
+			want:   []TokenKind{TkHash, TkDirec, TkEOF},
+			values: []any{nil, "entry", nil},
+		},
+		{
+			name:   "directive keyword name stays directive",
+			input:  "#proc",
+			want:   []TokenKind{TkHash, TkDirec, TkEOF},
+			values: []any{nil, "proc", nil},
+		},
+		{
+			name:   "directive true stays directive",
+			input:  "#true",
+			want:   []TokenKind{TkHash, TkDirec, TkEOF},
+			values: []any{nil, "true", nil},
+		},
+		{
+			name:  "bare hash",
+			input: "#",
+			want:  []TokenKind{TkHash, TkEOF},
+		},
+		{
+			name:  "hash followed by non-identifier",
+			input: "# 42",
+			want:  []TokenKind{TkHash, TkInt, TkEOF},
 		},
 
 		// ─── Statements (integration) ─────────────────────────────────────

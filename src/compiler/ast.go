@@ -5,7 +5,7 @@
 // separate passes that consume this tree.
 //
 // Every node carries a Span for source-location diagnostics.
-package main
+package compiler
 
 // Node is the common interface implemented by all AST nodes.
 type Node interface {
