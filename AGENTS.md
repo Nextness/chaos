@@ -14,13 +14,15 @@ make vet              # go vet -C src ./...
 ```
 
 - `go build ./...` from `src/` is a compile-check; `make` produces the binaries.
+- `-C` must be the first flag: `go test -C src ./...` (not `go test -count=1 -C src ./...`).
 - No external deps, only stdlib. No `go.sum`.
 - `chaosc <file.chaos>` tokenizes and parses a file; diagnostics go to stderr in
   a compact rust-like format: `[ERROR] line:col:file - reason`, the source line,
   a caret underline, and a `-> suggestion` line. No `log/slog` is used.
 - A successful compile produces no output.
-- `chaos-lsp` speaks stdio JSON-RPC 2.0 and is wired into Neovim via
-  `vim.lsp.config('chaos', ...)` in `~/.config/nvim/init.lua`.
+- `chaos-lsp` speaks stdio JSON-RPC 2.0 and is wired into Neovim via the `chaos`
+  module at `~/.config/nvim/lua/chaos/init.lua`, loaded from
+  `~/.config/nvim/init.lua` with `require('chaos').setup()`.
 
 ## Architecture
 
@@ -47,7 +49,8 @@ make vet              # go vet -C src ./...
 - `ParseProgram` is strict; `ParseProgramTolerant` skips unknown top-level forms
   (directives, `struct`, `enum`) and unknown statement keywords (`for`, `while`)
   without diagnostics. The language server uses tolerant mode; the CLI stays
-  strict.
+  strict. `main :: #entry proc {...}` parses as a `ProcDecl` named `main` in
+  tolerant mode (the directive is skipped, then the proc is parsed normally).
 
 ### Language server (`src/cmd/chaos-lsp/`)
 
@@ -58,7 +61,13 @@ make vet              # go vet -C src ./...
 - Hand-rolled `Content-Length` framed JSON-RPC 2.0 over stdio.
 - Incremental sync (`textDocumentSync` change = 2); diagnostics are pushed on
   open and on change.
-- Semantic highlight layers over `~/.config/nvim/after/syntax/chaos.vim`.
+- Semantic tokens are delta-encoded as 5 ints per token
+  `[deltaLine, deltaStart, length, typeIndex, modifiers]` (modifiers always 0);
+  Neovim's parser iterates the array in steps of 5.
+- Highlighting is LSP-based: the `chaos` module links the `@lsp.type.*` groups
+  to the base highlight groups. There is no active `after/syntax/chaos.vim`
+  (it is disabled). The gruber-darker colorscheme hides all `@lsp.*` groups on
+  `ColorScheme`, so the module re-applies the links on `LspAttach`.
 
 ## Source layout
 
