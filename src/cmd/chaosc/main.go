@@ -60,6 +60,15 @@ func run(programName string, args []string, output io.Writer) int {
 		}
 	}
 
+	// Type check the AST.
+	typeDiags := compiler.CheckProgram(result.Program)
+	if len(typeDiags) > 0 {
+		compiler.RenderAll(output, typeDiags, sf)
+		if typeDiags.HasErrors() {
+			return 1
+		}
+	}
+
 	if *dump {
 		fmt.Fprintf(output, "Tokens:\n%s", compiler.DumpTokens(tokens))
 		fmt.Fprintf(output, "Parse result:\n%s", compiler.DumpParseResult(result))
