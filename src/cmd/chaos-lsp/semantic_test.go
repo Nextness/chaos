@@ -102,8 +102,7 @@ func TestSemanticTokensEntryProcDirectiveFirst(t *testing.T) {
 		0, 8, 4, semTypeKeyword, 0, // proc
 		0, 5, 1, semTypeDelimiter, 0, // (
 		0, 1, 1, semTypeDelimiter, 0, // )
-		0, 5, 3, semTypeType, 0, // I64
-		0, 4, 1, semTypeDelimiter, 0, // {
+		0, 9, 1, semTypeDelimiter, 0, // { (I64 is not a builtin, so not highlighted)
 		1, 4, 6, semTypeKeyword, 0, // return
 		0, 7, 2, semTypeNumber, 0, // 10
 		1, 0, 1, semTypeDelimiter, 0, // }
@@ -119,6 +118,45 @@ func TestSemanticTokensCompileTimeVarIsVariable(t *testing.T) {
 	want := []int{
 		0, 0, 9, semTypeVariable, 0, // variable3
 		0, 13, 4, semTypeNumber, 0, // 10.1
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}
+
+func TestSemanticTokensStruct(t *testing.T) {
+	source := "Something_New :: struct {\n    field1: String;\n    field2: U64;\n    field3: Bool;\n}"
+	want := []int{
+		0, 0, 13, semTypeType, 0, // Something_New
+		0, 17, 6, semTypeKeyword, 0, // struct
+		0, 7, 1, semTypeDelimiter, 0, // {
+		1, 4, 6, semTypeVariable, 0, // field1
+		0, 8, 6, semTypeType, 0, // String
+		1, 4, 6, semTypeVariable, 0, // field2
+		0, 8, 3, semTypeType, 0, // U64
+		1, 4, 6, semTypeVariable, 0, // field3
+		0, 8, 4, semTypeType, 0, // Bool
+		1, 0, 1, semTypeDelimiter, 0, // }
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}
+
+func TestSemanticTokensUndeclaredTypeNotHighlighted(t *testing.T) {
+	// A type position referencing an undeclared name must not be highlighted
+	// as a type; only the declared struct name and built-ins are.
+	source := "Something_New :: struct {\n    a: Another;\n    b: S64;\n}"
+	want := []int{
+		0, 0, 13, semTypeType, 0, // Something_New
+		0, 17, 6, semTypeKeyword, 0, // struct
+		0, 7, 1, semTypeDelimiter, 0, // {
+		1, 4, 1, semTypeVariable, 0, // a
+		1, 4, 1, semTypeVariable, 0, // b
+		0, 3, 3, semTypeType, 0, // S64 (built-in)
+		1, 0, 1, semTypeDelimiter, 0, // }
 	}
 	got := semanticData(t, source)
 	if !reflect.DeepEqual(got, want) {

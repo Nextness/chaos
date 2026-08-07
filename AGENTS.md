@@ -47,10 +47,12 @@ make vet              # go vet -C src ./...
 - `#<name>` tokenizes as `TkHash` + `TkDirec(name)` (directive names bypass
   keyword lookup, so `#proc` and `#true` stay directives).
 - `ParseProgram` is strict; `ParseProgramTolerant` skips unknown top-level forms
-  (directives, `struct`, `enum`) and unknown statement keywords (`for`, `while`)
-  without diagnostics. The language server uses tolerant mode; the CLI stays
-  strict. `main :: #entry proc {...}` parses as a `ProcDecl` named `main` in
-  tolerant mode (the directive is skipped, then the proc is parsed normally).
+  (directives, `enum`) and unknown statement keywords (`for`, `while`) without
+  diagnostics. The language server uses tolerant mode; the CLI stays strict.
+  `main :: #entry proc {...}` parses as a `ProcDecl` named `main` in tolerant
+  mode (the directive is skipped, then the proc is parsed normally). Struct
+  definitions (`Name :: struct { field: Type; ... }`) parse in both modes; the
+  struct declaration itself does not require a trailing semicolon.
 
 ### Language server (`src/cmd/chaos-lsp/`)
 
@@ -75,8 +77,8 @@ make vet              # go vet -C src ./...
 - `src/cmd/chaosc/` — compiler CLI (package `main`).
 - `src/cmd/chaos-lsp/` — language server (package `main`).
 - `language_design/` — speculative design sketches. **Not implemented.**
-  Features here (structs, generics, async, C interop, modules, self-hosted
-  compiler) do not exist in the compiler.
+  Features here (generics, async, C interop, modules, self-hosted compiler) do
+  not exist in the compiler.
 
 ## Compiler quirks
 

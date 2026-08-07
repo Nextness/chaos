@@ -59,13 +59,13 @@ func TestTokenize(t *testing.T) {
 		// ─── Keywords ─────────────────────────────────────────────────────
 		{
 			name:  "keywords",
-			input: "true false exit if elif else proc then return as",
+			input: "true false exit if elif else proc then return as struct",
 			want: []TokenKind{
 				TkTrue, TkFalse, TkExit, TkIf, TkElif, TkElse,
-				TkProc, TkThen, TkReturn, TkAs,
+				TkProc, TkThen, TkReturn, TkAs, TkStruct,
 				TkEOF,
 			},
-			values: []any{"true", "false", nil, nil, nil, nil, nil, nil, nil, nil, nil},
+			values: []any{"true", "false", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil},
 		},
 
 		// ─── Identifiers ──────────────────────────────────────────────────

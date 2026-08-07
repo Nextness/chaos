@@ -68,3 +68,24 @@ func TestDocumentSymbolsMultiResultAndUnicode(t *testing.T) {
 		t.Errorf("αβ selectionRange end char = %d, want 2", symbols[1].SelectionRange.End.Character)
 	}
 }
+
+func TestDocumentSymbolsStruct(t *testing.T) {
+	source := "Something_New :: struct {\n\tfield1: String;\n\tfield2: U64;\n}"
+	program, sf := parseDoc(t, source)
+	symbols := documentSymbols(program, sf)
+	if len(symbols) != 1 {
+		t.Fatalf("got %d symbols, want 1", len(symbols))
+	}
+	if symbols[0].Name != "Something_New" || symbols[0].Kind != symbolKindStruct {
+		t.Errorf("symbol[0] = %+v, want Something_New/Struct", symbols[0])
+	}
+	if len(symbols[0].Children) != 2 {
+		t.Fatalf("children = %d, want 2", len(symbols[0].Children))
+	}
+	if symbols[0].Children[0].Name != "field1" || symbols[0].Children[0].Kind != symbolKindVariable {
+		t.Errorf("child[0] = %+v, want field1/Variable", symbols[0].Children[0])
+	}
+	if symbols[0].Children[1].Name != "field2" {
+		t.Errorf("child[1].Name = %q, want field2", symbols[0].Children[1].Name)
+	}
+}

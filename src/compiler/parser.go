@@ -6,14 +6,15 @@ package compiler
 // Grammar (supported subset):
 //
 //	program        = decl*
-//	decl           = var_decl | proc_decl
-//	var_decl       = ident ( "::" ( "proc" ... | expr ) | ":=" expr | ":" ident ("=" expr)? ) ";"
+//	decl           = var_decl | proc_decl | struct_decl
+//	var_decl       = ident ( "::" ( "proc" ... | "struct" ... | expr ) | ":=" expr | ":" ident ("=" expr)? ) ";"
 //	proc_decl      = ident "::" "proc" param_list? result_spec? block
+//	struct_decl    = ident "::" "struct" "{" (ident ":" ident ";")* "}"
 //	param_list     = "(" (param ("," param)*)? ")"
 //	param          = ident ":" ident
 //	result_spec    = "->" ident ("," ident)*
 //	block          = "{" stmt* "}"
-//	stmt           = var_decl | proc_decl | assign_stmt | return_stmt | exit_stmt | if_stmt | block | call_stmt | ";"
+//	stmt           = var_decl | proc_decl | struct_decl | assign_stmt | return_stmt | exit_stmt | if_stmt | block | call_stmt | ";"
 //	call_stmt      = ident "(" arg_list? ")" ("(" arg_list? ")")* ";"
 //	assign_stmt    = ident "=" expr ";"
 //	return_stmt    = "return" expr? ";"
@@ -310,8 +311,9 @@ func (p *Parser) parseDecl() (Decl, bool) {
 				p.skipToMatchedBraces()
 				return nil, false
 			}
-			// ident :: struct {...} / ident :: enum {...}
-			if p.at(TkIdent) && (p.peek().Text() == "struct" || p.peek().Text() == "enum") {
+			// ident :: enum {...} — still tolerant-only (struct is a keyword
+			// handled by parseProcOrVarDecl in both modes).
+			if p.at(TkIdent) && p.peek().Text() == "enum" {
 				p.skipToMatchedBraces()
 				return nil, false
 			}
@@ -342,12 +344,17 @@ func (p *Parser) parseDecl() (Decl, bool) {
 }
 
 // parseProcOrVarDecl handles the case where we've consumed ident "::".
-// If next token is "proc", it's a procedure declaration. Otherwise it's a
-// compile-time variable declaration.
+// If next token is "proc", it's a procedure declaration. If it is "struct",
+// it's a struct type definition. Otherwise it's a compile-time variable
+// declaration.
 func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool) (Decl, bool) {
 	if p.at(TkProc) {
 		p.bump() // consume "proc"
 		return p.parseProcDecl(nameTok, name)
+	}
+	if p.at(TkStruct) {
+		p.bump() // consume "struct"
+		return p.parseStructDecl(nameTok, name)
 	}
 	// Compile-time variable: ident "::" expr ";"
 	init := p.parseExpr(0)
@@ -514,6 +521,68 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 		Body:    body,
 	}
 	return decl, true
+}
+
+// parseStructDecl parses the rest of a struct type definition after "struct"
+// has been consumed. Fields are "name: type;" entries inside a braced block.
+// The struct declaration itself does not require a trailing semicolon.
+func (p *Parser) parseStructDecl(nameTok Token, name string) (Decl, bool) {
+	if !p.at(TkLBrace) {
+		p.diags.Error(p.peek().Span, "expected '{' after 'struct'", "add a '{' block for the struct fields")
+		return nil, false
+	}
+	p.bump() // consume "{"
+
+	var fields []StructField
+	for !p.at(TkRBrace) && !p.at(TkEOF) {
+		before := p.pos
+		field, ok := p.parseStructField()
+		if ok {
+			fields = append(fields, field)
+		}
+		// Guarantee forward motion on malformed fields.
+		if p.pos == before && p.peek().Kind != TkRBrace && p.peek().Kind != TkEOF {
+			p.bump()
+		}
+	}
+	closeTok := p.expect(TkRBrace)
+
+	decl := &StructDecl{
+		Span_:  Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
+		Name:   name,
+		Fields: fields,
+	}
+	return decl, true
+}
+
+// parseStructField parses a single struct field: "name: type;"
+func (p *Parser) parseStructField() (StructField, bool) {
+	if !p.at(TkIdent) {
+		p.diags.Error(p.peek().Span, "expected field name", "add a field name")
+		return StructField{}, false
+	}
+	nameTok := p.bump()
+	name := nameTok.Text()
+
+	if !p.at(TkColon) {
+		p.diags.Error(p.peek().Span, "expected ':' after field name", "add ':' after the field name")
+		return StructField{Span_: nameTok.Span, Name: name}, true
+	}
+	p.bump() // consume ":"
+
+	typeExpr := p.parseTypeExpr()
+	if typeExpr == nil {
+		p.diags.Error(p.peek().Span, "expected field type after ':'", "add a type after ':'")
+		return StructField{Span_: nameTok.Span, Name: name}, true
+	}
+
+	p.expect(TkSemicolon)
+
+	return StructField{
+		Span_: spanUnion(nameTok.Span, typeExpr.nodeSpan()),
+		Name:  name,
+		Type:  typeExpr,
+	}, true
 }
 
 // parseParam parses a single parameter: ident ":" type

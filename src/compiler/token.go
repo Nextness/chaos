@@ -116,6 +116,7 @@ const (
 	TkThen
 	TkReturn
 	TkAs
+	TkStruct
 
 	// Compile-time directives and comments
 	TkDirec   // compile-time directive name after '#'
@@ -171,6 +172,7 @@ var tokenKindNames = [...]string{
 	TkThen:           "then",
 	TkReturn:         "return",
 	TkAs:             "as",
+	TkStruct:         "struct",
 	TkDirec:          "directive",
 	TkComment:        "comment",
 }
@@ -222,6 +224,7 @@ func init() {
 		{"then", TkThen},
 		{"return", TkReturn},
 		{"as", TkAs},
+		{"struct", TkStruct},
 	}
 	keywordTokens = make(map[string]TokenKind, 16)
 	for _, entry := range keywordEntries {

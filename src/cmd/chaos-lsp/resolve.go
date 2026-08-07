@@ -12,17 +12,19 @@ const (
 	completionKindFunction = 3
 	completionKindVariable = 6
 	completionKindConstant = 14
+	completionKindStruct   = 22
 )
 
-// symbol is a declared name (proc, var, const, param, local).
+// symbol is a declared name (proc, var, const, struct, param, local).
 type symbol struct {
-	name    string
-	kind    int // LSP CompletionItemKind
-	span    compiler.Span // name span
-	proc    *compiler.ProcDecl
-	varDecl *compiler.VarDecl
-	param   *compiler.Param
-	scope   *scope
+	name       string
+	kind       int // LSP CompletionItemKind
+	span       compiler.Span // name span
+	proc       *compiler.ProcDecl
+	varDecl    *compiler.VarDecl
+	structDecl *compiler.StructDecl
+	param      *compiler.Param
+	scope      *scope
 }
 
 // scope is a lexical scope with a parent and nested children.
@@ -92,6 +94,10 @@ func (r *resolver) buildScopes() {
 			sym := &symbol{name: d.Name, kind: kind, span: nameSpan(d.Span_, d.Name), varDecl: d, scope: r.global}
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
+		case *compiler.StructDecl:
+			sym := &symbol{name: d.Name, kind: completionKindStruct, span: nameSpan(d.Span_, d.Name), structDecl: d, scope: r.global}
+			r.global.symbols = append(r.global.symbols, sym)
+			r.decls = append(r.decls, sym)
 		}
 	}
 }
@@ -132,7 +138,22 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 			if st.Body != nil {
 				r.buildBlockScope(st.Body, procScope)
 			}
+		case *compiler.StructDecl:
+			sym := &symbol{name: st.Name, kind: completionKindStruct, span: nameSpan(st.Span_, st.Name), structDecl: st, scope: s}
+			s.symbols = append(s.symbols, sym)
+			r.decls = append(r.decls, sym)
 		}
+	}
+}
+
+// collectStructFields records each struct field name as an occurrence so
+// definition, references, and documentHighlight work on field names. Fields
+// are not added to any scope's symbol list: they are not accessible by bare
+// name in expressions.
+func (r *resolver) collectStructFields(st *compiler.StructDecl) {
+	for _, field := range st.Fields {
+		fsym := &symbol{name: field.Name, kind: completionKindVariable, span: nameSpan(field.Span_, field.Name), scope: r.global}
+		r.occurrences = append(r.occurrences, &occurrence{name: field.Name, span: fsym.span, sym: fsym})
 	}
 }
 
@@ -207,6 +228,8 @@ func (r *resolver) collectOccurrences() {
 			if s.Body != nil {
 				walkBlock(s.Body)
 			}
+		case *compiler.StructDecl:
+			r.collectStructFields(s)
 		}
 	}
 
@@ -224,6 +247,8 @@ func (r *resolver) collectOccurrences() {
 			}
 		case *compiler.VarDecl:
 			walkStmt(d)
+		case *compiler.StructDecl:
+			r.collectStructFields(d)
 		}
 	}
 }
@@ -382,11 +407,30 @@ func procSignature(proc *compiler.ProcDecl) string {
 	return b.String()
 }
 
+// structSignature renders a struct definition, e.g.
+// "Something_New :: struct {\n\tfield1: String;\n\tfield2: U64;\n}".
+func structSignature(st *compiler.StructDecl) string {
+	var b strings.Builder
+	b.WriteString(st.Name)
+	b.WriteString(" :: struct {\n")
+	for _, field := range st.Fields {
+		b.WriteString("\t")
+		b.WriteString(field.Name)
+		b.WriteString(": ")
+		b.WriteString(exprText(field.Type))
+		b.WriteString(";\n")
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
 // symbolHover renders markdown content for a symbol.
 func symbolHover(sym *symbol) string {
 	switch {
 	case sym.proc != nil:
 		return "```chaos\n" + procSignature(sym.proc) + "\n```"
+	case sym.structDecl != nil:
+		return "```chaos\n" + structSignature(sym.structDecl) + "\n```"
 	case sym.varDecl != nil:
 		if sym.varDecl.DeclType != nil {
 			return "```chaos\n" + sym.name + " : " + exprText(sym.varDecl.DeclType) + "\n```"

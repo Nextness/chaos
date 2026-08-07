@@ -11,6 +11,7 @@ const (
 	symbolKindFunction = 12
 	symbolKindVariable = 13
 	symbolKindConstant = 14
+	symbolKindStruct   = 23
 )
 
 // nameSpan derives the byte span of a declaration or parameter name. Every
@@ -51,6 +52,23 @@ func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []Docum
 				Kind:           kind,
 				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
 				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+			})
+		case *compiler.StructDecl:
+			var children []DocumentSymbol
+			for _, field := range d.Fields {
+				children = append(children, DocumentSymbol{
+					Name:           field.Name,
+					Kind:           symbolKindVariable,
+					Range:          toLSPRange(compiler.SpanToRange(field.Span_, sf)),
+					SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(field.Span_, field.Name), sf)),
+				})
+			}
+			out = append(out, DocumentSymbol{
+				Name:           d.Name,
+				Kind:           symbolKindStruct,
+				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+				Children:       children,
 			})
 		}
 	}

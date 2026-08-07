@@ -66,6 +66,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 		switch tok.Kind {
 		case compiler.TkExit, compiler.TkIf, compiler.TkElif, compiler.TkElse,
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
+			compiler.TkStruct,
 			compiler.TkTrue, compiler.TkFalse,
 			compiler.TkHash, compiler.TkDirec:
 			idx = semTypeKeyword
@@ -89,9 +90,41 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 	return out
 }
 
-// typeToken emits a type token for an identifier type expression.
-func typeToken(expr compiler.Expr, sf *compiler.SourceFile, out *[]semanticToken) {
-	if ident, ok := expr.(*compiler.IdentExpr); ok {
+// builtinTypes are the primitive type names that exist in the language. Only
+// these and declared struct names are highlighted as types; undeclared
+// identifiers in type position are left unhighlighted. Array and Map are
+// intentionally absent (handled later).
+var builtinTypes = map[string]bool{
+	"S8": true, "S16": true, "S32": true, "S64": true, "S128": true,
+	"U8": true, "U16": true, "U32": true, "U64": true, "U128": true,
+	"Size": true,
+	"F16": true, "F32": true, "F64": true, "F128": true,
+	"C64": true, "C128": true,
+	"Q128": true, "Q256": true,
+	"String": true, "Byte": true, "Void": true, "Addr": true, "Bool": true,
+	"Error": true, "Any": true, "Self": true, "Type": true, "Named_Scope": true,
+}
+
+// knownTypeNames returns the set of type names that exist in the program:
+// built-in primitive types plus declared struct names.
+func knownTypeNames(program *compiler.Program) map[string]bool {
+	types := make(map[string]bool, len(builtinTypes))
+	for name := range builtinTypes {
+		types[name] = true
+	}
+	for _, decl := range program.Decls {
+		if st, ok := decl.(*compiler.StructDecl); ok {
+			types[st.Name] = true
+		}
+	}
+	return types
+}
+
+// typeToken emits a type token for an identifier type expression, but only if
+// the name is a known type (built-in or declared struct). Undeclared
+// identifiers in type position are not highlighted.
+func typeToken(expr compiler.Expr, sf *compiler.SourceFile, known map[string]bool, out *[]semanticToken) {
+	if ident, ok := expr.(*compiler.IdentExpr); ok && known[ident.Name] {
 		*out = append(*out, spanToTokenRows(ident.Span_, sf, semTypeType)...)
 	}
 }
@@ -100,11 +133,13 @@ func typeToken(expr compiler.Expr, sf *compiler.SourceFile, out *[]semanticToken
 // by walking the AST.
 func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []semanticToken {
 	var out []semanticToken
+	known := knownTypeNames(program)
 
 	var walkExpr func(expr compiler.Expr)
 	var walkStmt func(stmt compiler.Stmt)
 	var walkBlock func(block *compiler.BlockStmt)
 	var walkProc func(proc *compiler.ProcDecl)
+	var walkStruct func(st *compiler.StructDecl)
 
 	walkExpr = func(expr compiler.Expr) {
 		switch e := expr.(type) {
@@ -133,10 +168,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		switch s := stmt.(type) {
 		case *compiler.VarDecl:
 			// A '::' declaration is a variable (compile-time constant), not a
-			// type. Type names are only ':: struct' / ':: scaffold' forms,
-			// detected separately from the token stream.
+			// type. Type names are highlighted only when they are known
+			// (built-in or declared struct), via typeToken.
 			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
-			typeToken(s.DeclType, sf, &out)
+			typeToken(s.DeclType, sf, known, &out)
 			if s.Init != nil {
 				walkExpr(s.Init)
 			}
@@ -172,6 +207,8 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkExpr(s.Expr)
 		case *compiler.ProcDecl:
 			walkProc(s)
+		case *compiler.StructDecl:
+			walkStruct(s)
 		}
 	}
 
@@ -185,13 +222,21 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		out = append(out, spanToTokenRows(nameSpan(proc.Span_, proc.Name), sf, semTypeFunction)...)
 		for _, param := range proc.Params {
 			out = append(out, spanToTokenRows(nameSpan(param.Span_, param.Name), sf, semTypeParameter)...)
-			typeToken(param.Type, sf, &out)
+			typeToken(param.Type, sf, known, &out)
 		}
 		for _, res := range proc.Results {
-			typeToken(res, sf, &out)
+			typeToken(res, sf, known, &out)
 		}
 		if proc.Body != nil {
 			walkBlock(proc.Body)
+		}
+	}
+
+	walkStruct = func(st *compiler.StructDecl) {
+		out = append(out, spanToTokenRows(nameSpan(st.Span_, st.Name), sf, semTypeType)...)
+		for _, field := range st.Fields {
+			out = append(out, spanToTokenRows(nameSpan(field.Span_, field.Name), sf, semTypeVariable)...)
+			typeToken(field.Type, sf, known, &out)
 		}
 	}
 
@@ -201,6 +246,8 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkProc(d)
 		case *compiler.VarDecl:
 			walkStmt(d)
+		case *compiler.StructDecl:
+			walkStruct(d)
 		}
 	}
 	return out

@@ -139,3 +139,46 @@ func TestCompletionExcludesNamesAfterCursor(t *testing.T) {
 		t.Errorf("completion should exclude y (declared after cursor)")
 	}
 }
+
+func TestStructDefinitionHoverAndCompletion(t *testing.T) {
+	source := "Something_New :: struct {\n\tfield1: String;\n\tfield2: U64;\n}\nmain :: proc {\n\tx := 1;\n}"
+	r := buildResolverFor(t, source)
+
+	// Definition on the struct name resolves to itself.
+	structDecl := offsetOf(t, source, "Something_New :: struct")
+	sym := r.definitionAt(structDecl)
+	if sym == nil || sym.name != "Something_New" || sym.structDecl == nil {
+		t.Fatalf("definition of struct decl = %+v, want struct symbol", sym)
+	}
+
+	// Hover on the struct name shows the struct signature.
+	content := r.hoverAt(structDecl)
+	if !strings.Contains(content, "Something_New :: struct") || !strings.Contains(content, "field1: String") {
+		t.Errorf("hover = %q, want struct signature", content)
+	}
+
+	// The struct name is available for completion inside the proc body.
+	pos := offsetOf(t, source, "x := 1;") + len("x := 1;")
+	items := r.completionAt(pos)
+	names := make(map[string]bool)
+	for _, item := range items {
+		names[item.Label] = true
+	}
+	if !names["Something_New"] {
+		t.Errorf("completion missing struct name Something_New")
+	}
+}
+
+func TestStructFieldDefinitionAndReferences(t *testing.T) {
+	source := "Something_New :: struct {\n\tfield1: String;\n}"
+	r := buildResolverFor(t, source)
+	fieldRef := offsetOf(t, source, "field1")
+	sym := r.definitionAt(fieldRef)
+	if sym == nil || sym.name != "field1" {
+		t.Fatalf("definition of field = %+v, want field1", sym)
+	}
+	occs := r.referencesAt(fieldRef)
+	if len(occs) != 1 {
+		t.Fatalf("references for field1 = %d, want 1", len(occs))
+	}
+}

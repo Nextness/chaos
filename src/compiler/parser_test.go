@@ -315,6 +315,99 @@ func TestParseProcDeclMultipleResults(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
+// Struct declarations
+// ──────────────────────────────────────────────
+
+func TestParseStructDecl(t *testing.T) {
+	decl := parseOneDecl(t, "Something_New :: struct {\n\tfield1: String;\n\tfield2: U64;\n\tfield3: Bool;\n}")
+	d, ok := decl.(*StructDecl)
+	if !ok {
+		t.Fatalf("expected *StructDecl, got %T", decl)
+	}
+	if d.Name != "Something_New" {
+		t.Errorf("Name = %q, want %q", d.Name, "Something_New")
+	}
+	if len(d.Fields) != 3 {
+		t.Fatalf("Fields = %d, want 3", len(d.Fields))
+	}
+	wantFields := []struct{ name, typ string }{
+		{"field1", "String"},
+		{"field2", "U64"},
+		{"field3", "Bool"},
+	}
+	for i, wf := range wantFields {
+		if d.Fields[i].Name != wf.name {
+			t.Errorf("field[%d].Name = %q, want %q", i, d.Fields[i].Name, wf.name)
+		}
+		ident, ok := d.Fields[i].Type.(*IdentExpr)
+		if !ok {
+			t.Fatalf("field[%d].Type type = %T, want *IdentExpr", i, d.Fields[i].Type)
+		}
+		if ident.Name != wf.typ {
+			t.Errorf("field[%d].Type name = %q, want %q", i, ident.Name, wf.typ)
+		}
+	}
+}
+
+func TestParseStructDeclNoTrailingSemicolon(t *testing.T) {
+	// The struct declaration itself does not require a trailing semicolon;
+	// only each field does.
+	result := parseTestCase(t, "Foo :: struct { x: S64; }\nmain :: proc { return; }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 2 {
+		t.Fatalf("Decls = %d, want 2", len(result.Program.Decls))
+	}
+	if _, ok := result.Program.Decls[0].(*StructDecl); !ok {
+		t.Fatalf("Decls[0] type = %T, want *StructDecl", result.Program.Decls[0])
+	}
+}
+
+func TestParseStructDeclEmpty(t *testing.T) {
+	decl := parseOneDecl(t, "Empty :: struct {}")
+	d, ok := decl.(*StructDecl)
+	if !ok {
+		t.Fatalf("expected *StructDecl, got %T", decl)
+	}
+	if len(d.Fields) != 0 {
+		t.Fatalf("Fields = %d, want 0", len(d.Fields))
+	}
+}
+
+func TestParseStructDeclTrailingSemicolonTolerated(t *testing.T) {
+	// A stray trailing semicolon after the closing brace is skipped.
+	result := parseTestCase(t, "Foo :: struct { x: S64; };")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+}
+
+func TestParseStructDeclMissingBrace(t *testing.T) {
+	result := parseTestCase(t, "Foo :: struct x: S64;")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for missing '{' after struct, got none")
+	}
+}
+
+func TestParseStructFieldMissingColon(t *testing.T) {
+	result := parseTestCase(t, "Foo :: struct { x S64; }")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for missing ':' after field name, got none")
+	}
+}
+
+func TestParseStructFieldMissingType(t *testing.T) {
+	result := parseTestCase(t, "Foo :: struct { x: ; }")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for missing field type, got none")
+	}
+}
+
+// ──────────────────────────────────────────────
 // Assignments
 // ──────────────────────────────────────────────
 
@@ -1348,14 +1441,31 @@ func TestTolerantImportDirective(t *testing.T) {
 	}
 }
 
+func TestTolerantStructParsed(t *testing.T) {
+	result := parseTolerantTestCase(t, "Foo :: struct { x: S64; }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	if _, ok := result.Program.Decls[0].(*StructDecl); !ok {
+		t.Fatalf("Decls[0] type = %T, want *StructDecl", result.Program.Decls[0])
+	}
+}
+
 func TestTolerantStructAndEnum(t *testing.T) {
 	source := "Foo :: struct { x: S64; }\nBar :: enum { A, B }"
 	result := parseTolerantTestCase(t, source)
 	if result.Diags.HasErrors() {
 		t.Fatalf("unexpected errors: %v", result.Diags)
 	}
-	if len(result.Program.Decls) != 0 {
-		t.Fatalf("Decls = %d, want 0", len(result.Program.Decls))
+	// struct parses as a declaration; enum is still skipped.
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	if _, ok := result.Program.Decls[0].(*StructDecl); !ok {
+		t.Fatalf("Decls[0] type = %T, want *StructDecl", result.Program.Decls[0])
 	}
 }
 
@@ -1381,9 +1491,9 @@ func TestTolerantStrictStillErrors(t *testing.T) {
 	if !strict.Diags.HasErrors() {
 		t.Error("strict mode should error on #entry proc, got none")
 	}
-	strictStruct := parseTestCase(t, "Foo :: struct { x: S64; }")
-	if !strictStruct.Diags.HasErrors() {
-		t.Error("strict mode should error on struct, got none")
+	strictEnum := parseTestCase(t, "Bar :: enum { A, B }")
+	if !strictEnum.Diags.HasErrors() {
+		t.Error("strict mode should error on enum, got none")
 	}
 }
 
@@ -1399,7 +1509,7 @@ func TestTolerantCommentsDoNotChangeParse(t *testing.T) {
 }
 
 func TestTolerantBracelessFormDoesNotSwallowNextDecl(t *testing.T) {
-	result := parseTolerantTestCase(t, "Foo :: struct; x :: 42;")
+	result := parseTolerantTestCase(t, "Foo :: enum; x :: 42;")
 	if result.Diags.HasErrors() {
 		t.Fatalf("unexpected errors: %v", result.Diags)
 	}

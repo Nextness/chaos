@@ -1,8 +1,13 @@
-variable1: String = «Something»;
-variable2 := 10;
-VARIABLE3 :: 10.1;
+Something_New :: struct {
+    field1: String;
+    field2: U64;
+    field3: Bool;
+}
 
-#entry main :: proc () -> I64 {
+#entry main :: proc () -> S64 {
+    variable1: String = «Something»;
+    variable2 := 10;
+    VARIABLE3 :: 10.1;
     return 10;
 }
 

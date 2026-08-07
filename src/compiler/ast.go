@@ -280,6 +280,39 @@ func (d *ProcDecl) nodeSpan() Span {
 func (d *ProcDecl) stmtNode() {}
 func (d *ProcDecl) declNode() {}
 
+// StructDecl is a struct type definition.
+//
+//	Something_New :: struct {
+//	    field1: String;
+//	    field2: U64;
+//	}
+//
+// The declaration itself does not require a trailing semicolon; each field
+// ends with its own semicolon.
+type StructDecl struct {
+	Span_  Span
+	Name   string
+	Fields []StructField
+}
+
+func (d *StructDecl) nodeSpan() Span {
+	return d.Span_
+}
+
+func (d *StructDecl) stmtNode() {}
+func (d *StructDecl) declNode() {}
+
+// StructField is a single field in a struct definition: "name: type;".
+type StructField struct {
+	Span_ Span
+	Name  string
+	Type  Expr // type expression
+}
+
+func (f StructField) nodeSpan() Span {
+	return f.Span_
+}
+
 // Param is a single procedure parameter.
 type Param struct {
 	Span_ Span
