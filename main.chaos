@@ -1,0 +1,8 @@
+variable1: String = «Something»;
+variable2 := 10;
+VARIABLE3 :: 10.1;
+
+#entry main :: proc () -> I64 {
+    return 10;
+}
+

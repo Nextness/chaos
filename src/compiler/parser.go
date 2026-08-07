@@ -260,7 +260,21 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		p.bump()
 	}
 
-	// Tolerant mode: skip top-level directives (#import «fmt.chaos»; etc.)
+	// Top-level '#entry name :: proc {...}' is the canonical entry point.
+	// Handle it in both strict and tolerant modes so the CLI accepts it.
+	if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "entry" &&
+		p.peekN(2).Kind == TkIdent && p.peekN(3).Kind == TkCompTimeAssign &&
+		p.peekN(4).Kind == TkProc {
+		p.bump() // consume '#'
+		p.bump() // consume TkDirec("entry")
+		nameTok := p.bump() // consume the ident
+		name := nameTok.Text()
+		p.bump() // consume '::'
+		p.bump() // consume "proc"
+		return p.parseProcDecl(nameTok, name)
+	}
+
+	// Tolerant mode: skip other top-level directives (#import «fmt.chaos»; etc.)
 	// without emitting a diagnostic.
 	if p.tolerant && p.at(TkHash) {
 		p.skipToMatchedBraces()

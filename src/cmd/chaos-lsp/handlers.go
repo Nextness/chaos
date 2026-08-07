@@ -8,7 +8,7 @@ import (
 
 // semanticTokenTypes is the legend declared in initialize and used by
 // textDocument/semanticTokens/full.
-var semanticTokenTypes = []string{"keyword", "number", "string", "comment", "function", "variable", "parameter", "type", "constant"}
+var semanticTokenTypes = []string{"keyword", "number", "string", "comment", "function", "variable", "parameter", "type", "constant", "delimiter"}
 
 // handleRequest dispatches a JSON-RPC request and returns its response.
 func (s *Server) handleRequest(msg message) Response {

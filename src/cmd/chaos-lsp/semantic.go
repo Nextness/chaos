@@ -18,6 +18,7 @@ const (
 	semTypeParameter  = 6
 	semTypeType       = 7
 	semTypeConstant   = 8
+	semTypeDelimiter  = 9
 )
 
 // semanticToken is one token to be delta-encoded. Positions and lengths are in
@@ -65,7 +66,8 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 		switch tok.Kind {
 		case compiler.TkExit, compiler.TkIf, compiler.TkElif, compiler.TkElse,
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
-			compiler.TkTrue, compiler.TkFalse:
+			compiler.TkTrue, compiler.TkFalse,
+			compiler.TkHash, compiler.TkDirec:
 			idx = semTypeKeyword
 		case compiler.TkInt, compiler.TkFloat:
 			idx = semTypeNumber
@@ -73,6 +75,11 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 			idx = semTypeString
 		case compiler.TkComment:
 			idx = semTypeComment
+		case compiler.TkLBrace, compiler.TkRBrace,
+			compiler.TkLParen, compiler.TkRParen,
+			compiler.TkLBracket, compiler.TkRBracket,
+			compiler.TkLt, compiler.TkGt:
+			idx = semTypeDelimiter
 		}
 		if idx < 0 {
 			continue
@@ -125,11 +132,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 	walkStmt = func(stmt compiler.Stmt) {
 		switch s := stmt.(type) {
 		case *compiler.VarDecl:
-			idx := semTypeVariable
-			if s.CompileTime {
-				idx = semTypeConstant
-			}
-			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, idx)...)
+			// A '::' declaration is a variable (compile-time constant), not a
+			// type. Type names are only ':: struct' / ':: scaffold' forms,
+			// detected separately from the token stream.
+			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
 			typeToken(s.DeclType, sf, &out)
 			if s.Init != nil {
 				walkExpr(s.Init)
@@ -222,6 +228,9 @@ func encodeSemanticTokens(tokens []semanticToken) []int {
 		out = append(out, deltaLine, deltaStart, tok.length, tok.typeIndex, 0)
 		prevLine = tok.line
 		prevStart = tok.startChar
+	}
+	if out == nil {
+		out = []int{}
 	}
 	return out
 }

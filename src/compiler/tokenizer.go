@@ -254,6 +254,10 @@ func (t *Tokenizer) next() Token {
 		return t.emitN(TkLBrace, start, 1)
 	case '}':
 		return t.emitN(TkRBrace, start, 1)
+	case '[':
+		return t.emitN(TkLBracket, start, 1)
+	case ']':
+		return t.emitN(TkRBracket, start, 1)
 	case ';':
 		return t.emitN(TkSemicolon, start, 1)
 	case ':':

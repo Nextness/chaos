@@ -25,13 +25,17 @@ func TestSemanticTokensBasic(t *testing.T) {
 	want := []int{
 		0, 0, 4, semTypeFunction, 0, // main
 		0, 8, 4, semTypeKeyword, 0, // proc
-		0, 6, 1, semTypeParameter, 0, // n
+		0, 5, 1, semTypeDelimiter, 0, // (
+		0, 1, 1, semTypeParameter, 0, // n
 		0, 3, 3, semTypeType, 0, // S64 (param type)
-		0, 8, 3, semTypeType, 0, // S64 (result)
+		0, 3, 1, semTypeDelimiter, 0, // )
+		0, 5, 3, semTypeType, 0, // S64 (result)
+		0, 4, 1, semTypeDelimiter, 0, // {
 		1, 0, 1, semTypeVariable, 0, // x
 		0, 5, 2, semTypeNumber, 0, // 42
 		1, 0, 6, semTypeKeyword, 0, // return
 		0, 7, 1, semTypeVariable, 0, // x
+		1, 0, 1, semTypeDelimiter, 0, // }
 	}
 	got := semanticData(t, source)
 	if !reflect.DeepEqual(got, want) {
@@ -44,9 +48,11 @@ func TestSemanticTokensCommentAndString(t *testing.T) {
 	want := []int{
 		0, 0, 4, semTypeFunction, 0, // main
 		0, 8, 4, semTypeKeyword, 0, // proc
+		0, 5, 1, semTypeDelimiter, 0, // {
 		1, 0, 7, semTypeComment, 0, // // note
 		1, 0, 3, semTypeVariable, 0, // msg
 		0, 7, 4, semTypeString, 0, // «hi» (4 UTF-16 units)
+		1, 0, 1, semTypeDelimiter, 0, // }
 	}
 	got := semanticData(t, source)
 	if !reflect.DeepEqual(got, want) {
@@ -54,16 +60,65 @@ func TestSemanticTokensCommentAndString(t *testing.T) {
 	}
 }
 
-func TestSemanticTokensConstAndCallee(t *testing.T) {
+func TestSemanticTokensVarAndCallee(t *testing.T) {
 	source := "main :: proc {\nconst_val :: 7;\nz := add(x);\n}"
 	want := []int{
 		0, 0, 4, semTypeFunction, 0, // main
 		0, 8, 4, semTypeKeyword, 0, // proc
-		1, 0, 9, semTypeConstant, 0, // const_val
+		0, 5, 1, semTypeDelimiter, 0, // {
+		1, 0, 9, semTypeVariable, 0, // const_val (compile-time :: is a variable)
 		0, 13, 1, semTypeNumber, 0, // 7
 		1, 0, 1, semTypeVariable, 0, // z
 		0, 5, 3, semTypeFunction, 0, // add (callee)
-		0, 4, 1, semTypeVariable, 0, // x
+		0, 3, 1, semTypeDelimiter, 0, // (
+		0, 1, 1, semTypeVariable, 0, // x
+		0, 1, 1, semTypeDelimiter, 0, // )
+		1, 0, 1, semTypeDelimiter, 0, // }
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}
+
+func TestSemanticTokensEmpty(t *testing.T) {
+	// An empty document must produce an empty (non-nil) data array so
+	// Neovim's parser does not fail on a nil value.
+	got := semanticData(t, "")
+	if got == nil {
+		t.Fatal("semantic data is nil, want empty non-nil slice")
+	}
+	if len(got) != 0 {
+		t.Errorf("semantic data = %v, want empty", got)
+	}
+}
+
+func TestSemanticTokensEntryProcDirectiveFirst(t *testing.T) {
+	source := "#entry main :: proc () -> I64 {\n    return 10;\n}"
+	want := []int{
+		0, 0, 1, semTypeKeyword, 0, // #
+		0, 1, 5, semTypeKeyword, 0, // entry
+		0, 6, 4, semTypeFunction, 0, // main
+		0, 8, 4, semTypeKeyword, 0, // proc
+		0, 5, 1, semTypeDelimiter, 0, // (
+		0, 1, 1, semTypeDelimiter, 0, // )
+		0, 5, 3, semTypeType, 0, // I64
+		0, 4, 1, semTypeDelimiter, 0, // {
+		1, 4, 6, semTypeKeyword, 0, // return
+		0, 7, 2, semTypeNumber, 0, // 10
+		1, 0, 1, semTypeDelimiter, 0, // }
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}
+
+func TestSemanticTokensCompileTimeVarIsVariable(t *testing.T) {
+	source := "variable3 :: 10.1;"
+	want := []int{
+		0, 0, 9, semTypeVariable, 0, // variable3
+		0, 13, 4, semTypeNumber, 0, // 10.1
 	}
 	got := semanticData(t, source)
 	if !reflect.DeepEqual(got, want) {

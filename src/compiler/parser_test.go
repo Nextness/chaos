@@ -1294,6 +1294,50 @@ func TestTolerantEntryProc(t *testing.T) {
 	}
 }
 
+func TestTolerantEntryProcDirectiveFirst(t *testing.T) {
+	result := parseTolerantTestCase(t, "#entry main :: proc () -> I64 { return 10; }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if proc.Name != "main" {
+		t.Errorf("Name = %q, want %q", proc.Name, "main")
+	}
+	if len(proc.Results) != 1 {
+		t.Fatalf("Results = %d, want 1", len(proc.Results))
+	}
+}
+
+func TestStrictEntryProcDirectiveFirst(t *testing.T) {
+	result := parseTestCase(t, "#entry main :: proc () -> I64 { return 10; }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if proc.Name != "main" {
+		t.Errorf("Name = %q, want %q", proc.Name, "main")
+	}
+}
+
+func TestStrictOtherDirectiveStillErrors(t *testing.T) {
+	result := parseTestCase(t, "#import «fmt.chaos»;")
+	if !result.Diags.HasErrors() {
+		t.Error("strict mode should error on #import, got none")
+	}
+}
+
 func TestTolerantImportDirective(t *testing.T) {
 	result := parseTolerantTestCase(t, "#import «fmt.chaos»;")
 	if result.Diags.HasErrors() {

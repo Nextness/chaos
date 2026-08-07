@@ -34,11 +34,11 @@ func TestTokenize(t *testing.T) {
 		// ─── Single-character tokens ──────────────────────────────────────
 		{
 			name:  "single char tokens",
-			input: "=+-*/<>,;:(){}.#?!@|",
+			input: "=+-*/<>,;:(){}.[]#?!@|",
 			want: []TokenKind{
 				TkAssign, TkPlus, TkMinus, TkStar, TkSlash,
 				TkLt, TkGt, TkComma, TkSemicolon, TkColon,
-				TkLParen, TkRParen, TkLBrace, TkRBrace, TkDot,
+				TkLParen, TkRParen, TkLBrace, TkRBrace, TkDot, TkLBracket, TkRBracket,
 				TkHash, TkQuestion, TkNot, TkAt, TkPipe,
 				TkEOF,
 			},

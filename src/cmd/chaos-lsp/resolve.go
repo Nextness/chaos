@@ -329,7 +329,7 @@ func (r *resolver) hoverAt(offset int) string {
 func (r *resolver) completionAt(offset int) []CompletionItem {
 	sc := r.scopeAt(offset)
 	seen := make(map[string]bool)
-	var out []CompletionItem
+	out := []CompletionItem{}
 	for sc != nil {
 		for _, sym := range sc.symbols {
 			if sym.span.End <= offset && !seen[sym.name] {

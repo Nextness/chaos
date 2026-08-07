@@ -86,3 +86,24 @@ func TestRequestAfterShutdownRejected(t *testing.T) {
 		t.Errorf("expected -32600 after shutdown, got %+v", resp.Error)
 	}
 }
+
+func TestSemanticTokensEmptyDocument(t *testing.T) {
+	s, _ := newTestServer()
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
+	s.handleNotification(message{
+		Method: "textDocument/didOpen",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///empty.chaos","languageId":"chaos","version":1,"text":""}}`),
+	})
+	resp := s.handleRequest(message{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "textDocument/semanticTokens/full",
+		Params:  json.RawMessage(`{"textDocument":{"uri":"file:///empty.chaos"}}`),
+	})
+	if resp.Error != nil {
+		t.Fatalf("semanticTokens error: %+v", resp.Error)
+	}
+	if !strings.Contains(string(resp.Result), `"data":[]`) {
+		t.Errorf("semanticTokens result = %s, want data:[]", resp.Result)
+	}
+}

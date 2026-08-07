@@ -73,6 +73,8 @@ const (
 	TkRParen    // )
 	TkLBrace    // {
 	TkRBrace    // }
+	TkLBracket  // [
+	TkRBracket  // ]
 	TkSemicolon // ;
 	TkColon     // :
 	TkComma     // ,
@@ -136,6 +138,8 @@ var tokenKindNames = [...]string{
 	TkRParen:         ")",
 	TkLBrace:         "{",
 	TkRBrace:         "}",
+	TkLBracket:       "[",
+	TkRBracket:       "]",
 	TkSemicolon:      ";",
 	TkColon:          ":",
 	TkComma:          ",",
