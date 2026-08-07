@@ -4,6 +4,13 @@ Something_New :: struct {
     field3: Bool;
 }
 
+some_procedure :: proc (param_1: String, param_2: S64) -> String {
+    if param_2 > 10 {
+        return «Not valid»;
+    }
+    return param_1;
+}
+
 #entry main :: proc () -> S64 {
     variable1: String = «Something»;
     variable2 := 10;
@@ -32,6 +39,9 @@ Something_New :: struct {
     something_7 : Something_New : .{«hello world», 10, field3=true};
     something_7 : Something_New : .{«hello world», 10, true};
     something_8 : Something_New : .{field1=«hello world», field2=10, true}; // this should fail at AST
+
+    calling := some_procedure(«Valid», 1);
+    some_procedure(«Valid», 20);
 
     return 10;
 }

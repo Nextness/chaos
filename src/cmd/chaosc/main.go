@@ -18,6 +18,7 @@ func main() {
 func run(programName string, args []string, output io.Writer) int {
 	flags := flag.NewFlagSet(programName, flag.ContinueOnError)
 	flags.SetOutput(output)
+	dump := flags.Bool("dump", false, "print the token stream and parsed AST")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -57,6 +58,11 @@ func run(programName string, args []string, output io.Writer) int {
 		if result.Diags.HasErrors() {
 			return 1
 		}
+	}
+
+	if *dump {
+		fmt.Fprintf(output, "Tokens:\n%s", compiler.DumpTokens(tokens))
+		fmt.Fprintf(output, "Parse result:\n%s", compiler.DumpParseResult(result))
 	}
 
 	return 0

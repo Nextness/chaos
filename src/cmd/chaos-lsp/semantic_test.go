@@ -196,3 +196,51 @@ func TestSemanticTokensStructInitTypeHighlighted(t *testing.T) {
 		t.Errorf("semantic data = %v, want %v", got, want)
 	}
 }
+
+func TestSemanticTokensProcWithIfReturnAndCalls(t *testing.T) {
+	// A procedure with parameters, a return type, an if/return body, and
+	// calls used both as an initializer and as a bare statement. The '>'
+	// comparison operator is not highlighted as a delimiter.
+	source := "some_procedure :: proc (param_1: String, param_2: S64) -> String {\n    if param_2 > 10 {\n        return «Not valid»;\n    }\n    return param_1;\n}\nmain :: proc {\n    calling := some_procedure(«Valid», 1);\n    some_procedure(«Valid», 20);\n}"
+	want := []int{
+		0, 0, 14, semTypeFunction, 0, // some_procedure
+		0, 18, 4, semTypeKeyword, 0, // proc
+		0, 5, 1, semTypeDelimiter, 0, // (
+		0, 1, 7, semTypeParameter, 0, // param_1
+		0, 9, 6, semTypeType, 0, // String
+		0, 8, 7, semTypeParameter, 0, // param_2
+		0, 9, 3, semTypeType, 0, // S64
+		0, 3, 1, semTypeDelimiter, 0, // )
+		0, 5, 6, semTypeType, 0, // String (result)
+		0, 7, 1, semTypeDelimiter, 0, // {
+		1, 4, 2, semTypeKeyword, 0, // if
+		0, 3, 7, semTypeVariable, 0, // param_2
+		0, 10, 2, semTypeNumber, 0, // 10
+		0, 3, 1, semTypeDelimiter, 0, // {
+		1, 8, 6, semTypeKeyword, 0, // return
+		0, 7, 11, semTypeString, 0, // «Not valid»
+		1, 4, 1, semTypeDelimiter, 0, // }
+		1, 4, 6, semTypeKeyword, 0, // return
+		0, 7, 7, semTypeVariable, 0, // param_1
+		1, 0, 1, semTypeDelimiter, 0, // }
+		1, 0, 4, semTypeFunction, 0, // main
+		0, 8, 4, semTypeKeyword, 0, // proc
+		0, 5, 1, semTypeDelimiter, 0, // {
+		1, 4, 7, semTypeVariable, 0, // calling
+		0, 11, 14, semTypeFunction, 0, // some_procedure (callee)
+		0, 14, 1, semTypeDelimiter, 0, // (
+		0, 1, 7, semTypeString, 0, // «Valid»
+		0, 9, 1, semTypeNumber, 0, // 1
+		0, 1, 1, semTypeDelimiter, 0, // )
+		1, 4, 14, semTypeFunction, 0, // some_procedure (callee)
+		0, 14, 1, semTypeDelimiter, 0, // (
+		0, 1, 7, semTypeString, 0, // «Valid»
+		0, 9, 2, semTypeNumber, 0, // 20
+		0, 2, 1, semTypeDelimiter, 0, // )
+		1, 0, 1, semTypeDelimiter, 0, // }
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}

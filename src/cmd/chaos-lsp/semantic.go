@@ -78,8 +78,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 			idx = semTypeComment
 		case compiler.TkLBrace, compiler.TkRBrace,
 			compiler.TkLParen, compiler.TkRParen,
-			compiler.TkLBracket, compiler.TkRBracket,
-			compiler.TkLt, compiler.TkGt:
+			compiler.TkLBracket, compiler.TkRBracket:
 			idx = semTypeDelimiter
 		}
 		if idx < 0 {

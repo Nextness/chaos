@@ -99,6 +99,37 @@ const (
 	BinaryOpOr                  // ||
 )
 
+func (op BinaryOp) String() string {
+	switch op {
+	case BinaryOpAdd:
+		return "+"
+	case BinaryOpSub:
+		return "-"
+	case BinaryOpMul:
+		return "*"
+	case BinaryOpDiv:
+		return "/"
+	case BinaryOpLt:
+		return "<"
+	case BinaryOpGt:
+		return ">"
+	case BinaryOpLe:
+		return "<="
+	case BinaryOpGe:
+		return ">="
+	case BinaryOpEq:
+		return "=="
+	case BinaryOpNeq:
+		return "!="
+	case BinaryOpAnd:
+		return "&&"
+	case BinaryOpOr:
+		return "||"
+	default:
+		return "?"
+	}
+}
+
 // BinaryExpr is a binary operation: left op right.
 type BinaryExpr struct {
 	Span_ Span
@@ -120,6 +151,17 @@ const (
 	UnaryOpNeg UnaryOp = iota // -
 	UnaryOpNot                // !
 )
+
+func (op UnaryOp) String() string {
+	switch op {
+	case UnaryOpNeg:
+		return "-"
+	case UnaryOpNot:
+		return "!"
+	default:
+		return "?"
+	}
+}
 
 // UnaryExpr is a unary operation: op operand.
 type UnaryExpr struct {
