@@ -5,7 +5,7 @@ Something_New :: struct {
 }
 
 some_procedure :: proc (param_1: String, param_2: S64) -> String {
-    if param_2 > 10 {
+    if param_2 == 10 {
         return «Not valid»;
     }
     return param_1;

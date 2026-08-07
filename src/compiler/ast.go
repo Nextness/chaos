@@ -89,6 +89,7 @@ const (
 	BinaryOpSub                 // -
 	BinaryOpMul                 // *
 	BinaryOpDiv                 // /
+	BinaryOpMod                 // %
 	BinaryOpLt                  // <
 	BinaryOpGt                  // >
 	BinaryOpLe                  // <=
@@ -109,6 +110,8 @@ func (op BinaryOp) String() string {
 		return "*"
 	case BinaryOpDiv:
 		return "/"
+	case BinaryOpMod:
+		return "%"
 	case BinaryOpLt:
 		return "<"
 	case BinaryOpGt:

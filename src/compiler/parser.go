@@ -949,7 +949,7 @@ const (
 	precEq             // 3  == !=
 	precCmp            // 4  < > <= >=
 	precAdd            // 5  + -
-	precMul            // 6  * /
+	precMul            // 6  * / %
 	precUnary          // 7  - !
 	precCall           // 8  ()
 	precPrimary        // 9  primary
@@ -969,7 +969,7 @@ func tokenPrecedence(kind TokenKind) int {
 		return precCmp
 	case TkPlus, TkMinus:
 		return precAdd
-	case TkStar, TkSlash:
+	case TkStar, TkSlash, TkPercent:
 		return precMul
 	case TkLParen:
 		return precCall
@@ -1238,6 +1238,8 @@ func tokToBinaryOp(kind TokenKind) int {
 		return int(BinaryOpMul)
 	case TkSlash:
 		return int(BinaryOpDiv)
+	case TkPercent:
+		return int(BinaryOpMod)
 	case TkLt:
 		return int(BinaryOpLt)
 	case TkGt:

@@ -745,6 +745,17 @@ func TestParseBinaryMul(t *testing.T) {
 	}
 }
 
+func TestParseBinaryMod(t *testing.T) {
+	expr := parseExpr(t, "7 % 3")
+	e, ok := expr.(*BinaryExpr)
+	if !ok {
+		t.Fatalf("expected *BinaryExpr, got %T", expr)
+	}
+	if e.Op != BinaryOpMod {
+		t.Errorf("Op = %d, want %d (BinaryOpMod)", e.Op, BinaryOpMod)
+	}
+}
+
 func TestParseBinaryComparison(t *testing.T) {
 	ops := []struct {
 		text string
@@ -823,6 +834,25 @@ func TestPrecedenceMulAdd(t *testing.T) {
 	_, ok = e.Left.(*BinaryExpr)
 	if !ok {
 		t.Fatalf("left operand type = %T, want *BinaryExpr", e.Left)
+	}
+}
+
+func TestPrecedenceModAdd(t *testing.T) {
+	// 1 + 2 % 3  should parse as 1 + (2 % 3), since % binds like * and /
+	expr := parseExpr(t, "1 + 2 % 3")
+	e, ok := expr.(*BinaryExpr)
+	if !ok {
+		t.Fatalf("expected *BinaryExpr, got %T", expr)
+	}
+	if e.Op != BinaryOpAdd {
+		t.Errorf("top op = %d, want %d (BinaryOpAdd)", e.Op, BinaryOpAdd)
+	}
+	right, ok := e.Right.(*BinaryExpr)
+	if !ok {
+		t.Fatalf("right operand type = %T, want *BinaryExpr", e.Right)
+	}
+	if right.Op != BinaryOpMod {
+		t.Errorf("right op = %d, want %d (BinaryOpMod)", right.Op, BinaryOpMod)
 	}
 }
 

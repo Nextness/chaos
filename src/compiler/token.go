@@ -79,10 +79,11 @@ const (
 	TkDot       // .
 
 	// Arithmetic
-	TkPlus  // +
-	TkMinus // -
-	TkStar  // *
-	TkSlash // /
+	TkPlus    // +
+	TkMinus   // -
+	TkStar    // *
+	TkSlash   // /
+	TkPercent // %
 
 	// Comparison
 	TkEq  // ==
@@ -145,6 +146,7 @@ var tokenKindNames = [...]string{
 	TkMinus:          "-",
 	TkStar:           "*",
 	TkSlash:          "/",
+	TkPercent:        "%",
 	TkEq:             "==",
 	TkNeq:            "!=",
 	TkLt:             "<",

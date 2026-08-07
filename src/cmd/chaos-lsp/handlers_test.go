@@ -46,10 +46,10 @@ func TestDidChangePublishesDiagnostics(t *testing.T) {
 		Params: json.RawMessage(`{"textDocument":{"uri":"file:///a.chaos","languageId":"chaos","version":1,"text":"x :: 42;"}}`),
 	})
 	buf.Reset()
-	// Introduce a bad source via incremental edit: replace "42" with "%".
+	// Introduce a bad source via incremental edit: replace "42" with "$".
 	s.handleNotification(message{
 		Method: "textDocument/didChange",
-		Params: json.RawMessage(`{"textDocument":{"uri":"file:///a.chaos","version":2},"contentChanges":[{"range":{"start":{"line":0,"character":5},"end":{"line":0,"character":7}},"text":"%"}]}`),
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///a.chaos","version":2},"contentChanges":[{"range":{"start":{"line":0,"character":5},"end":{"line":0,"character":7}},"text":"$"}]}`),
 	})
 	out := buf.String()
 	if !strings.Contains(out, "textDocument/publishDiagnostics") {

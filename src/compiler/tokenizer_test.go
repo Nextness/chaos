@@ -34,9 +34,9 @@ func TestTokenize(t *testing.T) {
 		// ─── Single-character tokens ──────────────────────────────────────
 		{
 			name:  "single char tokens",
-			input: "=+-*/<>,;:(){}.[]#?!@|",
+			input: "=+-*/%<>,;:(){}.[]#?!@|",
 			want: []TokenKind{
-				TkAssign, TkPlus, TkMinus, TkStar, TkSlash,
+				TkAssign, TkPlus, TkMinus, TkStar, TkSlash, TkPercent,
 				TkLt, TkGt, TkComma, TkSemicolon, TkColon,
 				TkLParen, TkRParen, TkLBrace, TkRBrace, TkDot, TkLBracket, TkRBracket,
 				TkHash, TkQuestion, TkNot, TkAt, TkPipe,
@@ -237,7 +237,7 @@ func TestTokenize(t *testing.T) {
 		// ─── Error recovery ───────────────────────────────────────────────
 		{
 			name:  "unknown char recovers",
-			input: "% &",
+			input: "$ &",
 			want:  []TokenKind{TkError, TkError, TkEOF},
 			errs:  2,
 		},

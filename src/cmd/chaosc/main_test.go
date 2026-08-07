@@ -25,7 +25,7 @@ func TestRunSuccessfulParse(t *testing.T) {
 
 func TestRunRendersDiagnosticWithSuggestion(t *testing.T) {
 	sourcePath := filepath.Join(t.TempDir(), "bad.chaos")
-	if err := os.WriteFile(sourcePath, []byte("x :: %;"), 0o600); err != nil {
+	if err := os.WriteFile(sourcePath, []byte("x :: $;"), 0o600); err != nil {
 		t.Fatalf("write test source: %v", err)
 	}
 
@@ -49,7 +49,7 @@ func TestRunRendersDiagnosticWithSuggestion(t *testing.T) {
 func TestRunControlAndFailurePaths(t *testing.T) {
 	temporaryDirectory := t.TempDir()
 	invalidSourcePath := filepath.Join(temporaryDirectory, "invalid.chaos")
-	if err := os.WriteFile(invalidSourcePath, []byte("%"), 0o600); err != nil {
+	if err := os.WriteFile(invalidSourcePath, []byte("$"), 0o600); err != nil {
 		t.Fatalf("write invalid source: %v", err)
 	}
 

@@ -234,6 +234,8 @@ func (t *Tokenizer) next() Token {
 		return t.emitN(TkStar, start, 1)
 	case '/':
 		return t.emitN(TkSlash, start, 1)
+	case '%':
+		return t.emitN(TkPercent, start, 1)
 	case '<':
 		return t.emitN(TkLt, start, 1)
 	case '>':
