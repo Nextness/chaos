@@ -8,6 +8,31 @@ Something_New :: struct {
     variable1: String = «Something»;
     variable2 := 10;
     VARIABLE3 :: 10.1;
+
+    something_1 := Something_New.{field1=«hello world», field2=10, field3=true};
+    something_2 := Something_New.{«hello world», field2=10, field3=true};
+    something_3 := Something_New.{«hello world», 10, field3=true};
+    something_3 := Something_New.{«hello world», 10, true};
+    something_4 := Something_New.{field1=«hello world», field2=10, true}; // this should fail at AST
+
+    something_5: Something_New = .{field1=«hello world», field2=10, field3=true};
+    something_6: Something_New = .{«hello world», field2=10, field3=true};
+    something_7: Something_New = .{«hello world», 10, field3=true};
+    something_7: Something_New = .{«hello world», 10, true};
+    something_8: Something_New = .{field1=«hello world», field2=10, true}; // this should fail at AST
+
+    something_1 :: Something_New.{field1=«hello world», field2=10, field3=true};
+    something_2 :: Something_New.{«hello world», field2=10, field3=true};
+    something_3 :: Something_New.{«hello world», 10, field3=true};
+    something_3 :: Something_New.{«hello world», 10, true};
+    something_4 :: Something_New.{field1=«hello world», field2=10, true}; // this should fail at AST
+
+    something_5 : Something_New : .{field1=«hello world», field2=10, field3=true};
+    something_6 : Something_New : .{«hello world», field2=10, field3=true};
+    something_7 : Something_New : .{«hello world», 10, field3=true};
+    something_7 : Something_New : .{«hello world», 10, true};
+    something_8 : Something_New : .{field1=«hello world», field2=10, true}; // this should fail at AST
+
     return 10;
 }
 

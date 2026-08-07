@@ -158,6 +158,33 @@ func (e *ParenExpr) nodeSpan() Span {
 
 func (e *ParenExpr) exprNode() {}
 
+// StructInitExpr is a struct literal: TypeName.{field=value, ...} or .{...}.
+// Type is nil for inferred literals (.{...}); the type comes from the
+// surrounding declaration.
+type StructInitExpr struct {
+	Span_  Span
+	Type   Expr // type name (nil for inferred)
+	Fields []StructInitField
+}
+
+func (e *StructInitExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *StructInitExpr) exprNode() {}
+
+// StructInitField is one entry in a struct literal. Name is empty for
+// positional values.
+type StructInitField struct {
+	Span_ Span
+	Name  string // field name (empty for positional)
+	Value Expr
+}
+
+func (f StructInitField) nodeSpan() Span {
+	return f.Span_
+}
+
 // ErrorExpr is a placeholder inserted when the parser encounters an error
 // during expression parsing. It allows the parser to continue and collect
 // additional diagnostics without crashing.

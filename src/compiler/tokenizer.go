@@ -204,10 +204,6 @@ func (t *Tokenizer) next() Token {
 
 	// Multi-character operators (must be checked before single-char)
 	switch {
-	case b == ':' && t.peekN(1) == ':':
-		return t.emitN(TkCompTimeAssign, start, 2)
-	case b == ':' && t.peekN(1) == '=':
-		return t.emitN(TkInfer, start, 2)
 	case b == '=' && t.peekN(1) == '=':
 		return t.emitN(TkEq, start, 2)
 	case b == '!' && t.peekN(1) == '=':

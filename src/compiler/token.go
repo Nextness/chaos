@@ -64,9 +64,7 @@ const (
 	TkFalse  // keyword false
 
 	// Assignment / declaration
-	TkAssign         // =
-	TkInfer          // :=
-	TkCompTimeAssign // ::
+	TkAssign // =
 
 	// Delimiters
 	TkLParen    // (
@@ -133,8 +131,6 @@ var tokenKindNames = [...]string{
 	TkTrue:           "true",
 	TkFalse:          "false",
 	TkAssign:         "=",
-	TkInfer:          ":=",
-	TkCompTimeAssign: "::",
 	TkLParen:         "(",
 	TkRParen:         ")",
 	TkLBrace:         "{",

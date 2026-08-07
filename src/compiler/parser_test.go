@@ -208,6 +208,41 @@ func TestParseTypedVarDeclNoInit(t *testing.T) {
 	}
 }
 
+func TestParseTypedCompileTimeVarDecl(t *testing.T) {
+	// name : Type : value — compile-time constant with explicit type.
+	decl := parseOneDecl(t, "x : S64 : 42;")
+	d, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	if d.Name != "x" {
+		t.Errorf("Name = %q, want %q", d.Name, "x")
+	}
+	if !d.CompileTime {
+		t.Error("CompileTime = false, want true")
+	}
+	if d.Mutable {
+		t.Error("Mutable = true, want false")
+	}
+	if d.DeclType == nil {
+		t.Fatal("DeclType = nil, want non-nil")
+	}
+	ident, ok := d.DeclType.(*IdentExpr)
+	if !ok {
+		t.Fatalf("DeclType type = %T, want *IdentExpr", d.DeclType)
+	}
+	if ident.Name != "S64" {
+		t.Errorf("type name = %q, want %q", ident.Name, "S64")
+	}
+	if d.Init == nil {
+		t.Fatal("Init = nil, want non-nil")
+	}
+	_, ok = d.Init.(*IntExpr)
+	if !ok {
+		t.Errorf("Init type = %T, want *IntExpr", d.Init)
+	}
+}
+
 func TestParseVarDeclStringInit(t *testing.T) {
 	decl := parseOneDecl(t, `msg :: «hello»;`)
 	d, ok := decl.(*VarDecl)
@@ -602,6 +637,85 @@ func TestParseIdentExpr(t *testing.T) {
 	}
 	if e.Name != "myVar" {
 		t.Errorf("Name = %q, want %q", e.Name, "myVar")
+	}
+}
+
+// ──────────────────────────────────────────────
+// Expressions — struct literals
+// ──────────────────────────────────────────────
+
+func TestParseStructInitExplicitType(t *testing.T) {
+	expr := parseExpr(t, `Something_New.{field1=«hello», field2=10, field3=true}`)
+	e, ok := expr.(*StructInitExpr)
+	if !ok {
+		t.Fatalf("expected *StructInitExpr, got %T", expr)
+	}
+	if e.Type == nil {
+		t.Fatal("Type = nil, want non-nil")
+	}
+	ident, ok := e.Type.(*IdentExpr)
+	if !ok {
+		t.Fatalf("Type type = %T, want *IdentExpr", e.Type)
+	}
+	if ident.Name != "Something_New" {
+		t.Errorf("type name = %q, want %q", ident.Name, "Something_New")
+	}
+	if len(e.Fields) != 3 {
+		t.Fatalf("len(Fields) = %d, want 3", len(e.Fields))
+	}
+	if e.Fields[0].Name != "field1" {
+		t.Errorf("Fields[0].Name = %q, want %q", e.Fields[0].Name, "field1")
+	}
+	if e.Fields[1].Name != "field2" {
+		t.Errorf("Fields[1].Name = %q, want %q", e.Fields[1].Name, "field2")
+	}
+	if e.Fields[2].Name != "field3" {
+		t.Errorf("Fields[2].Name = %q, want %q", e.Fields[2].Name, "field3")
+	}
+}
+
+func TestParseStructInitInferredType(t *testing.T) {
+	expr := parseExpr(t, `.{«hello», 10, true}`)
+	e, ok := expr.(*StructInitExpr)
+	if !ok {
+		t.Fatalf("expected *StructInitExpr, got %T", expr)
+	}
+	if e.Type != nil {
+		t.Errorf("Type = %v, want nil for inferred literal", e.Type)
+	}
+	if len(e.Fields) != 3 {
+		t.Fatalf("len(Fields) = %d, want 3", len(e.Fields))
+	}
+	// Positional fields have empty names.
+	for i, f := range e.Fields {
+		if f.Name != "" {
+			t.Errorf("Fields[%d].Name = %q, want empty", i, f.Name)
+		}
+		if f.Value == nil {
+			t.Errorf("Fields[%d].Value = nil, want non-nil", i)
+		}
+	}
+}
+
+func TestParseStructInitMixedFields(t *testing.T) {
+	// Named and positional fields may be mixed; ordering and field-existence
+	// validation is deferred to a later type-checking pass.
+	expr := parseExpr(t, `Something_New.{«hello», field2=10, true}`)
+	e, ok := expr.(*StructInitExpr)
+	if !ok {
+		t.Fatalf("expected *StructInitExpr, got %T", expr)
+	}
+	if len(e.Fields) != 3 {
+		t.Fatalf("len(Fields) = %d, want 3", len(e.Fields))
+	}
+	if e.Fields[0].Name != "" {
+		t.Errorf("Fields[0].Name = %q, want empty (positional)", e.Fields[0].Name)
+	}
+	if e.Fields[1].Name != "field2" {
+		t.Errorf("Fields[1].Name = %q, want %q", e.Fields[1].Name, "field2")
+	}
+	if e.Fields[2].Name != "" {
+		t.Errorf("Fields[2].Name = %q, want empty (positional)", e.Fields[2].Name)
 	}
 }
 

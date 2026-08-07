@@ -49,7 +49,7 @@ func TestTokenize(t *testing.T) {
 			name:  "multi-char operators",
 			input: ":: := == != <= >= && || -> ...",
 			want: []TokenKind{
-				TkCompTimeAssign, TkInfer,
+				TkColon, TkColon, TkColon, TkAssign,
 				TkEq, TkNeq, TkLe, TkGe,
 				TkAnd, TkOr, TkArrow, TkEllipsis,
 				TkEOF,
@@ -184,12 +184,12 @@ func TestTokenize(t *testing.T) {
 		{
 			name:  "simple declaration",
 			input: "x :: 42;",
-			want:  []TokenKind{TkIdent, TkCompTimeAssign, TkInt, TkSemicolon, TkEOF},
+			want:  []TokenKind{TkIdent, TkColon, TkColon, TkInt, TkSemicolon, TkEOF},
 		},
 		{
 			name:  "inferred assignment",
 			input: "y := x;",
-			want:  []TokenKind{TkIdent, TkInfer, TkIdent, TkSemicolon, TkEOF},
+			want:  []TokenKind{TkIdent, TkColon, TkAssign, TkIdent, TkSemicolon, TkEOF},
 		},
 		{
 			name:  "typed declaration",
@@ -200,7 +200,7 @@ func TestTokenize(t *testing.T) {
 			name:  "procedure",
 			input: "main :: proc -> S64 { return 0; }",
 			want: []TokenKind{
-				TkIdent, TkCompTimeAssign, TkProc, TkArrow, TkIdent,
+				TkIdent, TkColon, TkColon, TkProc, TkArrow, TkIdent,
 				TkLBrace, TkReturn, TkInt, TkSemicolon, TkRBrace,
 				TkEOF,
 			},
@@ -251,7 +251,7 @@ func TestTokenize(t *testing.T) {
 		{
 			name:  "unicode identifiers",
 			input: "αβγ :: 42;",
-			want:  []TokenKind{TkIdent, TkCompTimeAssign, TkInt, TkSemicolon, TkEOF},
+			want:  []TokenKind{TkIdent, TkColon, TkColon, TkInt, TkSemicolon, TkEOF},
 		},
 
 		// ─── Span consistency ─────────────────────────────────────────────
@@ -348,17 +348,20 @@ func dumpTokens(tokens []Token) string {
 
 func TestUnterminatedString(t *testing.T) {
 	tokens, diags := Tokenize([]byte("x := «hello"), 0)
-	if len(tokens) < 3 {
-		t.Fatalf("expected at least 3 tokens (ident, infer, error), got %d", len(tokens))
+	if len(tokens) < 4 {
+		t.Fatalf("expected at least 4 tokens (ident, colon, assign, error), got %d", len(tokens))
 	}
 	if tokens[0].Kind != TkIdent {
 		t.Errorf("token[0] = %s, want identifier", tokens[0].Kind)
 	}
-	if tokens[1].Kind != TkInfer {
-		t.Errorf("token[1] = %s, want :=", tokens[1].Kind)
+	if tokens[1].Kind != TkColon {
+		t.Errorf("token[1] = %s, want ':'", tokens[1].Kind)
 	}
-	if tokens[2].Kind != TkError {
-		t.Errorf("token[2] = %s, want Error", tokens[2].Kind)
+	if tokens[2].Kind != TkAssign {
+		t.Errorf("token[2] = %s, want '='", tokens[2].Kind)
+	}
+	if tokens[3].Kind != TkError {
+		t.Errorf("token[3] = %s, want Error", tokens[3].Kind)
 	}
 	hasErr := false
 	for _, d := range diags {
@@ -432,7 +435,8 @@ func TestSpanRanges(t *testing.T) {
 		start, end int
 	}{
 		{0, 3},   // "abc"
-		{4, 6},   // "::"
+		{4, 5},   // ":" (first of "::")
+		{5, 6},   // ":" (second of "::")
 		{7, 9},   // "42"
 		{9, 10},  // ";"
 		{10, 10}, // EOF

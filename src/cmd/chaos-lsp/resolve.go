@@ -185,6 +185,15 @@ func (r *resolver) collectOccurrences() {
 			}
 		case *compiler.ParenExpr:
 			walkExpr(e.Inner)
+		case *compiler.StructInitExpr:
+			if e.Type != nil {
+				walkExpr(e.Type)
+			}
+			for _, field := range e.Fields {
+				if field.Value != nil {
+					walkExpr(field.Value)
+				}
+			}
 		}
 	}
 

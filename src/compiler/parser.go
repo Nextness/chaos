@@ -29,7 +29,9 @@ package compiler
 //	unary_expr     = unary_op unary_expr | postfix_expr
 //	postfix_expr   = primary_expr ("(" arg_list? ")")*
 //	arg_list       = expr ("," expr)*
-//	primary_expr   = ident | int | float | string | "true" | "false" | "(" expr ")"
+//	primary_expr   = ident | int | float | string | "true" | "false" | "(" expr ")" | struct_init
+//	struct_init    = (ident ".")? "{" struct_init_field ("," struct_init_field)* "}"
+//	struct_init_field = (ident "=")? expr
 type Parser struct {
 	tokens  TokenList
 	pos     int
@@ -164,6 +166,18 @@ func (p *Parser) atAny(kinds ...TokenKind) bool {
 	return false
 }
 
+// atCompTimeAssign reports whether the next two tokens form '::' (two colons).
+// The tokenizer emits each ':' as a separate TkColon; the compile-time
+// assignment meaning is resolved here at the AST level.
+func (p *Parser) atCompTimeAssign() bool {
+	return p.at(TkColon) && p.peekN(1).Kind == TkColon
+}
+
+// atInfer reports whether the next two tokens form ':=' (colon then assign).
+func (p *Parser) atInfer() bool {
+	return p.at(TkColon) && p.peekN(1).Kind == TkAssign
+}
+
 // match consumes the current token if it matches the given kind and returns
 // true. Returns false without consuming otherwise.
 func (p *Parser) match(kind TokenKind) bool {
@@ -264,13 +278,14 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	// Top-level '#entry name :: proc {...}' is the canonical entry point.
 	// Handle it in both strict and tolerant modes so the CLI accepts it.
 	if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "entry" &&
-		p.peekN(2).Kind == TkIdent && p.peekN(3).Kind == TkCompTimeAssign &&
-		p.peekN(4).Kind == TkProc {
+		p.peekN(2).Kind == TkIdent && p.peekN(3).Kind == TkColon &&
+		p.peekN(4).Kind == TkColon && p.peekN(5).Kind == TkProc {
 		p.bump() // consume '#'
 		p.bump() // consume TkDirec("entry")
 		nameTok := p.bump() // consume the ident
 		name := nameTok.Text()
-		p.bump() // consume '::'
+		p.bump() // consume first ':' of '::'
+		p.bump() // consume second ':' of '::'
 		p.bump() // consume "proc"
 		return p.parseProcDecl(nameTok, name)
 	}
@@ -293,9 +308,10 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	nameTok := p.bump()
 	name := nameTok.Text()
 
-	// Must be followed by :: or : to be a declaration
-	if p.at(TkCompTimeAssign) {
-		p.bump()
+	// Must be followed by ::, :, or := to be a declaration
+	if p.atCompTimeAssign() {
+		p.bump() // consume first ':' of '::'
+		p.bump() // consume second ':' of '::'
 		// Tolerant mode: handle forms the strict parser rejects.
 		if p.tolerant {
 			// ident :: #entry proc {...} — the canonical entry point. Skip
@@ -320,20 +336,14 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		}
 		return p.parseProcOrVarDecl(nameTok, name, true)
 	}
+	if p.atInfer() {
+		p.bump() // consume ':' of ':='
+		p.bump() // consume '=' of ':='
+		return p.parseInferVarDecl(nameTok, name)
+	}
 	if p.at(TkColon) {
 		p.bump()
-		// ident : ...
-		if p.at(TkAssign) {
-			// This is actually ident := (infer), but we consumed : not :=
-			// This shouldn't happen because the tokenizer correctly emits TkInfer
-			p.diags.Error(p.peek().Span, "unexpected '=' after ':', did you mean ':='?", "use ':=' instead of ':' followed by '='")
-			return nil, false
-		}
 		return p.parseTypedVarDecl(nameTok, name)
-	}
-	if p.at(TkInfer) {
-		p.bump()
-		return p.parseInferVarDecl(nameTok, name)
 	}
 
 	// Not a declaration — maybe a reassignment or expression statement
@@ -422,10 +432,21 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 	}
 
 	var init Expr
+	compileTime := false
 	if p.match(TkAssign) {
 		init = p.parseExpr(0)
 		if init == nil {
 			p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
+		}
+	} else if p.at(TkColon) {
+		// name : Type : value — compile-time constant with explicit type.
+		// The second ':' mirrors '::' (compile-time) while keeping the type
+		// explicit instead of inferred.
+		p.bump() // consume ':'
+		compileTime = true
+		init = p.parseExpr(0)
+		if init == nil {
+			p.diags.Error(p.peek().Span, "expected expression after ':'", "add an expression after ':'")
 		}
 	}
 
@@ -443,8 +464,8 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 		Name:        name,
 		DeclType:    typeExpr,
 		Init:        init,
-		Mutable:     true,
-		CompileTime: false,
+		Mutable:     !compileTime,
+		CompileTime: compileTime,
 	}
 	return decl, true
 }
@@ -663,9 +684,19 @@ func (p *Parser) parseIdentStmt() Stmt {
 	name := nameTok.Text()
 
 	switch {
-	case p.at(TkCompTimeAssign):
-		p.bump()
+	case p.atCompTimeAssign():
+		p.bump() // consume first ':' of '::'
+		p.bump() // consume second ':' of '::'
 		decl, ok := p.parseProcOrVarDecl(nameTok, name, true)
+		if !ok {
+			return nil
+		}
+		return decl
+
+	case p.atInfer():
+		p.bump() // consume ':' of ':='
+		p.bump() // consume '=' of ':='
+		decl, ok := p.parseInferVarDecl(nameTok, name)
 		if !ok {
 			return nil
 		}
@@ -674,14 +705,6 @@ func (p *Parser) parseIdentStmt() Stmt {
 	case p.at(TkColon):
 		p.bump()
 		decl, ok := p.parseTypedVarDecl(nameTok, name)
-		if !ok {
-			return nil
-		}
-		return decl
-
-	case p.at(TkInfer):
-		p.bump()
-		decl, ok := p.parseInferVarDecl(nameTok, name)
 		if !ok {
 			return nil
 		}
@@ -1066,7 +1089,20 @@ func (p *Parser) parseAtom() Expr {
 			p.bump() // consume "("
 			return p.parseCallArgs(ident, tok.Span)
 		}
+		// Struct literal with explicit type: TypeName.{...}
+		if p.at(TkDot) && p.peekN(1).Kind == TkLBrace {
+			p.bump() // consume "."
+			return p.parseStructInit(ident, tok.Span)
+		}
 		return ident
+
+	case TkDot:
+		// Struct literal with inferred type: .{...}
+		if p.peekN(1).Kind == TkLBrace {
+			p.bump() // consume "."
+			return p.parseStructInit(nil, tok.Span)
+		}
+		return nil
 
 	case TkLParen:
 		p.bump() // consume "("
@@ -1113,6 +1149,82 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 		Func:  fn,
 		Args:  args,
 	}
+}
+
+// parseStructInit parses the "{ field=value, ... }" part of a struct literal
+// after the "." has been consumed. typeName is nil for inferred literals
+// (.{...}). Fields may be named (field=value) or positional, in any order;
+// ordering and field-existence validation is left to a later type-checking
+// pass.
+func (p *Parser) parseStructInit(typeName Expr, dotSpan Span) Expr {
+	if !p.at(TkLBrace) {
+		p.diags.Error(p.peek().Span, "expected '{' after '.' in struct literal", "add a '{' block for the struct fields")
+		return &ErrorExpr{Span_: dotSpan}
+	}
+	openTok := p.bump() // consume "{"
+
+	var fields []StructInitField
+	for !p.at(TkRBrace) && !p.at(TkEOF) {
+		before := p.pos
+		field, ok := p.parseStructInitField()
+		if ok {
+			fields = append(fields, field)
+		}
+		// Guarantee forward motion on malformed fields.
+		if p.pos == before && p.peek().Kind != TkRBrace && p.peek().Kind != TkEOF {
+			p.bump()
+		}
+		if !p.at(TkComma) {
+			break
+		}
+		commaTok := p.bump()
+		if p.at(TkRBrace) {
+			p.diags.Error(commaTok.Span, "trailing comma in struct literal", "remove the trailing comma")
+			break
+		}
+	}
+	closeTok := p.expect(TkRBrace)
+
+	start := dotSpan.Start
+	if typeName != nil {
+		start = typeName.nodeSpan().Start
+	}
+	return &StructInitExpr{
+		Span_:  Span{File: openTok.Span.File, Start: start, End: closeTok.Span.End},
+		Type:   typeName,
+		Fields: fields,
+	}
+}
+
+// parseStructInitField parses a single struct literal entry: "name=value" or
+// a positional value.
+func (p *Parser) parseStructInitField() (StructInitField, bool) {
+	// Named field: ident "=" expr
+	if p.at(TkIdent) && p.peekN(1).Kind == TkAssign {
+		nameTok := p.bump()
+		p.bump() // consume "="
+		value := p.parseExpr(0)
+		if value == nil {
+			p.diags.Error(p.peek().Span, "expected value after '=' in struct literal", "add a value after '='")
+			return StructInitField{Span_: nameTok.Span, Name: nameTok.Text()}, true
+		}
+		return StructInitField{
+			Span_: spanUnion(nameTok.Span, value.nodeSpan()),
+			Name:  nameTok.Text(),
+			Value: value,
+		}, true
+	}
+
+	// Positional value
+	value := p.parseExpr(0)
+	if value == nil {
+		p.diags.Error(p.peek().Span, "expected field value in struct literal", "add a field value")
+		return StructInitField{}, false
+	}
+	return StructInitField{
+		Span_: value.nodeSpan(),
+		Value: value,
+	}, true
 }
 
 // tokToBinaryOp maps a token kind to a BinaryOp, or -1 if not a binary op.

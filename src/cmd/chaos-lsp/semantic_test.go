@@ -163,3 +163,36 @@ func TestSemanticTokensUndeclaredTypeNotHighlighted(t *testing.T) {
 		t.Errorf("semantic data = %v, want %v", got, want)
 	}
 }
+
+func TestSemanticTokensStructInitTypeHighlighted(t *testing.T) {
+	// The type name in an explicit struct literal (TypeName.{...}) must be
+	// highlighted as a type. Field names are not highlighted; field values are.
+	source := "Something_New :: struct {\n    field1: String;\n    field2: U64;\n    field3: Bool;\n}\nmain :: proc {\n    x := Something_New.{field1=«hello», field2=10, field3=true};\n}"
+	want := []int{
+		0, 0, 13, semTypeType, 0, // Something_New (struct decl)
+		0, 17, 6, semTypeKeyword, 0, // struct
+		0, 7, 1, semTypeDelimiter, 0, // {
+		1, 4, 6, semTypeVariable, 0, // field1
+		0, 8, 6, semTypeType, 0, // String
+		1, 4, 6, semTypeVariable, 0, // field2
+		0, 8, 3, semTypeType, 0, // U64
+		1, 4, 6, semTypeVariable, 0, // field3
+		0, 8, 4, semTypeType, 0, // Bool
+		1, 0, 1, semTypeDelimiter, 0, // }
+		1, 0, 4, semTypeFunction, 0, // main
+		0, 8, 4, semTypeKeyword, 0, // proc
+		0, 5, 1, semTypeDelimiter, 0, // {
+		1, 4, 1, semTypeVariable, 0, // x
+		0, 5, 13, semTypeType, 0, // Something_New (struct literal type)
+		0, 14, 1, semTypeDelimiter, 0, // {
+		0, 8, 7, semTypeString, 0, // «hello»
+		0, 16, 2, semTypeNumber, 0, // 10
+		0, 11, 4, semTypeKeyword, 0, // true
+		0, 4, 1, semTypeDelimiter, 0, // }
+		1, 0, 1, semTypeDelimiter, 0, // }
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}

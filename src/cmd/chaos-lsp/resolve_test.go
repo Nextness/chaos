@@ -182,3 +182,23 @@ func TestStructFieldDefinitionAndReferences(t *testing.T) {
 		t.Fatalf("references for field1 = %d, want 1", len(occs))
 	}
 }
+
+func TestDefinitionResolvesInsideStructLiteral(t *testing.T) {
+	// Identifiers used as struct literal field values must be collected as
+	// occurrences so definition/references work on them.
+	source := "Something_New :: struct {\n\tfield1: String;\n}\nmain :: proc {\n\tx := 42;\n\ty := Something_New.{field1=x};\n}"
+	r := buildResolverFor(t, source)
+
+	xRef := offsetOf(t, source, "field1=x") + len("field1=")
+	sym := r.definitionAt(xRef)
+	if sym == nil || sym.name != "x" || sym.varDecl == nil {
+		t.Fatalf("definition of x ref inside struct literal = %+v, want local VarDecl x", sym)
+	}
+
+	// The struct literal type name resolves to the struct declaration.
+	typeRef := offsetOf(t, source, "Something_New.{")
+	sym = r.definitionAt(typeRef)
+	if sym == nil || sym.name != "Something_New" || sym.structDecl == nil {
+		t.Fatalf("definition of struct literal type = %+v, want struct symbol", sym)
+	}
+}
