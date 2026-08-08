@@ -1,0 +1,6 @@
+// expect-exit: 3
+// expect-stderr: boom
+// exit: message is written to stderr before exiting with the status.
+#entry main :: proc {
+    exit 3, «boom»;
+}

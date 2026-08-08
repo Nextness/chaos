@@ -1,0 +1,8 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      ReturnStmt Int(42)

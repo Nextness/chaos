@@ -1,0 +1,10 @@
+// expect-exit: 11
+// Structs: literal construction, copy, and equality.
+Point :: struct { x: S64; y: S64; }
+
+#entry main :: proc -> S64 {
+    p: Point = .{x=1, y=2};
+    q: Point = .{x=1, y=2};
+    if p == q { return 11; }
+    return 0;
+}

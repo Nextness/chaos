@@ -1,0 +1,12 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl s = String("hello") [mutable=true compileTime=false]
+      IfStmt condition=Binary(&& Binary(== Ident(s) String("hello")) Binary(< Ident(s) String("world")))
+        Block
+          ReturnStmt Int(6)
+      ReturnStmt Int(0)

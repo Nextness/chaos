@@ -1,0 +1,9 @@
+// expect-exit: 4
+// Floats: F64 constants, arithmetic, and comparison.
+#entry main :: proc -> S64 {
+    x: F64 = 2.5;
+    y: F64 = 1.5;
+    z := x + y;
+    if z > 3.0 && z < 5.0 { return 4; }
+    return 0;
+}

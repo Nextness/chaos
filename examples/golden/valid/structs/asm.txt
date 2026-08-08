@@ -1,0 +1,89 @@
+format ELF64 executable 3
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 160
+L0:
+    mov rax, 1
+    mov qword [rbp-40], rax
+    mov rax, 2
+    mov qword [rbp-48], rax
+    lea rdi, [rbp-64]
+    xor eax, eax
+    mov rcx, 16
+    cld
+    rep stosb
+    mov rax, qword [rbp-40]
+    mov qword [rbp-64], rax
+    mov rax, qword [rbp-48]
+    mov qword [rbp-56], rax
+    lea rsi, [rbp-64]
+    lea rdi, [rbp-16]
+    mov rcx, 16
+    cld
+    rep movsb
+    mov rax, 1
+    mov qword [rbp-72], rax
+    mov rax, 2
+    mov qword [rbp-80], rax
+    lea rdi, [rbp-96]
+    xor eax, eax
+    mov rcx, 16
+    cld
+    rep stosb
+    mov rax, qword [rbp-72]
+    mov qword [rbp-96], rax
+    mov rax, qword [rbp-80]
+    mov qword [rbp-88], rax
+    lea rsi, [rbp-96]
+    lea rdi, [rbp-32]
+    mov rcx, 16
+    cld
+    rep movsb
+    lea rsi, [rbp-16]
+    lea rdi, [rbp-112]
+    mov rcx, 16
+    cld
+    rep movsb
+    lea rsi, [rbp-32]
+    lea rdi, [rbp-128]
+    mov rcx, 16
+    cld
+    rep movsb
+    lea rsi, [rbp-112]
+    lea rdi, [rbp-128]
+    mov rcx, 16
+    cld
+    repe cmpsb
+    sete al
+    mov byte [rbp-129], al
+    movzx rax, byte [rbp-129]
+    test al, al
+    jnz L1
+    jmp L2
+L1:
+    mov rax, 11
+    mov qword [rbp-144], rax
+    mov rax, qword [rbp-144]
+    leave
+    ret
+L2:
+    jmp L3
+L3:
+    mov rax, 0
+    mov qword [rbp-152], rax
+    mov rax, qword [rbp-152]
+    leave
+    ret
+

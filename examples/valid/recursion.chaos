@@ -1,0 +1,10 @@
+// expect-exit: 120
+// Recursion: factorial computed through a recursive procedure call.
+fact :: proc (n: S64) -> S64 {
+    if n <= 1 { return 1; }
+    return n * fact(n - 1);
+}
+
+#entry main :: proc -> S64 {
+    return fact(5);
+}

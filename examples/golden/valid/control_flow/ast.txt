@@ -1,0 +1,19 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl x: Ident(S64) = Int(2) [mutable=true compileTime=false]
+      VarDecl r: Ident(S64) = Int(0) [mutable=true compileTime=false]
+      IfStmt condition=Binary(== Ident(x) Int(1))
+        Block
+          AssignStmt r = Int(10)
+      Elif condition=Binary(== Ident(x) Int(2))
+        Block
+          AssignStmt r = Int(20)
+      Else
+        Block
+          AssignStmt r = Int(30)
+      ReturnStmt Ident(r)

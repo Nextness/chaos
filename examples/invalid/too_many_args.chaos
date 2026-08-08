@@ -1,0 +1,10 @@
+// expect-stage: emit
+// expect-error: calls with more than 6 integer arguments are not yet supported
+// The backend has no stack-based argument passing yet.
+#entry main :: proc -> S64 {
+    return sum(1, 2, 3, 4, 5, 6, 7);
+}
+
+sum :: proc (a: S64, b: S64, c: S64, d: S64, e: S64, f: S64, g: S64) -> S64 {
+    return a + b + c + d + e + f + g;
+}

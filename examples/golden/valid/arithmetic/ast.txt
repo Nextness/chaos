@@ -1,0 +1,11 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl x: Ident(S64) = Int(10) [mutable=true compileTime=false]
+      VarDecl y: Ident(S64) = Int(2) [mutable=true compileTime=false]
+      VarDecl z = Binary(% Binary(/ Binary(* Paren(Binary(+ Ident(x) Ident(y))) Int(3)) Int(4)) Int(5)) [mutable=true compileTime=false]
+      ReturnStmt Ident(z)

@@ -1,0 +1,5 @@
+MIR
+  Function main() -> S64
+    bb0:
+      v0:S64 = const 42
+      return v0

@@ -1,0 +1,16 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  StructDecl Point
+    Field x: Ident(S64)
+    Field y: Ident(S64)
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl p: Ident(Point) = StructInit(inferred, x=Int(1), y=Int(2)) [mutable=true compileTime=false]
+      VarDecl q: Ident(Point) = StructInit(inferred, x=Int(1), y=Int(2)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(== Ident(p) Ident(q))
+        Block
+          ReturnStmt Int(11)
+      ReturnStmt Int(0)

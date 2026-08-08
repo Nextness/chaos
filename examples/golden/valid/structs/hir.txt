@@ -1,0 +1,12 @@
+HIR
+  Struct Point
+    Field x: S64
+    Field y: S64
+  Proc main() -> S64
+    Block
+      VarDecl p: Point = StructInit(Point, x=Int(1), y=Int(2)) [mutable=true compileTime=false]
+      VarDecl q: Point = StructInit(Point, x=Int(1), y=Int(2)) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(p) Ident(q))
+        Block
+          Return Int(11)
+      Return Int(0)

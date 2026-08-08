@@ -1,0 +1,10 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  VarDecl A = Int(3) [mutable=false compileTime=true]
+  VarDecl B = Binary(+ Ident(A) Int(4)) [mutable=false compileTime=true]
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      ReturnStmt Ident(B)

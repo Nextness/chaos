@@ -1,0 +1,2 @@
+[ERROR] 8:1:unterminated_comment.chaos - unterminated block comment
+ -> add a closing '**/' to end the comment

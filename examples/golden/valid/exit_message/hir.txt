@@ -1,0 +1,4 @@
+HIR
+  Proc main()
+    Block
+      Exit status=Int(3) message=String("boom")

@@ -1,0 +1,10 @@
+HIR
+  Proc fact(n: S64) -> S64
+    Block
+      If condition=Binary(<= Ident(n) Int(1))
+        Block
+          Return Int(1)
+      Return Binary(* Ident(n) Call(fact, Binary(- Ident(n) Int(1))))
+  Proc main() -> S64
+    Block
+      Return Call(fact, Int(5))

@@ -1,0 +1,22 @@
+MIR
+  Function main() -> S64
+    Local l0: S64
+    Local l1: S64
+    Local l2: S64
+    bb0:
+      v0:S64 = const 10
+      store.local v0 l0
+      v1:S64 = const 2
+      store.local v1 l1
+      v2:S64 = load.local l0
+      v3:S64 = load.local l1
+      v4:S64 = add v2 v3
+      v5:S64 = const 3
+      v6:S64 = mul v4 v5
+      v7:S64 = const 4
+      v8:S64 = div v6 v7
+      v9:S64 = const 5
+      v10:S64 = mod v8 v9
+      store.local v10 l2
+      v11:S64 = load.local l2
+      return v11

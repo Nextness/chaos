@@ -1,0 +1,3 @@
+[ERROR] 4:8:f128_unsupported.chaos - float type F128 is not yet supported by the fasm backend
+ #entry main :: proc -> S64 {
+        ^^^^^^^^^^^^^^^^^^^^^ -> use F32 or F64

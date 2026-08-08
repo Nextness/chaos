@@ -1,0 +1,9 @@
+// expect-exit: 4
+// Integer arithmetic: every binary operator, precedence, and grouping.
+// (10 + 2) * 3 / 4 = 9; 9 % 5 = 4.
+#entry main :: proc -> S64 {
+    x: S64 = 10;
+    y: S64 = 2;
+    z := (x + y) * 3 / 4 % 5;
+    return z;
+}

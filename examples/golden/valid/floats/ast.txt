@@ -1,0 +1,14 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl x: Ident(F64) = Float(2.5) [mutable=true compileTime=false]
+      VarDecl y: Ident(F64) = Float(1.5) [mutable=true compileTime=false]
+      VarDecl z = Binary(+ Ident(x) Ident(y)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(&& Binary(> Ident(z) Float(3.0)) Binary(< Ident(z) Float(5.0)))
+        Block
+          ReturnStmt Int(4)
+      ReturnStmt Int(0)

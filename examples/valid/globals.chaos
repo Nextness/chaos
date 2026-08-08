@@ -1,0 +1,8 @@
+// expect-exit: 7
+// Globals: compile-time initializers, including references to other globals.
+A :: 3;
+B :: A + 4;
+
+#entry main :: proc -> S64 {
+    return B;
+}

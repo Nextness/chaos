@@ -1,0 +1,8 @@
+// expect-exit: 20
+// Branching: if, elif, else chains select a result.
+#entry main :: proc -> S64 {
+    x: S64 = 2;
+    r: S64 = 0;
+    if x == 1 { r = 10; } elif x == 2 { r = 20; } else { r = 30; }
+    return r;
+}

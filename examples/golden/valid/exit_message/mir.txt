@@ -1,0 +1,6 @@
+MIR
+  Function main()
+    bb0:
+      v0:S64 = const 3
+      v1:String = const "boom"
+      exit status=v0 message=v1

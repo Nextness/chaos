@@ -1,0 +1,37 @@
+format ELF64 executable 3
+
+segment readable writable
+str0:
+    db 0x62,0x6f,0x6f,0x6d
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f_main
+    xor edi, edi
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 32
+L0:
+    mov rax, 3
+    mov qword [rbp-8], rax
+    mov rax, str0
+    mov qword [rbp-32], rax
+    mov rax, 4
+    mov qword [rbp-32+8], rax
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, qword [rbp-32]
+    mov rdx, qword [rbp-32+8]
+    syscall
+    mov rax, qword [rbp-8]
+    mov rdi, rax
+    mov rax, 60
+    syscall
+

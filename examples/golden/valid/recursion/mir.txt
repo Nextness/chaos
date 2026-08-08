@@ -1,0 +1,26 @@
+MIR
+  Function fact(l0: S64) -> S64
+    Local l0: S64 (param)
+    bb0:
+      v0:S64 = load.local l0
+      v1:S64 = const 1
+      v2:Bool = cmp.le v0 v1
+      branch v2, bb1, bb2
+    bb1:
+      v3:S64 = const 1
+      return v3
+    bb2:
+      jump bb3
+    bb3:
+      v4:S64 = load.local l0
+      v5:S64 = load.local l0
+      v6:S64 = const 1
+      v7:S64 = sub v5 v6
+      v8:S64 = call v7 fact
+      v9:S64 = mul v4 v8
+      return v9
+  Function main() -> S64
+    bb0:
+      v0:S64 = const 5
+      v1:S64 = call v0 fact
+      return v1

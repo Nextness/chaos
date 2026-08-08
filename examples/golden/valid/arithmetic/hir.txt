@@ -1,0 +1,7 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl x: S64 = Int(10) [mutable=true compileTime=false]
+      VarDecl y: S64 = Int(2) [mutable=true compileTime=false]
+      VarDecl z: S64 = Binary(% Binary(/ Binary(* Binary(+ Ident(x) Ident(y)) Int(3)) Int(4)) Int(5)) [mutable=true compileTime=false]
+      Return Ident(z)

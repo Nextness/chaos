@@ -1,0 +1,4 @@
+HIR
+  Proc main() -> S64
+    Block
+      Return Int(42)

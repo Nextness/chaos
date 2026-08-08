@@ -1,0 +1,18 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl x: Ident(S128) = Unary(- Int(100)) [mutable=true compileTime=false]
+      VarDecl y = Call(Ident(negate), Unary(- Int(7))) [mutable=true compileTime=false]
+      IfStmt condition=Binary(&& Binary(== Ident(x) Unary(- Int(100))) Binary(== Ident(y) Int(7)))
+        Block
+          ReturnStmt Int(35)
+      ReturnStmt Int(0)
+  ProcDecl negate
+    Param v: Ident(S64)
+    Results: Ident(S64)
+    Block
+      ReturnStmt Unary(- Ident(v))

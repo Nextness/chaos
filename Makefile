@@ -3,7 +3,7 @@
 # Builds the `chaosc` compiler binary and the `chaos-lsp` language server
 # binary into ./build.
 
-.PHONY: all test vet clean
+.PHONY: all test vet e2e clean
 
 all: build/chaosc build/chaos-lsp
 
@@ -22,6 +22,9 @@ test: $(SRC)
 
 vet: $(SRC)
 	go vet -C src ./...
+
+e2e: $(SRC) examples/go.mod
+	go test -C examples ./...
 
 clean:
 	rm -rf build

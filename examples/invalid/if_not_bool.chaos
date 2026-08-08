@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: if condition must be Bool
+// An if condition must be Bool; an integer is rejected by the type checker.
+#entry main :: proc -> S64 {
+    if 10 { return 1; }
+    return 0;
+}

@@ -1,0 +1,51 @@
+format ELF64 executable 3
+
+segment readable writable
+g_A:
+    rb 8
+g_B:
+    rb 8
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f___global_init
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+L0:
+    mov rax, qword [g_B]
+    mov qword [rbp-8], rax
+    mov rax, qword [rbp-8]
+    leave
+    ret
+
+f___global_init:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 32
+L1:
+    mov rax, 3
+    mov qword [rbp-8], rax
+    mov rax, qword [rbp-8]
+    mov qword [g_A], rax
+    mov rax, qword [g_A]
+    mov qword [rbp-16], rax
+    mov rax, 4
+    mov qword [rbp-24], rax
+    mov rax, qword [rbp-16]
+    add rax, qword [rbp-24]
+    mov qword [rbp-32], rax
+    mov rax, qword [rbp-32]
+    mov qword [g_B], rax
+    leave
+    ret
+

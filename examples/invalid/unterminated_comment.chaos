@@ -1,0 +1,7 @@
+// expect-stage: tokenize
+// expect-error: unterminated block comment
+// An unterminated block comment must be caught by the tokenizer.
+#entry main :: proc -> S64 {
+    /** never closed
+    return 0;
+}

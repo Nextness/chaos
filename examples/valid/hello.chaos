@@ -1,0 +1,5 @@
+// expect-exit: 42
+// Minimal program: the entry procedure returns a constant exit status.
+#entry main :: proc -> S64 {
+    return 42;
+}

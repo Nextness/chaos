@@ -1,0 +1,16 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl fact
+    Param n: Ident(S64)
+    Results: Ident(S64)
+    Block
+      IfStmt condition=Binary(<= Ident(n) Int(1))
+        Block
+          ReturnStmt Int(1)
+      ReturnStmt Binary(* Ident(n) Call(Ident(fact), Binary(- Ident(n) Int(1))))
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      ReturnStmt Call(Ident(fact), Int(5))

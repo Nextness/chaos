@@ -1,0 +1,10 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl x: F64 = Float(2.5) [mutable=true compileTime=false]
+      VarDecl y: F64 = Float(1.5) [mutable=true compileTime=false]
+      VarDecl z: F64 = Binary(+ Ident(x) Ident(y)) [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(> Ident(z) Float(3.0)) Binary(< Ident(z) Float(5.0)))
+        Block
+          Return Int(4)
+      Return Int(0)

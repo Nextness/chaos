@@ -1,0 +1,8 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl s: String = String("hello") [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(== Ident(s) String("hello")) Binary(< Ident(s) String("world")))
+        Block
+          Return Int(6)
+      Return Int(0)

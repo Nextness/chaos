@@ -1,0 +1,122 @@
+format ELF64 executable 3
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 192
+L0:
+    mov rax, 100
+    mov qword [rbp-48], rax
+    sar rax, 63
+    mov qword [rbp-48+8], rax
+    mov rax, qword [rbp-48]
+    mov rdx, qword [rbp-48+8]
+    neg rax
+    adc rdx, 0
+    neg rdx
+    mov qword [rbp-64], rax
+    mov qword [rbp-64+8], rdx
+    lea rsi, [rbp-64]
+    lea rdi, [rbp-16]
+    mov rcx, 16
+    cld
+    rep movsb
+    mov rax, 7
+    mov qword [rbp-72], rax
+    mov rax, qword [rbp-72]
+    neg rax
+    mov qword [rbp-80], rax
+    mov rax, qword [rbp-80]
+    mov rdi, rax
+    call f_negate
+    mov qword [rbp-88], rax
+    mov rax, qword [rbp-88]
+    mov qword [rbp-24], rax
+    lea rsi, [rbp-16]
+    lea rdi, [rbp-112]
+    mov rcx, 16
+    cld
+    rep movsb
+    mov rax, 100
+    mov qword [rbp-128], rax
+    sar rax, 63
+    mov qword [rbp-128+8], rax
+    mov rax, qword [rbp-128]
+    mov rdx, qword [rbp-128+8]
+    neg rax
+    adc rdx, 0
+    neg rdx
+    mov qword [rbp-144], rax
+    mov qword [rbp-144+8], rdx
+    mov r8, qword [rbp-112]
+    mov r9, qword [rbp-112+8]
+    mov r10, qword [rbp-144]
+    mov r11, qword [rbp-144+8]
+    cmp r9, r11
+    jne L5
+    cmp r8, r10
+    jne L5
+    jmp L4
+L4:
+    mov rax, 1
+    jmp L6
+L5:
+    mov rax, 0
+L6:
+    mov byte [rbp-145], al
+    mov rax, qword [rbp-24]
+    mov qword [rbp-160], rax
+    mov rax, 7
+    mov qword [rbp-168], rax
+    mov rax, qword [rbp-160]
+    cmp rax, qword [rbp-168]
+    sete al
+    mov byte [rbp-169], al
+    movzx rax, byte [rbp-145]
+    and al, byte [rbp-169]
+    mov byte [rbp-170], al
+    movzx rax, byte [rbp-170]
+    test al, al
+    jnz L1
+    jmp L2
+L1:
+    mov rax, 35
+    mov qword [rbp-184], rax
+    mov rax, qword [rbp-184]
+    leave
+    ret
+L2:
+    jmp L3
+L3:
+    mov rax, 0
+    mov qword [rbp-192], rax
+    mov rax, qword [rbp-192]
+    leave
+    ret
+
+f_negate:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 32
+    mov rax, rdi
+    mov qword [rbp-8], rax
+L7:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-16], rax
+    mov rax, qword [rbp-16]
+    neg rax
+    mov qword [rbp-24], rax
+    mov rax, qword [rbp-24]
+    leave
+    ret
+

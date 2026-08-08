@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: call to unknown procedure
+// Calling a procedure that was never declared is a type error.
+#entry main :: proc -> S64 {
+    return frobnicate(1);
+}

@@ -1,0 +1,15 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl x: S64 = Int(2) [mutable=true compileTime=false]
+      VarDecl r: S64 = Int(0) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(x) Int(1))
+        Block
+          Assign r = Int(10)
+      Elif condition=Binary(== Ident(x) Int(2))
+        Block
+          Assign r = Int(20)
+      Else
+        Block
+          Assign r = Int(30)
+      Return Ident(r)

@@ -1,0 +1,7 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Block
+      ExitStmt status=Int(3) message=String("boom")

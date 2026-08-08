@@ -1,0 +1,23 @@
+format ELF64 executable 3
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+L0:
+    mov rax, 42
+    mov qword [rbp-8], rax
+    mov rax, qword [rbp-8]
+    leave
+    ret
+

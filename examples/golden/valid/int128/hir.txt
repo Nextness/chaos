@@ -1,0 +1,11 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl x: U128 = Int(100) [mutable=true compileTime=false]
+      VarDecl y: U128 = Int(7) [mutable=true compileTime=false]
+      VarDecl q: U128 = Binary(/ Ident(x) Ident(y)) [mutable=true compileTime=false]
+      VarDecl r: U128 = Binary(% Ident(x) Ident(y)) [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(== Ident(q) Int(14)) Binary(== Ident(r) Int(2)))
+        Block
+          Return Int(18)
+      Return Int(0)

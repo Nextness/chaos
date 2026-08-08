@@ -1,0 +1,12 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl x: S128 = Unary(- Int(100)) [mutable=true compileTime=false]
+      VarDecl y: S64 = Call(negate, Unary(- Int(7))) [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(== Ident(x) Unary(- Int(100))) Binary(== Ident(y) Int(7)))
+        Block
+          Return Int(35)
+      Return Int(0)
+  Proc negate(v: S64) -> S64
+    Block
+      Return Unary(- Ident(v))

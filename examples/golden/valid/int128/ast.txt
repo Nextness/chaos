@@ -1,0 +1,15 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl x: Ident(U128) = Int(100) [mutable=true compileTime=false]
+      VarDecl y: Ident(U128) = Int(7) [mutable=true compileTime=false]
+      VarDecl q = Binary(/ Ident(x) Ident(y)) [mutable=true compileTime=false]
+      VarDecl r = Binary(% Ident(x) Ident(y)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(&& Binary(== Ident(q) Int(14)) Binary(== Ident(r) Int(2)))
+        Block
+          ReturnStmt Int(18)
+      ReturnStmt Int(0)

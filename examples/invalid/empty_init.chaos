@@ -1,0 +1,7 @@
+// expect-stage: parse
+// expect-error: expected expression after ':='
+// An empty initializer is a parse error, not a type error.
+#entry main :: proc -> S64 {
+    x := ;
+    return 0;
+}

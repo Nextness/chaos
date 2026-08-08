@@ -1,0 +1,10 @@
+// expect-exit: 18
+// 128-bit integers: division and modulo across the full width.
+#entry main :: proc -> S64 {
+    x: U128 = 100;
+    y: U128 = 7;
+    q := x / y;
+    r := x % y;
+    if q == 14 && r == 2 { return 18; }
+    return 0;
+}

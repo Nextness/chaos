@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: cannot assign S64 to String
+// Assigning an integer to a String-typed variable is a type error.
+#entry main :: proc -> S64 {
+    x: String = 5;
+    return 0;
+}
