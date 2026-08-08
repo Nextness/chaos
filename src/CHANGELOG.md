@@ -5,11 +5,39 @@ listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.6.0`.
+- The current version is `0.7.0`.
 - Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
+
+## 0.7.0 - 2026-08-08
+
+### Added
+
+- A backend interface (`backend.go`) that consumes a verified MIR program and
+  emits target assembly, so multiple backends (fasm, gas, nasm, ...) can
+  share the same lowering pipeline.
+- A fasm backend (`fasm.go`) that emits flat ELF64 executables using the
+  System V AMD64 calling convention. It supports integer types S8-S64 and
+  U8-U64 (plus Size and Byte), Bool, and F64, with const, local/global
+  load-store, arithmetic, signed and unsigned comparisons, logical
+  operators, calls, return, branch/jump, exit, and a process-entry wrapper
+  that calls the `#entry` procedure and exits with its result.
+- `#entry` tracking: the parser records the entry procedure name on the AST,
+  and it is propagated through the HIR and MIR so the backend can select the
+  entry point.
+- The `chaosc` CLI gained an `-asm` flag that emits fasm assembly for a
+  cleanly type-checked program. Program output (dump, IR, assembly) now goes
+  to stdout while diagnostics go to stderr.
+- Unit tests for the fasm emitter, including runtime tests that assemble
+  emitted programs with fasm and check their exit codes (skipped when fasm
+  is not installed).
+
+### Changed
+
+- `chaosc`'s `run` function now takes separate writers for diagnostics and
+  program output.
 
 ## 0.6.0 - 2026-08-08
 

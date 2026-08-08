@@ -18,17 +18,25 @@ func LowerToMIR(hir *HIR) (*MIRProgram, DiagnosticList) {
 			Name:    g.Name,
 			Type:    g.Type,
 			Mutable: g.Mutable,
+			HasInit: g.Init != nil,
 			Span:    g.Span,
 		})
 	}
 	for _, p := range hir.Procs {
 		ml.lowerFunction(p)
 	}
+	entry := NoSymbol
+	if hir.Entry != "" {
+		if sym, ok := hir.Symbols.ByName(hir.Entry); ok {
+			entry = sym
+		}
+	}
 	return &MIRProgram{
 		Symbols:   hir.Symbols,
 		Types:     hir.Types,
 		Functions: ml.functions,
 		Globals:   ml.globals,
+		Entry:     entry,
 	}, ml.diags
 }
 

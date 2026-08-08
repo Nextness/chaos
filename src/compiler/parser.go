@@ -287,6 +287,7 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		p.bump() // consume first ':' of '::'
 		p.bump() // consume second ':' of '::'
 		p.bump() // consume "proc"
+		p.program.Entry = name
 		return p.parseProcDecl(nameTok, name)
 	}
 
@@ -322,6 +323,7 @@ func (p *Parser) parseDecl() (Decl, bool) {
 				p.bump() // consume TkDirec("entry")
 				if p.at(TkProc) {
 					p.bump() // consume "proc"
+					p.program.Entry = name
 					return p.parseProcDecl(nameTok, name)
 				}
 				p.skipToMatchedBraces()

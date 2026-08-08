@@ -25,6 +25,7 @@ func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 	}
 	l.hir.Symbols = l.symbols
 	l.hir.Types = l.types
+	l.hir.Entry = program.Entry
 	l.lowerProgram(program)
 	return l.hir, l.diags
 }

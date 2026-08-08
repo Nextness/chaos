@@ -397,8 +397,11 @@ func (p Param) nodeSpan() Span {
 }
 
 // Program is the root of the AST. It holds a list of top-level declarations.
+// Entry is the name of the procedure selected by a '#entry' directive, or ""
+// when the source declares no entry point.
 type Program struct {
 	Decls []Decl
+	Entry string
 }
 
 func (p *Program) nodeSpan() Span {

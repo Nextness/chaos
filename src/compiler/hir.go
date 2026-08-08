@@ -6,13 +6,16 @@
 // structured (blocks, if/elif/else) and every node keeps its source Span.
 package compiler
 
-// HIR is the root of the typed, source-close IR.
+// HIR is the root of the typed, source-close IR. Entry is the name of the
+// procedure selected by a '#entry' directive, or "" when the source declares
+// no entry point.
 type HIR struct {
 	Symbols *SymbolTable
 	Types   *TypeTable
 	Structs []*HIRStruct
 	Globals []*HIRGlobal
 	Procs   []*HIRProc
+	Entry   string
 }
 
 // HIRStruct is a resolved struct type declaration.
