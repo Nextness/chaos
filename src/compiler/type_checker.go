@@ -399,18 +399,20 @@ func (tc *TypeChecker) operandsCompatible(left Expr, lt Type, right Expr, rt Typ
 }
 
 // isLiteral reports whether an expression is a literal that can adapt to a
-// target type.
+// target type. A negated literal (for example -7) is treated as a literal too.
 func isLiteral(e Expr) bool {
-	switch e.(type) {
+	switch n := e.(type) {
 	case *IntExpr, *FloatExpr, *StringExpr, *BoolExpr:
 		return true
+	case *UnaryExpr:
+		return n.Op == UnaryOpNeg && isLiteral(n.Operand)
 	}
 	return false
 }
 
 // literalCompatible reports whether a literal can be assigned to a target type.
 func literalCompatible(lit Expr, target Type) bool {
-	switch lit.(type) {
+	switch n := lit.(type) {
 	case *IntExpr:
 		return isIntegerType(target)
 	case *FloatExpr:
@@ -419,6 +421,8 @@ func literalCompatible(lit Expr, target Type) bool {
 		return target == TypeString
 	case *BoolExpr:
 		return target == TypeBool
+	case *UnaryExpr:
+		return n.Op == UnaryOpNeg && literalCompatible(n.Operand, target)
 	}
 	return false
 }

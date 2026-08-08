@@ -12,6 +12,14 @@
 // their fields. Struct parameters are passed by address and struct results
 // are returned through a hidden pointer in RDI (sret). Global initializers
 // run in a synthetic function called before the entry procedure.
+//
+// F16 and F128 are deliberately NOT supported here. The front end accepts
+// them as valid float types, but this backend has no correct code generation
+// for either width (see checkSupportedTypes for the full rationale): F16 has
+// no native x86-64 arithmetic (it needs F16C conversion instructions or
+// software emulation), and F128 would require a full software floating-point
+// library. Rather than silently emit F64 code with wrong precision, the
+// backend rejects them with a diagnostic.
 package compiler
 
 import (
@@ -71,7 +79,71 @@ type floatConstKey struct {
 	size int
 }
 
+// checkSupportedTypes reports a diagnostic for float types the backend does
+// not implement. F16 and F128 are accepted by the front end but have no
+// x86-64 storage or arithmetic here; emitting them as F64 would silently
+// change their semantics, so the backend rejects them instead.
+//
+// Why F16 and F128 are unsupported:
+//
+//   - Every float code path in this backend branches on "F32" vs everything
+//     else (floatSuffix, floatMemSize, sizeOf, emitLoad/emitStore/emitCmp,
+//     emitConst, emitNeg, and the argument ABI). F16 and F128 would fall
+//     through to the F64 path, which is the wrong size: F16 stores in 2
+//     bytes, F128 in 16 bytes.
+//   - F16 has no native x86-64 arithmetic. SSE has single (addss) and double
+//     (addsd) precision only. Half-precision needs the optional F16C
+//     extension (vcvtph2ps/vcvtps2ph) plus conversion around every
+//     operation, or software emulation on CPUs without F16C.
+//   - F128 has no SSE support at all. The x87 long double is 80-bit, not
+//     128-bit, so quad precision needs a full software floating-point
+//     library: add/sub/mul/div, comparisons, rounding, and conversions over
+//     a 128-bit payload. This is the same class of work as the 128-bit
+//     integer support (emitArith128/emitDivMod128), but larger because of
+//     IEEE rounding and special values (NaN, infinity, subnormals).
+//
+// Implementing F16 or F128 is therefore a significant project of its own.
+// Until one of them is implemented, reject loudly instead of miscompiling:
+// the front end keeps them as valid types, and this check is the
+// implementation boundary.
+func (fb *fasmEmitter) checkSupportedTypes() {
+	reported := make(map[string]Span)
+	var report func(t IRType, span Span)
+	report = func(t IRType, span Span) {
+		switch t.Kind {
+		case TypeKindFloat:
+			if t.Name != "F32" && t.Name != "F64" {
+				if _, ok := reported[t.Name]; !ok {
+					reported[t.Name] = span
+					fb.diags.Error(span, "float type "+t.Name+" is not yet supported by the fasm backend", "use F32 or F64")
+				}
+			}
+		case TypeKindStruct:
+			for _, f := range t.Fields {
+				report(fb.prog.Types.Lookup(f.Type), span)
+			}
+		}
+	}
+	for _, g := range fb.prog.Globals {
+		report(fb.prog.Types.Lookup(g.Type), g.Span)
+	}
+	for _, fn := range fb.prog.Functions {
+		for _, lid := range fn.Locals {
+			report(fb.prog.Types.Lookup(fn.LocalTypes[lid]), fn.Span)
+		}
+		for _, r := range fn.Results {
+			report(fb.prog.Types.Lookup(r), fn.Span)
+		}
+		for _, b := range fn.Blocks {
+			for _, ins := range b.Instrs {
+				report(fb.prog.Types.Lookup(ins.Type), ins.Span)
+			}
+		}
+	}
+}
+
 func (fb *fasmEmitter) emit() {
+	fb.checkSupportedTypes()
 	fb.out.WriteString("format ELF64 executable 3\n\n")
 	fb.collectFloatConsts()
 	fb.collectStringConsts()
@@ -139,7 +211,14 @@ func (fb *fasmEmitter) emitData() {
 		}
 	}
 	for i, s := range fb.strings {
-		fmt.Fprintf(&fb.out, "str%d:\n    db ", i)
+		fmt.Fprintf(&fb.out, "str%d:\n", i)
+		if len(s) == 0 {
+			// fasm rejects an empty db list; reserve one byte so the label
+			// still has a defined address.
+			fb.out.WriteString("    db 0\n")
+			continue
+		}
+		fb.out.WriteString("    db ")
 		for j, b := range []byte(s) {
 			if j > 0 {
 				fb.out.WriteString(",")
@@ -765,39 +844,34 @@ func (fb *fasmEmitter) emitCmp128(ins *MIRInstr, t IRType, lslot, rslot, resSlot
 	fmt.Fprintf(&fb.out, "    mov byte [rbp-%d], al\n", resSlot)
 }
 
-// emitStringCmp emits a byte-wise comparison of two String values (pointer
-// and length pairs). The result is stored for MIRCmpEq and inverted for
-// MIRCmpNeq.
+// emitStringCmp compares two String values (pointer and length pairs)
+// byte-wise, then by length when the common prefix is equal. The final
+// comparison flags describe the unsigned ordering (CF set when the left side
+// is less, ZF set when equal), so emitSetcc can compute any of the six
+// comparison operators.
 func (fb *fasmEmitter) emitStringCmp(ins *MIRInstr, lslot, rslot, resSlot int) {
-	eqLabel := fb.newLabel()
-	neLabel := fb.newLabel()
 	loopLabel := fb.newLabel()
+	lenLabel := fb.newLabel()
 	doneLabel := fb.newLabel()
 	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", lslot)
 	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d+8]\n", lslot)
 	fmt.Fprintf(&fb.out, "    mov rdx, qword [rbp-%d]\n", rslot)
 	fmt.Fprintf(&fb.out, "    mov r8, qword [rbp-%d+8]\n", rslot)
-	fb.out.WriteString("    cmp rcx, r8\n")
-	fmt.Fprintf(&fb.out, "    jne %s\n", neLabel)
 	fb.out.WriteString("    xor r9, r9\n")
 	fmt.Fprintf(&fb.out, "%s:\n", loopLabel)
 	fb.out.WriteString("    cmp r9, rcx\n")
-	fmt.Fprintf(&fb.out, "    jae %s\n", eqLabel)
+	fmt.Fprintf(&fb.out, "    jae %s\n", lenLabel)
+	fb.out.WriteString("    cmp r9, r8\n")
+	fmt.Fprintf(&fb.out, "    jae %s\n", lenLabel)
 	fb.out.WriteString("    mov r10b, byte [rax+r9]\n")
 	fb.out.WriteString("    cmp r10b, byte [rdx+r9]\n")
-	fmt.Fprintf(&fb.out, "    jne %s\n", neLabel)
+	fmt.Fprintf(&fb.out, "    jne %s\n", doneLabel)
 	fb.out.WriteString("    inc r9\n")
 	fmt.Fprintf(&fb.out, "    jmp %s\n", loopLabel)
-	fmt.Fprintf(&fb.out, "%s:\n", eqLabel)
-	fb.out.WriteString("    mov rax, 1\n")
-	fmt.Fprintf(&fb.out, "    jmp %s\n", doneLabel)
-	fmt.Fprintf(&fb.out, "%s:\n", neLabel)
-	fb.out.WriteString("    mov rax, 0\n")
+	fmt.Fprintf(&fb.out, "%s:\n", lenLabel)
+	fb.out.WriteString("    cmp rcx, r8\n")
 	fmt.Fprintf(&fb.out, "%s:\n", doneLabel)
-	if ins.Op == MIRCmpNeq {
-		fb.out.WriteString("    xor al, 1\n")
-	}
-	fb.out.WriteString("    mov byte [rbp-" + strconv.Itoa(resSlot) + "], al\n")
+	fb.emitSetcc(ins.Op, false, resSlot)
 }
 
 func (fb *fasmEmitter) emitSetcc(op MIROpcode, signed bool, resSlot int) {
@@ -876,6 +950,18 @@ func (fb *fasmEmitter) emitNeg(ins *MIRInstr) {
 			fb.out.WriteString("    movsd xmm0, xmm1\n")
 		}
 		fb.emitStore(t, resSlot)
+		return
+	}
+	if isInt128(t.Name) {
+		// 128-bit two's complement negation: negate the low half, propagate
+		// the borrow into the high half, then negate the high half.
+		fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", slot)
+		fmt.Fprintf(&fb.out, "    mov rdx, qword [rbp-%d+8]\n", slot)
+		fb.out.WriteString("    neg rax\n")
+		fb.out.WriteString("    adc rdx, 0\n")
+		fb.out.WriteString("    neg rdx\n")
+		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
+		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rdx\n", resSlot)
 		return
 	}
 	size := fb.sizeOf(t)

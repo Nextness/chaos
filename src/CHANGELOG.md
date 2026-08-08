@@ -5,11 +5,29 @@ listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.8.0`.
+- The current version is `0.8.1`.
 - Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
+
+## 0.8.1 - 2026-08-08
+
+### Fixed
+
+- Negative literals (for example `-100` or `-1.5`) now adapt to a typed
+  target like their positive counterparts, in declarations, comparisons,
+  returns, parameters, and struct fields.
+- Return literals now adapt to the procedure's result type during lowering;
+  `return 7;` from an `S128` procedure no longer fails the MIR verifier.
+- Unary negation of 128-bit integers now negates both halves (previously
+  only the low 64 bits were negated).
+- String ordering comparisons (`<`, `>`, `<=`, `>=`) now compare strings
+  byte-wise and then by length; previously they behaved like equality.
+- Empty string constants are emitted with a reserved byte so fasm accepts
+  the data section; previously `db` with no operands failed to assemble.
+- F16 and F128 are rejected by the fasm backend with a diagnostic instead
+  of being silently emitted as F64 with wrong precision.
 
 ## 0.8.0 - 2026-08-08
 

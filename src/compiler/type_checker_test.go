@@ -59,6 +59,26 @@ func TestTypeCheckLiteralAdaptation(t *testing.T) {
 	}
 }
 
+func TestTypeCheckNegativeLiteralAdaptation(t *testing.T) {
+	// A negated literal adapts like its positive counterpart.
+	diags := typeCheckSource(t, "main :: proc {\n    a: S32 = -7;\n    b: S128 = -100;\n    c: F32 = -1.5;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+
+	// A negated literal adapts to the other operand's type in a comparison.
+	diags = typeCheckSource(t, "main :: proc {\n    a: S128 = -1;\n    if a == -7 { }\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors comparing S128 with negated literal: %v", diags)
+	}
+
+	// A negated integer literal still cannot adapt to String.
+	diags = typeCheckSource(t, "main :: proc {\n    a: String = -10;\n}")
+	if !hasError(diags, "cannot assign S64 to String") {
+		t.Errorf("expected S64-to-String error, got %v", diags)
+	}
+}
+
 func TestTypeCheckAssignmentMismatch(t *testing.T) {
 	// Assigning a non-literal of a different type is an error.
 	diags := typeCheckSource(t, "main :: proc {\n    a: S64 = 10;\n    b: String = «hi»;\n    a = b;\n}")

@@ -42,6 +42,7 @@ type Lowerer struct {
 	hirStructs map[string]*HIRStruct
 	hir        *HIR
 	diags      DiagnosticList
+	curResults []TypeID // result types of the procedure being lowered
 }
 
 func (l *Lowerer) pushScope() {
@@ -171,10 +172,13 @@ func (l *Lowerer) lowerProc(d *ProcDecl) {
 	for i, r := range d.Results {
 		results[i] = l.typeOfTypeExpr(r)
 	}
+	prevResults := l.curResults
+	l.curResults = results
 	var body *HIRBlock
 	if d.Body != nil {
 		body = l.lowerBlock(d.Body)
 	}
+	l.curResults = prevResults
 	l.popScope()
 	l.hir.Procs = append(l.hir.Procs, &HIRProc{
 		Symbol:  sym,
@@ -213,7 +217,12 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 	case *ReturnStmt:
 		var value HIRExpr
 		if n.Value != nil {
+			// Adapt the value to the procedure's result type so that return
+			// literals match wider or narrower types.
 			value = l.lowerExpr(n.Value)
+			if len(l.curResults) > 0 {
+				value = l.adaptLiteral(value, l.curResults[0])
+			}
 		}
 		return &HIRReturn{Span_: n.Span_, Value: value}
 	case *ExitStmt:
@@ -441,14 +450,24 @@ func (l *Lowerer) adaptLiteralTypes(a, b HIRExpr) (HIRExpr, HIRExpr) {
 	return a, b
 }
 
-// adaptLiteral retypes a literal constant to a compatible target type.
+// adaptLiteral retypes a literal constant (or a negated literal) to a
+// compatible target type.
 func (l *Lowerer) adaptLiteral(e HIRExpr, target TypeID) HIRExpr {
-	c, ok := e.(*HIRConst)
-	if !ok || target == l.types.Unknown() {
+	if target == l.types.Unknown() {
 		return e
 	}
-	if l.literalCompatible(c, target) {
-		c.Type = target
+	switch n := e.(type) {
+	case *HIRConst:
+		if l.literalCompatible(n, target) {
+			n.Type = target
+		}
+	case *HIRUnary:
+		if n.Op == UnaryOpNeg {
+			if c, ok := n.Operand.(*HIRConst); ok && l.literalCompatible(c, target) {
+				c.Type = target
+				n.Type = target
+			}
+		}
 	}
 	return e
 }
@@ -469,8 +488,13 @@ func (l *Lowerer) literalCompatible(c *HIRConst, target TypeID) bool {
 }
 
 func isHIRLiteral(e HIRExpr) bool {
-	_, ok := e.(*HIRConst)
-	return ok
+	switch n := e.(type) {
+	case *HIRConst:
+		return true
+	case *HIRUnary:
+		return n.Op == UnaryOpNeg && isHIRLiteral(n.Operand)
+	}
+	return false
 }
 
 // parseIntLiteral parses a decimal integer literal, ignoring underscore

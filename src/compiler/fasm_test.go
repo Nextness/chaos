@@ -136,6 +136,34 @@ func TestFasmExitMessage(t *testing.T) {
 	}
 }
 
+func TestFasmRejectsUnsupportedFloatTypes(t *testing.T) {
+	// F16 and F128 are accepted by the front end but must be rejected by the
+	// backend instead of being silently emitted as F64.
+	for _, src := range []string{
+		"#entry main :: proc -> S64 {\n    x: F16 = 1.5;\n    return 0;\n}",
+		"#entry main :: proc -> S64 {\n    x: F128 = 1.5;\n    return 0;\n}",
+		"G: F128 = 1.5;\n#entry main :: proc -> S64 {\n    return 0;\n}",
+		"Rec :: struct { f: F16; }\n#entry main :: proc -> S64 {\n    x: Rec = .{f=1.5};\n    return 0;\n}",
+	} {
+		asm, diags := emitSource(t, src)
+		if !diags.HasErrors() {
+			t.Errorf("expected error for %q, got none:\n%s", src, asm)
+		}
+	}
+}
+
+func TestFasmEmitNegativeLiteral(t *testing.T) {
+	// A negated literal adapts to the declared type in lowering.
+	asm, diags := emitSource(t, "#entry main :: proc -> S64 {\n    x: S128 = -100;\n    if x == -100 { return 1; }\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Fatalf("unexpected emit errors: %v", diags)
+	}
+	// The 128-bit negation must negate the high half too.
+	if !strings.Contains(asm, "adc rdx, 0") {
+		t.Errorf("missing 128-bit negation borrow propagation:\n%s", asm)
+	}
+}
+
 // TestFasmRuntime assembles emitted programs with fasm and checks their exit
 // codes. It is skipped when fasm is not installed.
 func TestFasmRuntime(t *testing.T) {
@@ -190,6 +218,17 @@ func TestFasmRuntime(t *testing.T) {
 		{"u128 mod", "#entry main :: proc -> S64 {\n    x: U128 = 100;\n    y: U128 = 7;\n    z := x % y;\n    if z == 2 { return 19; }\n    return 0;\n}", 19},
 		{"u128 param return", "inc :: proc (v: U128) -> U128 { return v + 1; }\n#entry main :: proc -> S64 {\n    x: U128 = 41;\n    y := inc(x);\n    if y == 42 { return 21; }\n    return 0;\n}", 21},
 		{"s128 div", "#entry main :: proc -> S64 {\n    x: S128 = 0;\n    x = x - 100;\n    y: S128 = 7;\n    z := x / y;\n    r: S128 = 14;\n    if z + r == 0 { return 20; }\n    return 0;\n}", 20},
+		{"neg literal s32", "#entry main :: proc -> S64 {\n    x: S32 = -7;\n    if x == -7 { return 32; }\n    return 0;\n}", 32},
+		{"neg literal s128", "#entry main :: proc -> S64 {\n    x: S128 = -100;\n    if x == -100 { return 33; }\n    return 0;\n}", 33},
+		{"neg literal f32", "#entry main :: proc -> S64 {\n    x: F32 = -1.5;\n    if x == -1.5 { return 34; }\n    return 0;\n}", 34},
+		{"neg literal return", "f :: proc -> S128 {\n    return -100;\n}\n#entry main :: proc -> S64 {\n    x: S128 = f();\n    if x == -100 { return 35; }\n    return 0;\n}", 35},
+		{"s128 neg var", "#entry main :: proc -> S64 {\n    y: S128 = 7;\n    x: S128 = 0;\n    x = x - 7;\n    if x == -y { return 36; }\n    return 0;\n}", 36},
+		{"u128 neg var", "#entry main :: proc -> S64 {\n    y: U128 = 7;\n    x: U128 = 0;\n    x = x - 7;\n    if x == -y { return 37; }\n    return 0;\n}", 37},
+		{"string lt", "#entry main :: proc -> S64 {\n    s := «aaa»;\n    if s < «bbb» { return 38; }\n    return 0;\n}", 38},
+		{"string gt", "#entry main :: proc -> S64 {\n    s := «bbb»;\n    if s > «aaa» { return 39; }\n    return 0;\n}", 39},
+		{"string le", "#entry main :: proc -> S64 {\n    s := «abc»;\n    if s <= «abcd» { return 40; }\n    return 0;\n}", 40},
+		{"string ge prefix", "#entry main :: proc -> S64 {\n    s := «abcd»;\n    if s >= «abc» { return 41; }\n    return 0;\n}", 41},
+		{"string empty", "#entry main :: proc -> S64 {\n    s := «»;\n    if s == «» && s < «a» { return 42; }\n    return 0;\n}", 42},
 		{"exit", "#entry main :: proc {\n    exit 9;\n}", 9},
 	}
 	for _, tt := range tests {

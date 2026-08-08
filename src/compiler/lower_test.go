@@ -128,6 +128,53 @@ func TestLowerBinaryLiteralAdaptation(t *testing.T) {
 	}
 }
 
+func TestLowerNegativeLiteralAdaptation(t *testing.T) {
+	// A negated literal adapts to the declared type: the inner constant and
+	// the unary node both carry the target type.
+	hir, _ := lowerSource(t, "main :: proc {\n    a: S128 = -100;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	vd, ok := p.Body.Stmts[0].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("first statement = %T, want *HIRVarDecl", p.Body.Stmts[0])
+	}
+	un, ok := vd.Init.(*HIRUnary)
+	if !ok {
+		t.Fatalf("a init = %T, want *HIRUnary", vd.Init)
+	}
+	if un.Op != UnaryOpNeg {
+		t.Errorf("unary op = %v, want neg", un.Op)
+	}
+	if typeName(hir, un.Type) != "S128" {
+		t.Errorf("negated literal type = %s, want S128 (literal adaptation)", typeName(hir, un.Type))
+	}
+	if c, ok := un.Operand.(*HIRConst); !ok || typeName(hir, c.Type) != "S128" {
+		t.Errorf("negated literal operand = %#v, want S128-typed constant", un.Operand)
+	}
+}
+
+func TestLowerReturnLiteralAdaptation(t *testing.T) {
+	// A return literal adapts to the procedure's result type.
+	hir, _ := lowerSource(t, "f :: proc -> S128 {\n    return -100;\n}")
+	p := findHIRProc(hir, "f")
+	if p == nil {
+		t.Fatal("proc f not found")
+	}
+	rs, ok := p.Body.Stmts[0].(*HIRReturn)
+	if !ok {
+		t.Fatalf("first statement = %T, want *HIRReturn", p.Body.Stmts[0])
+	}
+	un, ok := rs.Value.(*HIRUnary)
+	if !ok {
+		t.Fatalf("return value = %T, want *HIRUnary", rs.Value)
+	}
+	if typeName(hir, un.Type) != "S128" {
+		t.Errorf("return literal type = %s, want S128 (result adaptation)", typeName(hir, un.Type))
+	}
+}
+
 func TestLowerIfElifElse(t *testing.T) {
 	hir, _ := lowerSource(t, "main :: proc {\n    a := true;\n    b := false;\n    if a { } elif b { } else { }\n}")
 	p := findHIRProc(hir, "main")
