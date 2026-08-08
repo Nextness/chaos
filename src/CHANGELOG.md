@@ -5,11 +5,41 @@ listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.5.0`.
+- The current version is `0.6.0`.
 - Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
+
+## 0.6.0 - 2026-08-08
+
+### Added
+
+- A two-level intermediate representation for the compiler:
+  - Typed HIR (`hir.go`): a source-close form with resolved symbols and
+    types, structured control flow, and source spans.
+  - Three-address CFG MIR (`mir.go`): functions of basic blocks with typed
+    values and explicit terminators (jump, branch, return, exit, unreachable).
+- Shared IR tables (`ir.go`): `SymbolTable` interns declaration names into
+  stable `SymbolID`s (distinct across shadowing); `TypeTable` interns
+  built-in and struct types into `TypeID`s.
+- AST-to-HIR lowering (`lower.go`): resolves names and types, infers
+  expression types using the type checker's rules (including literal
+  adaptation), and covers every construct the front end supports: procs,
+  globals, structs, var decls, assignments, return, exit, if/elif/else,
+  calls, and struct literals.
+- HIR-to-MIR lowering (`lower_mir.go`): lowers structured control flow into
+  basic blocks, assigns locals in declaration order, and reorders struct
+  literal fields to declaration order.
+- `VerifyMIR` (`ir_verify.go`): checks that every block has a terminator,
+  every value use is defined, local/global accesses reference declared
+  slots, instruction argument types match, and returns match the function
+  signature.
+- `DumpHIR` and `DumpMIR` (`ir_dump.go`) for human-readable inspection.
+- The `chaosc` CLI gained an `-ir` flag that lowers a cleanly type-checked
+  file and prints the HIR and MIR (after running the verifier).
+- Unit tests for the IR tables, both lowering passes, the verifier, and the
+  dumps.
 
 ## 0.5.0 - 2026-08-06
 

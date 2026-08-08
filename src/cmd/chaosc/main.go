@@ -19,6 +19,7 @@ func run(programName string, args []string, output io.Writer) int {
 	flags := flag.NewFlagSet(programName, flag.ContinueOnError)
 	flags.SetOutput(output)
 	dump := flags.Bool("dump", false, "print the token stream and parsed AST")
+	ir := flags.Bool("ir", false, "print the lowered HIR and MIR")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
@@ -72,6 +73,31 @@ func run(programName string, args []string, output io.Writer) int {
 	if *dump {
 		fmt.Fprintf(output, "Tokens:\n%s", compiler.DumpTokens(tokens))
 		fmt.Fprintf(output, "Parse result:\n%s", compiler.DumpParseResult(result))
+	}
+
+	if *ir {
+		hir, hirDiags := compiler.LowerProgram(result.Program)
+		if len(hirDiags) > 0 {
+			compiler.RenderAll(output, hirDiags, sf)
+			if hirDiags.HasErrors() {
+				return 1
+			}
+		}
+		mir, mirDiags := compiler.LowerToMIR(hir)
+		if len(mirDiags) > 0 {
+			compiler.RenderAll(output, mirDiags, sf)
+			if mirDiags.HasErrors() {
+				return 1
+			}
+		}
+		if verifyDiags := compiler.VerifyMIR(mir); len(verifyDiags) > 0 {
+			compiler.RenderAll(output, verifyDiags, sf)
+			if verifyDiags.HasErrors() {
+				return 1
+			}
+		}
+		fmt.Fprintf(output, "HIR:\n%s", compiler.DumpHIR(hir))
+		fmt.Fprintf(output, "MIR:\n%s", compiler.DumpMIR(mir))
 	}
 
 	return 0

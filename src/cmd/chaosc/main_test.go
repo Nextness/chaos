@@ -46,6 +46,24 @@ func TestRunRendersDiagnosticWithSuggestion(t *testing.T) {
 	}
 }
 
+func TestRunIRFlag(t *testing.T) {
+	sourcePath := filepath.Join(t.TempDir(), "input.chaos")
+	if err := os.WriteFile(sourcePath, []byte("main :: proc -> S64 {\n    x := 1 + 2;\n    return x;\n}"), 0o600); err != nil {
+		t.Fatalf("write test source: %v", err)
+	}
+
+	var output bytes.Buffer
+	if exitCode := run("chaosc", []string{"-ir", sourcePath}, &output); exitCode != 0 {
+		t.Fatalf("run exit code = %d, want 0; output: %s", exitCode, output.String())
+	}
+	text := output.String()
+	for _, want := range []string{"HIR:", "MIR:", "Proc main() -> S64", "Function main() -> S64", "bb0:"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output missing %q:\n%s", want, text)
+		}
+	}
+}
+
 func TestRunControlAndFailurePaths(t *testing.T) {
 	temporaryDirectory := t.TempDir()
 	invalidSourcePath := filepath.Join(temporaryDirectory, "invalid.chaos")
