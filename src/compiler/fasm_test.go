@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -97,24 +98,41 @@ func TestFasmNoEntry(t *testing.T) {
 	}
 }
 
-func TestFasmUnsupportedDiagnostics(t *testing.T) {
-	tests := []struct {
-		name   string
-		src    string
-		substr string
-	}{
-		{"struct", "Point :: struct { x: S64; }\n#entry main :: proc {\n    p := Point.{x=1};\n}", "struct codegen is not yet supported"},
-		{"string", "#entry main :: proc {\n    s := «hi»;\n}", "String codegen is not yet supported"},
-		{"global initializer", "G :: 5;\n#entry main :: proc -> S64 {\n    return G;\n}", "global initializers are not yet supported"},
-		{"f32", "#entry main :: proc {\n    x: F32 = 1.5;\n}", "float type F32 is not yet supported"},
+func TestFasmExitMessage(t *testing.T) {
+	// The entry wrapper prints the message to stderr before exiting.
+	fasmPath, err := exec.LookPath("fasm")
+	if err != nil {
+		t.Skip("fasm not available")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, diags := emitSource(t, tt.src)
-			if !hasError(diags, tt.substr) {
-				t.Errorf("expected diagnostic containing %q, got %v", tt.substr, diags)
-			}
-		})
+	asm, diags := emitSource(t, "#entry main :: proc {\n    exit 1, «boom»;\n}")
+	if diags.HasErrors() {
+		t.Fatalf("emit errors: %v", diags)
+	}
+	dir := t.TempDir()
+	asmPath := filepath.Join(dir, "out.asm")
+	binPath := filepath.Join(dir, "out.bin")
+	if err := os.WriteFile(asmPath, []byte(asm), 0o600); err != nil {
+		t.Fatalf("write asm: %v", err)
+	}
+	if out, err := exec.Command(fasmPath, asmPath, binPath).CombinedOutput(); err != nil {
+		t.Fatalf("fasm failed: %v\n%s", err, out)
+	}
+	if err := os.Chmod(binPath, 0o700); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	var stderr bytes.Buffer
+	cmd := exec.Command(binPath)
+	cmd.Stderr = &stderr
+	err = cmd.Run()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		t.Fatalf("expected non-zero exit, got %v", err)
+	}
+	if ee.ExitCode() != 1 {
+		t.Errorf("exit code = %d, want 1", ee.ExitCode())
+	}
+	if stderr.String() != "boom" {
+		t.Errorf("stderr = %q, want %q", stderr.String(), "boom")
 	}
 }
 
@@ -151,6 +169,27 @@ func TestFasmRuntime(t *testing.T) {
 		{"float call", "scale :: proc (v: F64, f: F64) -> F64 { return v * f; }\n#entry main :: proc -> S64 {\n    r := scale(2.0, 3.0);\n    if r == 6.0 { return 8; }\n    return 0;\n}", 8},
 		{"float return", "#entry main :: proc -> F64 {\n    return 3.5;\n}", 3},
 		{"global", "G: S64;\n#entry main :: proc -> S64 {\n    G = 42;\n    return G;\n}", 42},
+		{"global init", "G :: 5;\n#entry main :: proc -> S64 {\n    return G;\n}", 5},
+		{"global init chain", "A :: 3;\nB :: A + 4;\n#entry main :: proc -> S64 {\n    return B;\n}", 7},
+		{"global string init", "S :: «world»;\n#entry main :: proc -> S64 {\n    if S == «world» { return 22; }\n    return 0;\n}", 22},
+		{"f32", "#entry main :: proc -> S64 {\n    x: F32 = 1.5;\n    y: F32 = 2.5;\n    z := x + y;\n    if z > 3.0 { return 4; }\n    return 0;\n}", 4},
+		{"f32 div", "#entry main :: proc -> S64 {\n    x: F32 = 10.0;\n    y: F32 = 4.0;\n    z := x / y;\n    if z > 2.0 && z < 3.0 { return 15; }\n    return 0;\n}", 15},
+		{"f32 param", "twice :: proc (v: F32) -> F32 { return v * 2.0; }\n#entry main :: proc -> S64 {\n    r := twice(3.0);\n    if r == 6.0 { return 16; }\n    return 0;\n}", 16},
+		{"struct", "Point :: struct { x: S64; y: S64; }\n#entry main :: proc -> S64 {\n    p: Point = .{x=3, y=4};\n    q := p;\n    return 9;\n}", 9},
+		{"struct eq", "Point :: struct { x: S64; y: S64; }\n#entry main :: proc -> S64 {\n    p: Point = .{x=1, y=2};\n    q: Point = .{x=1, y=2};\n    if p == q { return 11; }\n    return 0;\n}", 11},
+		{"struct neq high half", "Point :: struct { x: S64; y: S64; }\n#entry main :: proc -> S64 {\n    p: Point = .{x=1, y=2};\n    q: Point = .{x=1, y=3};\n    if p != q { return 30; }\n    return 0;\n}", 30},
+		{"struct return", "Point :: struct { x: S64; y: S64; }\nmake_p :: proc (a: S64) -> Point {\n    return Point.{x=a, y=a};\n}\n#entry main :: proc -> S64 {\n    p := make_p(7);\n    q := p;\n    return 12;\n}", 12},
+		{"struct param", "Point :: struct { x: S64; y: S64; }\nread_p :: proc (p: Point) -> S64 {\n    q := p;\n    return 13;\n}\n#entry main :: proc -> S64 {\n    p: Point = .{x=1, y=2};\n    return read_p(p);\n}", 13},
+		{"struct string field", "Rec :: struct { name: String; val: S64; }\n#entry main :: proc -> S64 {\n    a: Rec = .{name=«x», val=1};\n    b: Rec = .{name=«x», val=1};\n    if a == b { return 31; }\n    return 0;\n}", 31},
+		{"string eq", "#entry main :: proc -> S64 {\n    s := «hello»;\n    if s == «hello» { return 6; }\n    return 0;\n}", 6},
+		{"string neq", "#entry main :: proc -> S64 {\n    s := «abc»;\n    if s != «abd» { return 7; }\n    return 0;\n}", 7},
+		{"string param return", "ident :: proc (s: String) -> String {\n    return s;\n}\n#entry main :: proc -> S64 {\n    s := ident(«hello»);\n    if s == «hello» { return 14; }\n    return 0;\n}", 14},
+		{"u128 add", "#entry main :: proc -> S64 {\n    x: U128 = 5;\n    y: U128 = 10;\n    z := x + y;\n    if z == 15 { return 8; }\n    return 0;\n}", 8},
+		{"u128 mul", "#entry main :: proc -> S64 {\n    x: U128 = 1000;\n    y: U128 = 2000;\n    z := x * y;\n    if z == 2000000 { return 17; }\n    return 0;\n}", 17},
+		{"u128 div", "#entry main :: proc -> S64 {\n    x: U128 = 100;\n    y: U128 = 7;\n    z := x / y;\n    if z == 14 { return 18; }\n    return 0;\n}", 18},
+		{"u128 mod", "#entry main :: proc -> S64 {\n    x: U128 = 100;\n    y: U128 = 7;\n    z := x % y;\n    if z == 2 { return 19; }\n    return 0;\n}", 19},
+		{"u128 param return", "inc :: proc (v: U128) -> U128 { return v + 1; }\n#entry main :: proc -> S64 {\n    x: U128 = 41;\n    y := inc(x);\n    if y == 42 { return 21; }\n    return 0;\n}", 21},
+		{"s128 div", "#entry main :: proc -> S64 {\n    x: S128 = 0;\n    x = x - 100;\n    y: S128 = 7;\n    z := x / y;\n    r: S128 = 14;\n    if z + r == 0 { return 20; }\n    return 0;\n}", 20},
 		{"exit", "#entry main :: proc {\n    exit 9;\n}", 9},
 	}
 	for _, tt := range tests {

@@ -18,7 +18,6 @@ func LowerToMIR(hir *HIR) (*MIRProgram, DiagnosticList) {
 			Name:    g.Name,
 			Type:    g.Type,
 			Mutable: g.Mutable,
-			HasInit: g.Init != nil,
 			Span:    g.Span,
 		})
 	}
@@ -31,13 +30,46 @@ func LowerToMIR(hir *HIR) (*MIRProgram, DiagnosticList) {
 			entry = sym
 		}
 	}
+	var globalInit *MIRFunction
+	for _, g := range hir.Globals {
+		if g.Init != nil {
+			globalInit = ml.lowerGlobalInit(hir)
+			break
+		}
+	}
 	return &MIRProgram{
-		Symbols:   hir.Symbols,
-		Types:     hir.Types,
-		Functions: ml.functions,
-		Globals:   ml.globals,
-		Entry:     entry,
+		Symbols:    hir.Symbols,
+		Types:      hir.Types,
+		Functions:  ml.functions,
+		Globals:    ml.globals,
+		Entry:      entry,
+		GlobalInit: globalInit,
 	}, ml.diags
+}
+
+// lowerGlobalInit builds a synthetic void function that stores every global
+// initializer, so the backend can run it before the entry procedure. The
+// function has no parameters and returns void.
+func (ml *MIRLowerer) lowerGlobalInit(hir *HIR) *MIRFunction {
+	ml.cur = &MIRFunction{
+		Symbol: ml.symbols.Declare("__global_init"),
+		Name:   "__global_init",
+		Span:   Span{},
+	}
+	ml.localIDs = make(map[SymbolID]LocalID)
+	ml.localTypes = make(map[SymbolID]TypeID)
+	ml.valueCount = 0
+	ml.curBlock = ml.newBlock()
+	for _, g := range hir.Globals {
+		if g.Init == nil {
+			continue
+		}
+		v := ml.lowerExpr(g.Init)
+		ml.emitVoid(MIRStoreGlobal, g.Type, []ValueID{v}, MIRImmediate{Kind: MIRImmSymbol, Symbol: g.Symbol}, g.Span)
+	}
+	ml.setTerminator(MIRTerminator{Kind: MIRReturn, Value: NoValue, Span: Span{}})
+	ml.functions = append(ml.functions, ml.cur)
+	return ml.cur
 }
 
 // MIRLowerer lowers a HIR into the MIR. Per-function state (current function,

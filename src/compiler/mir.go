@@ -9,27 +9,28 @@ package compiler
 
 // MIRProgram is the root of the control-flow IR. Entry is the SymbolID of
 // the procedure selected by a '#entry' directive, or NoSymbol when the source
-// declares no entry point.
+// declares no entry point. GlobalInit is a synthetic void function that
+// stores every global initializer; it is nil when no global has an
+// initializer.
 type MIRProgram struct {
-	Symbols   *SymbolTable
-	Types     *TypeTable
-	Functions []*MIRFunction
-	Globals   []MIRGlobal
-	Entry     SymbolID
+	Symbols    *SymbolTable
+	Types      *TypeTable
+	Functions  []*MIRFunction
+	Globals    []MIRGlobal
+	Entry      SymbolID
+	GlobalInit *MIRFunction
 }
 
 // NoSymbol is the sentinel SymbolID used where no symbol is present (for
 // example a program with no '#entry' procedure).
 const NoSymbol SymbolID = ^SymbolID(0)
 
-// MIRGlobal is a top-level variable or constant. HasInit reports whether the
-// declaration carried an initializer.
+// MIRGlobal is a top-level variable or constant.
 type MIRGlobal struct {
 	Symbol  SymbolID
 	Name    string
 	Type    TypeID
 	Mutable bool
-	HasInit bool
 	Span    Span
 }
 

@@ -5,11 +5,38 @@ listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.7.0`.
+- The current version is `0.8.0`.
 - Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
+
+## 0.8.0 - 2026-08-08
+
+### Added
+
+- The fasm backend now supports every type and construct the front end
+  accepts; the previous "not yet supported" diagnostics are gone.
+  - F32: 4-byte float constants, arithmetic, comparisons, negation, and
+    argument passing alongside F64.
+  - String: values are a pointer and length pair, with byte-wise comparison
+    (==, !=), string constants in the data section, and two-register
+    argument passing (pointer in one register, length in the next).
+  - Structs: values are aggregates of their fields with zeroed padding,
+    struct literals, byte-wise comparison, copy semantics, parameters passed
+    by address, and results returned through a hidden pointer in RDI (sret).
+  - 128-bit integers (S128, U128): low/high half representation, add, sub,
+    mul, signed and unsigned div/mod (binary long division), comparisons,
+    and two-register argument passing.
+  - Global initializers: a synthetic `__global_init` function stores every
+    global initializer and is called before the entry procedure. Global data
+    is sized per type instead of always eight bytes.
+- `exit` now prints its message to stderr before exiting with the status.
+
+### Changed
+
+- `MIRProgram` gained a `GlobalInit` field holding the synthetic global
+  initializer function.
 
 ## 0.7.0 - 2026-08-08
 
