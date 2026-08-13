@@ -321,6 +321,45 @@ func (s *IfStmt) nodeSpan() Span {
 
 func (s *IfStmt) stmtNode() {}
 
+// IfCatchStmt is an error check: "if expr catch [err] { body }". The
+// condition must be a variable holding an error-returning value; when the
+// value is an error, the catch body runs (with err bound to the error when
+// named) and must return or exit. After the statement the variable holds the
+// unwrapped value.
+type IfCatchStmt struct {
+	Span_         Span
+	Cond          Expr
+	CatchName     string // error binding name ("" when unnamed)
+	CatchNameSpan Span   // span of the binding name (zero when unnamed)
+	CatchBody     *BlockStmt
+}
+
+func (s *IfCatchStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *IfCatchStmt) stmtNode() {}
+
+// UnlessCatchStmt is an error check attached to an expression:
+// "target := expr unless catch [err] { body }" or the bare
+// "expr unless catch [err] { body }" form (Target == ""). When the
+// expression is an error, the catch body runs (with err bound when named)
+// and must return or exit; otherwise the target is bound to the value.
+type UnlessCatchStmt struct {
+	Span_         Span
+	Target        string // variable name ("" for the bare form)
+	Init          Expr
+	CatchName     string // error binding name ("" when unnamed)
+	CatchNameSpan Span   // span of the binding name (zero when unnamed)
+	CatchBody     *BlockStmt
+}
+
+func (s *UnlessCatchStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *UnlessCatchStmt) stmtNode() {}
+
 // BlockStmt is a braced block of statements.
 type BlockStmt struct {
 	Span_ Span

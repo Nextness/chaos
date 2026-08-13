@@ -128,6 +128,21 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, ins *MIRInstr) {
 		v.checkCall(fn, ins)
 	case MIRStructInit:
 		v.checkStructInit(ins)
+	case MIRFieldLoad:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "field.load requires one value argument", "add the base value")
+		} else if ins.Imm.Kind != MIRImmField {
+			v.diags.Error(ins.Span, "field.load requires a field operand", "add a field index")
+		} else {
+			bt := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]])
+			if bt.Kind != TypeKindStruct {
+				v.diags.Error(ins.Span, "field.load base type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not a struct", "use a struct value")
+			} else if int(ins.Imm.Int) >= len(bt.Fields) {
+				v.diags.Error(ins.Span, "field.load field index out of range", "use a declared field")
+			} else if ft := bt.Fields[ins.Imm.Int].Type; ins.Type != ft {
+				v.diags.Error(ins.Span, "field.load result type "+v.typeName(ins.Type)+" does not match field type "+v.typeName(ft), "use the field's type")
+			}
+		}
 	case MIRExit:
 		// exit is emitted as a terminator, not an instruction.
 	}

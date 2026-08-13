@@ -81,6 +81,7 @@ const (
 	MIRNeg
 	MIRCall
 	MIRStructInit
+	MIRFieldLoad
 	MIRExit
 )
 
@@ -131,6 +132,8 @@ func (op MIROpcode) String() string {
 		return "call"
 	case MIRStructInit:
 		return "struct.init"
+	case MIRFieldLoad:
+		return "field.load"
 	case MIRExit:
 		return "exit"
 	}
@@ -148,6 +151,7 @@ const (
 	MIRImmBool
 	MIRImmSymbol
 	MIRImmLocal
+	MIRImmField
 )
 
 // MIRImmediate is the non-value operand of an instruction.

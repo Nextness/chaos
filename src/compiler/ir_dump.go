@@ -137,6 +137,15 @@ func dumpHIRStmt(b *strings.Builder, hir *HIR, s HIRStmt, depth int) {
 		b.WriteString("ExprStmt ")
 		dumpHIRExpr(b, hir, n.Expr)
 		b.WriteString("\n")
+	case *HIRIfCatch:
+		dumpIndent(b, depth)
+		b.WriteString("IfCatch ")
+		dumpHIRExpr(b, hir, n.Cond)
+		if n.CatchSym != NoSymbol {
+			fmt.Fprintf(b, " catch %s", hir.symbolName(n.CatchSym))
+		}
+		b.WriteString("\n")
+		dumpHIRBlock(b, hir, n.CatchBody, depth+1)
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Stmt %T\n", s)
@@ -189,6 +198,10 @@ func dumpHIRExpr(b *strings.Builder, hir *HIR, e HIRExpr) {
 			dumpHIRExpr(b, hir, f.Value)
 		}
 		b.WriteString(")")
+	case *HIRFieldLoad:
+		b.WriteString("FieldLoad(")
+		dumpHIRExpr(b, hir, n.Base)
+		fmt.Fprintf(b, ", %d)", n.Field)
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)
 	}
@@ -282,6 +295,8 @@ func dumpMIRInstr(b *strings.Builder, prog *MIRProgram, fn *MIRFunction, ins *MI
 		fmt.Fprintf(b, " %s", prog.symbolName(ins.Imm.Symbol))
 	case MIRImmLocal:
 		fmt.Fprintf(b, " l%d", ins.Imm.Local)
+	case MIRImmField:
+		fmt.Fprintf(b, " field%d", ins.Imm.Int)
 	}
 	b.WriteString("\n")
 }

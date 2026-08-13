@@ -23,6 +23,7 @@ func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 		errors:       make(map[string]*ErrorDecl),
 		errorOrdinal: make(map[string]map[string]int),
 		hirStructs:   make(map[string]*HIRStruct),
+		unwrapped:    make(map[SymbolID]bool),
 		hir:          &HIR{},
 	}
 	l.hir.Symbols = l.symbols
@@ -44,6 +45,7 @@ type Lowerer struct {
 	errors       map[string]*ErrorDecl
 	errorOrdinal map[string]map[string]int
 	hirStructs   map[string]*HIRStruct
+	unwrapped    map[SymbolID]bool // variables whose error was handled
 	hir          *HIR
 	diags        DiagnosticList
 	curResults   []TypeID // result types of the procedure being lowered
@@ -187,15 +189,14 @@ func (l *Lowerer) lowerProc(d *ProcDecl) {
 		results[i] = l.typeOfTypeExpr(r)
 	}
 	if d.ErrorResult != nil {
-		l.diags.Error(d.ErrorResult.nodeSpan(), "error-returning procedures are not yet supported", "remove the '<> ErrorType' result for now")
-		// Normalize the value result to the non-error side of '<>'.
-		if len(results) > 0 {
-			vt := l.types.Lookup(results[0])
-			et := l.typeOfTypeExpr(d.ErrorResult)
-			if vt.Kind == TypeKindError && l.types.Lookup(et).Kind != TypeKindError {
-				results[0] = et
-			}
+		// The result is a value-or-error pair; the value side is the
+		// non-error type regardless of the written order.
+		vt := results[0]
+		et := l.typeOfTypeExpr(d.ErrorResult)
+		if l.types.Lookup(vt).Kind == TypeKindError && l.types.Lookup(et).Kind != TypeKindError {
+			vt, et = et, vt
 		}
+		results[0] = l.unionTypeID(vt, et)
 	}
 	prevResults := l.curResults
 	l.curResults = results
@@ -234,22 +235,21 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 	case *AssignStmt:
 		sym := l.lookup(n.Name)
 		t := l.varTypes[sym]
+		value := l.lowerExprAs(n.Value, t)
+		// Assigning to a variable whose error was handled wraps the new
+		// value in the pair again.
+		if l.unwrapped[sym] && isUnionTypeID(l.types, t) {
+			vt := l.types.Lookup(t).Fields[0].Type
+			et := l.types.Lookup(t).Fields[1].Type
+			value = l.lowerUnion(t, l.adaptLiteral(value, vt), l.emptyConst(et, n.Span_), &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: false}, n.Span_)
+		}
 		return &HIRAssign{
 			Span_:  n.Span_,
 			Target: sym,
-			Value:  l.lowerExprAs(n.Value, t),
+			Value:  value,
 		}
 	case *ReturnStmt:
-		var value HIRExpr
-		if n.Value != nil {
-			// Adapt the value to the procedure's result type so that return
-			// literals match wider or narrower types.
-			value = l.lowerExpr(n.Value)
-			if len(l.curResults) > 0 {
-				value = l.adaptLiteral(value, l.curResults[0])
-			}
-		}
-		return &HIRReturn{Span_: n.Span_, Value: value}
+		return l.lowerReturn(n)
 	case *ExitStmt:
 		var status, message HIRExpr
 		if n.Status != nil {
@@ -265,7 +265,11 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 		return l.lowerBlock(n)
 	case *ExprStmt:
 		return &HIRExprStmt{Span_: n.Span_, Expr: l.lowerExpr(n.Expr)}
-	case *ProcDecl, *StructDecl:
+	case *UnlessCatchStmt:
+		return l.lowerUnlessCatch(n)
+	case *IfCatchStmt:
+		return l.lowerIfCatch(n)
+	case *ProcDecl, *StructDecl, *ErrorDecl:
 		// Nested declarations are not supported inside bodies.
 		return nil
 	}
@@ -316,6 +320,157 @@ func (l *Lowerer) lowerIf(n *IfStmt) HIRStmt {
 	return &HIRIf{Span_: n.Span_, Condition: cond, Then: then, Elif: elifs, Else: els}
 }
 
+// lowerReturn lowers a return statement, wrapping the value in the
+// value-or-error pair when the procedure has a '<>' result.
+func (l *Lowerer) lowerReturn(n *ReturnStmt) HIRStmt {
+	var value HIRExpr
+	if n.Value != nil {
+		if len(l.curResults) > 0 && isUnionTypeID(l.types, l.curResults[0]) {
+			rt := l.types.Lookup(l.curResults[0])
+			vt, et := rt.Fields[0].Type, rt.Fields[1].Type
+			var lowered HIRExpr
+			if em, ok := n.Value.(*ErrorMemberExpr); ok && em.TypeName == "" {
+				// A bare error literal resolves against the error side.
+				lowered = l.lowerErrorMember(em, l.types.Lookup(et).Name)
+			} else {
+				lowered = l.lowerExprAs(n.Value, vt)
+			}
+			switch {
+			case lowered.hirType() == l.curResults[0]:
+				// Re-raising an already-handled pair: pass it through.
+				value = lowered
+			case lowered.hirType() == et:
+				// An error value: mark the pair as an error.
+				value = l.lowerUnion(l.curResults[0], l.emptyConst(vt, n.Span_), lowered, &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: true}, n.Span_)
+			default:
+				// A value: mark the pair as a success.
+				value = l.lowerUnion(l.curResults[0], lowered, l.emptyConst(et, n.Span_), &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: false}, n.Span_)
+			}
+		} else {
+			value = l.lowerExpr(n.Value)
+			if len(l.curResults) > 0 {
+				// Adapt the value to the procedure's result type so that
+				// return literals match wider or narrower types.
+				value = l.adaptLiteral(value, l.curResults[0])
+			}
+		}
+	}
+	return &HIRReturn{Span_: n.Span_, Value: value}
+}
+
+// lowerUnlessCatch lowers "target := expr unless catch [err] { body }" (or
+// the bare form with Target == "") into a variable declaration holding the
+// value-or-error pair followed by the catch check.
+func (l *Lowerer) lowerUnlessCatch(n *UnlessCatchStmt) HIRStmt {
+	init := l.lowerExpr(n.Init)
+	var decl HIRStmt
+	cond := init
+	if n.Target != "" {
+		sym := l.symbols.Declare(n.Target)
+		l.declare(n.Target, sym)
+		l.varTypes[sym] = init.hirType()
+		decl = &HIRVarDecl{
+			Span_:       n.Span_,
+			Symbol:      sym,
+			Name:        n.Target,
+			Type:        init.hirType(),
+			Init:        init,
+			Mutable:     true,
+			CompileTime: false,
+		}
+		cond = &HIRRef{Span_: n.Span_, Symbol: sym, Type: init.hirType()}
+		// After the check, the variable holds the unwrapped value.
+		l.unwrapped[sym] = true
+	}
+	ifCatch := l.buildIfCatch(n.Span_, cond, n.CatchName, n.CatchBody)
+	if decl != nil {
+		return &HIRBlock{Span_: n.Span_, Stmts: []HIRStmt{decl, ifCatch}}
+	}
+	return ifCatch
+}
+
+// lowerIfCatch lowers "if expr catch [err] { body }".
+func (l *Lowerer) lowerIfCatch(n *IfCatchStmt) HIRStmt {
+	cond := l.lowerExpr(n.Cond)
+	ifCatch := l.buildIfCatch(n.Span_, cond, n.CatchName, n.CatchBody)
+	// After the check, the variable holds the unwrapped value.
+	if ident, ok := n.Cond.(*IdentExpr); ok {
+		if sym, ok := l.lookupSymbol(ident.Name); ok {
+			l.unwrapped[sym] = true
+		}
+	}
+	return ifCatch
+}
+
+// buildIfCatch builds the catch check for a value-or-error pair.
+func (l *Lowerer) buildIfCatch(span Span, cond HIRExpr, catchName string, catchBody *BlockStmt) HIRStmt {
+	ut := cond.hirType()
+	var catchSym SymbolID = NoSymbol
+	if catchName != "" {
+		catchSym = l.symbols.Declare(catchName)
+		l.declare(catchName, catchSym)
+		l.varTypes[catchSym] = l.types.Lookup(ut).Fields[1].Type
+	}
+	return &HIRIfCatch{
+		Span_:     span,
+		Cond:      cond,
+		CatchSym:  catchSym,
+		CatchBody: l.lowerBlock(catchBody),
+		UnionType: ut,
+	}
+}
+
+// lookupSymbol resolves a name to its SymbolID in the current scope chain.
+func (l *Lowerer) lookupSymbol(name string) (SymbolID, bool) {
+	for i := len(l.scopes) - 1; i >= 0; i-- {
+		if sym, ok := l.scopes[i][name]; ok {
+			return sym, true
+		}
+	}
+	return NoSymbol, false
+}
+
+// unionTypeID interns the value-or-error pair type for a '<>' result as a
+// struct { value: T, error: E, hasError: Bool }. The synthetic name matches
+// the type checker's errorUnionType so both passes agree on the type.
+func (l *Lowerer) unionTypeID(valueType, errorType TypeID) TypeID {
+	name := l.types.Lookup(valueType).Name + "<>" + l.types.Lookup(errorType).Name
+	if id, ok := l.types.ByName(name); ok {
+		return id
+	}
+	id := l.types.InternStruct(name)
+	l.types.SetStructFields(id, []TypeField{
+		{Symbol: l.symbols.Declare("value"), Name: "value", Type: valueType},
+		{Symbol: l.symbols.Declare("error"), Name: "error", Type: errorType},
+		{Symbol: l.symbols.Declare("hasError"), Name: "hasError", Type: l.types.Bool()},
+	})
+	return id
+}
+
+// isUnionTypeID reports whether a TypeID is a value-or-error pair type.
+func isUnionTypeID(tt *TypeTable, id TypeID) bool {
+	t := tt.Lookup(id)
+	return t.Kind == TypeKindStruct && strings.Contains(t.Name, "<>")
+}
+
+// lowerUnion builds a value-or-error pair value. A nil side is zero-filled by
+// the struct init.
+func (l *Lowerer) lowerUnion(unionType TypeID, value, err, hasError HIRExpr, span Span) HIRExpr {
+	st := l.types.Lookup(unionType)
+	fields := []HIRStructInitField{
+		{Span_: span, Field: st.Fields[0].Symbol, Value: value},
+		{Span_: span, Field: st.Fields[1].Symbol, Value: err},
+		{Span_: span, Field: st.Fields[2].Symbol, Value: hasError},
+	}
+	return &HIRStructInit{Span_: span, Struct: st.Fields[0].Symbol, Type: unionType, Fields: fields}
+}
+
+// emptyConst is a zero-filled constant of the given type, used for the
+// ignored side of a value-or-error pair.
+func (l *Lowerer) emptyConst(t TypeID, span Span) HIRExpr {
+	return &HIRConst{Span_: span, Type: t, Kind: ConstUnknown}
+}
+
 func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 	switch n := e.(type) {
 	case *IntExpr:
@@ -340,7 +495,13 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		return &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: n.Value}
 	case *IdentExpr:
 		sym := l.lookup(n.Name)
-		return &HIRRef{Span_: n.Span_, Symbol: sym, Type: l.varTypes[sym]}
+		t := l.varTypes[sym]
+		// A variable whose error was handled holds the value-or-error pair;
+		// uses read the value part.
+		if l.unwrapped[sym] && isUnionTypeID(l.types, t) {
+			return &HIRFieldLoad{Span_: n.Span_, Base: &HIRRef{Span_: n.Span_, Symbol: sym, Type: t}, Field: 0, Type: l.types.Lookup(t).Fields[0].Type}
+		}
+		return &HIRRef{Span_: n.Span_, Symbol: sym, Type: t}
 	case *ParenExpr:
 		return l.lowerExpr(n.Inner)
 	case *BinaryExpr:
@@ -451,6 +612,14 @@ func (l *Lowerer) lowerCall(n *CallExpr) HIRExpr {
 	t := l.types.Void()
 	if len(proc.Results) > 0 {
 		t = l.typeOfTypeExpr(proc.Results[0])
+		if proc.ErrorResult != nil {
+			vt := t
+			et := l.typeOfTypeExpr(proc.ErrorResult)
+			if l.types.Lookup(vt).Kind == TypeKindError && l.types.Lookup(et).Kind != TypeKindError {
+				vt, et = et, vt
+			}
+			t = l.unionTypeID(vt, et)
+		}
 	}
 	return &HIRCall{Span_: n.Span_, Func: sym, Args: args, Type: t}
 }

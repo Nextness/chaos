@@ -118,6 +118,8 @@ const (
 	TkAs
 	TkStruct
 	TkErrorKw
+	TkUnless
+	TkCatch
 
 	// Compile-time directives and comments
 	TkDirec   // compile-time directive name after '#'
@@ -175,6 +177,8 @@ var tokenKindNames = [...]string{
 	TkAs:             "as",
 	TkStruct:         "struct",
 	TkErrorKw:        "error",
+	TkUnless:         "unless",
+	TkCatch:          "catch",
 	TkDirec:          "directive",
 	TkComment:        "comment",
 }
@@ -228,6 +232,8 @@ func init() {
 		{"as", TkAs},
 		{"struct", TkStruct},
 		{"error", TkErrorKw},
+		{"unless", TkUnless},
+		{"catch", TkCatch},
 	}
 	keywordTokens = make(map[string]TokenKind, 16)
 	for _, entry := range keywordEntries {

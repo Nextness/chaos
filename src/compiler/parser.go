@@ -901,11 +901,32 @@ func (p *Parser) parseIdentStmt() Stmt {
 			}
 			return decl
 		}
-		decl, ok := p.parseInferVarDecl(nameTok, name)
-		if !ok {
-			return nil
+		init := p.parseExpr(0)
+		if init == nil {
+			p.diags.Error(p.peek().Span, "expected expression after ':='", "add an expression after ':='")
+			p.syncStmt()
+			if p.at(TkSemicolon) {
+				p.bump()
+			}
+			return &VarDecl{
+				Span_:       nameTok.Span,
+				Name:        name,
+				Mutable:     true,
+				CompileTime: false,
+			}
 		}
-		return decl
+		// Error handling: 'ident := expr unless catch [err] { body }'.
+		if p.at(TkUnless) {
+			return p.parseUnlessCatch(nameTok, name, init)
+		}
+		p.expect(TkSemicolon)
+		return &VarDecl{
+			Span_:       spanUnion(nameTok.Span, init.nodeSpan()),
+			Name:        name,
+			Init:        init,
+			Mutable:     true,
+			CompileTime: false,
+		}
 
 	case p.at(TkColon):
 		p.bump()
@@ -927,6 +948,11 @@ func (p *Parser) parseIdentStmt() Stmt {
 		for p.at(TkLParen) {
 			p.bump() // consume "("
 			expr = p.parseCallArgs(expr, expr.nodeSpan())
+		}
+		// Error handling: 'expr unless catch [err] { body }' with the value
+		// discarded.
+		if p.at(TkUnless) {
+			return p.parseUnlessCatch(nameTok, "", expr)
 		}
 		p.expect(TkSemicolon)
 		// Wrap in an expression statement.
@@ -953,6 +979,40 @@ func (p *Parser) parseIdentStmt() Stmt {
 			p.bump()
 		}
 		return nil
+	}
+}
+
+// parseUnlessCatch parses "unless catch [err] { body }" after the init
+// expression has been parsed. target is the variable name for the
+// "target := expr unless catch" form, or "" for the bare form that discards
+// the value.
+func (p *Parser) parseUnlessCatch(nameTok Token, target string, init Expr) Stmt {
+	p.bump() // consume "unless"
+	if !p.at(TkCatch) {
+		p.diags.Error(p.peek().Span, "expected 'catch' after 'unless'", "add 'catch' after 'unless'")
+		p.syncStmt()
+		return nil
+	}
+	p.bump() // consume "catch"
+	catchName := ""
+	var catchNameSpan Span
+	if p.at(TkIdent) {
+		nameTok := p.bump()
+		catchName = nameTok.Text()
+		catchNameSpan = nameTok.Span
+	}
+	body := p.parseBlock()
+	if body == nil {
+		p.diags.Error(p.peek().Span, "expected '{' block after 'catch'", "add a '{' block for the catch body")
+		return nil
+	}
+	return &UnlessCatchStmt{
+		Span_:         spanUnion(nameTok.Span, body.Span_),
+		Target:        target,
+		Init:          init,
+		CatchName:     catchName,
+		CatchNameSpan: catchNameSpan,
+		CatchBody:     body,
 	}
 }
 
@@ -1044,6 +1104,7 @@ func (p *Parser) parseExitStmt() Stmt {
 }
 
 // parseIfStmt parses: "if" expr block ("elif" expr block)* ("else" block)?
+// The error-check form "if expr catch [err] { block }" is handled separately.
 func (p *Parser) parseIfStmt() Stmt {
 	tok := p.bump() // consume "if"
 
@@ -1051,6 +1112,30 @@ func (p *Parser) parseIfStmt() Stmt {
 	if cond == nil {
 		p.diags.Error(p.peek().Span, "expected condition after 'if'", "add a condition after 'if'")
 		cond = &ErrorExpr{Span_: p.peek().Span}
+	}
+
+	// Error check: 'if expr catch [err] { block }'.
+	if p.at(TkCatch) {
+		p.bump() // consume "catch"
+		catchName := ""
+		var catchNameSpan Span
+		if p.at(TkIdent) {
+			nameTok := p.bump()
+			catchName = nameTok.Text()
+			catchNameSpan = nameTok.Span
+		}
+		body := p.parseBlock()
+		if body == nil {
+			p.diags.Error(p.peek().Span, "expected '{' block after 'catch'", "add a '{' block for the catch body")
+			body = &BlockStmt{Span_: p.peek().Span}
+		}
+		return &IfCatchStmt{
+			Span_:         spanUnion(tok.Span, body.Span_),
+			Cond:          cond,
+			CatchName:     catchName,
+			CatchNameSpan: catchNameSpan,
+			CatchBody:     body,
+		}
 	}
 
 	body := p.parseBlock()

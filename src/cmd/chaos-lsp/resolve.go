@@ -152,6 +152,10 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 			if st.ElseBody != nil {
 				r.buildBlockScope(st.ElseBody, s)
 			}
+		case *compiler.UnlessCatchStmt:
+			r.buildCatchScope(st.CatchBody, st.CatchName, st.CatchNameSpan, s)
+		case *compiler.IfCatchStmt:
+			r.buildCatchScope(st.CatchBody, st.CatchName, st.CatchNameSpan, s)
 		case *compiler.BlockStmt:
 			r.buildBlockScope(st, s)
 		case *compiler.ProcDecl:
@@ -193,6 +197,19 @@ func (r *resolver) uniqueErrorMember(name string) *symbol {
 		}
 	}
 	return found
+}
+
+// buildCatchScope builds the scope of a catch body, declaring the optional
+// error binding in it.
+func (r *resolver) buildCatchScope(body *compiler.BlockStmt, catchName string, catchNameSpan compiler.Span, parent *scope) {
+	s := &scope{parent: parent, start: body.Span_.Start, end: body.Span_.End}
+	parent.children = append(parent.children, s)
+	if catchName != "" {
+		sym := &symbol{name: catchName, kind: completionKindVariable, span: catchNameSpan, scope: s}
+		s.symbols = append(s.symbols, sym)
+		r.decls = append(r.decls, sym)
+	}
+	r.buildBlockScope(body, s)
 }
 
 // collectStructFields records each struct field name as an occurrence so
@@ -306,6 +323,12 @@ func (r *resolver) collectOccurrences() {
 			}
 		case *compiler.StructDecl:
 			r.collectStructFields(s)
+		case *compiler.UnlessCatchStmt:
+			walkExpr(s.Init)
+			walkBlock(s.CatchBody)
+		case *compiler.IfCatchStmt:
+			walkExpr(s.Cond)
+			walkBlock(s.CatchBody)
 		}
 	}
 

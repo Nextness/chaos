@@ -402,3 +402,27 @@ func TestSemanticTokensErrorReturnSpec(t *testing.T) {
 		}
 	}
 }
+
+func TestSemanticTokensUnlessCatch(t *testing.T) {
+	// 'unless catch err' highlights the keywords and the catch binding.
+	source := "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch err {\n        return -1;\n    }\n    return r;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start int
+		want        int
+	}{
+		{10, 14, semTypeKeyword},  // unless
+		{10, 21, semTypeKeyword},  // catch
+		{10, 27, semTypeVariable}, // err (catch binding)
+	}
+	for _, c := range checks {
+		tok, ok := tokenAt(tokens, c.line, c.start)
+		if !ok {
+			t.Errorf("no token at line %d col %d", c.line, c.start)
+			continue
+		}
+		if tok.typeIndex != c.want {
+			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
+		}
+	}
+}

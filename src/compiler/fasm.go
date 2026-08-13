@@ -431,6 +431,8 @@ func (fb *fasmEmitter) emitInstr(ins *MIRInstr) {
 		fb.emitCall(ins)
 	case MIRStructInit:
 		fb.emitStructInit(ins)
+	case MIRFieldLoad:
+		fb.emitFieldLoad(ins)
 	case MIRExit:
 		// exit is a terminator, not an instruction.
 	}
@@ -1331,6 +1333,31 @@ func (fb *fasmEmitter) emitStructInit(ins *MIRInstr) {
 			fb.emitStore(ft, dstOffset)
 		}
 	}
+}
+
+// emitFieldLoad loads one field of a struct value into the result slot.
+func (fb *fasmEmitter) emitFieldLoad(ins *MIRInstr) {
+	baseType := fb.prog.Types.Lookup(fb.valueTypes[ins.Args[0]])
+	offsets := fb.structFieldOffsets(baseType)
+	fieldIdx := int(ins.Imm.Int)
+	if fieldIdx < 0 || fieldIdx >= len(baseType.Fields) {
+		return
+	}
+	ft := fb.prog.Types.Lookup(baseType.Fields[fieldIdx].Type)
+	resSlot := fb.valueSlots[ins.Result]
+	srcSlot := fb.valueSlots[ins.Args[0]]
+	if isAggregate(ft) {
+		// Copy the field's bytes as data (for example a string's pointer and
+		// length pair), not the value they point to.
+		fmt.Fprintf(&fb.out, "    lea rsi, [rbp-%d]\n", srcSlot-offsets[fieldIdx])
+		fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", resSlot)
+		fmt.Fprintf(&fb.out, "    mov rcx, %d\n", fb.sizeOf(ft))
+		fb.out.WriteString("    cld\n")
+		fb.out.WriteString("    rep movsb\n")
+		return
+	}
+	fb.emitLoad(ft, srcSlot-offsets[fieldIdx])
+	fb.emitStore(ft, resSlot)
 }
 
 // emitLoad loads the value at [rbp-offset] into rax (integers, sign or zero

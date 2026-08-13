@@ -2127,3 +2127,101 @@ func TestStrictGenericProcStillErrors(t *testing.T) {
 		t.Error("strict mode should error on generic proc, got none")
 	}
 }
+
+// ──────────────────────────────────────────────
+// Error handling (unless catch, if ... catch)
+// ──────────────────────────────────────────────
+
+func TestParseUnlessCatch(t *testing.T) {
+	stmt := parseOneStmt(t, "r := f(5) unless catch {\n    return -1;\n}")
+	u, ok := stmt.(*UnlessCatchStmt)
+	if !ok {
+		t.Fatalf("expected *UnlessCatchStmt, got %T", stmt)
+	}
+	if u.Target != "r" {
+		t.Errorf("Target = %q, want r", u.Target)
+	}
+	if u.CatchName != "" {
+		t.Errorf("CatchName = %q, want empty", u.CatchName)
+	}
+	if u.Init == nil {
+		t.Fatal("Init = nil")
+	}
+	if u.CatchBody == nil {
+		t.Fatal("CatchBody = nil")
+	}
+}
+
+func TestParseUnlessCatchWithBinding(t *testing.T) {
+	stmt := parseOneStmt(t, "r := f(5) unless catch err {\n    return -1;\n}")
+	u, ok := stmt.(*UnlessCatchStmt)
+	if !ok {
+		t.Fatalf("expected *UnlessCatchStmt, got %T", stmt)
+	}
+	if u.CatchName != "err" {
+		t.Errorf("CatchName = %q, want err", u.CatchName)
+	}
+	if u.CatchNameSpan.Start == 0 && u.CatchNameSpan.End == 0 {
+		t.Error("CatchNameSpan is zero, want the binding span")
+	}
+}
+
+func TestParseBareUnlessCatch(t *testing.T) {
+	stmt := parseOneStmt(t, "f(5) unless catch {\n    return -1;\n}")
+	u, ok := stmt.(*UnlessCatchStmt)
+	if !ok {
+		t.Fatalf("expected *UnlessCatchStmt, got %T", stmt)
+	}
+	if u.Target != "" {
+		t.Errorf("Target = %q, want empty for bare form", u.Target)
+	}
+}
+
+func TestParseIfCatch(t *testing.T) {
+	stmt := parseOneStmt(t, "if r catch {\n    return -1;\n}")
+	ic, ok := stmt.(*IfCatchStmt)
+	if !ok {
+		t.Fatalf("expected *IfCatchStmt, got %T", stmt)
+	}
+	if ic.CatchName != "" {
+		t.Errorf("CatchName = %q, want empty", ic.CatchName)
+	}
+	if ic.Cond == nil {
+		t.Fatal("Cond = nil")
+	}
+}
+
+func TestParseIfCatchWithBinding(t *testing.T) {
+	stmt := parseOneStmt(t, "if r catch err {\n    if err == .GENERIC! { return 1; }\n    return 2;\n}")
+	ic, ok := stmt.(*IfCatchStmt)
+	if !ok {
+		t.Fatalf("expected *IfCatchStmt, got %T", stmt)
+	}
+	if ic.CatchName != "err" {
+		t.Errorf("CatchName = %q, want err", ic.CatchName)
+	}
+}
+
+func TestParseUnlessWithoutCatch(t *testing.T) {
+	result := parseTestCase(t, "main :: proc { r := f(5) unless; }")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for 'unless' without 'catch', got none")
+	}
+}
+
+func TestTolerantUnlessCatch(t *testing.T) {
+	result := parseTolerantTestCase(t, "main :: proc {\n    r := f(5) unless catch err {\n        return -1;\n    }\n    return r;\n}")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if len(proc.Body.Stmts) != 2 {
+		t.Fatalf("Stmts = %d, want 2 (unless catch + return)", len(proc.Body.Stmts))
+	}
+	if _, ok := proc.Body.Stmts[0].(*UnlessCatchStmt); !ok {
+		t.Fatalf("Stmts[0] type = %T, want *UnlessCatchStmt", proc.Body.Stmts[0])
+	}
+}

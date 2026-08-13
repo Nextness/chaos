@@ -152,6 +152,34 @@ type HIRExprStmt struct {
 func (s *HIRExprStmt) hirStmtNode()  {}
 func (s *HIRExprStmt) hirSpan() Span { return s.Span_ }
 
+// HIRIfCatch is an error check: when Cond holds an error, the catch body runs
+// (with CatchSym bound to the error when it is not NoSymbol) and must return
+// or exit; otherwise execution continues. UnionType is the value-or-error
+// pair type of Cond.
+type HIRIfCatch struct {
+	Span_     Span
+	Cond      HIRExpr
+	CatchSym  SymbolID // error binding (NoSymbol when unnamed)
+	CatchBody *HIRBlock
+	UnionType TypeID
+}
+
+func (s *HIRIfCatch) hirStmtNode()  {}
+func (s *HIRIfCatch) hirSpan() Span { return s.Span_ }
+
+// HIRFieldLoad reads one field of a struct value. Field is the field index
+// into the base's struct type; Type is the field type.
+type HIRFieldLoad struct {
+	Span_ Span
+	Base  HIRExpr
+	Field int
+	Type  TypeID
+}
+
+func (e *HIRFieldLoad) hirExprNode()    {}
+func (e *HIRFieldLoad) hirSpan() Span   { return e.Span_ }
+func (e *HIRFieldLoad) hirType() TypeID { return e.Type }
+
 // ConstKind classifies an HIRConst literal.
 type ConstKind uint8
 

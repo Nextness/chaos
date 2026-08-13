@@ -431,23 +431,25 @@ func TestLowerFloatStringBoolConsts(t *testing.T) {
 	}
 }
 
-func TestLowerRejectsErrorReturn(t *testing.T) {
-	// Error-returning procedures ('<>') are parsed and type-checked but not
-	// yet supported by the backend; lowering reports a diagnostic.
-	src := "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (String <> Some_Error) {\n    return .GENERIC!;\n}"
-	tokens, _ := Tokenize([]byte(src), 0)
-	result := ParseProgram(tokens)
-	if result.Diags.HasErrors() {
-		t.Fatalf("parse errors: %v", result.Diags)
+func TestLowerErrorReturn(t *testing.T) {
+	// Error-returning procedures lower to a value-or-error pair result.
+	src := "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (String <> Some_Error) {\n    return .GENERIC!;\n}\nmain :: proc -> S64 {\n    s := f() unless catch {\n        return -1;\n    }\n    return 0;\n}"
+	hir, _ := lowerSource(t, src)
+	p := findHIRProc(hir, "f")
+	if p == nil {
+		t.Fatal("proc f not found")
 	}
-	if diags := CheckProgram(result.Program); diags.HasErrors() {
-		t.Fatalf("type errors: %v", diags)
+	if len(p.Results) != 1 {
+		t.Fatalf("Results = %d, want 1", len(p.Results))
 	}
-	_, diags := LowerProgram(result.Program)
-	if len(diags) != 1 {
-		t.Fatalf("lower diags = %v, want exactly one", diags)
+	if !isUnionTypeID(hir.Types, p.Results[0]) {
+		t.Fatalf("result type %q is not a value-or-error pair", typeName(hir, p.Results[0]))
 	}
-	if diags[0].Message != "error-returning procedures are not yet supported" {
-		t.Errorf("diag message = %q, want not-yet-supported", diags[0].Message)
+	rt := hir.Types.Lookup(p.Results[0])
+	if len(rt.Fields) != 3 {
+		t.Fatalf("union fields = %d, want 3", len(rt.Fields))
+	}
+	if typeName(hir, rt.Fields[0].Type) != "String" || typeName(hir, rt.Fields[1].Type) != "Some_Error" {
+		t.Errorf("union fields = %s, %s, want String, Some_Error", typeName(hir, rt.Fields[0].Type), typeName(hir, rt.Fields[1].Type))
 	}
 }

@@ -169,6 +169,28 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 		b.WriteString("ExprStmt ")
 		dumpExpr(b, n.Expr)
 		b.WriteString("\n")
+	case *UnlessCatchStmt:
+		dumpIndent(b, depth)
+		b.WriteString("UnlessCatchStmt")
+		if n.Target != "" {
+			fmt.Fprintf(b, " %s", n.Target)
+		}
+		b.WriteString(" = ")
+		dumpExpr(b, n.Init)
+		if n.CatchName != "" {
+			fmt.Fprintf(b, " catch %s", n.CatchName)
+		}
+		b.WriteString("\n")
+		dumpBlock(b, n.CatchBody, depth+1)
+	case *IfCatchStmt:
+		dumpIndent(b, depth)
+		b.WriteString("IfCatchStmt ")
+		dumpExpr(b, n.Cond)
+		if n.CatchName != "" {
+			fmt.Fprintf(b, " catch %s", n.CatchName)
+		}
+		b.WriteString("\n")
+		dumpBlock(b, n.CatchBody, depth+1)
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Stmt %T\n", s)

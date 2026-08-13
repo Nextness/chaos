@@ -329,8 +329,102 @@ func TestTypeCheckErrorReturnSpecInvalid(t *testing.T) {
 }
 
 func TestTypeCheckErrorReturnCallType(t *testing.T) {
-	// A call to a '<>' procedure has the value type.
-	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (String <> Some_Error) {\n    return «s»;\n}\nmain :: proc {\n    s := f();\n    if s == «s» { }\n}")
+	// A call to a '<>' procedure has the value-or-error pair type; the value
+	// is usable after the error is handled.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (String <> Some_Error) {\n    return «s»;\n}\nmain :: proc {\n    s := f() unless catch {\n        return;\n    }\n    if s == «s» { }\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckUnlessCatch(t *testing.T) {
+	// The value is usable after 'unless catch'; the catch body must diverge.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch {\n        return -1;\n    }\n    return r;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+
+	// The bare form discards the value.
+	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    f(5) unless catch {\n        return -1;\n    }\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for bare form: %v", diags)
+	}
+}
+
+func TestTypeCheckUnlessCatchBinding(t *testing.T) {
+	// The catch binding has the error type and can be compared against error
+	// literals.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n    SOMETHING_ELSE;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\nmain :: proc -> S64 {\n    r := f(-1) unless catch err {\n        if err == .GENERIC! {\n            return 7;\n        }\n        return 8;\n    }\n    return r;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckIfCatch(t *testing.T) {
+	// Option 3: bind first, check with 'if result catch', then use the value.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\nmain :: proc -> S64 {\n    r := f(5);\n    if r catch {\n        return -1;\n    }\n    return r;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckErrorMustHandle(t *testing.T) {
+	// Using the value before handling the error is rejected.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    r := f(5);\n    return r;\n}")
+	if !hasError(diags, "must handle the error before using the value") {
+		t.Errorf("expected must-handle error, got %v", diags)
+	}
+
+	// Comparisons and exit status are also rejected.
+	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc {\n    r := f(5);\n    if r == 5 { }\n}")
+	if !hasError(diags, "must handle the error before using the value") {
+		t.Errorf("expected must-handle error for comparison, got %v", diags)
+	}
+
+	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc {\n    r := f(5);\n    exit r;\n}")
+	if !hasError(diags, "must handle the error before using the value") {
+		t.Errorf("expected must-handle error for exit, got %v", diags)
+	}
+}
+
+func TestTypeCheckCatchMustDiverge(t *testing.T) {
+	// A catch block that falls through is rejected.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch {\n    }\n    return r;\n}")
+	if !hasError(diags, "the catch block must return or exit") {
+		t.Errorf("expected must-diverge error, got %v", diags)
+	}
+
+	// An if/else where both branches diverge satisfies the requirement.
+	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch {\n        if true {\n            return 1;\n        } else {\n            return 2;\n        }\n    }\n    return r;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for diverging if/else catch: %v", diags)
+	}
+}
+
+func TestTypeCheckCatchRequiresUnion(t *testing.T) {
+	// 'unless catch' and 'if ... catch' require an error-returning value.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    r := 5 unless catch {\n        return -1;\n    }\n    return r;\n}")
+	if !hasError(diags, "unless catch requires an error-returning expression") {
+		t.Errorf("expected requires-union error, got %v", diags)
+	}
+
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    r := 5;\n    if r catch {\n        return -1;\n    }\n    return r;\n}")
+	if !hasError(diags, "catch requires an error-returning value") {
+		t.Errorf("expected requires-union error for if catch, got %v", diags)
+	}
+}
+
+func TestTypeCheckErrorReRaise(t *testing.T) {
+	// A matching value-or-error pair can be returned as-is.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\ng :: proc -> (S64 <> Some_Error) {\n    r := f(-1);\n    if r catch {\n        return r;\n    }\n    return r;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckErrorReassignAfterCatch(t *testing.T) {
+	// Reassigning an unwrapped variable wraps the new value.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch {\n        return -1;\n    }\n    r = 9;\n    return r;\n}")
 	if diags.HasErrors() {
 		t.Errorf("unexpected errors: %v", diags)
 	}

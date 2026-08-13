@@ -11,6 +11,29 @@ listed under an explicit semantic version.
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
 
+## 0.11.0 - 2026-08-13
+
+### Added
+
+- Error handling with `unless catch` and `if ... catch`.
+  - `result := expr unless catch [err] { body }` binds the value-or-error
+    pair from an error-returning expression and runs the catch body when it
+    is an error; the bare `expr unless catch [err] { body }` form discards
+    the value. `if result catch [err] { body }` checks a previously bound
+    pair. The optional `err` binding holds the error and can be compared
+    against error literals (`.GENERIC!`).
+  - The catch body must return or exit, so the value is always defined
+    afterward; the variable then holds the unwrapped value (flow-sensitive
+    typing). Using the value before handling the error is rejected.
+  - Error-returning procedures now lower to a value-or-error pair
+    (a struct of value, error, and hasError fields) through HIR, MIR, and
+    the fasm backend, replacing the previous "not yet supported" rejection.
+    A matching pair can be re-raised with `return result;`, and reassigning
+    an unwrapped variable wraps the new value.
+  - The language server highlights `unless` and `catch` as keywords and the
+    catch binding as a variable; definition, references, and hover work on
+    the catch binding.
+
 ## 0.10.0 - 2026-08-12
 
 ### Added

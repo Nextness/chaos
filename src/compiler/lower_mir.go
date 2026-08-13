@@ -204,7 +204,39 @@ func (ml *MIRLowerer) lowerStmt(s HIRStmt) {
 		ml.lowerBlock(n)
 	case *HIRExprStmt:
 		ml.lowerExpr(n.Expr)
+	case *HIRIfCatch:
+		ml.lowerIfCatch(n)
 	}
+}
+
+// lowerIfCatch lowers an error check into a branch on the pair's hasError
+// field. The catch block binds the error field when a binding is present and
+// must return or exit; the no-error path continues.
+func (ml *MIRLowerer) lowerIfCatch(n *HIRIfCatch) {
+	st := ml.types.Lookup(n.UnionType)
+	base := ml.lowerExpr(n.Cond)
+	hasErr := ml.emit(MIRFieldLoad, st.Fields[2].Type, []ValueID{base}, MIRImmediate{Kind: MIRImmField, Int: 2}, n.Span_)
+	thenBlock := ml.newBlock()
+	elseBlock := ml.newBlock()
+	joinBlock := ml.newBlock()
+	ml.setTerminator(MIRTerminator{Kind: MIRBranch, Cond: hasErr, Then: thenBlock.ID, Else: elseBlock.ID, Span: n.Span_})
+
+	ml.curBlock = thenBlock
+	if n.CatchSym != NoSymbol {
+		errVal := ml.emit(MIRFieldLoad, st.Fields[1].Type, []ValueID{base}, MIRImmediate{Kind: MIRImmField, Int: 1}, n.Span_)
+		lid := LocalID(len(ml.cur.Locals))
+		ml.cur.Locals = append(ml.cur.Locals, lid)
+		ml.cur.LocalTypes = append(ml.cur.LocalTypes, st.Fields[1].Type)
+		ml.localIDs[n.CatchSym] = lid
+		ml.localTypes[n.CatchSym] = st.Fields[1].Type
+		ml.emitVoid(MIRStoreLocal, st.Fields[1].Type, []ValueID{errVal}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
+	}
+	ml.lowerBlock(n.CatchBody)
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: joinBlock.ID, Span: n.Span_})
+
+	ml.curBlock = elseBlock
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: joinBlock.ID, Span: n.Span_})
+	ml.curBlock = joinBlock
 }
 
 func (ml *MIRLowerer) lowerVarDecl(n *HIRVarDecl) {
@@ -307,6 +339,9 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 		return ml.emit(MIRCall, n.Type, args, MIRImmediate{Kind: MIRImmSymbol, Symbol: n.Func}, n.Span_)
 	case *HIRStructInit:
 		return ml.lowerStructInit(n)
+	case *HIRFieldLoad:
+		base := ml.lowerExpr(n.Base)
+		return ml.emit(MIRFieldLoad, n.Type, []ValueID{base}, MIRImmediate{Kind: MIRImmField, Int: int64(n.Field)}, n.Span_)
 	}
 	return ml.emit(MIRConst, ml.types.Unknown(), nil, MIRImmediate{}, e.hirSpan())
 }

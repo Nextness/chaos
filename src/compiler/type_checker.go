@@ -7,7 +7,10 @@
 // types cannot be assigned, compared, or combined.
 package compiler
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
 
 // Type is a resolved type name in the Chaos type system. Built-in primitive
 // types and declared struct names are represented by their name.
@@ -189,7 +192,10 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		tc.checkReturnStmt(n)
 	case *ExitStmt:
 		if n.Status != nil {
-			tc.inferExpr(n.Status)
+			st := tc.inferExpr(n.Status)
+			if isErrorUnion(st) {
+				tc.diags.Error(n.Status.nodeSpan(), "must handle the error before using the value", "use 'unless catch' or 'if ... catch' first")
+			}
 		}
 		if n.Message != nil {
 			tc.inferExpr(n.Message)
@@ -220,7 +226,107 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		// Struct declarations are registered in the first pass.
 	case *ErrorDecl:
 		// Error declarations are registered in the first pass.
+	case *UnlessCatchStmt:
+		tc.checkUnlessCatch(n)
+	case *IfCatchStmt:
+		tc.checkIfCatch(n)
 	}
+}
+
+// checkUnlessCatch checks "target := expr unless catch [err] { body }" (or
+// the bare form with Target == ""). The expression must be an error-returning
+// value; the catch body must return or exit, and after the statement the
+// target holds the unwrapped value.
+func (tc *TypeChecker) checkUnlessCatch(n *UnlessCatchStmt) {
+	initType := tc.inferExpr(n.Init)
+	if !isErrorUnion(initType) {
+		tc.diags.Error(n.Init.nodeSpan(), "unless catch requires an error-returning expression, got "+string(initType), "use an expression that can return an error")
+		return
+	}
+	if n.Target != "" {
+		tc.declare(n.Target, initType)
+	}
+	tc.checkCatchBody(n.CatchBody, unionErrorType(initType), n.CatchName)
+	if n.Target != "" {
+		tc.updateType(n.Target, unionValueType(initType))
+	}
+}
+
+// checkIfCatch checks "if expr catch [err] { body }". The condition must be a
+// variable holding an error-returning value; the catch body must return or
+// exit, and after the statement the variable holds the unwrapped value.
+func (tc *TypeChecker) checkIfCatch(n *IfCatchStmt) {
+	condType := tc.inferExpr(n.Cond)
+	if !isErrorUnion(condType) {
+		tc.diags.Error(n.Cond.nodeSpan(), "catch requires an error-returning value, got "+string(condType), "use a value that can return an error")
+		return
+	}
+	ident, ok := n.Cond.(*IdentExpr)
+	if !ok {
+		tc.diags.Error(n.Cond.nodeSpan(), "catch requires a variable holding the error-returning value", "bind the value to a variable first")
+		return
+	}
+	tc.checkCatchBody(n.CatchBody, unionErrorType(condType), n.CatchName)
+	tc.updateType(ident.Name, unionValueType(condType))
+}
+
+// checkCatchBody checks a catch body: it must return or exit (so the value is
+// always defined afterward), and the optional error binding is declared in the
+// body's scope.
+func (tc *TypeChecker) checkCatchBody(body *BlockStmt, errorType Type, catchName string) {
+	if !blockDiverges(body) {
+		tc.diags.Error(body.Span_, "the catch block must return or exit", "end the catch block with a return or exit")
+	}
+	tc.pushScope()
+	if catchName != "" {
+		tc.declare(catchName, errorType)
+	}
+	tc.checkBlock(body)
+	tc.popScope()
+}
+
+// updateType changes the type of a declared name in the scope where it is
+// declared, used for the flow-sensitive unwrap after an error check.
+func (tc *TypeChecker) updateType(name string, t Type) {
+	for i := len(tc.scopes) - 1; i >= 0; i-- {
+		if _, ok := tc.scopes[i][name]; ok {
+			tc.scopes[i][name] = t
+			return
+		}
+	}
+}
+
+// blockDiverges reports whether a block always returns or exits: its last
+// statement diverges.
+func blockDiverges(b *BlockStmt) bool {
+	if b == nil || len(b.Stmts) == 0 {
+		return false
+	}
+	return stmtDiverges(b.Stmts[len(b.Stmts)-1])
+}
+
+// stmtDiverges reports whether a statement always returns or exits.
+func stmtDiverges(s Stmt) bool {
+	switch n := s.(type) {
+	case *ReturnStmt, *ExitStmt:
+		return true
+	case *BlockStmt:
+		return blockDiverges(n)
+	case *IfStmt:
+		if !blockDiverges(n.Body) {
+			return false
+		}
+		for _, elif := range n.Elif {
+			if !blockDiverges(elif.Body) {
+				return false
+			}
+		}
+		if n.ElseBody == nil {
+			return false
+		}
+		return blockDiverges(n.ElseBody)
+	}
+	return false
 }
 
 // checkVarDecl infers the type of a variable declaration and checks that the
@@ -273,8 +379,12 @@ func (tc *TypeChecker) checkReturnStmt(s *ReturnStmt) {
 	if tc.currentReturnType != TypeVoid {
 		// A '<>' procedure may return either the value type or the error type.
 		if tc.currentErrorReturnType != "" {
-			if vt := tc.inferExpr(s.Value); vt == tc.currentErrorReturnType {
-				return
+			vt := tc.inferExpr(s.Value)
+			if vt == tc.currentErrorReturnType {
+				return // an error value returned from a '<>' procedure
+			}
+			if vt == errorUnionType(tc.currentReturnType, tc.currentErrorReturnType) {
+				return // re-raise a matching error-returning value
 			}
 		}
 		tc.checkAssign(s.Span_, tc.currentReturnType, s.Value)
@@ -351,6 +461,36 @@ func (tc *TypeChecker) isErrorType(t Type) bool {
 	return ok
 }
 
+// errorUnionType is the type of a value-or-error pair: "Value<>Error".
+// The '<>' separator cannot appear in identifier names, so a type string
+// containing it is unambiguously an error union.
+func errorUnionType(value, err Type) Type {
+	return Type(string(value) + "<>" + string(err))
+}
+
+// isErrorUnion reports whether t is a value-or-error pair type.
+func isErrorUnion(t Type) bool {
+	return strings.Contains(string(t), "<>")
+}
+
+// unionValueType returns the value side of an error union type.
+func unionValueType(t Type) Type {
+	i := strings.Index(string(t), "<>")
+	if i < 0 {
+		return t
+	}
+	return t[:i]
+}
+
+// unionErrorType returns the error side of an error union type.
+func unionErrorType(t Type) Type {
+	i := strings.Index(string(t), "<>")
+	if i < 0 {
+		return ""
+	}
+	return t[i+2:]
+}
+
 // hasErrorMember reports whether the named error type declares the member.
 func (tc *TypeChecker) hasErrorMember(typeName, member string) bool {
 	d, ok := tc.errors[typeName]
@@ -396,6 +536,11 @@ func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 		} else {
 			tc.diags.Error(em.Span_, "cannot infer the error type of '. "+em.Name+"'", "use the explicit 'Type.MEMBER' form")
 		}
+	}
+	// Error-returning values must be handled before they are used.
+	if isErrorUnion(lt) || isErrorUnion(rt) {
+		tc.diags.Error(n.Span_, "must handle the error before using the value", "use 'unless catch' or 'if ... catch' first")
+		return TypeUnknown
 	}
 	switch n.Op {
 	case BinaryOpAdd, BinaryOpSub, BinaryOpMul, BinaryOpDiv, BinaryOpMod:
@@ -472,9 +617,23 @@ func (tc *TypeChecker) checkCallExpr(n *CallExpr) Type {
 		}
 	}
 	if len(proc.Results) > 0 {
+		if proc.ErrorResult != nil {
+			return errorUnionType(tc.procValueResult(proc), tc.procErrorResult(proc))
+		}
 		return tc.procValueResult(proc)
 	}
 	return TypeVoid
+}
+
+// procErrorResult returns the error type of a '<>' procedure result,
+// normalizing the written order.
+func (tc *TypeChecker) procErrorResult(p *ProcDecl) Type {
+	lt := typeOfTypeExpr(p.Results[0])
+	rt := typeOfTypeExpr(p.ErrorResult)
+	if tc.isErrorType(lt) && !tc.isErrorType(rt) {
+		return lt
+	}
+	return rt
 }
 
 func (tc *TypeChecker) checkStructInit(si *StructInitExpr, structType Type) {
@@ -540,6 +699,10 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 		return
 	}
 	valType := tc.inferExpr(value)
+	if isErrorUnion(valType) {
+		tc.diags.Error(span, "must handle the error before using the value", "use 'unless catch' or 'if ... catch' first")
+		return
+	}
 	if valType != TypeUnknown && valType != target {
 		tc.diags.Error(span, "cannot assign "+string(valType)+" to "+string(target), "use a value of type "+string(target))
 	}

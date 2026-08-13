@@ -66,7 +66,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 		switch tok.Kind {
 		case compiler.TkExit, compiler.TkIf, compiler.TkElif, compiler.TkElse,
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
-			compiler.TkStruct, compiler.TkErrorKw,
+			compiler.TkStruct, compiler.TkErrorKw, compiler.TkUnless, compiler.TkCatch,
 			compiler.TkTrue, compiler.TkFalse,
 			compiler.TkHash, compiler.TkDirec:
 			idx = semTypeKeyword
@@ -236,6 +236,18 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkStruct(s)
 		case *compiler.ErrorDecl:
 			walkError(s)
+		case *compiler.UnlessCatchStmt:
+			walkExpr(s.Init)
+			if s.CatchName != "" {
+				out = append(out, spanToTokenRows(s.CatchNameSpan, sf, semTypeVariable)...)
+			}
+			walkBlock(s.CatchBody)
+		case *compiler.IfCatchStmt:
+			walkExpr(s.Cond)
+			if s.CatchName != "" {
+				out = append(out, spanToTokenRows(s.CatchNameSpan, sf, semTypeVariable)...)
+			}
+			walkBlock(s.CatchBody)
 		}
 	}
 

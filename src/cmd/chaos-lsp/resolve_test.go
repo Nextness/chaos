@@ -279,3 +279,25 @@ func TestErrorReferences(t *testing.T) {
 		t.Fatalf("references for NOT_FOUND = %d, want 2", len(occs))
 	}
 }
+
+func TestCatchBindingDefinitionAndReferences(t *testing.T) {
+	source := "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    r := f(-1) unless catch err {\n        if err == .GENERIC! {\n            return 1;\n        }\n        return 2;\n    }\n    return r;\n}"
+	r := buildResolverFor(t, source)
+	// Definition on the catch binding resolves to itself.
+	bindRef := offsetOf(t, source, "catch err") + len("catch ")
+	sym := r.definitionAt(bindRef)
+	if sym == nil || sym.name != "err" {
+		t.Fatalf("definition of catch binding = %+v, want err", sym)
+	}
+	// Definition on the use of err inside the body resolves to the binding.
+	useRef := offsetOf(t, source, "err == .GENERIC!")
+	sym = r.definitionAt(useRef)
+	if sym == nil || sym.name != "err" {
+		t.Fatalf("definition of err use = %+v, want err", sym)
+	}
+	// References on err: the binding and the use.
+	occs := r.referencesAt(bindRef)
+	if len(occs) != 2 {
+		t.Fatalf("references for err = %d, want 2", len(occs))
+	}
+}
