@@ -1,0 +1,3 @@
+[ERROR] 12:5:error_must_handle.chaos - must handle the error before using the value
+     return r;
+     ^^^^^^^^ -> use 'unless catch' or 'if ... catch' first

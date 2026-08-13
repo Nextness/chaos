@@ -1,0 +1,32 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ErrorDecl Some_Error
+    Member GENERIC
+    Member SOMETHING_ELSE
+  ProcDecl double
+    Param x: Ident(S64)
+    Results: Ident(S64) <> Ident(Some_Error)
+    Block
+      IfStmt condition=Binary(< Ident(x) Int(0))
+        Block
+          ReturnStmt ErrorMember(.GENERIC!)
+      ReturnStmt Binary(* Ident(x) Int(2))
+  ProcDecl triple
+    Results: Ident(Some_Error) <> Ident(S64)
+    Block
+      ReturnStmt Int(3)
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      UnlessCatchStmt a = Call(Ident(double), Int(5))
+        Block
+          ReturnStmt Unary(- Int(1))
+      UnlessCatchStmt b = Call(Ident(triple))
+        Block
+          ReturnStmt Unary(- Int(2))
+      IfStmt condition=Binary(&& Binary(== Ident(a) Int(10)) Binary(== Ident(b) Int(3)))
+        Block
+          ReturnStmt Int(10)
+      ReturnStmt Int(0)

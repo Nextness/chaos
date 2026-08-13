@@ -1,0 +1,5 @@
+// expect-stage: parse
+// expect-error: error values cannot be explicitly assigned
+// Error members are numbered sequentially from 0; explicit values are
+// rejected.
+Foo :: error { A = 1; }

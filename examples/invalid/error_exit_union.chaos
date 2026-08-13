@@ -1,0 +1,13 @@
+// expect-stage: type
+// expect-error: must handle the error before using the value
+// An unhandled error-returning value cannot be used as an exit status.
+Some_Error :: error { GENERIC; }
+
+f :: proc (x: S64) -> (S64 <> Some_Error) {
+    return x;
+}
+
+main :: proc {
+    r := f(5);
+    exit r;
+}

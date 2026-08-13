@@ -1,0 +1,18 @@
+HIR
+  Proc greet(x: S64) -> String<>Some_Error
+    Block
+      If condition=Binary(< Ident(x) Int(0))
+        Block
+          Return StructInit(value, value=Unknown, error=Error(GENERIC), hasError=Bool(true))
+      Return StructInit(value, value=String("hello"), error=Unknown, hasError=Bool(false))
+  Proc main() -> S64
+    Block
+      Block
+        VarDecl s: String<>Some_Error = Call(greet, Int(1)) [mutable=true compileTime=false]
+        IfCatch Ident(s)
+          Block
+            Return Unary(- Int(1))
+      If condition=Binary(== FieldLoad(Ident(s), 0) String("hello"))
+        Block
+          Return Int(11)
+      Return Int(0)

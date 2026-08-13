@@ -1,0 +1,111 @@
+format ELF64 executable 3
+
+segment readable writable
+g_default_error:
+    rb 2
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f___global_init
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 64
+L0:
+    mov rax, 1
+    mov word [rbp-6], ax
+    movzx rax, word [rbp-6]
+    mov word [rbp-2], ax
+    movzx rax, word [rbp-2]
+    mov word [rbp-8], ax
+    mov rax, 1
+    mov word [rbp-10], ax
+    movzx rax, word [rbp-8]
+    cmp ax, word [rbp-10]
+    sete al
+    mov byte [rbp-11], al
+    movzx rax, byte [rbp-11]
+    test al, al
+    jnz L1
+    jmp L2
+L1:
+    mov rax, 1
+    mov qword [rbp-24], rax
+    mov rax, qword [rbp-24]
+    leave
+    ret
+L2:
+    jmp L3
+L3:
+    mov rax, qword [g_default_error]
+    mov word [rbp-26], ax
+    mov rax, 2
+    mov word [rbp-28], ax
+    movzx rax, word [rbp-26]
+    cmp ax, word [rbp-28]
+    sete al
+    mov byte [rbp-29], al
+    movzx rax, byte [rbp-29]
+    test al, al
+    jnz L4
+    jmp L5
+L4:
+    mov rax, 2
+    mov qword [rbp-40], rax
+    mov rax, qword [rbp-40]
+    leave
+    ret
+L5:
+    jmp L6
+L6:
+    mov rax, 0
+    mov word [rbp-42], ax
+    movzx rax, word [rbp-42]
+    mov word [rbp-4], ax
+    movzx rax, word [rbp-4]
+    mov word [rbp-44], ax
+    mov rax, 0
+    mov word [rbp-46], ax
+    movzx rax, word [rbp-44]
+    cmp ax, word [rbp-46]
+    sete al
+    mov byte [rbp-47], al
+    movzx rax, byte [rbp-47]
+    test al, al
+    jnz L7
+    jmp L8
+L7:
+    mov rax, 3
+    mov qword [rbp-56], rax
+    mov rax, qword [rbp-56]
+    leave
+    ret
+L8:
+    jmp L9
+L9:
+    mov rax, 0
+    mov qword [rbp-64], rax
+    mov rax, qword [rbp-64]
+    leave
+    ret
+
+f___global_init:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 16
+L10:
+    mov rax, 2
+    mov word [rbp-2], ax
+    movzx rax, word [rbp-2]
+    mov qword [g_default_error], rax
+    leave
+    ret
+

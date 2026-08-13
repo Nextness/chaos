@@ -1,0 +1,3 @@
+[ERROR] 9:8:error_cross_type.chaos - cannot compare A and B
+     if A.X! == B.Y! { }
+        ^^^^^^^^^^^^ -> compare values of the same type

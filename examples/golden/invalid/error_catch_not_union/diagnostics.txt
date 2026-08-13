@@ -1,0 +1,3 @@
+[ERROR] 6:8:error_catch_not_union.chaos - catch requires an error-returning value, got S64
+     if r catch {
+        ^ -> use a value that can return an error

@@ -1,0 +1,4 @@
+// expect-stage: parse
+// expect-error: error types must be declared at compile time
+// Error types are compile-time only: ':=' is rejected.
+Foo := error { A; }

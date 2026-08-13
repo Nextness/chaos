@@ -1,0 +1,3 @@
+[ERROR] 4:24:error_return_undeclared.chaos - Nope is not an error type
+ f :: proc -> String <> Nope {
+                        ^^^^ -> use a declared error type after '<>'

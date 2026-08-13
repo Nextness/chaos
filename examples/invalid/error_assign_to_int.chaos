@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: cannot assign Some_Error to S64
+// Error values are nominal: they assign only to their own error type.
+Some_Error :: error { GENERIC; }
+
+main :: proc {
+    x: S64 = Some_Error.GENERIC!;
+}

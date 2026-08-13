@@ -1,0 +1,30 @@
+// expect-exit: 1
+// Error types: declaration, the ': Error :' annotation form, members with
+// the '!' literal marker, nominal equality, and a compile-time error const.
+Hash_Table_Error :: error {
+    GENERIC;
+    OUT_OF_MEMORY;
+    NOT_FOUND;
+    OUT_OF_BOUNDS;
+}
+
+Other_Error : Error : error {
+    GENERIC;
+}
+
+default_error :: Hash_Table_Error.NOT_FOUND!;
+
+#entry main :: proc -> S64 {
+    err: Hash_Table_Error = .OUT_OF_MEMORY!;
+    if err == Hash_Table_Error.OUT_OF_MEMORY! {
+        return 1;
+    }
+    if default_error == Hash_Table_Error.NOT_FOUND! {
+        return 2;
+    }
+    other: Other_Error = .GENERIC!;
+    if other == Other_Error.GENERIC! {
+        return 3;
+    }
+    return 0;
+}

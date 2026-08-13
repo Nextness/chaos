@@ -1,0 +1,5 @@
+// expect-stage: parse
+// expect-error: expected '::', ':', or ':=' after identifier
+// Generic type parameters are an editor-only (tolerant parse) feature; the
+// strict CLI rejects them.
+f <T: String | S64> :: proc (x: T) { }

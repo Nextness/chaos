@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: unknown error member
+// Referencing a member that the error type does not declare is rejected.
+Some_Error :: error { GENERIC; }
+
+main :: proc {
+    x := Some_Error.NOPE!;
+}

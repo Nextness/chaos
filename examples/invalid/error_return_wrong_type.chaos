@@ -1,0 +1,9 @@
+// expect-stage: type
+// expect-error: cannot assign S64 to String
+// A '<>' procedure returns either the value type or the error type; a
+// different type is rejected.
+Some_Error :: error { GENERIC; }
+
+f :: proc -> (String <> Some_Error) {
+    return 42;
+}

@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: error values must be instantiated with '!'
+// Error literals require the trailing '!'.
+Some_Error :: error { GENERIC; }
+
+main :: proc {
+    x := Some_Error.GENERIC;
+}

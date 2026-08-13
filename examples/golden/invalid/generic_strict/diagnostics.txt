@@ -1,0 +1,30 @@
+[ERROR] 5:3:generic_strict.chaos - expected '::', ':', or ':=' after identifier in declaration
+ f <T: String | S64> :: proc (x: T) { }
+   ^ -> add '::', ':', or ':=' after the identifier
+[ERROR] 5:14:generic_strict.chaos - expected ;, got |
+ f <T: String | S64> :: proc (x: T) { }
+              ^ -> add ';' here
+[ERROR] 5:19:generic_strict.chaos - expected '::', ':', or ':=' after identifier in declaration
+ f <T: String | S64> :: proc (x: T) { }
+                   ^ -> add '::', ':', or ':=' after the identifier
+[ERROR] 5:21:generic_strict.chaos - expected declaration, got :
+ f <T: String | S64> :: proc (x: T) { }
+                     ^ -> start the line with an identifier followed by '::', ':', or ':='
+[ERROR] 5:22:generic_strict.chaos - expected declaration, got :
+ f <T: String | S64> :: proc (x: T) { }
+                      ^ -> start the line with an identifier followed by '::', ':', or ':='
+[ERROR] 5:24:generic_strict.chaos - expected declaration, got proc
+ f <T: String | S64> :: proc (x: T) { }
+                        ^^^^ -> start the line with an identifier followed by '::', ':', or ':='
+[ERROR] 5:29:generic_strict.chaos - expected declaration, got (
+ f <T: String | S64> :: proc (x: T) { }
+                             ^ -> start the line with an identifier followed by '::', ':', or ':='
+[ERROR] 5:34:generic_strict.chaos - expected ;, got )
+ f <T: String | S64> :: proc (x: T) { }
+                                  ^ -> add ';' here
+[ERROR] 5:36:generic_strict.chaos - expected declaration, got {
+ f <T: String | S64> :: proc (x: T) { }
+                                    ^ -> start the line with an identifier followed by '::', ':', or ':='
+[ERROR] 5:38:generic_strict.chaos - expected declaration, got }
+ f <T: String | S64> :: proc (x: T) { }
+                                      ^ -> start the line with an identifier followed by '::', ':', or ':='

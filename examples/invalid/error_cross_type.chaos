@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: cannot compare A and B
+// Error values are nominal: values of different error types cannot be
+// compared.
+A :: error { X; }
+B :: error { Y; }
+
+main :: proc {
+    if A.X! == B.Y! { }
+}

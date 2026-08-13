@@ -1,0 +1,3 @@
+[ERROR] 7:10:error_unknown_member.chaos - unknown error member NOPE in Some_Error
+     x := Some_Error.NOPE!;
+          ^^^^^^^^^^^^^^^^ -> use a declared error member

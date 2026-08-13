@@ -1,0 +1,3 @@
+[ERROR] 4:13:error_assign_decl.chaos - error types must be declared at compile time; use '::' or ': Error :'
+ Foo : Error = error { A; }
+             ^ -> replace ': Error =' with '::' or ': Error :'

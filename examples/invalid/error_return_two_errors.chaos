@@ -1,0 +1,9 @@
+// expect-stage: type
+// expect-error: a result can carry only one error type
+// A '<>' result has exactly one value side and one error side.
+A :: error { X; }
+B :: error { Y; }
+
+f :: proc -> A <> B {
+    return A.X!;
+}

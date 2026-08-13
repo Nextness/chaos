@@ -1,0 +1,4 @@
+// expect-stage: type
+// expect-error: duplicate error member
+// Duplicate member names would make the sequential numbering ambiguous.
+Foo :: error { A; A; }

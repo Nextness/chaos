@@ -1,0 +1,27 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ErrorDecl Hash_Table_Error
+    Member GENERIC
+    Member OUT_OF_MEMORY
+    Member NOT_FOUND
+    Member OUT_OF_BOUNDS
+  ErrorDecl Other_Error
+    Member GENERIC
+  VarDecl default_error = ErrorMember(Hash_Table_Error.NOT_FOUND!) [mutable=false compileTime=true]
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl err: Ident(Hash_Table_Error) = ErrorMember(.OUT_OF_MEMORY!) [mutable=true compileTime=false]
+      IfStmt condition=Binary(== Ident(err) ErrorMember(Hash_Table_Error.OUT_OF_MEMORY!))
+        Block
+          ReturnStmt Int(1)
+      IfStmt condition=Binary(== Ident(default_error) ErrorMember(Hash_Table_Error.NOT_FOUND!))
+        Block
+          ReturnStmt Int(2)
+      VarDecl other: Ident(Other_Error) = ErrorMember(.GENERIC!) [mutable=true compileTime=false]
+      IfStmt condition=Binary(== Ident(other) ErrorMember(Other_Error.GENERIC!))
+        Block
+          ReturnStmt Int(3)
+      ReturnStmt Int(0)

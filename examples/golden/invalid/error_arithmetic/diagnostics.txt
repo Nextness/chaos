@@ -1,0 +1,3 @@
+[ERROR] 7:10:error_arithmetic.chaos - cannot apply + to error values
+     z := A.X! + A.Y!;
+          ^^^^^^^^^^^ -> error values support only == and !=

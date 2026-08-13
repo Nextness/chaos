@@ -1,0 +1,24 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ErrorDecl Some_Error
+    Member GENERIC
+  ProcDecl greet
+    Param x: Ident(S64)
+    Results: Ident(String) <> Ident(Some_Error)
+    Block
+      IfStmt condition=Binary(< Ident(x) Int(0))
+        Block
+          ReturnStmt ErrorMember(.GENERIC!)
+      ReturnStmt String("hello")
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      UnlessCatchStmt s = Call(Ident(greet), Int(1))
+        Block
+          ReturnStmt Unary(- Int(1))
+      IfStmt condition=Binary(== Ident(s) String("hello"))
+        Block
+          ReturnStmt Int(11)
+      ReturnStmt Int(0)

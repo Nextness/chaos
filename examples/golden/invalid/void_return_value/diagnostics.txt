@@ -1,3 +1,3 @@
-[ERROR] 7:5:void_return_value.chaos - return with a value in a void procedure
+[ERROR] 5:5:void_return_value.chaos - return with a value in a void procedure
      return 5;
      ^^^^^^^^ -> return without a value

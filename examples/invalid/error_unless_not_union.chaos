@@ -1,0 +1,9 @@
+// expect-stage: type
+// expect-error: unless catch requires an error-returning expression
+// 'unless catch' only applies to an error-returning expression.
+main :: proc -> S64 {
+    r := 5 unless catch {
+        return -1;
+    }
+    return r;
+}

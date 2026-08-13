@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: catch requires an error-returning value
+// 'if ... catch' only applies to a value-or-error pair.
+main :: proc -> S64 {
+    r := 5;
+    if r catch {
+        return -1;
+    }
+    return r;
+}

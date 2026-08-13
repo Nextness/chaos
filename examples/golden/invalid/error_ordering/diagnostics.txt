@@ -1,0 +1,3 @@
+[ERROR] 7:8:error_ordering.chaos - cannot order error values with <
+     if A.X! < A.Y! { }
+        ^^^^^^^^^^^ -> error values support only == and !=

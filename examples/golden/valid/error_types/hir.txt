@@ -1,0 +1,16 @@
+HIR
+  Global default_error: Hash_Table_Error = Error(NOT_FOUND) [mutable=false compileTime=true]
+  Proc main() -> S64
+    Block
+      VarDecl err: Hash_Table_Error = Error(OUT_OF_MEMORY) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(err) Error(OUT_OF_MEMORY))
+        Block
+          Return Int(1)
+      If condition=Binary(== Ident(default_error) Error(NOT_FOUND))
+        Block
+          Return Int(2)
+      VarDecl other: Other_Error = Error(GENERIC) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(other) Error(GENERIC))
+        Block
+          Return Int(3)
+      Return Int(0)

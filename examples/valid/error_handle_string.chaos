@@ -1,0 +1,23 @@
+// expect-exit: 11
+// A String-valued error-returning procedure: the unwrapped value is compared
+// after the error is handled.
+Some_Error :: error {
+    GENERIC;
+}
+
+greet :: proc (x: S64) -> (String <> Some_Error) {
+    if x < 0 {
+        return .GENERIC!;
+    }
+    return «hello»;
+}
+
+#entry main :: proc -> S64 {
+    s := greet(1) unless catch {
+        return -1;
+    }
+    if s == «hello» {
+        return 11;
+    }
+    return 0;
+}

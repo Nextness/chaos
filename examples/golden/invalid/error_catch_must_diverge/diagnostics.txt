@@ -1,0 +1,3 @@
+[ERROR] 11:28:error_catch_must_diverge.chaos - the catch block must return or exit
+     r := f(5) unless catch {
+                            ^ -> end the catch block with a return or exit

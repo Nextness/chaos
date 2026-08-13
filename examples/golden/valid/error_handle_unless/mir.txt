@@ -1,0 +1,56 @@
+MIR
+  Function f(l0: S64) -> S64<>Some_Error
+    Local l0: S64 (param)
+    bb0:
+      v0:S64 = load.local l0
+      v1:S64 = const 0
+      v2:Bool = cmp.lt v0 v1
+      branch v2, bb1, bb2
+    bb1:
+      v3:S64 = const
+      v4:Some_Error = const 0
+      v5:Bool = const true
+      v6:S64<>Some_Error = struct.init v3 v4 v5
+      return v6
+    bb2:
+      jump bb3
+    bb3:
+      v7:S64 = load.local l0
+      v8:S64 = const 2
+      v9:S64 = mul v7 v8
+      v10:Some_Error = const
+      v11:Bool = const false
+      v12:S64<>Some_Error = struct.init v9 v10 v11
+      return v12
+  Function main() -> S64
+    Local l0: S64<>Some_Error
+    Local l1: Some_Error
+    bb0:
+      v0:S64 = const 1
+      v1:S64 = neg v0
+      v2:S64<>Some_Error = call v1 f
+      store.local v2 l0
+      v3:S64<>Some_Error = load.local l0
+      v4:Bool = field.load v3 field2
+      branch v4, bb1, bb2
+    bb1:
+      v5:Some_Error = field.load v3 field1
+      store.local v5 l1
+      v6:Some_Error = load.local l1
+      v7: = const
+      v8:Bool = cmp.eq v6 v7
+      branch v8, bb4, bb5
+    bb2:
+      jump bb3
+    bb3:
+      v11:S64<>Some_Error = load.local l0
+      v12:S64 = field.load v11 field0
+      return v12
+    bb4:
+      v9:S64 = const 7
+      return v9
+    bb5:
+      jump bb6
+    bb6:
+      v10:S64 = const 8
+      return v10

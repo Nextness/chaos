@@ -1,0 +1,3 @@
+[ERROR] 4:19:error_duplicate_member.chaos - duplicate error member A in Foo
+ Foo :: error { A; A; }
+                   ^ -> use a unique member name

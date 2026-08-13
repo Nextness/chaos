@@ -1,0 +1,22 @@
+HIR
+  Proc f(x: S64) -> S64<>Some_Error
+    Block
+      If condition=Binary(< Ident(x) Int(0))
+        Block
+          Return StructInit(value, value=Unknown, error=Error(GENERIC), hasError=Bool(true))
+      Return StructInit(value, value=Binary(* Ident(x) Int(2)), error=Unknown, hasError=Bool(false))
+  Proc g() -> S64<>Some_Error
+    Block
+      VarDecl r: S64<>Some_Error = Call(f, Unary(- Int(1))) [mutable=true compileTime=false]
+      IfCatch Ident(r)
+        Block
+          Return Ident(r)
+      Return StructInit(value, value=FieldLoad(Ident(r), 0), error=Unknown, hasError=Bool(false))
+  Proc main() -> S64
+    Block
+      Block
+        VarDecl r: S64<>Some_Error = Call(g) [mutable=true compileTime=false]
+        IfCatch Ident(r)
+          Block
+            Return Int(5)
+      Return FieldLoad(Ident(r), 0)

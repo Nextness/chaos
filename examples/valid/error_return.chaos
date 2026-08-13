@@ -1,0 +1,31 @@
+// expect-exit: 10
+// Error-returning results: '-> (S64 <> Some_Error)' and the equivalent
+// 'Some_Error <> S64' order, returning either a value or an error literal.
+Some_Error :: error {
+    GENERIC;
+    SOMETHING_ELSE;
+}
+
+double :: proc (x: S64) -> (S64 <> Some_Error) {
+    if x < 0 {
+        return .GENERIC!;
+    }
+    return x * 2;
+}
+
+triple :: proc -> Some_Error <> S64 {
+    return 3;
+}
+
+#entry main :: proc -> S64 {
+    a := double(5) unless catch {
+        return -1;
+    }
+    b := triple() unless catch {
+        return -2;
+    }
+    if a == 10 && b == 3 {
+        return 10;
+    }
+    return 0;
+}

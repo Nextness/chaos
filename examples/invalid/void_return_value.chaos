@@ -1,8 +1,6 @@
-// expect-stage: verify
+// expect-stage: type
 // expect-error: return with a value in a void procedure
-// A value-returning return statement in a void procedure is caught by the
-// MIR verifier (the type checker only validates the value against non-void
-// result types).
+// A value-returning return statement in a void procedure is a type error.
 #entry main :: proc {
     return 5;
 }

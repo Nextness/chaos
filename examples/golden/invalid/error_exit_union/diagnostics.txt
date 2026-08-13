@@ -1,0 +1,3 @@
+[ERROR] 12:10:error_exit_union.chaos - must handle the error before using the value
+     exit r;
+          ^ -> use 'unless catch' or 'if ... catch' first

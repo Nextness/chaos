@@ -1,0 +1,21 @@
+// expect-exit: 42
+// The bare 'expr unless catch' form discards the value and only handles the
+// error.
+Some_Error :: error {
+    GENERIC;
+    SOMETHING_ELSE;
+}
+
+f :: proc (x: S64) -> (S64 <> Some_Error) {
+    if x < 0 {
+        return .GENERIC!;
+    }
+    return x * 2;
+}
+
+#entry main :: proc -> S64 {
+    f(-1) unless catch {
+        return 42;
+    }
+    return 0;
+}

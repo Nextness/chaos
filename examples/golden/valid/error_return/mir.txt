@@ -1,0 +1,78 @@
+MIR
+  Function double(l0: S64) -> S64<>Some_Error
+    Local l0: S64 (param)
+    bb0:
+      v0:S64 = load.local l0
+      v1:S64 = const 0
+      v2:Bool = cmp.lt v0 v1
+      branch v2, bb1, bb2
+    bb1:
+      v3:S64 = const
+      v4:Some_Error = const 0
+      v5:Bool = const true
+      v6:S64<>Some_Error = struct.init v3 v4 v5
+      return v6
+    bb2:
+      jump bb3
+    bb3:
+      v7:S64 = load.local l0
+      v8:S64 = const 2
+      v9:S64 = mul v7 v8
+      v10:Some_Error = const
+      v11:Bool = const false
+      v12:S64<>Some_Error = struct.init v9 v10 v11
+      return v12
+  Function triple() -> S64<>Some_Error
+    bb0:
+      v0:S64 = const 3
+      v1:Some_Error = const
+      v2:Bool = const false
+      v3:S64<>Some_Error = struct.init v0 v1 v2
+      return v3
+  Function main() -> S64
+    Local l0: S64<>Some_Error
+    Local l1: S64<>Some_Error
+    bb0:
+      v0:S64 = const 5
+      v1:S64<>Some_Error = call v0 double
+      store.local v1 l0
+      v2:S64<>Some_Error = load.local l0
+      v3:Bool = field.load v2 field2
+      branch v3, bb1, bb2
+    bb1:
+      v4:S64 = const 1
+      v5:S64 = neg v4
+      return v5
+    bb2:
+      jump bb3
+    bb3:
+      v6:S64<>Some_Error = call triple
+      store.local v6 l1
+      v7:S64<>Some_Error = load.local l1
+      v8:Bool = field.load v7 field2
+      branch v8, bb4, bb5
+    bb4:
+      v9:S64 = const 2
+      v10:S64 = neg v9
+      return v10
+    bb5:
+      jump bb6
+    bb6:
+      v11:S64<>Some_Error = load.local l0
+      v12:S64 = field.load v11 field0
+      v13:S64 = const 10
+      v14:Bool = cmp.eq v12 v13
+      v15:S64<>Some_Error = load.local l1
+      v16:S64 = field.load v15 field0
+      v17:S64 = const 3
+      v18:Bool = cmp.eq v16 v17
+      v19:Bool = and v14 v18
+      branch v19, bb7, bb8
+    bb7:
+      v20:S64 = const 10
+      return v20
+    bb8:
+      jump bb9
+    bb9:
+      v21:S64 = const 0
+      return v21

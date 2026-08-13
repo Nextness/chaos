@@ -1,0 +1,3 @@
+[ERROR] 7:19:error_return_two_errors.chaos - a result can carry only one error type
+ f :: proc -> A <> B {
+                   ^ -> use one error type after '<>'

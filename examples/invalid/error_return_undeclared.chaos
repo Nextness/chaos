@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: Nope is not an error type
+// The error side of '<>' must be a declared error type.
+f :: proc -> String <> Nope {
+    return «s»;
+}

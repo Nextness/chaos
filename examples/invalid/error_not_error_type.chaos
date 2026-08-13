@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: S64 is not an error type
+// Member access is only valid on declared error types.
+main :: proc {
+    x := S64.NOPE!;
+}
