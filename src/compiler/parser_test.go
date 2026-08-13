@@ -562,7 +562,7 @@ func TestParseErrorDeclWrongAnnotation(t *testing.T) {
 }
 
 func TestParseErrorMemberExpr(t *testing.T) {
-	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND")
+	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND!")
 	e, ok := expr.(*ErrorMemberExpr)
 	if !ok {
 		t.Fatalf("expected *ErrorMemberExpr, got %T", expr)
@@ -573,10 +573,13 @@ func TestParseErrorMemberExpr(t *testing.T) {
 	if e.Name != "NOT_FOUND" {
 		t.Errorf("Name = %q, want %q", e.Name, "NOT_FOUND")
 	}
+	if !e.Bang {
+		t.Error("Bang = false, want true for error literal")
+	}
 }
 
 func TestParseBareErrorMemberExpr(t *testing.T) {
-	expr := parseExpr(t, ".NOT_FOUND")
+	expr := parseExpr(t, ".NOT_FOUND!")
 	e, ok := expr.(*ErrorMemberExpr)
 	if !ok {
 		t.Fatalf("expected *ErrorMemberExpr, got %T", expr)
@@ -587,10 +590,25 @@ func TestParseBareErrorMemberExpr(t *testing.T) {
 	if e.Name != "NOT_FOUND" {
 		t.Errorf("Name = %q, want %q", e.Name, "NOT_FOUND")
 	}
+	if !e.Bang {
+		t.Error("Bang = false, want true for error literal")
+	}
+}
+
+func TestParseErrorMemberExprNoBang(t *testing.T) {
+	// The bang is optional at parse time; the type checker enforces it.
+	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND")
+	e, ok := expr.(*ErrorMemberExpr)
+	if !ok {
+		t.Fatalf("expected *ErrorMemberExpr, got %T", expr)
+	}
+	if e.Bang {
+		t.Error("Bang = true, want false without '!'")
+	}
 }
 
 func TestParseErrorMemberExprInComparison(t *testing.T) {
-	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND == Hash_Table_Error.GENERIC")
+	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND! == Hash_Table_Error.GENERIC!")
 	e, ok := expr.(*BinaryExpr)
 	if !ok {
 		t.Fatalf("expected *BinaryExpr, got %T", expr)
@@ -603,6 +621,94 @@ func TestParseErrorMemberExprInComparison(t *testing.T) {
 	}
 	if _, ok := e.Right.(*ErrorMemberExpr); !ok {
 		t.Errorf("right type = %T, want *ErrorMemberExpr", e.Right)
+	}
+}
+
+// ──────────────────────────────────────────────
+// Error-returning procedure results ('<>')
+// ──────────────────────────────────────────────
+
+func TestParseProcErrorReturn(t *testing.T) {
+	decl := parseOneDecl(t, "f :: proc -> String <> Some_Error { return «s»; }")
+	d, ok := decl.(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", decl)
+	}
+	if len(d.Results) != 1 {
+		t.Fatalf("Results = %d, want 1", len(d.Results))
+	}
+	if ident, ok := d.Results[0].(*IdentExpr); !ok || ident.Name != "String" {
+		t.Errorf("Results[0] = %v, want String", d.Results[0])
+	}
+	if d.ErrorResult == nil {
+		t.Fatal("ErrorResult = nil, want Some_Error")
+	}
+	if ident, ok := d.ErrorResult.(*IdentExpr); !ok || ident.Name != "Some_Error" {
+		t.Errorf("ErrorResult = %v, want Some_Error", d.ErrorResult)
+	}
+}
+
+func TestParseProcErrorReturnParens(t *testing.T) {
+	decl := parseOneDecl(t, "f :: proc (input1: String) -> (String <> Some_Error) { return «s»; }")
+	d, ok := decl.(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", decl)
+	}
+	if len(d.Results) != 1 {
+		t.Fatalf("Results = %d, want 1", len(d.Results))
+	}
+	if d.ErrorResult == nil {
+		t.Fatal("ErrorResult = nil, want Some_Error")
+	}
+	if ident, ok := d.ErrorResult.(*IdentExpr); !ok || ident.Name != "Some_Error" {
+		t.Errorf("ErrorResult = %v, want Some_Error", d.ErrorResult)
+	}
+}
+
+func TestParseProcErrorReturnSwapped(t *testing.T) {
+	// 'Some_Error <> String' is the same as 'String <> Some_Error'; the
+	// written order is preserved in the AST and normalized by the type
+	// checker.
+	decl := parseOneDecl(t, "f :: proc -> Some_Error <> String { return «s»; }")
+	d, ok := decl.(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", decl)
+	}
+	if ident, ok := d.Results[0].(*IdentExpr); !ok || ident.Name != "Some_Error" {
+		t.Errorf("Results[0] = %v, want Some_Error", d.Results[0])
+	}
+	if ident, ok := d.ErrorResult.(*IdentExpr); !ok || ident.Name != "String" {
+		t.Errorf("ErrorResult = %v, want String", d.ErrorResult)
+	}
+}
+
+func TestParseProcErrorReturnNoValue(t *testing.T) {
+	// '-> Some_Error' without '<>' is a plain error-typed result.
+	decl := parseOneDecl(t, "f :: proc -> Some_Error { return .GENERIC!; }")
+	d, ok := decl.(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", decl)
+	}
+	if len(d.Results) != 1 {
+		t.Fatalf("Results = %d, want 1", len(d.Results))
+	}
+	if d.ErrorResult != nil {
+		t.Errorf("ErrorResult = %v, want nil without '<>'", d.ErrorResult)
+	}
+}
+
+func TestParseProcErrorReturnMissingErrorType(t *testing.T) {
+	result := parseTestCase(t, "f :: proc -> String <> { return «s»; }")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for missing error type after '<>', got none")
+	}
+}
+
+func TestParseProcErrorReturnParensWithoutUnion(t *testing.T) {
+	// Parenthesized results are only supported for the '<>' form.
+	result := parseTestCase(t, "f :: proc -> (S64) { return 0; }")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for parenthesized result without '<>', got none")
 	}
 }
 
@@ -1986,6 +2092,32 @@ func TestTolerantErrorDecl(t *testing.T) {
 	}
 	if len(ed.Members) != 2 {
 		t.Fatalf("Members = %d, want 2", len(ed.Members))
+	}
+}
+
+func TestTolerantErrorReturnSpec(t *testing.T) {
+	// The '<>' error-return result parses in tolerant mode, including with
+	// generic type parameters and the '#entry' directive.
+	sources := []string{
+		"f :: proc -> (String <> Some_Error) {\n    return .GENERIC!;\n}",
+		"f <T: String | S64> :: proc (input: String) -> (T <> Some_Error) {\n    return .GENERIC!;\n}",
+		"#entry main :: proc -> (String <> Some_Error) {\n    return .GENERIC!;\n}",
+	}
+	for _, src := range sources {
+		result := parseTolerantTestCase(t, src)
+		if result.Diags.HasErrors() {
+			t.Fatalf("unexpected errors for %q: %v", src, result.Diags)
+		}
+		if len(result.Program.Decls) != 1 {
+			t.Fatalf("Decls = %d, want 1 for %q", len(result.Program.Decls), src)
+		}
+		proc, ok := result.Program.Decls[0].(*ProcDecl)
+		if !ok {
+			t.Fatalf("expected *ProcDecl, got %T for %q", result.Program.Decls[0], src)
+		}
+		if proc.ErrorResult == nil {
+			t.Errorf("ErrorResult = nil, want Some_Error for %q", src)
+		}
 	}
 }
 

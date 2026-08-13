@@ -34,7 +34,7 @@ func TestTokenize(t *testing.T) {
 		// ─── Single-character tokens ──────────────────────────────────────
 		{
 			name:  "single char tokens",
-			input: "=+-*/%<>,;:(){}.[]#?!@|",
+			input: "=+-*/%< >,;:(){}.[]#?!@|",
 			want: []TokenKind{
 				TkAssign, TkPlus, TkMinus, TkStar, TkSlash, TkPercent,
 				TkLt, TkGt, TkComma, TkSemicolon, TkColon,
@@ -47,11 +47,11 @@ func TestTokenize(t *testing.T) {
 		// ─── Multi-character operators ────────────────────────────────────
 		{
 			name:  "multi-char operators",
-			input: ":: := == != <= >= && || -> ...",
+			input: ":: := == != <= >= && || -> ... <>",
 			want: []TokenKind{
 				TkColon, TkColon, TkColon, TkAssign,
 				TkEq, TkNeq, TkLe, TkGe,
-				TkAnd, TkOr, TkArrow, TkEllipsis,
+				TkAnd, TkOr, TkArrow, TkEllipsis, TkErrorReturn,
 				TkEOF,
 			},
 		},

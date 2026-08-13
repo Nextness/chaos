@@ -11,6 +11,26 @@ listed under an explicit semantic version.
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
 
+## 0.10.0 - 2026-08-12
+
+### Added
+
+- Error-returning procedure results with the `<>` token:
+  `-> Type <> ErrorType` (or `-> (Type <> ErrorType)`) declares that a
+  procedure returns a value but can also return an error that the caller
+  must handle. `Some_Error <> String` and `String <> Some_Error` are
+  equivalent; the front end validates that the error side is a declared
+  error type and accepts both value and error returns. Error handling is
+  not implemented yet: lowering rejects error-returning procedures with a
+  "not yet supported" diagnostic.
+- Error literals now require a trailing `!`: `Some_Error.GENERIC!` and
+  `.GENERIC!`. Variables holding error values do not use the bang.
+
+### Changed
+
+- Error member references without `!` are rejected by the type checker
+  ("error values must be instantiated with '!'").
+
 ## 0.9.0 - 2026-08-12
 
 ### Added

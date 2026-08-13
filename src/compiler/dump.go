@@ -74,6 +74,10 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 				}
 				dumpExpr(b, r)
 			}
+			if n.ErrorResult != nil {
+				b.WriteString(" <> ")
+				dumpExpr(b, n.ErrorResult)
+			}
 			b.WriteString("\n")
 		}
 		dumpBlock(b, n.Body, depth+1)
@@ -232,10 +236,14 @@ func dumpExpr(b *strings.Builder, e Expr) {
 		b.WriteString("ErrorExpr")
 	case *ErrorMemberExpr:
 		if n.TypeName != "" {
-			fmt.Fprintf(b, "ErrorMember(%s.%s)", n.TypeName, n.Name)
+			fmt.Fprintf(b, "ErrorMember(%s.%s", n.TypeName, n.Name)
 		} else {
-			fmt.Fprintf(b, "ErrorMember(.%s)", n.Name)
+			fmt.Fprintf(b, "ErrorMember(.%s", n.Name)
 		}
+		if n.Bang {
+			b.WriteString("!")
+		}
+		b.WriteString(")")
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)
 	}

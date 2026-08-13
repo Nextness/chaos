@@ -186,6 +186,17 @@ func (l *Lowerer) lowerProc(d *ProcDecl) {
 	for i, r := range d.Results {
 		results[i] = l.typeOfTypeExpr(r)
 	}
+	if d.ErrorResult != nil {
+		l.diags.Error(d.ErrorResult.nodeSpan(), "error-returning procedures are not yet supported", "remove the '<> ErrorType' result for now")
+		// Normalize the value result to the non-error side of '<>'.
+		if len(results) > 0 {
+			vt := l.types.Lookup(results[0])
+			et := l.typeOfTypeExpr(d.ErrorResult)
+			if vt.Kind == TypeKindError && l.types.Lookup(et).Kind != TypeKindError {
+				results[0] = et
+			}
+		}
+	}
 	prevResults := l.curResults
 	l.curResults = results
 	var body *HIRBlock

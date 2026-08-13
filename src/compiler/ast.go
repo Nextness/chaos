@@ -337,12 +337,17 @@ func (s *BlockStmt) stmtNode() {}
 //
 //	Results is empty when the procedure specifies no return type (Void).
 //	Params holds the parameter list. Each parameter has a type expression.
+//	ErrorResult is the error type of a '<>' result spec ("-> Type <> ErrorType"
+//	or "-> (Type <> ErrorType)"), or nil when the procedure cannot return an
+//	error. The '<>' form declares that the procedure returns a value but can
+//	also return an error; the two sides may be written in either order.
 type ProcDecl struct {
-	Span_   Span
-	Name    string
-	Params  []Param
-	Results []Expr // type expressions (empty for void)
-	Body    *BlockStmt
+	Span_       Span
+	Name        string
+	Params      []Param
+	Results     []Expr // type expressions (empty for void)
+	ErrorResult Expr   // error type expression (nil when no '<>')
+	Body        *BlockStmt
 }
 
 func (d *ProcDecl) nodeSpan() Span {
@@ -421,13 +426,16 @@ func (m ErrorMember) nodeSpan() Span {
 	return m.Span_
 }
 
-// ErrorMemberExpr is a reference to an error value: "Type.MEMBER" or the
-// bare ".MEMBER" form. TypeName is empty for the bare form, whose type is
-// inferred from the surrounding declaration.
+// ErrorMemberExpr is a reference to an error value: "Type.MEMBER!" or the
+// bare ".MEMBER!" form. TypeName is empty for the bare form, whose type is
+// inferred from the surrounding declaration. Bang is true when the reference
+// is an error literal, which requires the trailing '!' (for example
+// "Some_Error.GENERIC!"); variables holding error values do not use the bang.
 type ErrorMemberExpr struct {
 	Span_    Span
-	TypeName string // error type name (empty for the bare ".MEMBER" form)
+	TypeName string // error type name (empty for the bare ".MEMBER!" form)
 	Name     string // member name
+	Bang     bool   // error literal instantiation ('!' suffix)
 }
 
 func (e *ErrorMemberExpr) nodeSpan() Span {

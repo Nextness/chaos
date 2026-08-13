@@ -99,12 +99,13 @@ const (
 	TkNot // !
 
 	// Other operators
-	TkArrow    // ->
-	TkEllipsis // ...
-	TkHash     // #
-	TkQuestion // ?
-	TkAt       // @
-	TkPipe     // |
+	TkArrow       // ->
+	TkEllipsis    // ...
+	TkErrorReturn // <> (procedure result that can also return an error)
+	TkHash        // #
+	TkQuestion    // ?
+	TkAt          // @
+	TkPipe        // |
 
 	// Keywords
 	TkExit
@@ -159,6 +160,7 @@ var tokenKindNames = [...]string{
 	TkNot:            "!",
 	TkArrow:          "->",
 	TkEllipsis:       "...",
+	TkErrorReturn:    "<>",
 	TkHash:           "#",
 	TkQuestion:       "?",
 	TkAt:             "@",

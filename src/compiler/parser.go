@@ -584,23 +584,55 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 		// No params: empty param list
 	}
 
-	// Results: -> type ...
+	// Results: -> type ... or -> Type <> ErrorType or -> (Type <> ErrorType)
 	var results []Expr
+	var errorResult Expr
 	if p.at(TkArrow) {
 		p.bump() // consume "->"
-		// At least one result type
-		first := p.parseTypeExpr()
-		if first == nil {
-			p.diags.Error(p.peek().Span, "expected return type after '->'", "add a return type after '->'")
-		} else {
-			results = append(results, first)
-			for p.match(TkComma) {
-				next := p.parseTypeExpr()
-				if next == nil {
-					p.diags.Error(p.peek().Span, "expected return type after ','", "add a return type after ','")
-					break
+		// Parenthesized error-return spec: (Type <> ErrorType)
+		if p.at(TkLParen) {
+			p.bump() // consume "("
+			first := p.parseTypeExpr()
+			if first == nil {
+				p.diags.Error(p.peek().Span, "expected return type after '('", "add a return type after '('")
+			} else if p.at(TkErrorReturn) {
+				p.bump() // consume "<>"
+				errType := p.parseTypeExpr()
+				if errType == nil {
+					p.diags.Error(p.peek().Span, "expected error type after '<>'", "add an error type after '<>'")
+				} else {
+					results = append(results, first)
+					errorResult = errType
 				}
-				results = append(results, next)
+			} else {
+				p.diags.Error(p.peek().Span, "expected '<>' in parenthesized return type", "use 'Type <> ErrorType' inside the parentheses")
+			}
+			p.expect(TkRParen)
+		} else {
+			// At least one result type
+			first := p.parseTypeExpr()
+			if first == nil {
+				p.diags.Error(p.peek().Span, "expected return type after '->'", "add a return type after '->'")
+			} else {
+				results = append(results, first)
+				if p.at(TkErrorReturn) {
+					p.bump() // consume "<>"
+					errType := p.parseTypeExpr()
+					if errType == nil {
+						p.diags.Error(p.peek().Span, "expected error type after '<>'", "add an error type after '<>'")
+					} else {
+						errorResult = errType
+					}
+				} else {
+					for p.match(TkComma) {
+						next := p.parseTypeExpr()
+						if next == nil {
+							p.diags.Error(p.peek().Span, "expected return type after ','", "add a return type after ','")
+							break
+						}
+						results = append(results, next)
+					}
+				}
 			}
 		}
 	}
@@ -613,11 +645,12 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 	}
 
 	decl := &ProcDecl{
-		Span_:   spanUnion(nameTok.Span, body.Span_),
-		Name:    name,
-		Params:  params,
-		Results: results,
-		Body:    body,
+		Span_:       spanUnion(nameTok.Span, body.Span_),
+		Name:        name,
+		Params:      params,
+		Results:     results,
+		ErrorResult: errorResult,
+		Body:        body,
 	}
 	return decl, true
 }
@@ -747,6 +780,17 @@ func (p *Parser) parseErrorMember() (ErrorMember, bool) {
 func isErrorTypeAnnotation(e Expr) bool {
 	ident, ok := e.(*IdentExpr)
 	return ok && ident.Name == "Error"
+}
+
+// parseErrorBang consumes the optional '!' that marks an error literal
+// instantiation after an error member name. It returns whether the bang was
+// present and the end offset of the member reference (including the bang).
+func (p *Parser) parseErrorBang(nameEnd int) (bool, int) {
+	if p.at(TkNot) {
+		bangTok := p.bump() // consume "!"
+		return true, bangTok.Span.End
+	}
+	return false, nameEnd
 }
 
 // parseParam parses a single parameter: ident ":" type
@@ -1255,14 +1299,16 @@ func (p *Parser) parseAtom() Expr {
 			p.bump() // consume "."
 			return p.parseStructInit(ident, tok.Span)
 		}
-		// Error value: TypeName.MEMBER
+		// Error value: TypeName.MEMBER!
 		if p.at(TkDot) && p.peekN(1).Kind == TkIdent {
 			p.bump() // consume "."
 			memberTok := p.bump()
+			bang, end := p.parseErrorBang(memberTok.Span.End)
 			return &ErrorMemberExpr{
-				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: memberTok.Span.End},
+				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
 				TypeName: tok.Text(),
 				Name:     memberTok.Text(),
+				Bang:     bang,
 			}
 		}
 		return ident
@@ -1273,14 +1319,16 @@ func (p *Parser) parseAtom() Expr {
 			p.bump() // consume "."
 			return p.parseStructInit(nil, tok.Span)
 		}
-		// Error value with inferred type: .MEMBER
+		// Error value with inferred type: .MEMBER!
 		if p.peekN(1).Kind == TkIdent {
 			p.bump() // consume "."
 			memberTok := p.bump()
+			bang, end := p.parseErrorBang(memberTok.Span.End)
 			return &ErrorMemberExpr{
-				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: memberTok.Span.End},
+				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
 				TypeName: "",
 				Name:     memberTok.Text(),
+				Bang:     bang,
 			}
 		}
 		return nil

@@ -78,7 +78,8 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 			idx = semTypeComment
 		case compiler.TkLBrace, compiler.TkRBrace,
 			compiler.TkLParen, compiler.TkRParen,
-			compiler.TkLBracket, compiler.TkRBracket:
+			compiler.TkLBracket, compiler.TkRBracket,
+			compiler.TkErrorReturn:
 			idx = semTypeDelimiter
 		}
 		if idx < 0 {
@@ -178,7 +179,12 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
 				out = append(out, spanToTokenRows(typeSpan, sf, semTypeType)...)
 			}
-			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name), End: e.Span_.End}
+			bangLen := 0
+			if e.Bang {
+				bangLen = 1
+			}
+			// The constant highlight covers the member name and its '!'.
+			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name) - bangLen, End: e.Span_.End}
 			out = append(out, spanToTokenRows(memberSpan, sf, semTypeConstant)...)
 		}
 	}
@@ -247,6 +253,9 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		}
 		for _, res := range proc.Results {
 			typeToken(res, sf, known, &out)
+		}
+		if proc.ErrorResult != nil {
+			typeToken(proc.ErrorResult, sf, known, &out)
 		}
 		if proc.Body != nil {
 			walkBlock(proc.Body)

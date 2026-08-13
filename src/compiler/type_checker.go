@@ -25,12 +25,13 @@ const (
 // TypeChecker validates the types of a parsed program. It maintains a stack of
 // lexical scopes mapping names to their inferred or declared types.
 type TypeChecker struct {
-	diags             DiagnosticList
-	scopes            []map[string]Type
-	procs             map[string]*ProcDecl
-	structs           map[string]*StructDecl
-	errors            map[string]*ErrorDecl
-	currentReturnType Type
+	diags                 DiagnosticList
+	scopes                []map[string]Type
+	procs                 map[string]*ProcDecl
+	structs               map[string]*StructDecl
+	errors                map[string]*ErrorDecl
+	currentReturnType     Type
+	currentErrorReturnType Type // error type of a '<>' result ("" when none)
 }
 
 // CheckProgram runs the type checker over a parsed program and returns any
@@ -123,15 +124,45 @@ func (tc *TypeChecker) checkProc(p *ProcDecl) {
 	for _, param := range p.Params {
 		tc.declare(param.Name, typeOfTypeExpr(param.Type))
 	}
+	tc.currentReturnType = TypeVoid
+	tc.currentErrorReturnType = ""
 	if len(p.Results) > 0 {
-		tc.currentReturnType = typeOfTypeExpr(p.Results[0])
-	} else {
-		tc.currentReturnType = TypeVoid
+		tc.currentReturnType = tc.procValueResult(p)
+	}
+	if p.ErrorResult != nil {
+		lt := typeOfTypeExpr(p.Results[0])
+		rt := typeOfTypeExpr(p.ErrorResult)
+		switch {
+		case tc.isErrorType(rt) && !tc.isErrorType(lt):
+			tc.currentErrorReturnType = rt
+		case tc.isErrorType(lt) && !tc.isErrorType(rt):
+			// 'Some_Error <> String' is the same as 'String <> Some_Error'.
+			tc.currentErrorReturnType = lt
+		case tc.isErrorType(lt) && tc.isErrorType(rt):
+			tc.diags.Error(p.ErrorResult.nodeSpan(), "a result can carry only one error type", "use one error type after '<>'")
+			tc.currentErrorReturnType = rt
+		default:
+			tc.diags.Error(p.ErrorResult.nodeSpan(), string(rt)+" is not an error type", "use a declared error type after '<>'")
+			tc.currentErrorReturnType = rt
+		}
 	}
 	if p.Body != nil {
 		tc.checkBlock(p.Body)
 	}
 	tc.popScope()
+}
+
+// procValueResult returns the value result type of a procedure, normalizing
+// the '<>' error-return form so the value type is the non-error side.
+func (tc *TypeChecker) procValueResult(p *ProcDecl) Type {
+	vt := typeOfTypeExpr(p.Results[0])
+	if p.ErrorResult != nil {
+		et := typeOfTypeExpr(p.ErrorResult)
+		if tc.isErrorType(vt) && !tc.isErrorType(et) {
+			return et
+		}
+	}
+	return vt
 }
 
 func (tc *TypeChecker) checkBlock(b *BlockStmt) {
@@ -226,9 +257,30 @@ func (tc *TypeChecker) checkReturnStmt(s *ReturnStmt) {
 		}
 		return
 	}
-	if tc.currentReturnType != TypeVoid {
-		tc.checkAssign(s.Span_, tc.currentReturnType, s.Value)
+	if tc.currentReturnType == TypeVoid && tc.currentErrorReturnType == "" {
+		tc.diags.Error(s.Span_, "return with a value in a void procedure", "return without a value")
+		return
 	}
+	// A bare error literal ('.MEMBER!') takes the error return type.
+	if em, ok := s.Value.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		if tc.currentErrorReturnType != "" {
+			tc.checkErrorMember(em, tc.currentErrorReturnType)
+			return
+		}
+		tc.checkAssign(s.Span_, tc.currentReturnType, s.Value)
+		return
+	}
+	if tc.currentReturnType != TypeVoid {
+		// A '<>' procedure may return either the value type or the error type.
+		if tc.currentErrorReturnType != "" {
+			if vt := tc.inferExpr(s.Value); vt == tc.currentErrorReturnType {
+				return
+			}
+		}
+		tc.checkAssign(s.Span_, tc.currentReturnType, s.Value)
+		return
+	}
+	tc.checkAssign(s.Span_, tc.currentErrorReturnType, s.Value)
 }
 
 // inferExpr returns the type of an expression, reporting type errors it
@@ -269,10 +321,15 @@ func (tc *TypeChecker) inferExpr(e Expr) Type {
 }
 
 // checkErrorMemberExpr infers the type of an error member reference. The
-// explicit "Type.MEMBER" form resolves against the named error type; the bare
-// ".MEMBER" form has no type context here and is reported as unresolvable
-// (typed contexts resolve it via checkAssign).
+// explicit "Type.MEMBER!" form resolves against the named error type; the bare
+// ".MEMBER!" form has no type context here and is reported as unresolvable
+// (typed contexts resolve it via checkAssign). Error literals require the
+// trailing '!'.
 func (tc *TypeChecker) checkErrorMemberExpr(n *ErrorMemberExpr) Type {
+	if !n.Bang {
+		tc.diags.Error(n.Span_, "error values must be instantiated with '!'", "add '!' after the member name")
+		return TypeUnknown
+	}
 	if n.TypeName == "" {
 		tc.diags.Error(n.Span_, "cannot infer the error type of '. "+n.Name+"'", "annotate the declaration with an error type")
 		return TypeUnknown
@@ -415,7 +472,7 @@ func (tc *TypeChecker) checkCallExpr(n *CallExpr) Type {
 		}
 	}
 	if len(proc.Results) > 0 {
-		return typeOfTypeExpr(proc.Results[0])
+		return tc.procValueResult(proc)
 	}
 	return TypeVoid
 }
@@ -489,8 +546,12 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 }
 
 // checkErrorMember validates a bare error member reference against a target
-// error type.
+// error type. Error literals require the trailing '!'.
 func (tc *TypeChecker) checkErrorMember(em *ErrorMemberExpr, t Type) {
+	if !em.Bang {
+		tc.diags.Error(em.Span_, "error values must be instantiated with '!'", "add '!' after the member name")
+		return
+	}
 	if !tc.isErrorType(t) {
 		tc.diags.Error(em.Span_, string(t)+" is not an error type", "use a declared error type")
 		return

@@ -210,6 +210,8 @@ func (t *Tokenizer) next() Token {
 		return t.emitN(TkNeq, start, 2)
 	case b == '<' && t.peekN(1) == '=':
 		return t.emitN(TkLe, start, 2)
+	case b == '<' && t.peekN(1) == '>':
+		return t.emitN(TkErrorReturn, start, 2)
 	case b == '>' && t.peekN(1) == '=':
 		return t.emitN(TkGe, start, 2)
 	case b == '&' && t.peekN(1) == '&':

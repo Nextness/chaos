@@ -248,7 +248,12 @@ func (r *resolver) collectOccurrences() {
 				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
 				r.occurrences = append(r.occurrences, &occurrence{name: e.TypeName, span: typeSpan})
 			}
-			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name), End: e.Span_.End}
+			bangLen := 0
+			if e.Bang {
+				bangLen = 1
+			}
+			// The occurrence covers the member name only, not its '!'.
+			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name) - bangLen, End: e.Span_.End - bangLen}
 			var msym *symbol
 			if e.TypeName != "" {
 				msym = r.errorMembers[e.TypeName][e.Name]

@@ -203,7 +203,7 @@ func TestDefinitionResolvesInsideStructLiteral(t *testing.T) {
 	}
 }
 
-const errorSource = "Hash_Table_Error :: error {\n\tGENERIC;\n\tOUT_OF_MEMORY;\n\tNOT_FOUND;\n}\nmain :: proc {\n\terr: Hash_Table_Error = .OUT_OF_MEMORY;\n\tif err == Hash_Table_Error.NOT_FOUND { }\n}"
+const errorSource = "Hash_Table_Error :: error {\n\tGENERIC;\n\tOUT_OF_MEMORY;\n\tNOT_FOUND;\n}\nmain :: proc {\n\terr: Hash_Table_Error = .OUT_OF_MEMORY!;\n\tif err == Hash_Table_Error.NOT_FOUND! { }\n}"
 
 func TestErrorDefinitionHoverAndCompletion(t *testing.T) {
 	r := buildResolverFor(t, errorSource)

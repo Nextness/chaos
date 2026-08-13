@@ -344,20 +344,52 @@ func TestSemanticTokensErrorDecl(t *testing.T) {
 }
 
 func TestSemanticTokensErrorMemberUsage(t *testing.T) {
-	// 'Type.MEMBER' highlights the type name as a type and the member as a
-	// constant; the bare '.MEMBER' highlights the member as a constant.
-	source := "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n}\nmain :: proc {\n    err: Hash_Table_Error = .OUT_OF_MEMORY;\n    if err == Hash_Table_Error.OUT_OF_MEMORY { }\n}"
+	// 'Type.MEMBER!' highlights the type name as a type and the member (with
+	// its '!') as a constant; the bare '.MEMBER!' highlights the member as a
+	// constant.
+	source := "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n}\nmain :: proc {\n    err: Hash_Table_Error = .OUT_OF_MEMORY!;\n    if err == Hash_Table_Error.OUT_OF_MEMORY! { }\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, length int
+		want                int
+	}{
+		{4, 0, 4, semTypeFunction},   // main
+		{5, 4, 3, semTypeVariable},   // err
+		{5, 9, 16, semTypeType},      // Hash_Table_Error (decl type)
+		{5, 29, 14, semTypeConstant}, // OUT_OF_MEMORY! (bare member)
+		{6, 14, 16, semTypeType},     // Hash_Table_Error (member type)
+		{6, 31, 14, semTypeConstant}, // OUT_OF_MEMORY! (explicit member)
+	}
+	for _, c := range checks {
+		tok, ok := tokenAt(tokens, c.line, c.start)
+		if !ok {
+			t.Errorf("no token at line %d col %d", c.line, c.start)
+			continue
+		}
+		if tok.typeIndex != c.want {
+			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
+		}
+		if tok.length != c.length {
+			t.Errorf("token at line %d col %d has length %d, want %d", c.line, c.start, tok.length, c.length)
+		}
+	}
+}
+
+func TestSemanticTokensErrorReturnSpec(t *testing.T) {
+	// '-> (String <> Some_Error)' highlights the value and error types as
+	// types, '<>' as a delimiter, and the returned error literal as a
+	// constant.
+	source := "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (String <> Some_Error) {\n    return .GENERIC!;\n}"
 	tokens := decodeSemanticData(semanticData(t, source))
 	checks := []struct {
 		line, start int
 		want        int
 	}{
-		{4, 0, semTypeFunction},  // main
-		{5, 4, semTypeVariable},  // err
-		{5, 9, semTypeType},      // Hash_Table_Error (decl type)
-		{5, 29, semTypeConstant}, // OUT_OF_MEMORY (bare member)
-		{6, 14, semTypeType},     // Hash_Table_Error (member type)
-		{6, 31, semTypeConstant}, // OUT_OF_MEMORY (explicit member)
+		{3, 0, semTypeFunction},  // f
+		{3, 14, semTypeType},     // String (value type)
+		{3, 21, semTypeDelimiter}, // <>
+		{3, 24, semTypeType},     // Some_Error (error type)
+		{4, 12, semTypeConstant}, // GENERIC! (error literal)
 	}
 	for _, c := range checks {
 		tok, ok := tokenAt(tokens, c.line, c.start)
