@@ -229,6 +229,10 @@ func TestFasmRuntime(t *testing.T) {
 		{"string le", "#entry main :: proc -> S64 {\n    s := «abc»;\n    if s <= «abcd» { return 40; }\n    return 0;\n}", 40},
 		{"string ge prefix", "#entry main :: proc -> S64 {\n    s := «abcd»;\n    if s >= «abc» { return 41; }\n    return 0;\n}", 41},
 		{"string empty", "#entry main :: proc -> S64 {\n    s := «»;\n    if s == «» && s < «a» { return 42; }\n    return 0;\n}", 42},
+		{"error eq", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\n#entry main :: proc -> S64 {\n    err: Hash_Table_Error = .OUT_OF_MEMORY;\n    if err == Hash_Table_Error.OUT_OF_MEMORY { return 43; }\n    return 0;\n}", 43},
+		{"error neq", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\n#entry main :: proc -> S64 {\n    err: Hash_Table_Error = .GENERIC;\n    if err != Hash_Table_Error.NOT_FOUND { return 44; }\n    return 0;\n}", 44},
+		{"error const global", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\nDEFAULT :: Hash_Table_Error.NOT_FOUND;\n#entry main :: proc -> S64 {\n    if DEFAULT == Hash_Table_Error.NOT_FOUND { return 45; }\n    return 0;\n}", 45},
+		{"error exit status", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\n#entry main :: proc {\n    exit Hash_Table_Error.NOT_FOUND;\n}", 2},
 		{"exit", "#entry main :: proc {\n    exit 9;\n}", 9},
 	}
 	for _, tt := range tests {

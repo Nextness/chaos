@@ -244,3 +244,129 @@ func TestSemanticTokensProcWithIfReturnAndCalls(t *testing.T) {
 		t.Errorf("semantic data = %v, want %v", got, want)
 	}
 }
+
+// decodeSemanticData reverses the delta encoding, returning the absolute
+// token positions.
+func decodeSemanticData(data []int) []semanticToken {
+	var out []semanticToken
+	line, start := 0, 0
+	for i := 0; i+4 < len(data); i += 5 {
+		line += data[i]
+		if data[i] == 0 {
+			start += data[i+1]
+		} else {
+			start = data[i+1]
+		}
+		out = append(out, semanticToken{line: line, startChar: start, length: data[i+2], typeIndex: data[i+3]})
+	}
+	return out
+}
+
+// tokenAt returns the semantic token starting at the given line and column.
+func tokenAt(tokens []semanticToken, line, start int) (semanticToken, bool) {
+	for _, tok := range tokens {
+		if tok.line == line && tok.startChar == start {
+			return tok, true
+		}
+	}
+	return semanticToken{}, false
+}
+
+func TestSemanticTokensGenericProcs(t *testing.T) {
+	// Every procedure form must highlight the function name as a function,
+	// including generic type parameters before '::'.
+	source := "function1 :: proc (input1: String) { }\n" +
+		"function2 :: proc (input1: String) -> String { }\n" +
+		"function3 :: proc -> String { }\n" +
+		"function4 :: proc { }\n" +
+		"function5 <T: String | S64> :: proc (input1: T) { }\n" +
+		"function6 <T: String | S64> :: proc (input: String) -> T { }\n" +
+		"function7 <T: String | S64> :: proc -> T { }\n"
+	tokens := decodeSemanticData(semanticData(t, source))
+	for line := 0; line < 7; line++ {
+		tok, ok := tokenAt(tokens, line, 0)
+		if !ok {
+			t.Errorf("no token at line %d col 0", line)
+			continue
+		}
+		if tok.typeIndex != semTypeFunction {
+			t.Errorf("token at line %d col 0 has type %d, want %d (function)", line, tok.typeIndex, semTypeFunction)
+		}
+		if tok.length != 9 {
+			t.Errorf("token at line %d col 0 has length %d, want 9", line, tok.length)
+		}
+	}
+}
+
+func TestSemanticTokensGenericEntryProc(t *testing.T) {
+	// '#entry name <T: ...> :: proc {...}' must highlight the name as a
+	// function even though the directive precedes it.
+	source := "#entry function5 <T: String | S64> :: proc (input1: T) { }"
+	tokens := decodeSemanticData(semanticData(t, source))
+	tok, ok := tokenAt(tokens, 0, 7)
+	if !ok {
+		t.Fatalf("no token at line 0 col 7 (function name)")
+	}
+	if tok.typeIndex != semTypeFunction {
+		t.Errorf("token at line 0 col 7 has type %d, want %d (function)", tok.typeIndex, semTypeFunction)
+	}
+	if tok.length != 9 {
+		t.Errorf("token at line 0 col 7 has length %d, want 9", tok.length)
+	}
+}
+
+func TestSemanticTokensErrorDecl(t *testing.T) {
+	// An error type name is highlighted as a type, its members as constants,
+	// and the 'error' keyword as a keyword.
+	source := "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start int
+		want        int
+	}{
+		{0, 0, semTypeType},     // Hash_Table_Error
+		{0, 20, semTypeKeyword}, // error
+		{1, 4, semTypeConstant}, // GENERIC
+		{2, 4, semTypeConstant}, // OUT_OF_MEMORY
+		{3, 4, semTypeConstant}, // NOT_FOUND
+		{4, 4, semTypeConstant}, // OUT_OF_BOUNDS
+	}
+	for _, c := range checks {
+		tok, ok := tokenAt(tokens, c.line, c.start)
+		if !ok {
+			t.Errorf("no token at line %d col %d", c.line, c.start)
+			continue
+		}
+		if tok.typeIndex != c.want {
+			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
+		}
+	}
+}
+
+func TestSemanticTokensErrorMemberUsage(t *testing.T) {
+	// 'Type.MEMBER' highlights the type name as a type and the member as a
+	// constant; the bare '.MEMBER' highlights the member as a constant.
+	source := "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n}\nmain :: proc {\n    err: Hash_Table_Error = .OUT_OF_MEMORY;\n    if err == Hash_Table_Error.OUT_OF_MEMORY { }\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start int
+		want        int
+	}{
+		{4, 0, semTypeFunction},  // main
+		{5, 4, semTypeVariable},  // err
+		{5, 9, semTypeType},      // Hash_Table_Error (decl type)
+		{5, 29, semTypeConstant}, // OUT_OF_MEMORY (bare member)
+		{6, 14, semTypeType},     // Hash_Table_Error (member type)
+		{6, 31, semTypeConstant}, // OUT_OF_MEMORY (explicit member)
+	}
+	for _, c := range checks {
+		tok, ok := tokenAt(tokens, c.line, c.start)
+		if !ok {
+			t.Errorf("no token at line %d col %d", c.line, c.start)
+			continue
+		}
+		if tok.typeIndex != c.want {
+			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
+		}
+	}
+}

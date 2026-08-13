@@ -66,7 +66,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 		switch tok.Kind {
 		case compiler.TkExit, compiler.TkIf, compiler.TkElif, compiler.TkElse,
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
-			compiler.TkStruct,
+			compiler.TkStruct, compiler.TkErrorKw,
 			compiler.TkTrue, compiler.TkFalse,
 			compiler.TkHash, compiler.TkDirec:
 			idx = semTypeKeyword
@@ -105,15 +105,18 @@ var builtinTypes = map[string]bool{
 }
 
 // knownTypeNames returns the set of type names that exist in the program:
-// built-in primitive types plus declared struct names.
+// built-in primitive types plus declared struct and error type names.
 func knownTypeNames(program *compiler.Program) map[string]bool {
 	types := make(map[string]bool, len(builtinTypes))
 	for name := range builtinTypes {
 		types[name] = true
 	}
 	for _, decl := range program.Decls {
-		if st, ok := decl.(*compiler.StructDecl); ok {
-			types[st.Name] = true
+		switch d := decl.(type) {
+		case *compiler.StructDecl:
+			types[d.Name] = true
+		case *compiler.ErrorDecl:
+			types[d.Name] = true
 		}
 	}
 	return types
@@ -139,6 +142,7 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 	var walkBlock func(block *compiler.BlockStmt)
 	var walkProc func(proc *compiler.ProcDecl)
 	var walkStruct func(st *compiler.StructDecl)
+	var walkError func(ed *compiler.ErrorDecl)
 
 	walkExpr = func(expr compiler.Expr) {
 		switch e := expr.(type) {
@@ -169,6 +173,13 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 					walkExpr(field.Value)
 				}
 			}
+		case *compiler.ErrorMemberExpr:
+			if e.TypeName != "" {
+				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
+				out = append(out, spanToTokenRows(typeSpan, sf, semTypeType)...)
+			}
+			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name), End: e.Span_.End}
+			out = append(out, spanToTokenRows(memberSpan, sf, semTypeConstant)...)
 		}
 	}
 
@@ -217,6 +228,8 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkProc(s)
 		case *compiler.StructDecl:
 			walkStruct(s)
+		case *compiler.ErrorDecl:
+			walkError(s)
 		}
 	}
 
@@ -248,6 +261,13 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		}
 	}
 
+	walkError = func(ed *compiler.ErrorDecl) {
+		out = append(out, spanToTokenRows(nameSpan(ed.Span_, ed.Name), sf, semTypeType)...)
+		for _, m := range ed.Members {
+			out = append(out, spanToTokenRows(nameSpan(m.Span_, m.Name), sf, semTypeConstant)...)
+		}
+	}
+
 	for _, decl := range program.Decls {
 		switch d := decl.(type) {
 		case *compiler.ProcDecl:
@@ -256,6 +276,8 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkStmt(d)
 		case *compiler.StructDecl:
 			walkStruct(d)
+		case *compiler.ErrorDecl:
+			walkError(d)
 		}
 	}
 	return out

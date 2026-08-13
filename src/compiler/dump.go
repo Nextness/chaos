@@ -86,6 +86,13 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 			dumpExpr(b, f.Type)
 			b.WriteString("\n")
 		}
+	case *ErrorDecl:
+		dumpIndent(b, depth)
+		fmt.Fprintf(b, "ErrorDecl %s\n", n.Name)
+		for _, m := range n.Members {
+			dumpIndent(b, depth+1)
+			fmt.Fprintf(b, "Member %s\n", m.Name)
+		}
 	case *VarDecl:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "VarDecl %s", n.Name)
@@ -106,7 +113,7 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 
 func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 	switch n := s.(type) {
-	case *VarDecl, *ProcDecl, *StructDecl:
+	case *VarDecl, *ProcDecl, *StructDecl, *ErrorDecl:
 		dumpDecl(b, n.(Decl), depth)
 	case *AssignStmt:
 		dumpIndent(b, depth)
@@ -223,6 +230,12 @@ func dumpExpr(b *strings.Builder, e Expr) {
 		b.WriteString(")")
 	case *ErrorExpr:
 		b.WriteString("ErrorExpr")
+	case *ErrorMemberExpr:
+		if n.TypeName != "" {
+			fmt.Fprintf(b, "ErrorMember(%s.%s)", n.TypeName, n.Name)
+		} else {
+			fmt.Fprintf(b, "ErrorMember(.%s)", n.Name)
+		}
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)
 	}

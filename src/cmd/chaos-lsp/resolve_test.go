@@ -16,7 +16,7 @@ func buildResolverFor(t *testing.T, source string) *resolver {
 	sf := sm.Lookup(fileID)
 	tokens, _ := compiler.Tokenize(sf.Source, fileID)
 	result := compiler.ParseProgramTolerant(tokens)
-	r := &resolver{sf: sf, uri: "file:///test.chaos", program: result.Program, tokens: tokens}
+	r := &resolver{sf: sf, uri: "file:///test.chaos", program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol)}
 	r.buildScopes()
 	r.collectOccurrences()
 	return r
@@ -200,5 +200,82 @@ func TestDefinitionResolvesInsideStructLiteral(t *testing.T) {
 	sym = r.definitionAt(typeRef)
 	if sym == nil || sym.name != "Something_New" || sym.structDecl == nil {
 		t.Fatalf("definition of struct literal type = %+v, want struct symbol", sym)
+	}
+}
+
+const errorSource = "Hash_Table_Error :: error {\n\tGENERIC;\n\tOUT_OF_MEMORY;\n\tNOT_FOUND;\n}\nmain :: proc {\n\terr: Hash_Table_Error = .OUT_OF_MEMORY;\n\tif err == Hash_Table_Error.NOT_FOUND { }\n}"
+
+func TestErrorDefinitionHoverAndCompletion(t *testing.T) {
+	r := buildResolverFor(t, errorSource)
+
+	// Definition on the error type name resolves to itself.
+	errDecl := offsetOf(t, errorSource, "Hash_Table_Error :: error")
+	sym := r.definitionAt(errDecl)
+	if sym == nil || sym.name != "Hash_Table_Error" || sym.errorDecl == nil {
+		t.Fatalf("definition of error decl = %+v, want error type symbol", sym)
+	}
+
+	// Definition on the member in 'Hash_Table_Error.NOT_FOUND' resolves to
+	// the member declaration.
+	memberRef := offsetOf(t, errorSource, "Hash_Table_Error.NOT_FOUND") + len("Hash_Table_Error.")
+	sym = r.definitionAt(memberRef)
+	if sym == nil || sym.name != "NOT_FOUND" || sym.errorMember == nil {
+		t.Fatalf("definition of member ref = %+v, want error member symbol", sym)
+	}
+
+	// Definition on the bare '.OUT_OF_MEMORY' resolves to the member
+	// declaration (unique member name).
+	bareRef := offsetOf(t, errorSource, ".OUT_OF_MEMORY") + 1
+	sym = r.definitionAt(bareRef)
+	if sym == nil || sym.name != "OUT_OF_MEMORY" || sym.errorMember == nil {
+		t.Fatalf("definition of bare member ref = %+v, want error member symbol", sym)
+	}
+
+	// Hover on the error type shows the error signature.
+	content := r.hoverAt(errDecl)
+	if !strings.Contains(content, "Hash_Table_Error :: error") || !strings.Contains(content, "GENERIC") {
+		t.Errorf("hover = %q, want error signature", content)
+	}
+
+	// Hover on a member shows 'Type.MEMBER : Type'.
+	content = r.hoverAt(memberRef)
+	if !strings.Contains(content, "Hash_Table_Error.NOT_FOUND : Hash_Table_Error") {
+		t.Errorf("hover = %q, want member type info", content)
+	}
+
+	// Completion after 'Hash_Table_Error.' returns the members.
+	pos := offsetOf(t, errorSource, "Hash_Table_Error.NOT_FOUND") + len("Hash_Table_Error.")
+	items := r.completionAt(pos)
+	names := make(map[string]bool)
+	for _, item := range items {
+		names[item.Label] = true
+	}
+	for _, want := range []string{"GENERIC", "OUT_OF_MEMORY", "NOT_FOUND"} {
+		if !names[want] {
+			t.Errorf("member completion missing %q", want)
+		}
+	}
+}
+
+func TestErrorReferences(t *testing.T) {
+	r := buildResolverFor(t, errorSource)
+	// References on OUT_OF_MEMORY: the declaration and the bare
+	// '.OUT_OF_MEMORY' usage.
+	ref := offsetOf(t, errorSource, "OUT_OF_MEMORY;\n\tNOT_FOUND")
+	occs := r.referencesAt(ref)
+	if len(occs) != 2 {
+		t.Fatalf("references for OUT_OF_MEMORY = %d, want 2", len(occs))
+	}
+	for _, occ := range occs {
+		if occ.name != "OUT_OF_MEMORY" {
+			t.Errorf("occurrence name = %q, want OUT_OF_MEMORY", occ.name)
+		}
+	}
+	// References on NOT_FOUND: the declaration and the explicit
+	// 'Hash_Table_Error.NOT_FOUND' usage.
+	ref = offsetOf(t, errorSource, "NOT_FOUND;\n}")
+	occs = r.referencesAt(ref)
+	if len(occs) != 2 {
+		t.Fatalf("references for NOT_FOUND = %d, want 2", len(occs))
 	}
 }

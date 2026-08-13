@@ -81,6 +81,7 @@ const (
 	TypeKindInt
 	TypeKindFloat
 	TypeKindStruct
+	TypeKindError
 	TypeKindUnknown
 )
 
@@ -143,6 +144,15 @@ func (tt *TypeTable) SetStructFields(id TypeID, fields []TypeField) {
 	if int(id) < len(tt.types) {
 		tt.types[id].Fields = fields
 	}
+}
+
+// InternError interns an error type name. Error values are nominal: each
+// declared error type is its own type, backed by a 16-bit ordinal.
+func (tt *TypeTable) InternError(name string) TypeID {
+	if id, ok := tt.byName[name]; ok {
+		return id
+	}
+	return tt.intern(name, TypeKindError)
 }
 
 // Lookup returns the IRType for a TypeID, or an unknown type for an

@@ -443,6 +443,170 @@ func TestParseStructFieldMissingType(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
+// Error type declarations
+// ──────────────────────────────────────────────
+
+func TestParseErrorDecl(t *testing.T) {
+	decl := parseOneDecl(t, "Hash_Table_Error :: error {\n\tGENERIC;\n\tOUT_OF_MEMORY;\n\tNOT_FOUND;\n\tOUT_OF_BOUNDS;\n}")
+	d, ok := decl.(*ErrorDecl)
+	if !ok {
+		t.Fatalf("expected *ErrorDecl, got %T", decl)
+	}
+	if d.Name != "Hash_Table_Error" {
+		t.Errorf("Name = %q, want %q", d.Name, "Hash_Table_Error")
+	}
+	if len(d.Members) != 4 {
+		t.Fatalf("Members = %d, want 4", len(d.Members))
+	}
+	want := []string{"GENERIC", "OUT_OF_MEMORY", "NOT_FOUND", "OUT_OF_BOUNDS"}
+	for i, w := range want {
+		if d.Members[i].Name != w {
+			t.Errorf("member[%d].Name = %q, want %q", i, d.Members[i].Name, w)
+		}
+	}
+}
+
+func TestParseErrorDeclExplicitAnnotation(t *testing.T) {
+	// 'ident : Error : error {...}' is equivalent to 'ident :: error {...}'.
+	decl := parseOneDecl(t, "Hash_Table_Error : Error : error {\n\tGENERIC;\n}")
+	d, ok := decl.(*ErrorDecl)
+	if !ok {
+		t.Fatalf("expected *ErrorDecl, got %T", decl)
+	}
+	if d.Name != "Hash_Table_Error" {
+		t.Errorf("Name = %q, want %q", d.Name, "Hash_Table_Error")
+	}
+	if len(d.Members) != 1 {
+		t.Fatalf("Members = %d, want 1", len(d.Members))
+	}
+}
+
+func TestParseErrorDeclEmpty(t *testing.T) {
+	decl := parseOneDecl(t, "Empty :: error {}")
+	d, ok := decl.(*ErrorDecl)
+	if !ok {
+		t.Fatalf("expected *ErrorDecl, got %T", decl)
+	}
+	if len(d.Members) != 0 {
+		t.Fatalf("Members = %d, want 0", len(d.Members))
+	}
+}
+
+func TestParseErrorDeclTrailingSemicolonTolerated(t *testing.T) {
+	result := parseTestCase(t, "Foo :: error { A; };")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+}
+
+func TestParseErrorDeclMissingBrace(t *testing.T) {
+	result := parseTestCase(t, "Foo :: error A;")
+	if !result.Diags.HasErrors() {
+		t.Error("expected errors for missing '{' after error, got none")
+	}
+}
+
+func TestParseErrorDeclExplicitValueRejected(t *testing.T) {
+	// Error values are numbered sequentially from 0; 'A = 1' is an error.
+	result := parseTestCase(t, "Foo :: error { A = 1; }")
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for explicit error value, got none")
+	}
+	if result.Diags[0].Message != "error values cannot be explicitly assigned; they are numbered sequentially from 0" {
+		t.Errorf("diagnostic message = %q, want explicit-value message", result.Diags[0].Message)
+	}
+}
+
+func TestParseErrorDeclInferRejected(t *testing.T) {
+	// 'ident := error {...}' is rejected: error types are compile-time only.
+	result := parseTestCase(t, "Foo := error { A; }")
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for ':=' error declaration, got none")
+	}
+	if result.Diags[0].Message != "error types must be declared at compile time; use '::' or ': Error :'" {
+		t.Errorf("diagnostic message = %q, want compile-time message", result.Diags[0].Message)
+	}
+	// The declaration is still parsed for recovery.
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1 (recovered ErrorDecl)", len(result.Program.Decls))
+	}
+	if _, ok := result.Program.Decls[0].(*ErrorDecl); !ok {
+		t.Fatalf("Decls[0] type = %T, want *ErrorDecl", result.Program.Decls[0])
+	}
+}
+
+func TestParseErrorDeclAssignRejected(t *testing.T) {
+	// 'ident : Error = error {...}' is rejected: error types are
+	// compile-time only.
+	result := parseTestCase(t, "Foo : Error = error { A; }")
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for ': Error =' error declaration, got none")
+	}
+	if result.Diags[0].Message != "error types must be declared at compile time; use '::' or ': Error :'" {
+		t.Errorf("diagnostic message = %q, want compile-time message", result.Diags[0].Message)
+	}
+}
+
+func TestParseErrorDeclWrongAnnotation(t *testing.T) {
+	// The annotation in 'ident : X : error {...}' must be 'Error'.
+	result := parseTestCase(t, "Foo : S64 : error { A; }")
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for non-Error annotation, got none")
+	}
+	if result.Diags[0].Message != "error type annotation must be 'Error'" {
+		t.Errorf("diagnostic message = %q, want annotation message", result.Diags[0].Message)
+	}
+}
+
+func TestParseErrorMemberExpr(t *testing.T) {
+	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND")
+	e, ok := expr.(*ErrorMemberExpr)
+	if !ok {
+		t.Fatalf("expected *ErrorMemberExpr, got %T", expr)
+	}
+	if e.TypeName != "Hash_Table_Error" {
+		t.Errorf("TypeName = %q, want %q", e.TypeName, "Hash_Table_Error")
+	}
+	if e.Name != "NOT_FOUND" {
+		t.Errorf("Name = %q, want %q", e.Name, "NOT_FOUND")
+	}
+}
+
+func TestParseBareErrorMemberExpr(t *testing.T) {
+	expr := parseExpr(t, ".NOT_FOUND")
+	e, ok := expr.(*ErrorMemberExpr)
+	if !ok {
+		t.Fatalf("expected *ErrorMemberExpr, got %T", expr)
+	}
+	if e.TypeName != "" {
+		t.Errorf("TypeName = %q, want empty for bare member", e.TypeName)
+	}
+	if e.Name != "NOT_FOUND" {
+		t.Errorf("Name = %q, want %q", e.Name, "NOT_FOUND")
+	}
+}
+
+func TestParseErrorMemberExprInComparison(t *testing.T) {
+	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND == Hash_Table_Error.GENERIC")
+	e, ok := expr.(*BinaryExpr)
+	if !ok {
+		t.Fatalf("expected *BinaryExpr, got %T", expr)
+	}
+	if e.Op != BinaryOpEq {
+		t.Errorf("Op = %d, want %d (BinaryOpEq)", e.Op, BinaryOpEq)
+	}
+	if _, ok := e.Left.(*ErrorMemberExpr); !ok {
+		t.Errorf("left type = %T, want *ErrorMemberExpr", e.Left)
+	}
+	if _, ok := e.Right.(*ErrorMemberExpr); !ok {
+		t.Errorf("right type = %T, want *ErrorMemberExpr", e.Right)
+	}
+}
+
+// ──────────────────────────────────────────────
 // Assignments
 // ──────────────────────────────────────────────
 
@@ -1673,5 +1837,161 @@ func TestTolerantRealErrorsStillSurface(t *testing.T) {
 	result := parseTolerantTestCase(t, "x := ;")
 	if !result.Diags.HasErrors() {
 		t.Error("expected errors for 'x := ;', got none")
+	}
+}
+
+func TestTolerantGenericProcDecl(t *testing.T) {
+	tests := []struct {
+		source  string
+		name    string
+		params  int
+		results int
+	}{
+		{"function5 <T: String | S64> :: proc (input1: T) { }", "function5", 1, 0},
+		{"function6 <T: String | S64> :: proc (input: String) -> T { }", "function6", 1, 1},
+		{"function7 <T: String | S64> :: proc -> T { }", "function7", 0, 1},
+	}
+	for _, tt := range tests {
+		result := parseTolerantTestCase(t, tt.source)
+		if result.Diags.HasErrors() {
+			t.Fatalf("unexpected errors for %q: %v", tt.source, result.Diags)
+		}
+		if len(result.Program.Decls) != 1 {
+			t.Fatalf("Decls = %d, want 1 for %q", len(result.Program.Decls), tt.source)
+		}
+		proc, ok := result.Program.Decls[0].(*ProcDecl)
+		if !ok {
+			t.Fatalf("expected *ProcDecl, got %T for %q", result.Program.Decls[0], tt.source)
+		}
+		if proc.Name != tt.name {
+			t.Errorf("Name = %q, want %q", proc.Name, tt.name)
+		}
+		if len(proc.Params) != tt.params {
+			t.Errorf("Params = %d, want %d", len(proc.Params), tt.params)
+		}
+		if len(proc.Results) != tt.results {
+			t.Errorf("Results = %d, want %d", len(proc.Results), tt.results)
+		}
+	}
+}
+
+func TestTolerantGenericEntryProc(t *testing.T) {
+	result := parseTolerantTestCase(t, "#entry function5 <T: String | S64> :: proc (input1: T) { }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if proc.Name != "function5" {
+		t.Errorf("Name = %q, want %q", proc.Name, "function5")
+	}
+	if result.Program.Entry != "function5" {
+		t.Errorf("Entry = %q, want %q", result.Program.Entry, "function5")
+	}
+}
+
+func TestTolerantGenericEntryProcAfterAssign(t *testing.T) {
+	// 'ident <T: ...> :: #entry proc {...}' — the directive after '::'.
+	result := parseTolerantTestCase(t, "function5 <T: String | S64> :: #entry proc (input1: T) { }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if proc.Name != "function5" {
+		t.Errorf("Name = %q, want %q", proc.Name, "function5")
+	}
+	if result.Program.Entry != "function5" {
+		t.Errorf("Entry = %q, want %q", result.Program.Entry, "function5")
+	}
+}
+
+func TestTolerantGenericNestedAndMultipleParams(t *testing.T) {
+	sources := []string{
+		"function8 <T: Array<S64>> :: proc { }",
+		"function9 <T: String | S64, U: S64> :: proc { }",
+	}
+	for _, src := range sources {
+		result := parseTolerantTestCase(t, src)
+		if result.Diags.HasErrors() {
+			t.Fatalf("unexpected errors for %q: %v", src, result.Diags)
+		}
+		if len(result.Program.Decls) != 1 {
+			t.Fatalf("Decls = %d, want 1 for %q", len(result.Program.Decls), src)
+		}
+		if _, ok := result.Program.Decls[0].(*ProcDecl); !ok {
+			t.Fatalf("expected *ProcDecl, got %T for %q", result.Program.Decls[0], src)
+		}
+	}
+}
+
+func TestTolerantGenericProcInBody(t *testing.T) {
+	result := parseTolerantTestCase(t, "main :: proc { inner <T: S64> :: proc { } }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if len(proc.Body.Stmts) != 1 {
+		t.Fatalf("Stmts = %d, want 1", len(proc.Body.Stmts))
+	}
+	inner, ok := proc.Body.Stmts[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected inner *ProcDecl, got %T", proc.Body.Stmts[0])
+	}
+	if inner.Name != "inner" {
+		t.Errorf("inner Name = %q, want %q", inner.Name, "inner")
+	}
+}
+
+func TestTolerantGenericStruct(t *testing.T) {
+	result := parseTolerantTestCase(t, "Foo <T: S64> :: struct { x: T; }")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	if _, ok := result.Program.Decls[0].(*StructDecl); !ok {
+		t.Fatalf("expected *StructDecl, got %T", result.Program.Decls[0])
+	}
+}
+
+func TestTolerantErrorDecl(t *testing.T) {
+	result := parseTolerantTestCase(t, "Hash_Table_Error :: error {\n\tGENERIC;\n\tOUT_OF_MEMORY;\n}")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	ed, ok := result.Program.Decls[0].(*ErrorDecl)
+	if !ok {
+		t.Fatalf("expected *ErrorDecl, got %T", result.Program.Decls[0])
+	}
+	if len(ed.Members) != 2 {
+		t.Fatalf("Members = %d, want 2", len(ed.Members))
+	}
+}
+
+func TestStrictGenericProcStillErrors(t *testing.T) {
+	result := parseTestCase(t, "function5 <T: String | S64> :: proc (input1: T) { }")
+	if !result.Diags.HasErrors() {
+		t.Error("strict mode should error on generic proc, got none")
 	}
 }

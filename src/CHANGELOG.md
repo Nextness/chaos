@@ -11,6 +11,30 @@ listed under an explicit semantic version.
   version (`0.3.0` → `0.3.1`).
 - Each version should describe its additions, changes, fixes, and removals.
 
+## 0.9.0 - 2026-08-12
+
+### Added
+
+- Error types and error values. An error type is declared with
+  `Name :: error { MEMBER; ... }` (or equivalently `Name : Error : error {...}`);
+  each member is a distinct error value numbered sequentially from 0.
+  - Error values are nominal: they assign only to their own error type and
+    compare only with `==` and `!=`; ordering and arithmetic are rejected.
+  - Members are referenced as `Type.MEMBER` or, in a typed context, as the
+    bare `.MEMBER` form (declaration type, call argument, return value,
+    comparison against an error-typed operand).
+  - Error types are compile-time only: `Name := error {...}` and
+    `Name : Error = error {...}` are rejected. Members cannot be assigned
+    explicit values (`A = 1;` is an error), and duplicate member names are
+    rejected.
+  - Error values are backed by a 16-bit ordinal in the fasm backend, so they
+    work in globals, locals, comparisons, call arguments, returns, and as
+    `exit` status codes.
+  - The language server highlights error type names as types, members as
+    constants, and the `error` keyword as a keyword; document symbols,
+    definition, references, hover, and `Type.` member completion are
+    supported.
+
 ## 0.8.1 - 2026-08-08
 
 ### Fixed

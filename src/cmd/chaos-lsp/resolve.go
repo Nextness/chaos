@@ -9,22 +9,28 @@ import (
 
 // LSP CompletionItemKind values used by the server.
 const (
-	completionKindFunction = 3
-	completionKindVariable = 6
-	completionKindConstant = 14
-	completionKindStruct   = 22
+	completionKindFunction    = 3
+	completionKindVariable    = 6
+	completionKindEnum        = 13
+	completionKindConstant    = 14
+	completionKindEnumMember  = 20
+	completionKindStruct      = 22
 )
 
-// symbol is a declared name (proc, var, const, struct, param, local).
+// symbol is a declared name (proc, var, const, struct, error type, error
+// member, param, local).
 type symbol struct {
-	name       string
-	kind       int // LSP CompletionItemKind
-	span       compiler.Span // name span
-	proc       *compiler.ProcDecl
-	varDecl    *compiler.VarDecl
-	structDecl *compiler.StructDecl
-	param      *compiler.Param
-	scope      *scope
+	name        string
+	kind        int // LSP CompletionItemKind
+	span        compiler.Span // name span
+	proc        *compiler.ProcDecl
+	varDecl     *compiler.VarDecl
+	structDecl  *compiler.StructDecl
+	errorDecl   *compiler.ErrorDecl
+	errorMember *compiler.ErrorMember
+	errorType   string // owning error type name for an error member
+	param       *compiler.Param
+	scope       *scope
 }
 
 // scope is a lexical scope with a parent and nested children.
@@ -46,13 +52,14 @@ type occurrence struct {
 
 // resolver is a per-document symbol index built from the tolerant parse.
 type resolver struct {
-	sf          *compiler.SourceFile
-	uri         string
-	program     *compiler.Program
-	tokens      compiler.TokenList
-	global      *scope
-	decls       []*symbol
-	occurrences []*occurrence
+	sf           *compiler.SourceFile
+	uri          string
+	program      *compiler.Program
+	tokens       compiler.TokenList
+	global       *scope
+	decls        []*symbol
+	occurrences  []*occurrence
+	errorMembers map[string]map[string]*symbol // error type name -> member name -> symbol
 }
 
 // buildResolver tokenizes and parses a document in tolerant mode and builds
@@ -60,7 +67,7 @@ type resolver struct {
 func buildResolver(doc *Document) *resolver {
 	tokens, _ := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
 	result := compiler.ParseProgramTolerant(tokens)
-	r := &resolver{sf: doc.sf, uri: doc.URI, program: result.Program, tokens: tokens}
+	r := &resolver{sf: doc.sf, uri: doc.URI, program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol)}
 	r.buildScopes()
 	r.collectOccurrences()
 	return r
@@ -98,7 +105,28 @@ func (r *resolver) buildScopes() {
 			sym := &symbol{name: d.Name, kind: completionKindStruct, span: nameSpan(d.Span_, d.Name), structDecl: d, scope: r.global}
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
+		case *compiler.ErrorDecl:
+			sym := &symbol{name: d.Name, kind: completionKindEnum, span: nameSpan(d.Span_, d.Name), errorDecl: d, scope: r.global}
+			r.global.symbols = append(r.global.symbols, sym)
+			r.decls = append(r.decls, sym)
+			r.collectErrorMembers(d)
 		}
+	}
+}
+
+// collectErrorMembers records each error member as an occurrence and indexes
+// it by error type name so member references (Type.MEMBER and .MEMBER) can
+// resolve to their declaration. Members are not added to any scope's symbol
+// list: they are not accessible by bare name in expressions.
+func (r *resolver) collectErrorMembers(ed *compiler.ErrorDecl) {
+	if r.errorMembers[ed.Name] == nil {
+		r.errorMembers[ed.Name] = make(map[string]*symbol)
+	}
+	for i := range ed.Members {
+		m := &ed.Members[i]
+		msym := &symbol{name: m.Name, kind: completionKindEnumMember, span: nameSpan(m.Span_, m.Name), errorMember: m, errorType: ed.Name, scope: r.global}
+		r.errorMembers[ed.Name][m.Name] = msym
+		r.occurrences = append(r.occurrences, &occurrence{name: m.Name, span: msym.span, sym: msym})
 	}
 }
 
@@ -142,8 +170,29 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 			sym := &symbol{name: st.Name, kind: completionKindStruct, span: nameSpan(st.Span_, st.Name), structDecl: st, scope: s}
 			s.symbols = append(s.symbols, sym)
 			r.decls = append(r.decls, sym)
+		case *compiler.ErrorDecl:
+			sym := &symbol{name: st.Name, kind: completionKindEnum, span: nameSpan(st.Span_, st.Name), errorDecl: st, scope: s}
+			s.symbols = append(s.symbols, sym)
+			r.decls = append(r.decls, sym)
+			r.collectErrorMembers(st)
 		}
 	}
+}
+
+// uniqueErrorMember returns the member symbol for a bare '.MEMBER' reference
+// when the member name is unique across all error types, or nil when it is
+// ambiguous or unknown.
+func (r *resolver) uniqueErrorMember(name string) *symbol {
+	var found *symbol
+	for _, members := range r.errorMembers {
+		if msym, ok := members[name]; ok {
+			if found != nil {
+				return nil // ambiguous
+			}
+			found = msym
+		}
+	}
+	return found
 }
 
 // collectStructFields records each struct field name as an occurrence so
@@ -194,6 +243,19 @@ func (r *resolver) collectOccurrences() {
 					walkExpr(field.Value)
 				}
 			}
+		case *compiler.ErrorMemberExpr:
+			if e.TypeName != "" {
+				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
+				r.occurrences = append(r.occurrences, &occurrence{name: e.TypeName, span: typeSpan})
+			}
+			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name), End: e.Span_.End}
+			var msym *symbol
+			if e.TypeName != "" {
+				msym = r.errorMembers[e.TypeName][e.Name]
+			} else {
+				msym = r.uniqueErrorMember(e.Name)
+			}
+			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: memberSpan, sym: msym})
 		}
 	}
 
@@ -359,8 +421,12 @@ func (r *resolver) hoverAt(offset int) string {
 }
 
 // completionAt returns the names in scope at the offset, excluding names
-// declared after the offset.
+// declared after the offset. When the cursor follows 'TypeName.', it returns
+// the members of that error type instead.
 func (r *resolver) completionAt(offset int) []CompletionItem {
+	if items := r.memberCompletion(offset); items != nil {
+		return items
+	}
 	sc := r.scopeAt(offset)
 	seen := make(map[string]bool)
 	out := []CompletionItem{}
@@ -378,6 +444,46 @@ func (r *resolver) completionAt(offset int) []CompletionItem {
 		sc = sc.parent
 	}
 	return out
+}
+
+// memberCompletion returns the members of the error type named just before a
+// trailing '.' at the offset, or nil when the cursor is not after 'TypeName.'.
+func (r *resolver) memberCompletion(offset int) []CompletionItem {
+	if offset <= 0 {
+		return nil
+	}
+	src := r.sf.Source
+	i := offset - 1
+	for i >= 0 && (src[i] == ' ' || src[i] == '\t') {
+		i--
+	}
+	if i < 0 || src[i] != '.' {
+		return nil
+	}
+	j := i - 1
+	for j >= 0 && !isIdentStop(src[j]) {
+		j--
+	}
+	name := string(src[j+1 : i])
+	members, ok := r.errorMembers[name]
+	if !ok {
+		return nil
+	}
+	out := []CompletionItem{}
+	for _, msym := range members {
+		out = append(out, CompletionItem{Label: msym.name, Kind: msym.kind})
+	}
+	return out
+}
+
+// isIdentStop reports whether a byte cannot appear inside an identifier.
+func isIdentStop(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', '.', '(', ')', '{', '}', '[', ']', ';', ',',
+		'=', ':', '+', '-', '*', '/', '%', '<', '>', '!', '&', '|', '?', '@', '#', '"':
+		return true
+	}
+	return false
 }
 
 // exprText returns the source text of an identifier type expression.
@@ -433,6 +539,21 @@ func structSignature(st *compiler.StructDecl) string {
 	return b.String()
 }
 
+// errorSignature renders an error type definition, e.g.
+// "Hash_Table_Error :: error {\n\tGENERIC;\n\tOUT_OF_MEMORY;\n}".
+func errorSignature(ed *compiler.ErrorDecl) string {
+	var b strings.Builder
+	b.WriteString(ed.Name)
+	b.WriteString(" :: error {\n")
+	for _, m := range ed.Members {
+		b.WriteString("\t")
+		b.WriteString(m.Name)
+		b.WriteString(";\n")
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
 // symbolHover renders markdown content for a symbol.
 func symbolHover(sym *symbol) string {
 	switch {
@@ -440,6 +561,10 @@ func symbolHover(sym *symbol) string {
 		return "```chaos\n" + procSignature(sym.proc) + "\n```"
 	case sym.structDecl != nil:
 		return "```chaos\n" + structSignature(sym.structDecl) + "\n```"
+	case sym.errorDecl != nil:
+		return "```chaos\n" + errorSignature(sym.errorDecl) + "\n```"
+	case sym.errorMember != nil:
+		return "```chaos\n" + sym.errorType + "." + sym.name + " : " + sym.errorType + "\n```"
 	case sym.varDecl != nil:
 		if sym.varDecl.DeclType != nil {
 			return "```chaos\n" + sym.name + " : " + exprText(sym.varDecl.DeclType) + "\n```"

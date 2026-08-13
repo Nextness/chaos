@@ -155,6 +155,8 @@ func dumpHIRExpr(b *strings.Builder, hir *HIR, e HIRExpr) {
 			fmt.Fprintf(b, "String(%q)", n.Str)
 		case ConstBool:
 			fmt.Fprintf(b, "Bool(%v)", n.Bool)
+		case ConstError:
+			fmt.Fprintf(b, "Error(%s)", n.Str)
 		default:
 			b.WriteString("Unknown")
 		}

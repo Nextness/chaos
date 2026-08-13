@@ -1178,6 +1178,9 @@ func (fb *fasmEmitter) sizeOf(t IRType) int {
 		}
 	case TypeKindString:
 		return 16
+	case TypeKindError:
+		// Error values are nominal but backed by a 16-bit ordinal.
+		return 2
 	case TypeKindStruct:
 		size := 0
 		for _, f := range t.Fields {

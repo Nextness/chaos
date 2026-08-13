@@ -29,6 +29,7 @@ type TypeChecker struct {
 	scopes            []map[string]Type
 	procs             map[string]*ProcDecl
 	structs           map[string]*StructDecl
+	errors            map[string]*ErrorDecl
 	currentReturnType Type
 }
 
@@ -38,6 +39,7 @@ func CheckProgram(program *Program) DiagnosticList {
 	tc := &TypeChecker{
 		procs:   make(map[string]*ProcDecl),
 		structs: make(map[string]*StructDecl),
+		errors:  make(map[string]*ErrorDecl),
 	}
 	tc.checkProgram(program)
 	return tc.diags
@@ -78,6 +80,18 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 		case *StructDecl:
 			tc.structs[d.Name] = d
 			tc.declare(d.Name, Type(d.Name))
+		case *ErrorDecl:
+			tc.errors[d.Name] = d
+			tc.declare(d.Name, Type(d.Name))
+			// Error members are numbered sequentially from 0; duplicate
+			// member names would make the numbering ambiguous.
+			seen := make(map[string]bool, len(d.Members))
+			for _, m := range d.Members {
+				if seen[m.Name] {
+					tc.diags.Error(m.Span_, "duplicate error member "+m.Name+" in "+d.Name, "use a unique member name")
+				}
+				seen[m.Name] = true
+			}
 		case *VarDecl:
 			if d.DeclType != nil {
 				tc.declare(d.Name, typeOfTypeExpr(d.DeclType))
@@ -173,6 +187,8 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		tc.checkProc(n)
 	case *StructDecl:
 		// Struct declarations are registered in the first pass.
+	case *ErrorDecl:
+		// Error declarations are registered in the first pass.
 	}
 }
 
@@ -244,17 +260,92 @@ func (tc *TypeChecker) inferExpr(e Expr) Type {
 			return t
 		}
 		return TypeUnknown
+	case *ErrorMemberExpr:
+		return tc.checkErrorMemberExpr(n)
 	case *ErrorExpr:
 		return TypeUnknown
 	}
 	return TypeUnknown
 }
 
+// checkErrorMemberExpr infers the type of an error member reference. The
+// explicit "Type.MEMBER" form resolves against the named error type; the bare
+// ".MEMBER" form has no type context here and is reported as unresolvable
+// (typed contexts resolve it via checkAssign).
+func (tc *TypeChecker) checkErrorMemberExpr(n *ErrorMemberExpr) Type {
+	if n.TypeName == "" {
+		tc.diags.Error(n.Span_, "cannot infer the error type of '. "+n.Name+"'", "annotate the declaration with an error type")
+		return TypeUnknown
+	}
+	if !tc.isErrorType(Type(n.TypeName)) {
+		tc.diags.Error(n.Span_, n.TypeName+" is not an error type", "use a declared error type")
+		return TypeUnknown
+	}
+	if !tc.hasErrorMember(n.TypeName, n.Name) {
+		tc.diags.Error(n.Span_, "unknown error member "+n.Name+" in "+n.TypeName, "use a declared error member")
+		return TypeUnknown
+	}
+	return Type(n.TypeName)
+}
+
+// isErrorType reports whether t names a declared error type.
+func (tc *TypeChecker) isErrorType(t Type) bool {
+	_, ok := tc.errors[string(t)]
+	return ok
+}
+
+// hasErrorMember reports whether the named error type declares the member.
+func (tc *TypeChecker) hasErrorMember(typeName, member string) bool {
+	d, ok := tc.errors[typeName]
+	if !ok {
+		return false
+	}
+	for _, m := range d.Members {
+		if m.Name == member {
+			return true
+		}
+	}
+	return false
+}
+
 func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
-	lt := tc.inferExpr(n.Left)
-	rt := tc.inferExpr(n.Right)
+	// Infer operand types, deferring bare error members ('.MEMBER') until the
+	// other operand's type is known.
+	var lt, rt Type
+	if em, ok := n.Left.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		lt = TypeUnknown
+	} else {
+		lt = tc.inferExpr(n.Left)
+	}
+	if em, ok := n.Right.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		rt = TypeUnknown
+	} else {
+		rt = tc.inferExpr(n.Right)
+	}
+	// Resolve a bare error member against the other operand's type when that
+	// type is a declared error type.
+	if em, ok := n.Left.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		if tc.isErrorType(rt) {
+			tc.checkErrorMember(em, rt)
+			lt = rt
+		} else {
+			tc.diags.Error(em.Span_, "cannot infer the error type of '. "+em.Name+"'", "use the explicit 'Type.MEMBER' form")
+		}
+	}
+	if em, ok := n.Right.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		if tc.isErrorType(lt) {
+			tc.checkErrorMember(em, lt)
+			rt = lt
+		} else {
+			tc.diags.Error(em.Span_, "cannot infer the error type of '. "+em.Name+"'", "use the explicit 'Type.MEMBER' form")
+		}
+	}
 	switch n.Op {
 	case BinaryOpAdd, BinaryOpSub, BinaryOpMul, BinaryOpDiv, BinaryOpMod:
+		if tc.isErrorType(lt) || tc.isErrorType(rt) {
+			tc.diags.Error(n.Span_, "cannot apply "+n.Op.String()+" to error values", "error values support only == and !=")
+			return lt
+		}
 		if !tc.operandsCompatible(n.Left, lt, n.Right, rt) {
 			tc.diags.Error(n.Span_, "cannot apply "+n.Op.String()+" to "+string(lt)+" and "+string(rt), "operate on values of the same type")
 		}
@@ -264,7 +355,16 @@ func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 			return rt
 		}
 		return lt
-	case BinaryOpLt, BinaryOpGt, BinaryOpLe, BinaryOpGe, BinaryOpEq, BinaryOpNeq:
+	case BinaryOpLt, BinaryOpGt, BinaryOpLe, BinaryOpGe:
+		if tc.isErrorType(lt) || tc.isErrorType(rt) {
+			tc.diags.Error(n.Span_, "cannot order error values with "+n.Op.String(), "error values support only == and !=")
+			return TypeBool
+		}
+		if !tc.operandsCompatible(n.Left, lt, n.Right, rt) {
+			tc.diags.Error(n.Span_, "cannot compare "+string(lt)+" and "+string(rt), "compare values of the same type")
+		}
+		return TypeBool
+	case BinaryOpEq, BinaryOpNeq:
 		if !tc.operandsCompatible(n.Left, lt, n.Right, rt) {
 			tc.diags.Error(n.Span_, "cannot compare "+string(lt)+" and "+string(rt), "compare values of the same type")
 		}
@@ -361,7 +461,8 @@ func typeOfTypeExpr(e Expr) Type {
 
 // checkAssign validates that a value can be assigned to a target type. Literals
 // adapt to a compatible target type (an integer literal to any integer type, a
-// float literal to any float type); other expressions must match exactly.
+// float literal to any float type); other expressions must match exactly. A
+// bare error member ('.MEMBER') takes the target error type.
 func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 	if target == TypeUnknown || value == nil {
 		return
@@ -373,9 +474,29 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 		}
 		return
 	}
+	if em, ok := value.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		if tc.isErrorType(target) {
+			tc.checkErrorMember(em, target)
+			return
+		}
+		tc.diags.Error(span, "cannot assign an error member to "+string(target), "use a value of type "+string(target))
+		return
+	}
 	valType := tc.inferExpr(value)
 	if valType != TypeUnknown && valType != target {
 		tc.diags.Error(span, "cannot assign "+string(valType)+" to "+string(target), "use a value of type "+string(target))
+	}
+}
+
+// checkErrorMember validates a bare error member reference against a target
+// error type.
+func (tc *TypeChecker) checkErrorMember(em *ErrorMemberExpr, t Type) {
+	if !tc.isErrorType(t) {
+		tc.diags.Error(em.Span_, string(t)+" is not an error type", "use a declared error type")
+		return
+	}
+	if !tc.hasErrorMember(string(t), em.Name) {
+		tc.diags.Error(em.Span_, "unknown error member "+em.Name+" in "+string(t), "use a declared error member")
 	}
 }
 

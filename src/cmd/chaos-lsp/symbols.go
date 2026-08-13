@@ -8,10 +8,12 @@ import (
 
 // LSP DocumentSymbol kinds used by the server.
 const (
-	symbolKindFunction = 12
-	symbolKindVariable = 13
-	symbolKindConstant = 14
-	symbolKindStruct   = 23
+	symbolKindFunction    = 12
+	symbolKindVariable    = 13
+	symbolKindConstant    = 14
+	symbolKindEnum        = 10
+	symbolKindEnumMember  = 21
+	symbolKindStruct      = 23
 )
 
 // nameSpan derives the byte span of a declaration or parameter name. Every
@@ -66,6 +68,23 @@ func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []Docum
 			out = append(out, DocumentSymbol{
 				Name:           d.Name,
 				Kind:           symbolKindStruct,
+				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+				Children:       children,
+			})
+		case *compiler.ErrorDecl:
+			var children []DocumentSymbol
+			for _, member := range d.Members {
+				children = append(children, DocumentSymbol{
+					Name:           member.Name,
+					Kind:           symbolKindEnumMember,
+					Range:          toLSPRange(compiler.SpanToRange(member.Span_, sf)),
+					SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(member.Span_, member.Name), sf)),
+				})
+			}
+			out = append(out, DocumentSymbol{
+				Name:           d.Name,
+				Kind:           symbolKindEnum,
 				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
 				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
 				Children:       children,

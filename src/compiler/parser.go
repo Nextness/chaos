@@ -267,6 +267,34 @@ func (p *Parser) skipToMatchedBrace() {
 	}
 }
 
+// parseGenericClause consumes a generic type parameter list "<T: String | S64>"
+// in tolerant mode. Nested '<' '>' pairs (e.g. Array<S64>) are tracked so the
+// matching '>' ends the clause. Returns true when a complete clause was
+// consumed; otherwise the parser has consumed tokens up to EOF and the caller
+// falls back to its normal error handling.
+func (p *Parser) parseGenericClause() bool {
+	if !p.at(TkLt) {
+		return false
+	}
+	depth := 0
+	for {
+		tok := p.peek()
+		switch tok.Kind {
+		case TkEOF:
+			return false
+		case TkLt:
+			depth++
+		case TkGt:
+			depth--
+			if depth == 0 {
+				p.bump() // consume the closing '>'
+				return true
+			}
+		}
+		p.bump()
+	}
+}
+
 // parseDecl tries to parse a top-level declaration. Returns (decl, true) on
 // success, or (nil, false) on failure (caller must make progress).
 func (p *Parser) parseDecl() (Decl, bool) {
@@ -277,18 +305,28 @@ func (p *Parser) parseDecl() (Decl, bool) {
 
 	// Top-level '#entry name :: proc {...}' is the canonical entry point.
 	// Handle it in both strict and tolerant modes so the CLI accepts it.
+	// Tolerant mode also accepts generic type parameters before '::'
+	// ('#entry name <T: ...> :: proc {...}').
 	if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "entry" &&
-		p.peekN(2).Kind == TkIdent && p.peekN(3).Kind == TkColon &&
-		p.peekN(4).Kind == TkColon && p.peekN(5).Kind == TkProc {
+		p.peekN(2).Kind == TkIdent &&
+		(p.peekN(3).Kind == TkColon && p.peekN(4).Kind == TkColon && p.peekN(5).Kind == TkProc ||
+			p.tolerant && p.peekN(3).Kind == TkLt) {
 		p.bump() // consume '#'
 		p.bump() // consume TkDirec("entry")
 		nameTok := p.bump() // consume the ident
 		name := nameTok.Text()
-		p.bump() // consume first ':' of '::'
-		p.bump() // consume second ':' of '::'
-		p.bump() // consume "proc"
-		p.program.Entry = name
-		return p.parseProcDecl(nameTok, name)
+		if p.tolerant && p.at(TkLt) {
+			p.parseGenericClause()
+		}
+		if p.atCompTimeAssign() && p.peekN(2).Kind == TkProc {
+			p.bump() // consume first ':' of '::'
+			p.bump() // consume second ':' of '::'
+			p.bump() // consume "proc"
+			p.program.Entry = name
+			return p.parseProcDecl(nameTok, name)
+		}
+		p.skipToMatchedBraces()
+		return nil, false
 	}
 
 	// Tolerant mode: skip other top-level directives (#import «fmt.chaos»; etc.)
@@ -308,6 +346,14 @@ func (p *Parser) parseDecl() (Decl, bool) {
 
 	nameTok := p.bump()
 	name := nameTok.Text()
+
+	// Tolerant mode: generic type parameters before '::'
+	// (ident <T: String | S64> :: proc {...}). The clause is consumed so the
+	// procedure declaration parses normally; the type parameters themselves
+	// are not represented in the AST.
+	if p.tolerant && p.at(TkLt) {
+		p.parseGenericClause()
+	}
 
 	// Must be followed by ::, :, or := to be a declaration
 	if p.atCompTimeAssign() {
@@ -341,6 +387,13 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	if p.atInfer() {
 		p.bump() // consume ':' of ':='
 		p.bump() // consume '=' of ':='
+		// Error types are compile-time only: 'ident := error {...}' is
+		// rejected, but the declaration is still parsed for recovery.
+		if p.at(TkErrorKw) {
+			p.diags.Error(p.peek().Span, "error types must be declared at compile time; use '::' or ': Error :'", "replace ':=' with '::' or ': Error :'")
+			p.bump() // consume "error"
+			return p.parseErrorDecl(nameTok, name)
+		}
 		return p.parseInferVarDecl(nameTok, name)
 	}
 	if p.at(TkColon) {
@@ -367,6 +420,10 @@ func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool
 	if p.at(TkStruct) {
 		p.bump() // consume "struct"
 		return p.parseStructDecl(nameTok, name)
+	}
+	if p.at(TkErrorKw) {
+		p.bump() // consume "error"
+		return p.parseErrorDecl(nameTok, name)
 	}
 	// Compile-time variable: ident "::" expr ";"
 	init := p.parseExpr(0)
@@ -431,6 +488,25 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 			CompileTime: false,
 		}
 		return decl, true
+	}
+
+	// Error type declarations: 'ident : Error : error {...}' is equivalent to
+	// 'ident :: error {...}'. The ': Error =' form is rejected because error
+	// types are compile-time only. In both cases the declaration is parsed so
+	// the AST stays useful for recovery.
+	if p.at(TkColon) && p.peekN(1).Kind == TkErrorKw {
+		if !isErrorTypeAnnotation(typeExpr) {
+			p.diags.Error(typeExpr.nodeSpan(), "error type annotation must be 'Error'", "use '::' or ': Error :'")
+		}
+		p.bump() // consume ':'
+		p.bump() // consume "error"
+		return p.parseErrorDecl(nameTok, name)
+	}
+	if p.at(TkAssign) && p.peekN(1).Kind == TkErrorKw {
+		p.diags.Error(p.peek().Span, "error types must be declared at compile time; use '::' or ': Error :'", "replace ': Error =' with '::' or ': Error :'")
+		p.bump() // consume '='
+		p.bump() // consume "error"
+		return p.parseErrorDecl(nameTok, name)
 	}
 
 	var init Expr
@@ -608,6 +684,71 @@ func (p *Parser) parseStructField() (StructField, bool) {
 	}, true
 }
 
+// parseErrorDecl parses the rest of an error type definition after "error"
+// has been consumed. Members are "NAME;" entries inside a braced block. The
+// declaration itself does not require a trailing semicolon.
+func (p *Parser) parseErrorDecl(nameTok Token, name string) (Decl, bool) {
+	if !p.at(TkLBrace) {
+		p.diags.Error(p.peek().Span, "expected '{' after 'error'", "add a '{' block for the error members")
+		return nil, false
+	}
+	p.bump() // consume "{"
+
+	var members []ErrorMember
+	for !p.at(TkRBrace) && !p.at(TkEOF) {
+		before := p.pos
+		member, ok := p.parseErrorMember()
+		if ok {
+			members = append(members, member)
+		}
+		// Guarantee forward motion on malformed members.
+		if p.pos == before && p.peek().Kind != TkRBrace && p.peek().Kind != TkEOF {
+			p.bump()
+		}
+	}
+	closeTok := p.expect(TkRBrace)
+
+	decl := &ErrorDecl{
+		Span_:   Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
+		Name:    name,
+		Members: members,
+	}
+	return decl, true
+}
+
+// parseErrorMember parses a single error member: "NAME;". Explicit value
+// assignment ("NAME = value;") is rejected because error values are numbered
+// sequentially from 0 in declaration order.
+func (p *Parser) parseErrorMember() (ErrorMember, bool) {
+	if !p.at(TkIdent) {
+		p.diags.Error(p.peek().Span, "expected error member name", "add a member name")
+		return ErrorMember{}, false
+	}
+	nameTok := p.bump()
+	name := nameTok.Text()
+
+	if p.at(TkAssign) {
+		p.diags.Error(p.peek().Span, "error values cannot be explicitly assigned; they are numbered sequentially from 0", "remove the '= value'")
+		// Skip the '=' and its value up to the terminating ';'.
+		p.bump() // consume '='
+		for !p.at(TkSemicolon) && !p.at(TkRBrace) && !p.at(TkEOF) {
+			p.bump()
+		}
+		p.expect(TkSemicolon)
+		return ErrorMember{}, false
+	}
+
+	p.expect(TkSemicolon)
+	return ErrorMember{Span_: nameTok.Span, Name: name}, true
+}
+
+// isErrorTypeAnnotation reports whether a type expression is the 'Error'
+// marker used in error type declarations.
+func isErrorTypeAnnotation(e Expr) bool {
+	ident, ok := e.(*IdentExpr)
+	return ok && ident.Name == "Error"
+}
+
 // parseParam parses a single parameter: ident ":" type
 func (p *Parser) parseParam() (Param, bool) {
 	if !p.at(TkIdent) {
@@ -685,6 +826,13 @@ func (p *Parser) parseIdentStmt() Stmt {
 	nameTok := p.bump()
 	name := nameTok.Text()
 
+	// Tolerant mode: generic type parameters before '::'
+	// (ident <T: String | S64> :: proc {...}). The clause is consumed so the
+	// procedure declaration parses normally.
+	if p.tolerant && p.at(TkLt) {
+		p.parseGenericClause()
+	}
+
 	switch {
 	case p.atCompTimeAssign():
 		p.bump() // consume first ':' of '::'
@@ -698,6 +846,17 @@ func (p *Parser) parseIdentStmt() Stmt {
 	case p.atInfer():
 		p.bump() // consume ':' of ':='
 		p.bump() // consume '=' of ':='
+		// Error types are compile-time only: 'ident := error {...}' is
+		// rejected, but the declaration is still parsed for recovery.
+		if p.at(TkErrorKw) {
+			p.diags.Error(p.peek().Span, "error types must be declared at compile time; use '::' or ': Error :'", "replace ':=' with '::' or ': Error :'")
+			p.bump() // consume "error"
+			decl, ok := p.parseErrorDecl(nameTok, name)
+			if !ok {
+				return nil
+			}
+			return decl
+		}
 		decl, ok := p.parseInferVarDecl(nameTok, name)
 		if !ok {
 			return nil
@@ -1096,6 +1255,16 @@ func (p *Parser) parseAtom() Expr {
 			p.bump() // consume "."
 			return p.parseStructInit(ident, tok.Span)
 		}
+		// Error value: TypeName.MEMBER
+		if p.at(TkDot) && p.peekN(1).Kind == TkIdent {
+			p.bump() // consume "."
+			memberTok := p.bump()
+			return &ErrorMemberExpr{
+				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: memberTok.Span.End},
+				TypeName: tok.Text(),
+				Name:     memberTok.Text(),
+			}
+		}
 		return ident
 
 	case TkDot:
@@ -1103,6 +1272,16 @@ func (p *Parser) parseAtom() Expr {
 		if p.peekN(1).Kind == TkLBrace {
 			p.bump() // consume "."
 			return p.parseStructInit(nil, tok.Span)
+		}
+		// Error value with inferred type: .MEMBER
+		if p.peekN(1).Kind == TkIdent {
+			p.bump() // consume "."
+			memberTok := p.bump()
+			return &ErrorMemberExpr{
+				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: memberTok.Span.End},
+				TypeName: "",
+				Name:     memberTok.Text(),
+			}
 		}
 		return nil
 

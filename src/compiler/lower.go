@@ -15,13 +15,15 @@ import (
 // LowerProgram lowers a parsed AST into the typed HIR.
 func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 	l := &Lowerer{
-		symbols:    NewSymbolTable(),
-		types:      NewTypeTable(),
-		varTypes:   make(map[SymbolID]TypeID),
-		procs:      make(map[string]*ProcDecl),
-		structs:    make(map[string]*StructDecl),
-		hirStructs: make(map[string]*HIRStruct),
-		hir:        &HIR{},
+		symbols:      NewSymbolTable(),
+		types:        NewTypeTable(),
+		varTypes:     make(map[SymbolID]TypeID),
+		procs:        make(map[string]*ProcDecl),
+		structs:      make(map[string]*StructDecl),
+		errors:       make(map[string]*ErrorDecl),
+		errorOrdinal: make(map[string]map[string]int),
+		hirStructs:   make(map[string]*HIRStruct),
+		hir:          &HIR{},
 	}
 	l.hir.Symbols = l.symbols
 	l.hir.Types = l.types
@@ -33,16 +35,18 @@ func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 // Lowerer lowers an AST into the HIR. It maintains a stack of lexical scopes
 // mapping names to SymbolIDs and a map from each declared symbol to its type.
 type Lowerer struct {
-	symbols    *SymbolTable
-	types      *TypeTable
-	scopes     []map[string]SymbolID
-	varTypes   map[SymbolID]TypeID
-	procs      map[string]*ProcDecl
-	structs    map[string]*StructDecl
-	hirStructs map[string]*HIRStruct
-	hir        *HIR
-	diags      DiagnosticList
-	curResults []TypeID // result types of the procedure being lowered
+	symbols      *SymbolTable
+	types        *TypeTable
+	scopes       []map[string]SymbolID
+	varTypes     map[SymbolID]TypeID
+	procs        map[string]*ProcDecl
+	structs      map[string]*StructDecl
+	errors       map[string]*ErrorDecl
+	errorOrdinal map[string]map[string]int
+	hirStructs   map[string]*HIRStruct
+	hir          *HIR
+	diags        DiagnosticList
+	curResults   []TypeID // result types of the procedure being lowered
 }
 
 func (l *Lowerer) pushScope() {
@@ -98,6 +102,16 @@ func (l *Lowerer) lowerProgram(program *Program) {
 			l.procs[d.Name] = d
 			sym := l.symbols.Declare(d.Name)
 			l.declare(d.Name, sym)
+		case *ErrorDecl:
+			l.errors[d.Name] = d
+			l.types.InternError(d.Name)
+			sym := l.symbols.Declare(d.Name)
+			l.declare(d.Name, sym)
+			ordinals := make(map[string]int, len(d.Members))
+			for i, m := range d.Members {
+				ordinals[m.Name] = i
+			}
+			l.errorOrdinal[d.Name] = ordinals
 		case *VarDecl:
 			sym := l.symbols.Declare(d.Name)
 			l.declare(d.Name, sym)
@@ -331,6 +345,13 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		// Inferred struct literal: the type comes from context, so it is
 		// resolved by lowerExprAs.
 		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	case *ErrorMemberExpr:
+		if n.TypeName != "" {
+			return l.lowerErrorMember(n, n.TypeName)
+		}
+		// Bare error member: the type comes from context, so it is resolved
+		// by lowerExprAs.
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
 	case *ErrorExpr:
 		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
 	}
@@ -344,7 +365,29 @@ func (l *Lowerer) lowerExprAs(e Expr, target TypeID) HIRExpr {
 	if si, ok := e.(*StructInitExpr); ok && si.Type == nil {
 		return l.lowerStructInit(si, target)
 	}
+	if em, ok := e.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		return l.lowerErrorMember(em, l.types.Lookup(target).Name)
+	}
 	return l.adaptLiteral(l.lowerExpr(e), target)
+}
+
+// lowerErrorMember lowers an error member reference to its ordinal constant.
+// The explicit "Type.MEMBER" form names the type; the bare ".MEMBER" form is
+// resolved against the target type name ("" when unknown).
+func (l *Lowerer) lowerErrorMember(n *ErrorMemberExpr, typeName string) HIRExpr {
+	ordinals, ok := l.errorOrdinal[typeName]
+	if !ok {
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	}
+	ord, ok := ordinals[n.Name]
+	if !ok {
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	}
+	tid, ok := l.types.ByName(typeName)
+	if !ok {
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	}
+	return &HIRConst{Span_: n.Span_, Type: tid, Kind: ConstError, Int: int64(ord), Str: n.Name}
 }
 
 func (l *Lowerer) lowerBinary(n *BinaryExpr) HIRExpr {
@@ -490,7 +533,8 @@ func (l *Lowerer) literalCompatible(c *HIRConst, target TypeID) bool {
 func isHIRLiteral(e HIRExpr) bool {
 	switch n := e.(type) {
 	case *HIRConst:
-		return true
+		// Error values are nominal and never adapt to another type.
+		return n.Kind != ConstError
 	case *HIRUnary:
 		return n.Op == UnaryOpNeg && isHIRLiteral(n.Operand)
 	}

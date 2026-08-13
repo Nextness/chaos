@@ -341,6 +341,10 @@ func constImmediate(c *HIRConst) MIRImmediate {
 		return MIRImmediate{Kind: MIRImmString, Str: c.Str}
 	case ConstBool:
 		return MIRImmediate{Kind: MIRImmBool, Bool: c.Bool}
+	case ConstError:
+		// Error values are nominal but backed by their ordinal as a 16-bit
+		// integer, so they lower to an integer immediate.
+		return MIRImmediate{Kind: MIRImmInt, Int: c.Int}
 	}
 	return MIRImmediate{}
 }

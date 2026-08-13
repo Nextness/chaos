@@ -385,6 +385,57 @@ func (f StructField) nodeSpan() Span {
 	return f.Span_
 }
 
+// ErrorDecl is an error type definition.
+//
+//	Hash_Table_Error :: error {
+//	    GENERIC;
+//	    OUT_OF_MEMORY;
+//	    NOT_FOUND;
+//	    OUT_OF_BOUNDS;
+//	}
+//
+// Each member is a distinct error value of this type, numbered sequentially
+// from 0 in declaration order. Members cannot be assigned explicit values.
+// The declaration itself does not require a trailing semicolon; each member
+// ends with its own semicolon.
+type ErrorDecl struct {
+	Span_   Span
+	Name    string
+	Members []ErrorMember
+}
+
+func (d *ErrorDecl) nodeSpan() Span {
+	return d.Span_
+}
+
+func (d *ErrorDecl) stmtNode() {}
+func (d *ErrorDecl) declNode() {}
+
+// ErrorMember is a single error value in an error type definition: "NAME;".
+type ErrorMember struct {
+	Span_ Span
+	Name  string
+}
+
+func (m ErrorMember) nodeSpan() Span {
+	return m.Span_
+}
+
+// ErrorMemberExpr is a reference to an error value: "Type.MEMBER" or the
+// bare ".MEMBER" form. TypeName is empty for the bare form, whose type is
+// inferred from the surrounding declaration.
+type ErrorMemberExpr struct {
+	Span_    Span
+	TypeName string // error type name (empty for the bare ".MEMBER" form)
+	Name     string // member name
+}
+
+func (e *ErrorMemberExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *ErrorMemberExpr) exprNode() {}
+
 // Param is a single procedure parameter.
 type Param struct {
 	Span_ Span

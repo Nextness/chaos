@@ -89,3 +89,24 @@ func TestDocumentSymbolsStruct(t *testing.T) {
 		t.Errorf("child[1].Name = %q, want field2", symbols[0].Children[1].Name)
 	}
 }
+
+func TestDocumentSymbolsError(t *testing.T) {
+	source := "Hash_Table_Error :: error {\n\tGENERIC;\n\tOUT_OF_MEMORY;\n\tNOT_FOUND;\n}"
+	program, sf := parseDoc(t, source)
+	symbols := documentSymbols(program, sf)
+	if len(symbols) != 1 {
+		t.Fatalf("got %d symbols, want 1", len(symbols))
+	}
+	if symbols[0].Name != "Hash_Table_Error" || symbols[0].Kind != symbolKindEnum {
+		t.Errorf("symbol[0] = %+v, want Hash_Table_Error/Enum", symbols[0])
+	}
+	if len(symbols[0].Children) != 3 {
+		t.Fatalf("children = %d, want 3", len(symbols[0].Children))
+	}
+	if symbols[0].Children[0].Name != "GENERIC" || symbols[0].Children[0].Kind != symbolKindEnumMember {
+		t.Errorf("child[0] = %+v, want GENERIC/EnumMember", symbols[0].Children[0])
+	}
+	if symbols[0].Children[1].Name != "OUT_OF_MEMORY" {
+		t.Errorf("child[1].Name = %q, want OUT_OF_MEMORY", symbols[0].Children[1].Name)
+	}
+}

@@ -160,6 +160,7 @@ const (
 	ConstFloat
 	ConstString
 	ConstBool
+	ConstError
 	ConstUnknown
 )
 
