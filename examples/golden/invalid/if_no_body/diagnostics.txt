@@ -1,0 +1,3 @@
+[ERROR] 6:5:if_no_body.chaos - expected block or statement after 'if' condition
+     return 0;
+     ^^^^^^ -> add a '{' block or a statement after the condition

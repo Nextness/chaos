@@ -1,0 +1,3 @@
+[ERROR] 6:10:if_else_then.chaos - 'then' is not used with 'else'
+     else then return 2;
+          ^^^^ -> remove 'then'

@@ -1,0 +1,7 @@
+// expect-stage: parse
+// expect-error: expected statement after 'then'
+// 'then' must be followed by a single statement.
+#entry main :: proc -> S64 {
+    if true then;
+    return 0;
+}

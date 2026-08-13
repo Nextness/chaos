@@ -1,0 +1,191 @@
+format ELF64 executable 3
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 304
+L0:
+    mov rax, 2
+    mov qword [rbp-24], rax
+    mov rax, qword [rbp-24]
+    mov qword [rbp-8], rax
+    mov rax, 0
+    mov qword [rbp-32], rax
+    mov rax, qword [rbp-32]
+    mov qword [rbp-16], rax
+    mov rax, qword [rbp-8]
+    mov qword [rbp-40], rax
+    mov rax, 1
+    mov qword [rbp-48], rax
+    mov rax, qword [rbp-40]
+    cmp rax, qword [rbp-48]
+    sete al
+    mov byte [rbp-49], al
+    movzx rax, byte [rbp-49]
+    test al, al
+    jnz L1
+    jmp L2
+L1:
+    mov rax, 10
+    mov qword [rbp-64], rax
+    mov rax, qword [rbp-64]
+    mov qword [rbp-16], rax
+    jmp L3
+L2:
+    jmp L3
+L3:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-72], rax
+    mov rax, 2
+    mov qword [rbp-80], rax
+    mov rax, qword [rbp-72]
+    cmp rax, qword [rbp-80]
+    sete al
+    mov byte [rbp-81], al
+    movzx rax, byte [rbp-81]
+    test al, al
+    jnz L4
+    jmp L5
+L4:
+    mov rax, 20
+    mov qword [rbp-96], rax
+    mov rax, qword [rbp-96]
+    mov qword [rbp-16], rax
+    jmp L6
+L5:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-104], rax
+    mov rax, 3
+    mov qword [rbp-112], rax
+    mov rax, qword [rbp-104]
+    cmp rax, qword [rbp-112]
+    sete al
+    mov byte [rbp-113], al
+    movzx rax, byte [rbp-113]
+    test al, al
+    jnz L7
+    jmp L8
+L6:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-128], rax
+    mov rax, 4
+    mov qword [rbp-136], rax
+    mov rax, qword [rbp-128]
+    cmp rax, qword [rbp-136]
+    sete al
+    mov byte [rbp-137], al
+    movzx rax, byte [rbp-137]
+    test al, al
+    jnz L10
+    jmp L11
+L7:
+    mov rax, 30
+    mov qword [rbp-152], rax
+    mov rax, qword [rbp-152]
+    mov qword [rbp-16], rax
+    jmp L9
+L8:
+    jmp L9
+L9:
+    jmp L6
+L10:
+    mov rax, 40
+    mov qword [rbp-160], rax
+    mov rax, qword [rbp-160]
+    mov qword [rbp-16], rax
+    jmp L12
+L11:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-168], rax
+    mov rax, 5
+    mov qword [rbp-176], rax
+    mov rax, qword [rbp-168]
+    cmp rax, qword [rbp-176]
+    sete al
+    mov byte [rbp-177], al
+    movzx rax, byte [rbp-177]
+    test al, al
+    jnz L13
+    jmp L14
+L12:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-192], rax
+    mov rax, 1
+    mov qword [rbp-200], rax
+    mov rax, qword [rbp-192]
+    cmp rax, qword [rbp-200]
+    sete al
+    mov byte [rbp-201], al
+    movzx rax, byte [rbp-201]
+    test al, al
+    jnz L16
+    jmp L17
+L13:
+    mov rax, 50
+    mov qword [rbp-216], rax
+    mov rax, qword [rbp-216]
+    mov qword [rbp-16], rax
+    jmp L15
+L14:
+    mov rax, 60
+    mov qword [rbp-224], rax
+    mov rax, qword [rbp-224]
+    mov qword [rbp-16], rax
+    jmp L15
+L15:
+    jmp L12
+L16:
+    mov rax, 25
+    mov qword [rbp-232], rax
+    mov rax, qword [rbp-232]
+    mov qword [rbp-16], rax
+    jmp L18
+L17:
+    jmp L18
+L18:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-240], rax
+    mov rax, 2
+    mov qword [rbp-248], rax
+    mov rax, qword [rbp-240]
+    cmp rax, qword [rbp-248]
+    sete al
+    mov byte [rbp-249], al
+    movzx rax, byte [rbp-249]
+    test al, al
+    jnz L19
+    jmp L20
+L19:
+    mov rax, 5
+    mov qword [rbp-264], rax
+    mov rax, qword [rbp-264]
+    mov qword [rbp-16], rax
+    jmp L21
+L20:
+    jmp L21
+L21:
+    mov rax, qword [rbp-16]
+    mov qword [rbp-272], rax
+    mov rax, 0
+    mov qword [rbp-280], rax
+    mov rax, qword [rbp-272]
+    add rax, qword [rbp-280]
+    mov qword [rbp-288], rax
+    mov rax, qword [rbp-288]
+    mov qword [rbp-16], rax
+    mov rax, qword [rbp-16]
+    mov qword [rbp-296], rax
+    mov rax, qword [rbp-296]
+    leave
+    ret
+

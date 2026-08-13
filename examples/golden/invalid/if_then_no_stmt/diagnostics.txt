@@ -1,0 +1,3 @@
+[ERROR] 6:5:if_then_no_stmt.chaos - expected statement after 'then'
+     return 0;
+     ^^^^^^ -> add a statement after 'then'

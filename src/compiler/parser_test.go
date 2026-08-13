@@ -851,6 +851,230 @@ func TestParseIfMultipleElif(t *testing.T) {
 	}
 }
 
+func TestParseIfThenStmt(t *testing.T) {
+	// Single-line if with 'then': the body is a single statement wrapped in a
+	// block.
+	stmt := parseOneStmt(t, "if true then exit 0;")
+	ifs, ok := stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if len(ifs.Body.Stmts) != 1 {
+		t.Fatalf("Body.Stmts = %d, want 1", len(ifs.Body.Stmts))
+	}
+	if _, ok := ifs.Body.Stmts[0].(*ExitStmt); !ok {
+		t.Fatalf("body stmt type = %T, want *ExitStmt", ifs.Body.Stmts[0])
+	}
+}
+
+func TestParseIfBareStmt(t *testing.T) {
+	// 'then' is optional: a single statement directly after the condition is
+	// the body.
+	stmt := parseOneStmt(t, "if true exit 0;")
+	ifs, ok := stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if len(ifs.Body.Stmts) != 1 {
+		t.Fatalf("Body.Stmts = %d, want 1", len(ifs.Body.Stmts))
+	}
+	if _, ok := ifs.Body.Stmts[0].(*ExitStmt); !ok {
+		t.Fatalf("body stmt type = %T, want *ExitStmt", ifs.Body.Stmts[0])
+	}
+}
+
+func TestParseIfThenStmtNextStmtSeparate(t *testing.T) {
+	// A statement after the single-line if body is not part of the if.
+	block := parseOneStmtBlock(t, "if true then exit 0; x := 1;")
+	if len(block.Stmts) != 2 {
+		t.Fatalf("Stmts = %d, want 2", len(block.Stmts))
+	}
+	ifs, ok := block.Stmts[0].(*IfStmt)
+	if !ok {
+		t.Fatalf("stmt 0 type = %T, want *IfStmt", block.Stmts[0])
+	}
+	if len(ifs.Body.Stmts) != 1 {
+		t.Fatalf("Body.Stmts = %d, want 1", len(ifs.Body.Stmts))
+	}
+	if _, ok := block.Stmts[1].(*VarDecl); !ok {
+		t.Fatalf("stmt 1 type = %T, want *VarDecl", block.Stmts[1])
+	}
+}
+
+func TestParseIfThenBlockWarning(t *testing.T) {
+	// 'then' before a block is accepted but warns.
+	source := "dummy :: proc { if true then { exit 0; } }"
+	result := parseTestCase(t, source)
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	found := false
+	for _, d := range result.Diags {
+		if d.Severity == SeverityWarning && d.Message == "'then' is not needed before a block" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected warning for 'then' before a block, got %v", result.Diags)
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	ifs, ok := proc.Body.Stmts[0].(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", proc.Body.Stmts[0])
+	}
+	if len(ifs.Body.Stmts) != 1 {
+		t.Fatalf("Body.Stmts = %d, want 1", len(ifs.Body.Stmts))
+	}
+}
+
+func TestParseIfThenElifBlock(t *testing.T) {
+	// A 'then' body followed by an elif with a block.
+	stmt := parseOneStmt(t, "if a then return 1; elif b { return 2; }")
+	ifs, ok := stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if len(ifs.Elif) != 1 {
+		t.Fatalf("Elif = %d, want 1", len(ifs.Elif))
+	}
+	if len(ifs.Elif[0].Body.Stmts) != 1 {
+		t.Fatalf("elif Body.Stmts = %d, want 1", len(ifs.Elif[0].Body.Stmts))
+	}
+}
+
+func TestParseIfThenElifThenElse(t *testing.T) {
+	// Full single-line chain: if then, elif bare, else bare.
+	stmt := parseOneStmt(t, "if a then return 1; elif b return 2; else return 3;")
+	ifs, ok := stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if len(ifs.Elif) != 1 {
+		t.Fatalf("Elif = %d, want 1", len(ifs.Elif))
+	}
+	if len(ifs.Elif[0].Body.Stmts) != 1 {
+		t.Fatalf("elif Body.Stmts = %d, want 1", len(ifs.Elif[0].Body.Stmts))
+	}
+	if ifs.ElseBody == nil {
+		t.Fatal("ElseBody = nil, want non-nil")
+	}
+	if len(ifs.ElseBody.Stmts) != 1 {
+		t.Fatalf("ElseBody.Stmts = %d, want 1", len(ifs.ElseBody.Stmts))
+	}
+}
+
+func TestParseElifThenStmt(t *testing.T) {
+	// 'then' is also optional for elif single-line bodies.
+	stmt := parseOneStmt(t, "if a { } elif b then return 2;")
+	ifs, ok := stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if len(ifs.Elif) != 1 {
+		t.Fatalf("Elif = %d, want 1", len(ifs.Elif))
+	}
+	if len(ifs.Elif[0].Body.Stmts) != 1 {
+		t.Fatalf("elif Body.Stmts = %d, want 1", len(ifs.Elif[0].Body.Stmts))
+	}
+}
+
+func TestParseElseBareStmt(t *testing.T) {
+	// 'else' takes a bare single statement without 'then'.
+	stmt := parseOneStmt(t, "if a { } else return 2;")
+	ifs, ok := stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if ifs.ElseBody == nil {
+		t.Fatal("ElseBody = nil, want non-nil")
+	}
+	if len(ifs.ElseBody.Stmts) != 1 {
+		t.Fatalf("ElseBody.Stmts = %d, want 1", len(ifs.ElseBody.Stmts))
+	}
+}
+
+func TestParseElseThenError(t *testing.T) {
+	// 'then' is never used with 'else'.
+	source := "dummy :: proc { if a { } else then return 2; }"
+	result := parseTestCase(t, source)
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for 'else then', got none")
+	}
+	found := false
+	for _, d := range result.Diags {
+		if d.Severity == SeverityError && d.Message == "'then' is not used with 'else'" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected 'then is not used with else' error, got %v", result.Diags)
+	}
+	// The statement after 'then' is still parsed for recovery.
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	ifs, ok := proc.Body.Stmts[0].(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", proc.Body.Stmts[0])
+	}
+	if ifs.ElseBody == nil || len(ifs.ElseBody.Stmts) != 1 {
+		t.Fatalf("ElseBody = %#v, want one statement", ifs.ElseBody)
+	}
+}
+
+func TestParseIfParenCond(t *testing.T) {
+	// Parenthesized conditions are valid.
+	stmt := parseOneStmt(t, "if (a) { exit 0; }")
+	ifs, ok := stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if _, ok := ifs.Condition.(*ParenExpr); !ok {
+		t.Fatalf("Condition type = %T, want *ParenExpr", ifs.Condition)
+	}
+
+	stmt = parseOneStmt(t, "if ((a > 1) && a < 10) then return 12;")
+	ifs, ok = stmt.(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", stmt)
+	}
+	if _, ok := ifs.Condition.(*ParenExpr); !ok {
+		t.Fatalf("Condition type = %T, want *ParenExpr", ifs.Condition)
+	}
+	if len(ifs.Body.Stmts) != 1 {
+		t.Fatalf("Body.Stmts = %d, want 1", len(ifs.Body.Stmts))
+	}
+}
+
+func TestParseIfThenTolerant(t *testing.T) {
+	// The language server parses in tolerant mode; the single-line forms must
+	// parse there too.
+	source := "main :: proc -> S64 {\n" +
+		"    if a then return 1;\n" +
+		"    elif b return 2;\n" +
+		"    else return 3;\n" +
+		"}"
+	result := parseTolerantTestCase(t, source)
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors in tolerant mode: %v", result.Diags)
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	ifs, ok := proc.Body.Stmts[0].(*IfStmt)
+	if !ok {
+		t.Fatalf("expected *IfStmt, got %T", proc.Body.Stmts[0])
+	}
+	if len(ifs.Elif) != 1 || ifs.ElseBody == nil {
+		t.Fatalf("Elif = %d, ElseBody = %v, want 1 elif and an else", len(ifs.Elif), ifs.ElseBody)
+	}
+}
+
 // ──────────────────────────────────────────────
 // Expressions — literals
 // ──────────────────────────────────────────────

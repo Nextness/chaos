@@ -1,0 +1,31 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl x: S64 = Int(2) [mutable=true compileTime=false]
+      VarDecl r: S64 = Int(0) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(x) Int(1))
+        Block
+          Assign r = Int(10)
+      If condition=Binary(== Ident(x) Int(2))
+        Block
+          Assign r = Int(20)
+      Elif condition=Binary(== Ident(x) Int(3))
+        Block
+          Assign r = Int(30)
+      If condition=Binary(== Ident(x) Int(4))
+        Block
+          Assign r = Int(40)
+      Elif condition=Binary(== Ident(x) Int(5))
+        Block
+          Assign r = Int(50)
+      Else
+        Block
+          Assign r = Int(60)
+      If condition=Binary(== Ident(x) Int(1))
+        Block
+          Assign r = Int(25)
+      If condition=Binary(== Ident(x) Int(2))
+        Block
+          Assign r = Int(5)
+      Assign r = Binary(+ Ident(r) Int(0))
+      Return Ident(r)

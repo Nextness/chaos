@@ -1,0 +1,10 @@
+// expect-exit: 9
+// Parenthesized conditions are valid in if statements, both with a block
+// body and with a 'then' single-statement body.
+#entry main :: proc -> S64 {
+    x: S64 = 5;
+    r: S64 = 0;
+    if (x > 1) { r = 7; }
+    if ((x > 1) && x < 10) then r = 9;
+    return r;
+}

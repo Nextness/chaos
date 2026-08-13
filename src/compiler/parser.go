@@ -19,7 +19,9 @@ package compiler
 //	assign_stmt    = ident "=" expr ";"
 //	return_stmt    = "return" expr? ";"
 //	exit_stmt      = "exit" expr ("," expr)? ";"
-//	if_stmt        = "if" expr block ("elif" expr block)* ("else" block)?
+//	if_stmt        = "if" expr if_body ("elif" expr if_body)* ("else" else_body)?
+//	if_body        = block | "then"? stmt
+//	else_body      = block | stmt
 //	expr           = or_expr
 //	or_expr        = and_expr ("||" and_expr)*
 //	and_expr       = cmp_expr ("&&" cmp_expr)*
@@ -1103,7 +1105,7 @@ func (p *Parser) parseExitStmt() Stmt {
 	}
 }
 
-// parseIfStmt parses: "if" expr block ("elif" expr block)* ("else" block)?
+// parseIfStmt parses: "if" expr if_body ("elif" expr if_body)* ("else" else_body)?
 // The error-check form "if expr catch [err] { block }" is handled separately.
 func (p *Parser) parseIfStmt() Stmt {
 	tok := p.bump() // consume "if"
@@ -1138,9 +1140,9 @@ func (p *Parser) parseIfStmt() Stmt {
 		}
 	}
 
-	body := p.parseBlock()
+	body := p.parseIfBody()
 	if body == nil {
-		p.diags.Error(p.peek().Span, "expected block after 'if' condition", "add a '{' block after the condition")
+		p.diags.Error(p.peek().Span, "expected block or statement after 'if' condition", "add a '{' block or a statement after the condition")
 		body = &BlockStmt{Span_: p.peek().Span}
 	}
 
@@ -1152,9 +1154,9 @@ func (p *Parser) parseIfStmt() Stmt {
 			p.diags.Error(p.peek().Span, "expected condition after 'elif'", "add a condition after 'elif'")
 			elifCond = &ErrorExpr{Span_: p.peek().Span}
 		}
-		elifBody := p.parseBlock()
+		elifBody := p.parseIfBody()
 		if elifBody == nil {
-			p.diags.Error(p.peek().Span, "expected block after 'elif' condition", "add a '{' block after the condition")
+			p.diags.Error(p.peek().Span, "expected block or statement after 'elif' condition", "add a '{' block or a statement after the condition")
 			elifBody = &BlockStmt{Span_: p.peek().Span}
 		}
 		elifs = append(elifs, &IfStmt{
@@ -1177,9 +1179,9 @@ func (p *Parser) parseIfStmt() Stmt {
 				Stmts: []Stmt{innerIf},
 			}
 		} else {
-			elseBody = p.parseBlock()
+			elseBody = p.parseElseBody()
 			if elseBody == nil {
-				p.diags.Error(p.peek().Span, "expected block after 'else'", "add a '{' block after 'else'")
+				p.diags.Error(p.peek().Span, "expected block or statement after 'else'", "add a '{' block or a statement after 'else'")
 				elseBody = &BlockStmt{Span_: p.peek().Span}
 			}
 		}
@@ -1199,6 +1201,56 @@ func (p *Parser) parseIfStmt() Stmt {
 		Elif:      elifs,
 		ElseBody:  elseBody,
 	}
+}
+
+// parseIfBody parses the body of an if or elif branch: either a braced block
+// or a single statement. The 'then' keyword may introduce the single-statement
+// form and is optional. When 'then' is followed by a block, a warning is
+// emitted because the block form does not need 'then'. A single-statement body
+// is wrapped in a BlockStmt so downstream passes treat every branch body the
+// same way.
+func (p *Parser) parseIfBody() *BlockStmt {
+	if p.at(TkLBrace) {
+		return p.parseBlock()
+	}
+	if p.at(TkThen) {
+		thenTok := p.bump() // consume "then"
+		if p.at(TkLBrace) {
+			p.diags.Warn(thenTok.Span, "'then' is not needed before a block", "remove 'then'")
+			return p.parseBlock()
+		}
+		stmt := p.parseStmt()
+		if stmt == nil {
+			p.diags.Error(p.peek().Span, "expected statement after 'then'", "add a statement after 'then'")
+			return &BlockStmt{Span_: thenTok.Span}
+		}
+		return &BlockStmt{Span_: stmt.nodeSpan(), Stmts: []Stmt{stmt}}
+	}
+	// Bare single-statement body (no 'then').
+	stmt := p.parseStmt()
+	if stmt == nil {
+		return nil
+	}
+	return &BlockStmt{Span_: stmt.nodeSpan(), Stmts: []Stmt{stmt}}
+}
+
+// parseElseBody parses the body of an else branch: a braced block or a bare
+// single statement. 'then' is never used with 'else'; when it appears it is
+// consumed for recovery and reported as an error.
+func (p *Parser) parseElseBody() *BlockStmt {
+	if p.at(TkLBrace) {
+		return p.parseBlock()
+	}
+	if p.at(TkThen) {
+		thenTok := p.bump() // consume "then"
+		p.diags.Error(thenTok.Span, "'then' is not used with 'else'", "remove 'then'")
+		// Fall through and parse the statement anyway for recovery.
+	}
+	stmt := p.parseStmt()
+	if stmt == nil {
+		return nil
+	}
+	return &BlockStmt{Span_: stmt.nodeSpan(), Stmts: []Stmt{stmt}}
 }
 
 // parseBlock parses: "{" stmt* "}"

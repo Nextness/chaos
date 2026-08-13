@@ -1,0 +1,23 @@
+// expect-exit: 5
+// Single-line if bodies: 'then' with a single statement, 'then' followed by
+// an elif block, the full single-line if/elif/else chain, and a statement
+// after a single-line body (which belongs to the enclosing scope).
+#entry main :: proc -> S64 {
+    x: S64 = 2;
+    r: S64 = 0;
+    // 'then' single-statement body
+    if x == 1 then r = 10;
+    // 'then' body followed by an elif block
+    if x == 2 then r = 20;
+    elif x == 3 { r = 30; }
+    // full single-line chain: then / bare elif / bare else
+    if x == 4 then r = 40;
+    elif x == 5 r = 50;
+    else r = 60;
+    // 'then' before a block is accepted but warns
+    if x == 1 then { r = 25; }
+    // a statement after a single-line body is in the enclosing scope
+    if x == 2 then r = 5;
+    r = r + 0;
+    return r;
+}

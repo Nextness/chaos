@@ -1,0 +1,7 @@
+// expect-stage: parse
+// expect-error: expected block or statement after 'if' condition
+// An if statement must have a body: a block or a single statement.
+#entry main :: proc -> S64 {
+    if true;
+    return 0;
+}

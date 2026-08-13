@@ -1,0 +1,94 @@
+MIR
+  Function main() -> S64
+    Local l0: S64
+    Local l1: S64
+    bb0:
+      v0:S64 = const 2
+      store.local v0 l0
+      v1:S64 = const 0
+      store.local v1 l1
+      v2:S64 = load.local l0
+      v3:S64 = const 1
+      v4:Bool = cmp.eq v2 v3
+      branch v4, bb1, bb2
+    bb1:
+      v5:S64 = const 10
+      store.local v5 l1
+      jump bb3
+    bb2:
+      jump bb3
+    bb3:
+      v6:S64 = load.local l0
+      v7:S64 = const 2
+      v8:Bool = cmp.eq v6 v7
+      branch v8, bb4, bb5
+    bb4:
+      v9:S64 = const 20
+      store.local v9 l1
+      jump bb6
+    bb5:
+      v10:S64 = load.local l0
+      v11:S64 = const 3
+      v12:Bool = cmp.eq v10 v11
+      branch v12, bb7, bb8
+    bb6:
+      v14:S64 = load.local l0
+      v15:S64 = const 4
+      v16:Bool = cmp.eq v14 v15
+      branch v16, bb10, bb11
+    bb7:
+      v13:S64 = const 30
+      store.local v13 l1
+      jump bb9
+    bb8:
+      jump bb9
+    bb9:
+      jump bb6
+    bb10:
+      v17:S64 = const 40
+      store.local v17 l1
+      jump bb12
+    bb11:
+      v18:S64 = load.local l0
+      v19:S64 = const 5
+      v20:Bool = cmp.eq v18 v19
+      branch v20, bb13, bb14
+    bb12:
+      v23:S64 = load.local l0
+      v24:S64 = const 1
+      v25:Bool = cmp.eq v23 v24
+      branch v25, bb16, bb17
+    bb13:
+      v21:S64 = const 50
+      store.local v21 l1
+      jump bb15
+    bb14:
+      v22:S64 = const 60
+      store.local v22 l1
+      jump bb15
+    bb15:
+      jump bb12
+    bb16:
+      v26:S64 = const 25
+      store.local v26 l1
+      jump bb18
+    bb17:
+      jump bb18
+    bb18:
+      v27:S64 = load.local l0
+      v28:S64 = const 2
+      v29:Bool = cmp.eq v27 v28
+      branch v29, bb19, bb20
+    bb19:
+      v30:S64 = const 5
+      store.local v30 l1
+      jump bb21
+    bb20:
+      jump bb21
+    bb21:
+      v31:S64 = load.local l1
+      v32:S64 = const 0
+      v33:S64 = add v31 v32
+      store.local v33 l1
+      v34:S64 = load.local l1
+      return v34

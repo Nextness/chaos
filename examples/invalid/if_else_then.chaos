@@ -1,0 +1,8 @@
+// expect-stage: parse
+// expect-error: 'then' is not used with 'else'
+// 'else' takes a bare statement or block; 'then' is never used with 'else'.
+#entry main :: proc -> S64 {
+    if true { return 1; }
+    else then return 2;
+    return 0;
+}
