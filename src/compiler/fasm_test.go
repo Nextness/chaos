@@ -256,6 +256,12 @@ func TestFasmRuntime(t *testing.T) {
 		{"array index", "#entry main :: proc -> S64 {\n    arr := []S64.{7, 8, 9};\n    return arr[1];\n}", 8},
 		{"prefix inc dec", "#entry main :: proc -> S64 {\n    a := 5;\n    ++a;\n    ++a;\n    --a;\n    return a;\n}", 6},
 		{"empty array", "#entry main :: proc -> S64 {\n    arr := []S64.{};\n    n: S64 = 0;\n    for elem: arr {\n        n += 1;\n    }\n    return n;\n}", 0},
+		{"void union success", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (input1: String) -> (Void <> Some_Error) {\n    if input1 == «» {\n        return;\n    }\n    return .GENERIC!;\n}\n#entry main :: proc -> S64 {\n    f(«») unless catch {\n        return -1;\n    }\n    return 7;\n}", 7},
+		{"void union error", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (input1: String) -> (Void <> Some_Error) {\n    if input1 == «» {\n        return;\n    }\n    return .GENERIC!;\n}\n#entry main :: proc -> S64 {\n    f(«x») unless catch {\n        return -1;\n    }\n    return 7;\n}", 255},
+		{"void union reversed", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (Some_Error <> Void) {\n    return .GENERIC!;\n}\n#entry main :: proc -> S64 {\n    f() unless catch {\n        return -1;\n    }\n    return 7;\n}", 255},
+		{"void union fall off end", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (Void <> Some_Error) {\n    x := 1;\n}\n#entry main :: proc -> S64 {\n    f() unless catch {\n        return -1;\n    }\n    return 9;\n}", 9},
+		{"explicit void result", "f :: proc -> Void {\n    return;\n}\n#entry main :: proc -> S64 {\n    f();\n    return 9;\n}", 9},
+		{"void result fall off end", "f :: proc -> Void {\n    x := 1;\n}\n#entry main :: proc -> S64 {\n    f();\n    return 9;\n}", 9},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

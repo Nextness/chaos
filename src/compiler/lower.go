@@ -208,6 +208,12 @@ func (l *Lowerer) lowerProc(d *ProcDecl) {
 	var body *HIRBlock
 	if d.Body != nil {
 		body = l.lowerBlock(d.Body)
+		if !blockDiverges(d.Body) && len(results) == 1 && isUnionTypeID(l.types, results[0]) {
+			resultType := l.types.Lookup(results[0])
+			if resultType.Fields[0].Type == l.types.Void() {
+				body.Stmts = append(body.Stmts, l.lowerReturn(&ReturnStmt{Span_: d.Body.Span_}))
+			}
+		}
 	}
 	l.curResults = prevResults
 	l.popScope()
@@ -488,10 +494,16 @@ func (l *Lowerer) lowerIncDec(n *IncDecStmt) HIRStmt {
 // value-or-error pair when the procedure has a '<>' result.
 func (l *Lowerer) lowerReturn(n *ReturnStmt) HIRStmt {
 	var value HIRExpr
-	if n.Value != nil {
-		if len(l.curResults) > 0 && isUnionTypeID(l.types, l.curResults[0]) {
-			rt := l.types.Lookup(l.curResults[0])
-			vt, et := rt.Fields[0].Type, rt.Fields[1].Type
+	if len(l.curResults) > 0 && isUnionTypeID(l.types, l.curResults[0]) {
+		rt := l.types.Lookup(l.curResults[0])
+		vt, et := rt.Fields[0].Type, rt.Fields[1].Type
+		if n.Value == nil {
+			// A bare return in a 'Void <> E' procedure is a successful
+			// return with no value.
+			if vt == l.types.Void() {
+				value = l.lowerUnion(l.curResults[0], l.emptyConst(vt, n.Span_), l.emptyConst(et, n.Span_), &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: false}, n.Span_)
+			}
+		} else {
 			var lowered HIRExpr
 			if em, ok := n.Value.(*ErrorMemberExpr); ok && em.TypeName == "" {
 				// A bare error literal resolves against the error side.
@@ -510,13 +522,13 @@ func (l *Lowerer) lowerReturn(n *ReturnStmt) HIRStmt {
 				// A value: mark the pair as a success.
 				value = l.lowerUnion(l.curResults[0], lowered, l.emptyConst(et, n.Span_), &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: false}, n.Span_)
 			}
-		} else {
-			value = l.lowerExpr(n.Value)
-			if len(l.curResults) > 0 {
-				// Adapt the value to the procedure's result type so that
-				// return literals match wider or narrower types.
-				value = l.adaptLiteral(value, l.curResults[0])
-			}
+		}
+	} else if n.Value != nil {
+		value = l.lowerExpr(n.Value)
+		if len(l.curResults) > 0 {
+			// Adapt the value to the procedure's result type so that
+			// return literals match wider or narrower types.
+			value = l.adaptLiteral(value, l.curResults[0])
 		}
 	}
 	return &HIRReturn{Span_: n.Span_, Value: value}

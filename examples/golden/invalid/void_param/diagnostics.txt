@@ -1,0 +1,3 @@
+[ERROR] 4:15:void_param.chaos - Void is only valid as a function result type
+ f :: proc (x: Void) {
+               ^^^^ -> remove the type or use a value type

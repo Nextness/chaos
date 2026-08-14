@@ -317,7 +317,10 @@ func (v *MIRVerifier) verifyTerminator(fn *MIRFunction, b *MIRBlock) {
 			}
 		} else {
 			if t.Value == NoValue {
-				v.diags.Error(t.Span, "return without a value in a procedure returning "+v.typeName(fn.Results[0]), "return a value")
+				// A bare return is valid when the result type is Void.
+				if v.prog.Types.Lookup(fn.Results[0]).Kind != TypeKindVoid {
+					v.diags.Error(t.Span, "return without a value in a procedure returning "+v.typeName(fn.Results[0]), "return a value")
+				}
 			} else if vt := v.valueTypes[t.Value]; vt != fn.Results[0] && vt != v.prog.Types.Unknown() {
 				v.diags.Error(t.Span, "return value type "+v.typeName(vt)+" does not match result type "+v.typeName(fn.Results[0]), "return a value of the result type")
 			}

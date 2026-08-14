@@ -358,6 +358,9 @@ func (fb *fasmEmitter) assignSlots(fn *MIRFunction) {
 }
 
 func (fb *fasmEmitter) allocSlot(size int) int {
+	if size <= 0 {
+		return fb.nextOffset
+	}
 	fb.nextOffset = align(fb.nextOffset, size)
 	fb.nextOffset += size
 	return fb.nextOffset
@@ -1176,6 +1179,9 @@ func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 // structs the sum of their aligned fields.
 func (fb *fasmEmitter) sizeOf(t IRType) int {
 	switch t.Kind {
+	case TypeKindVoid:
+		// Void occupies no storage; it is only valid as a function result.
+		return 0
 	case TypeKindBool:
 		return 1
 	case TypeKindInt:
@@ -1483,9 +1489,12 @@ func (fb *fasmEmitter) emitLoadIndirect(t IRType, addrReg string) {
 }
 
 // emitLoad loads the value at [rbp-offset] into rax (integers, sign or zero
-// extended to 64 bits) or xmm0 (floats).
+// extended to 64 bits) or xmm0 (floats). Zero-size types (Void) load nothing.
 func (fb *fasmEmitter) emitLoad(t IRType, offset int) {
 	size := fb.sizeOf(t)
+	if size == 0 {
+		return
+	}
 	if t.Kind == TypeKindFloat {
 		if t.Name == "F32" {
 			fmt.Fprintf(&fb.out, "    movss xmm0, dword [rbp-%d]\n", offset)
@@ -1547,9 +1556,12 @@ func (fb *fasmEmitter) emitLoadRight(t IRType, offset int) {
 }
 
 // emitStore stores rax (integers) or xmm0 (floats) into the slot at
-// [rbp-offset], using the type's width.
+// [rbp-offset], using the type's width. Zero-size types (Void) store nothing.
 func (fb *fasmEmitter) emitStore(t IRType, offset int) {
 	size := fb.sizeOf(t)
+	if size == 0 {
+		return
+	}
 	if t.Kind == TypeKindFloat {
 		if t.Name == "F32" {
 			fmt.Fprintf(&fb.out, "    movss dword [rbp-%d], xmm0\n", offset)
@@ -1631,6 +1643,9 @@ func intArgReg(i int) string {
 }
 
 func align(n, a int) int {
+	if a <= 1 {
+		return n
+	}
 	return (n + a - 1) / a * a
 }
 

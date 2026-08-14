@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: Void is only valid as a function result type
+// Void means nothing and cannot be a struct field type.
+Invalid :: struct {
+    param1: String;
+    param2: Void;
+}

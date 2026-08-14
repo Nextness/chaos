@@ -122,6 +122,26 @@ func TestLowerRangeIndexDoesNotReplaceOuterBinding(t *testing.T) {
 	}
 }
 
+func TestLowerVoidErrorFallthroughReturnsSuccess(t *testing.T) {
+	hir, _ := lowerSource(t, "Some_Error :: error { GENERIC; }\nf :: proc -> (Void <> Some_Error) {\n    x := 1;\n}")
+	p := findHIRProc(hir, "f")
+	if p == nil || p.Body == nil || len(p.Body.Stmts) == 0 {
+		t.Fatalf("procedure body = %+v, want synthesized return", p)
+	}
+	ret, ok := p.Body.Stmts[len(p.Body.Stmts)-1].(*HIRReturn)
+	if !ok {
+		t.Fatalf("last statement = %T, want *HIRReturn", p.Body.Stmts[len(p.Body.Stmts)-1])
+	}
+	value, ok := ret.Value.(*HIRStructInit)
+	if !ok || len(value.Fields) != 3 {
+		t.Fatalf("fallthrough return value = %#v, want three-field error union", ret.Value)
+	}
+	hasError, ok := value.Fields[2].Value.(*HIRConst)
+	if !ok || hasError.Kind != ConstBool || hasError.Bool {
+		t.Errorf("fallthrough hasError = %#v, want false", value.Fields[2].Value)
+	}
+}
+
 func TestLowerBinaryLiteralAdaptation(t *testing.T) {
 	hir, _ := lowerSource(t, "main :: proc {\n    x: U64 = 10;\n    y := x + 1;\n}")
 	p := findHIRProc(hir, "main")

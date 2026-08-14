@@ -1,0 +1,28 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ErrorDecl Some_Error
+    Member GENERIC
+  ProcDecl something
+    Param input1: Ident(String)
+    Results: Ident(Void) <> Ident(Some_Error)
+    Block
+      IfStmt condition=Binary(== Ident(input1) String(""))
+        Block
+          ReturnStmt
+      ReturnStmt ErrorMember(.GENERIC!)
+  ProcDecl fallthrough
+    Results: Ident(Void) <> Ident(Some_Error)
+    Block
+      VarDecl marker = Int(1) [mutable=true compileTime=false]
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      UnlessCatchStmt = Call(Ident(fallthrough))
+        Block
+          ReturnStmt Unary(- Int(1))
+      UnlessCatchStmt = Call(Ident(something), String(""))
+        Block
+          ReturnStmt Unary(- Int(1))
+      ReturnStmt Int(7)

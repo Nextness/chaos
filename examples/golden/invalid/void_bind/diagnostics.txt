@@ -1,0 +1,3 @@
+[ERROR] 13:5:void_bind.chaos - cannot bind a Void value; use the bare 'unless catch' form
+     x := f() unless catch {
+     ^^^^^^^^^^^^^^^^^^^^^^^ -> remove the target name

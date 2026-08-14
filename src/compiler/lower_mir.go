@@ -173,9 +173,10 @@ func (ml *MIRLowerer) lowerFunction(p *HIRProc) {
 
 	// Ensure the final block has a terminator. Falling off the end of a
 	// procedure that returns a value is a source error; unreachable is the
-	// safe lowering.
+	// safe lowering. A procedure whose result is Void may fall off the end,
+	// which is an implicit bare return.
 	if ml.curBlock.Term.Kind == MIRNoTerm {
-		if len(p.Results) == 0 {
+		if len(p.Results) == 0 || ml.types.Lookup(p.Results[0]).Kind == TypeKindVoid {
 			ml.setTerminator(MIRTerminator{Kind: MIRReturn, Value: NoValue, Span: p.Span})
 		} else {
 			ml.setTerminator(MIRTerminator{Kind: MIRUnreachable, Span: p.Span})

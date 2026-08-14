@@ -1,0 +1,5 @@
+// expect-stage: type
+// expect-error: Void is only valid as a function result type
+// Void must be the complete result, not an element of another result type.
+f :: proc -> []Void {
+}

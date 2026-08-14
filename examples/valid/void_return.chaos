@@ -1,0 +1,28 @@
+// expect-exit: 7
+// A 'Void <> Error' procedure returns bare on success (no value) or an error
+// value; the caller handles the error with the bare 'unless catch' form.
+Some_Error :: error {
+    GENERIC;
+}
+
+something :: proc (input1: String) -> (Void <> Some_Error) {
+    if input1 == «» {
+        return;
+    }
+    return .GENERIC!;
+}
+
+// Falling off the end is the same successful no-value result as `return;`.
+fallthrough :: proc -> (Void <> Some_Error) {
+    marker := 1;
+}
+
+#entry main :: proc -> S64 {
+    fallthrough() unless catch {
+        return -1;
+    }
+    something(«») unless catch {
+        return -1;
+    }
+    return 7;
+}

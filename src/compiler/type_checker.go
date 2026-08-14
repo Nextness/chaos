@@ -88,6 +88,11 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 		case *StructDecl:
 			tc.structs[d.Name] = d
 			tc.declare(d.Name, Type(d.Name))
+			// Void is only valid as a function result type, so a struct field
+			// of type Void is rejected.
+			for _, f := range d.Fields {
+				tc.checkTypeExprValid(f.Type)
+			}
 		case *ErrorDecl:
 			tc.errors[d.Name] = d
 			tc.declare(d.Name, Type(d.Name))
@@ -129,8 +134,10 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 func (tc *TypeChecker) checkProc(p *ProcDecl) {
 	tc.pushScope()
 	for _, param := range p.Params {
+		tc.checkTypeExprValid(param.Type)
 		tc.declare(param.Name, typeOfTypeExpr(param.Type))
 	}
+	tc.checkProcResultTypes(p)
 	tc.currentReturnType = TypeVoid
 	tc.currentErrorReturnType = ""
 	if len(p.Results) > 0 {
@@ -157,6 +164,35 @@ func (tc *TypeChecker) checkProc(p *ProcDecl) {
 		tc.checkBlock(p.Body)
 	}
 	tc.popScope()
+}
+
+// checkProcResultTypes allows Void only when it is the complete value result
+// of a procedure. In an error-return signature either side may be the value
+// side, so direct Void is allowed on both sides and the existing error-type
+// validation determines which side is the error. Nested forms such as
+// []Void remain invalid.
+func (tc *TypeChecker) checkProcResultTypes(p *ProcDecl) {
+	if p.ErrorResult != nil {
+		tc.checkErrorReturnComponent(p.Results[0])
+		tc.checkErrorReturnComponent(p.ErrorResult)
+		return
+	}
+	for _, result := range p.Results {
+		if ident, ok := result.(*IdentExpr); ok && ident.Name == "Void" {
+			if len(p.Results) != 1 {
+				tc.diags.Error(ident.Span_, "Void must be the only function result", "remove the other result types")
+			}
+			continue
+		}
+		tc.checkTypeExprValid(result)
+	}
+}
+
+func (tc *TypeChecker) checkErrorReturnComponent(result Expr) {
+	if ident, ok := result.(*IdentExpr); ok && ident.Name == "Void" {
+		return
+	}
+	tc.checkTypeExprValid(result)
 }
 
 // procValueResult returns the value result type of a procedure, normalizing
@@ -270,6 +306,12 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 func (tc *TypeChecker) checkUnlessCatch(n *UnlessCatchStmt) {
 	initType := tc.inferExpr(n.Init)
 	if n.Target != "" {
+		// A 'Void <> E' value has nothing to bind; only the bare form is
+		// meaningful.
+		if unionValueType(initType) == TypeVoid {
+			tc.diags.Error(n.Span_, "cannot bind a Void value; use the bare 'unless catch' form", "remove the target name")
+			return
+		}
 		tc.declare(n.Target, initType)
 	}
 	if !isErrorUnion(initType) {
@@ -418,6 +460,7 @@ func (tc *TypeChecker) checkVarDecl(d *VarDecl) Type {
 	var declType Type
 	if d.DeclType != nil {
 		declType = typeOfTypeExpr(d.DeclType)
+		tc.checkTypeExprValid(d.DeclType)
 	}
 	if d.Init == nil {
 		return declType
@@ -435,7 +478,25 @@ func (tc *TypeChecker) checkVarDecl(d *VarDecl) Type {
 		tc.checkAssign(d.Span_, declType, d.Init)
 		return declType
 	}
-	return tc.inferExpr(d.Init)
+	t := tc.inferExpr(d.Init)
+	if t == TypeVoid {
+		tc.diags.Error(d.Span_, "Void is only valid as a function result type", "remove the declaration or use a value type")
+	}
+	return t
+}
+
+// checkTypeExprValid validates a type expression used outside a function
+// result position. Void is only valid as a function result type, so any use
+// of it here (including as an array element type) is an error.
+func (tc *TypeChecker) checkTypeExprValid(e Expr) {
+	switch n := e.(type) {
+	case *IdentExpr:
+		if n.Name == "Void" {
+			tc.diags.Error(n.Span_, "Void is only valid as a function result type", "remove the type or use a value type")
+		}
+	case *ArrayTypeExpr:
+		tc.checkTypeExprValid(n.Elem)
+	}
 }
 
 func (tc *TypeChecker) checkReturnStmt(s *ReturnStmt) {
@@ -514,6 +575,7 @@ func (tc *TypeChecker) inferExpr(e Expr) Type {
 		return TypeUnknown
 	case *ArrayInitExpr:
 		elemType := typeOfTypeExpr(n.Elem)
+		tc.checkTypeExprValid(n.Elem)
 		for _, item := range n.Items {
 			tc.checkAssign(item.nodeSpan(), elemType, item)
 		}

@@ -169,6 +169,16 @@ func TestHoverReturnsSignature(t *testing.T) {
 	}
 }
 
+func TestHoverReturnsVoidErrorSignature(t *testing.T) {
+	source := "Some_Error :: error { GENERIC; }\nf :: proc -> (Void <> Some_Error) { return; }\nmain :: proc { f() unless catch { return; } }"
+	r := buildResolverFor(t, source)
+	ref := offsetOf(t, source, "f() unless")
+	content := r.hoverAt(ref)
+	if !strings.Contains(content, "f() -> (Void <> Some_Error)") {
+		t.Errorf("hover = %q, want full Void error-return signature", content)
+	}
+}
+
 func TestCompletionNamesInScope(t *testing.T) {
 	r := buildResolverFor(t, resolveSource)
 	pos := offsetOf(t, resolveSource, "return;") + len("return;")

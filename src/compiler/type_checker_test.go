@@ -540,3 +540,61 @@ func TestTypeCheckCompoundAssignType(t *testing.T) {
 		t.Errorf("expected compound assign type error, got %v", diags)
 	}
 }
+
+// ──────────────────────────────────────────────
+// Void type
+// ──────────────────────────────────────────────
+
+func TestTypeCheckVoidReturn(t *testing.T) {
+	// A 'Void <> E' procedure may return bare (success) or an error value.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (input1: String) -> (Void <> Some_Error) {\n    if input1 == «» {\n        return;\n    }\n    return .GENERIC!;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+	// The reversed 'E <> Void' form is equivalent.
+	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (Some_Error <> Void) {\n    return .GENERIC!;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for reversed form: %v", diags)
+	}
+	// An explicit '-> Void' result with a bare return is valid.
+	diags = typeCheckSource(t, "f :: proc -> Void {\n    return;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for -> Void: %v", diags)
+	}
+}
+
+func TestTypeCheckVoidInvalidPositions(t *testing.T) {
+	// Void is only valid as a function result type.
+	cases := []struct {
+		name, src, want string
+	}{
+		{"struct field", "Invalid :: struct { param1: String; param2: Void; }", "Void is only valid as a function result type"},
+		{"variable", "main :: proc { x: Void; }", "Void is only valid as a function result type"},
+		{"inferred variable", "f :: proc -> Void { }\nmain :: proc { x := f(); }", "Void is only valid as a function result type"},
+		{"parameter", "f :: proc (x: Void) { }", "Void is only valid as a function result type"},
+		{"array element", "main :: proc { arr := []Void.{ }; }", "Void is only valid as a function result type"},
+		{"nested result", "f :: proc -> []Void { }", "Void is only valid as a function result type"},
+		{"nested error result", "Some_Error :: error { BAD; }\nf :: proc -> ([]Void <> Some_Error) { return; }", "Void is only valid as a function result type"},
+		{"multiple results", "f :: proc -> Void, S64 { }", "Void must be the only function result"},
+	}
+	for _, c := range cases {
+		diags := typeCheckSource(t, c.src)
+		if !hasError(diags, c.want) {
+			t.Errorf("%s: expected %q error, got %v", c.name, c.want, diags)
+		}
+	}
+}
+
+func TestTypeCheckVoidBindRejected(t *testing.T) {
+	// Binding the value of a 'Void <> E' call is rejected; only the bare
+	// 'unless catch' form is valid.
+	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (Void <> Some_Error) {\n    return .GENERIC!;\n}\nmain :: proc -> S64 {\n    x := f() unless catch {\n        return -1;\n    }\n    return 0;\n}")
+	if !hasError(diags, "cannot bind a Void value") {
+		t.Errorf("expected cannot-bind-Void error, got %v", diags)
+	}
+	// The bare form is valid.
+	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (Void <> Some_Error) {\n    return .GENERIC!;\n}\nmain :: proc -> S64 {\n    f() unless catch {\n        return -1;\n    }\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for bare form: %v", diags)
+	}
+}

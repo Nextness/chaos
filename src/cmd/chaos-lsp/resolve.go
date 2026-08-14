@@ -629,6 +629,12 @@ func procSignature(proc *compiler.ProcDecl) string {
 	b.WriteString(")")
 	if len(proc.Results) == 0 {
 		b.WriteString(" -> void")
+	} else if proc.ErrorResult != nil {
+		b.WriteString(" -> (")
+		b.WriteString(exprText(proc.Results[0]))
+		b.WriteString(" <> ")
+		b.WriteString(exprText(proc.ErrorResult))
+		b.WriteString(")")
 	} else {
 		b.WriteString(" -> ")
 		for i, res := range proc.Results {

@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: Void is only valid as a function result type
+// Void is only valid as a function result type, not a variable type.
+#entry main :: proc -> S64 {
+    x: Void;
+    return 0;
+}
