@@ -434,6 +434,13 @@ func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool
 		p.bump() // consume "error"
 		return p.parseErrorDecl(nameTok, name)
 	}
+	// Tolerant mode: 'ident :: { ... }' with an unknown body (for example an
+	// error type written without the 'error' keyword) is parsed as an error
+	// declaration so the editor registers the name as a type and highlights
+	// its members. Strict mode rejects the unknown form.
+	if p.tolerant && p.at(TkLBrace) {
+		return p.parseErrorDecl(nameTok, name)
+	}
 	// Compile-time variable: ident "::" expr ";"
 	init := p.parseExpr(0)
 	if init == nil {

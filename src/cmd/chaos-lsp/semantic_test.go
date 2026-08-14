@@ -403,6 +403,33 @@ func TestSemanticTokensErrorReturnSpec(t *testing.T) {
 	}
 }
 
+func TestSemanticTokensErrorBlockWithoutKeyword(t *testing.T) {
+	// 'Hash_Table_Error :: { ... }' without the 'error' keyword still
+	// registers the name as a type and highlights the members and uses, so
+	// the editor stays useful while the declaration is incomplete.
+	source := "Hash_Table_Error :: {\n    GENERIC;\n}\nsomething :: proc -> (String <> Hash_Table_Error) {\n    return .GENERIC!;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start int
+		want        int
+	}{
+		{0, 0, semTypeType},      // Hash_Table_Error (decl)
+		{1, 4, semTypeConstant},  // GENERIC (member)
+		{3, 32, semTypeType},     // Hash_Table_Error (error return spec)
+		{4, 12, semTypeConstant}, // GENERIC! (error literal)
+	}
+	for _, c := range checks {
+		tok, ok := tokenAt(tokens, c.line, c.start)
+		if !ok {
+			t.Errorf("no token at line %d col %d", c.line, c.start)
+			continue
+		}
+		if tok.typeIndex != c.want {
+			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
+		}
+	}
+}
+
 func TestSemanticTokensUnlessCatch(t *testing.T) {
 	// 'unless catch err' highlights the keywords and the catch binding.
 	source := "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch err {\n        return -1;\n    }\n    return r;\n}"

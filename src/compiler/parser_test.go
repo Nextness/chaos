@@ -2354,6 +2354,39 @@ func TestTolerantStructAndEnum(t *testing.T) {
 	}
 }
 
+func TestTolerantBareErrorBlock(t *testing.T) {
+	// 'ident :: { ... }' without the 'error' keyword is parsed as an error
+	// declaration in tolerant mode so the editor can register the name and
+	// highlight its members. Strict mode still rejects it.
+	source := "Hash_Table_Error :: {\n    GENERIC;\n    NOT_FOUND;\n}\nsomething :: proc -> (String <> Hash_Table_Error) {\n    return .GENERIC!;\n}"
+	result := parseTolerantTestCase(t, source)
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors in tolerant mode: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 2 {
+		t.Fatalf("Decls = %d, want 2", len(result.Program.Decls))
+	}
+	ed, ok := result.Program.Decls[0].(*ErrorDecl)
+	if !ok {
+		t.Fatalf("Decls[0] type = %T, want *ErrorDecl", result.Program.Decls[0])
+	}
+	if ed.Name != "Hash_Table_Error" {
+		t.Fatalf("Name = %q, want %q", ed.Name, "Hash_Table_Error")
+	}
+	if len(ed.Members) != 2 {
+		t.Fatalf("Members = %d, want 2", len(ed.Members))
+	}
+	if ed.Members[0].Name != "GENERIC" || ed.Members[1].Name != "NOT_FOUND" {
+		t.Fatalf("members = %v, want GENERIC and NOT_FOUND", ed.Members)
+	}
+
+	// Strict mode rejects the same form.
+	strict := parseTestCase(t, source)
+	if !strict.Diags.HasErrors() {
+		t.Fatal("expected errors in strict mode for ':: {' form, got none")
+	}
+}
+
 func TestTolerantUnknownStmtSkipped(t *testing.T) {
 	// 'while' is still an unknown statement keyword in tolerant mode and is
 	// skipped as a balanced block; 'for' is now a real keyword.
