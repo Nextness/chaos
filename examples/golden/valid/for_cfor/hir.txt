@@ -1,0 +1,10 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl sum: S64 = Int(0) [mutable=true compileTime=false]
+      For init=        VarDecl i: S64 = Int(1) [mutable=true compileTime=false]
+ cond=Binary(<= Ident(i) Int(10)) after=        Assign i = Binary(+ Ident(i) Int(1))
+
+        Block
+          Assign sum = Binary(+ Ident(sum) Ident(i))
+      Return Ident(sum)

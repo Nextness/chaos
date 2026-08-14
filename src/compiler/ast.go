@@ -230,6 +230,61 @@ func (f StructInitField) nodeSpan() Span {
 	return f.Span_
 }
 
+// ArrayTypeExpr is an array type expression: "[]T". Elem is the element type
+// expression.
+type ArrayTypeExpr struct {
+	Span_ Span
+	Elem  Expr
+}
+
+func (e *ArrayTypeExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *ArrayTypeExpr) exprNode() {}
+
+// ArrayInitExpr is an array literal: "[]T.{item, item, ...}". Elem is the
+// element type expression; Items holds the element values.
+type ArrayInitExpr struct {
+	Span_ Span
+	Elem  Expr // element type expression ([]T)
+	Items []Expr
+}
+
+func (e *ArrayInitExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *ArrayInitExpr) exprNode() {}
+
+// IndexExpr is an array element access: "base[index]". Type is the element
+// type, resolved during type checking.
+type IndexExpr struct {
+	Span_ Span
+	Base  Expr
+	Index Expr
+}
+
+func (e *IndexExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *IndexExpr) exprNode() {}
+
+// LoopBuiltinExpr is a builtin reference inside a range loop body: '#this'
+// (the current element) or '#index' (the current index). Name is "this" or
+// "index".
+type LoopBuiltinExpr struct {
+	Span_ Span
+	Name  string
+}
+
+func (e *LoopBuiltinExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *LoopBuiltinExpr) exprNode() {}
+
 // ErrorExpr is a placeholder inserted when the parser encounters an error
 // during expression parsing. It allows the parser to continue and collect
 // additional diagnostics without crashing.
@@ -359,6 +414,90 @@ func (s *UnlessCatchStmt) nodeSpan() Span {
 }
 
 func (s *UnlessCatchStmt) stmtNode() {}
+
+// ForStmt is a loop. It has three forms:
+//
+//   - While: Cond holds a Bool expression, Init and After are nil.
+//   - C-style: Init, Cond, and After are all set ("for init; cond; after").
+//   - Range: Range holds the iterable array expression and Cond is nil. The
+//     optional IndexName and ElemName bind the index and element inside the
+//     body. When both are empty the loop is the implicit form ("for arr {...}")
+//     where the '#this' and '#index' builtins refer to the element and index.
+//
+// The single-expression form ("for expr {...}") is stored in Cond and is
+// resolved by type: a Bool expression is a while loop, an array expression is
+// an implicit range loop.
+type ForStmt struct {
+	Span_     Span
+	Init      Stmt // c-style init (nil for while/range)
+	Cond      Expr // while condition or implicit range iterable
+	After     Stmt // c-style after statement (nil for while/range)
+	Range     Expr // range iterable (nil for while/c-style)
+	IndexName string
+	ElemName  string
+	Body      *BlockStmt
+}
+
+func (s *ForStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *ForStmt) stmtNode() {}
+
+// BreakStmt exits the innermost enclosing loop.
+type BreakStmt struct {
+	Span_ Span
+}
+
+func (s *BreakStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *BreakStmt) stmtNode() {}
+
+// ContinueStmt jumps to the after-statement (or condition) of the innermost
+// enclosing loop.
+type ContinueStmt struct {
+	Span_ Span
+}
+
+func (s *ContinueStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *ContinueStmt) stmtNode() {}
+
+// CompoundAssignStmt is a compound assignment: "name += expr" or
+// "name -= expr". Op is BinaryOpAdd or BinaryOpSub.
+type CompoundAssignStmt struct {
+	Span_ Span
+	Name  string
+	Op    BinaryOp
+	Value Expr
+}
+
+func (s *CompoundAssignStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *CompoundAssignStmt) stmtNode() {}
+
+// IncDecStmt is an increment or decrement statement: "name++", "name--",
+// "++name", or "--name". Op is BinaryOpAdd or BinaryOpSub. Prefix records
+// whether the operator precedes the name; it has no semantic effect because
+// the statement produces no value.
+type IncDecStmt struct {
+	Span_  Span
+	Name   string
+	Op     BinaryOp
+	Prefix bool
+}
+
+func (s *IncDecStmt) nodeSpan() Span {
+	return s.Span_
+}
+
+func (s *IncDecStmt) stmtNode() {}
 
 // BlockStmt is a braced block of statements.
 type BlockStmt struct {

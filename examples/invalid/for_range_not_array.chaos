@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: for range requires an array
+// The range form iterates over an array value.
+#entry main :: proc -> S64 {
+    x := 5;
+    for elem: x {
+        return 1;
+    }
+    return 0;
+}

@@ -1,0 +1,66 @@
+format ELF64 executable 3
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 80
+L0:
+    mov rax, 0
+    mov qword [rbp-16], rax
+    mov rax, qword [rbp-16]
+    mov qword [rbp-8], rax
+    jmp L1
+L1:
+    mov rax, 1
+    mov byte [rbp-17], al
+    movzx rax, byte [rbp-17]
+    test al, al
+    jnz L2
+    jmp L4
+L2:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-32], rax
+    mov rax, 1
+    mov qword [rbp-40], rax
+    mov rax, qword [rbp-32]
+    add rax, qword [rbp-40]
+    mov qword [rbp-48], rax
+    mov rax, qword [rbp-48]
+    mov qword [rbp-8], rax
+    mov rax, qword [rbp-8]
+    mov qword [rbp-56], rax
+    mov rax, 10
+    mov qword [rbp-64], rax
+    mov rax, qword [rbp-56]
+    cmp rax, qword [rbp-64]
+    sete al
+    mov byte [rbp-65], al
+    movzx rax, byte [rbp-65]
+    test al, al
+    jnz L5
+    jmp L6
+L3:
+    jmp L1
+L4:
+    mov rax, qword [rbp-8]
+    mov qword [rbp-80], rax
+    mov rax, qword [rbp-80]
+    leave
+    ret
+L5:
+    jmp L4
+L6:
+    jmp L7
+L7:
+    jmp L3
+

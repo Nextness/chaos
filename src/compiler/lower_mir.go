@@ -86,6 +86,9 @@ type MIRLowerer struct {
 	localIDs   map[SymbolID]LocalID
 	localTypes map[SymbolID]TypeID
 	valueCount ValueID
+
+	breakTargets    []BlockID // stack of loop exit blocks for break
+	continueTargets []BlockID // stack of loop after blocks for continue
 }
 
 func (ml *MIRLowerer) newBlock() *MIRBlock {
@@ -206,6 +209,12 @@ func (ml *MIRLowerer) lowerStmt(s HIRStmt) {
 		ml.lowerExpr(n.Expr)
 	case *HIRIfCatch:
 		ml.lowerIfCatch(n)
+	case *HIRFor:
+		ml.lowerFor(n)
+	case *HIRBreak:
+		ml.lowerBreak(n)
+	case *HIRContinue:
+		ml.lowerContinue(n)
 	}
 }
 
@@ -311,6 +320,54 @@ func (ml *MIRLowerer) lowerIfChain(n *HIRIf) {
 	ml.curBlock = joinBlock
 }
 
+// lowerFor lowers a loop into condition, body, after, and exit blocks. Break
+// jumps to the exit block; continue jumps to the after block.
+func (ml *MIRLowerer) lowerFor(n *HIRFor) {
+	condBlock := ml.newBlock()
+	bodyBlock := ml.newBlock()
+	afterBlock := ml.newBlock()
+	exitBlock := ml.newBlock()
+
+	if n.Init != nil {
+		ml.lowerStmt(n.Init)
+	}
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: condBlock.ID, Span: n.Span_})
+
+	ml.curBlock = condBlock
+	cond := ml.lowerExpr(n.Cond)
+	ml.setTerminator(MIRTerminator{Kind: MIRBranch, Cond: cond, Then: bodyBlock.ID, Else: exitBlock.ID, Span: n.Span_})
+
+	ml.curBlock = bodyBlock
+	ml.breakTargets = append(ml.breakTargets, exitBlock.ID)
+	ml.continueTargets = append(ml.continueTargets, afterBlock.ID)
+	ml.lowerBlock(n.Body)
+	ml.breakTargets = ml.breakTargets[:len(ml.breakTargets)-1]
+	ml.continueTargets = ml.continueTargets[:len(ml.continueTargets)-1]
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: afterBlock.ID, Span: n.Span_})
+
+	ml.curBlock = afterBlock
+	if n.After != nil {
+		ml.lowerStmt(n.After)
+	}
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: condBlock.ID, Span: n.Span_})
+
+	ml.curBlock = exitBlock
+}
+
+func (ml *MIRLowerer) lowerBreak(n *HIRBreak) {
+	if len(ml.breakTargets) == 0 {
+		return
+	}
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: ml.breakTargets[len(ml.breakTargets)-1], Span: n.Span_})
+}
+
+func (ml *MIRLowerer) lowerContinue(n *HIRContinue) {
+	if len(ml.continueTargets) == 0 {
+		return
+	}
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: ml.continueTargets[len(ml.continueTargets)-1], Span: n.Span_})
+}
+
 func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 	switch n := e.(type) {
 	case *HIRConst:
@@ -342,6 +399,19 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 	case *HIRFieldLoad:
 		base := ml.lowerExpr(n.Base)
 		return ml.emit(MIRFieldLoad, n.Type, []ValueID{base}, MIRImmediate{Kind: MIRImmField, Int: int64(n.Field)}, n.Span_)
+	case *HIRArrayInit:
+		args := make([]ValueID, len(n.Items))
+		for i, item := range n.Items {
+			args[i] = ml.lowerExpr(item)
+		}
+		return ml.emit(MIRArrayInit, n.Type, args, MIRImmediate{}, n.Span_)
+	case *HIRArrayLen:
+		arr := ml.lowerExpr(n.Array)
+		return ml.emit(MIRArrayLen, n.Type, []ValueID{arr}, MIRImmediate{}, n.Span_)
+	case *HIRIndex:
+		base := ml.lowerExpr(n.Base)
+		idx := ml.lowerExpr(n.Index)
+		return ml.emit(MIRArrayIndex, n.Type, []ValueID{base, idx}, MIRImmediate{}, n.Span_)
 	}
 	return ml.emit(MIRConst, ml.types.Unknown(), nil, MIRImmediate{}, e.hirSpan())
 }

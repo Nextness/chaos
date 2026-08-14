@@ -1076,6 +1076,251 @@ func TestParseIfThenTolerant(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
+// For loops
+// ──────────────────────────────────────────────
+
+func TestParseForWhile(t *testing.T) {
+	// "for true { ... }" is a while-style loop.
+	stmt := parseOneStmt(t, "for true { exit 0; }")
+	fs, ok := stmt.(*ForStmt)
+	if !ok {
+		t.Fatalf("expected *ForStmt, got %T", stmt)
+	}
+	if fs.Cond == nil {
+		t.Fatal("Cond = nil")
+	}
+	if fs.Range != nil {
+		t.Fatal("Range = nil expected for while form")
+	}
+	if fs.Init != nil || fs.After != nil {
+		t.Fatal("Init/After must be nil for while form")
+	}
+	if len(fs.Body.Stmts) != 1 {
+		t.Fatalf("Body.Stmts = %d, want 1", len(fs.Body.Stmts))
+	}
+}
+
+func TestParseForCFor(t *testing.T) {
+	stmt := parseOneStmt(t, "for a := 0; a != 10; a += 1 { exit 0; }")
+	fs, ok := stmt.(*ForStmt)
+	if !ok {
+		t.Fatalf("expected *ForStmt, got %T", stmt)
+	}
+	if fs.Init == nil {
+		t.Fatal("Init = nil")
+	}
+	if _, ok := fs.Init.(*VarDecl); !ok {
+		t.Fatalf("Init type = %T, want *VarDecl", fs.Init)
+	}
+	if fs.Cond == nil {
+		t.Fatal("Cond = nil")
+	}
+	if _, ok := fs.After.(*CompoundAssignStmt); !ok {
+		t.Fatalf("After type = %T, want *CompoundAssignStmt", fs.After)
+	}
+}
+
+func TestParseForCForIncDecAfter(t *testing.T) {
+	// The after clause supports ++, --, +=, -=, =, and calls.
+	for _, src := range []string{
+		"for a := 0; a < 10; a++ { }",
+		"for a := 0; a < 10; a-- { }",
+		"for a := 0; a < 10; ++a { }",
+		"for a := 0; a < 10; --a { }",
+		"for a := 0; a < 10; a -= 1 { }",
+		"for a := 0; a < 10; a = a + 1 { }",
+		"for a := 0; a < 10; f() { }",
+	} {
+		stmt := parseOneStmt(t, src)
+		if _, ok := stmt.(*ForStmt); !ok {
+			t.Fatalf("expected *ForStmt for %q, got %T", src, stmt)
+		}
+	}
+}
+
+func TestParseForRangeElem(t *testing.T) {
+	stmt := parseOneStmt(t, "for elem: arr { exit 0; }")
+	fs, ok := stmt.(*ForStmt)
+	if !ok {
+		t.Fatalf("expected *ForStmt, got %T", stmt)
+	}
+	if fs.Range == nil {
+		t.Fatal("Range = nil")
+	}
+	if fs.ElemName != "elem" {
+		t.Fatalf("ElemName = %q, want %q", fs.ElemName, "elem")
+	}
+	if fs.IndexName != "" {
+		t.Fatalf("IndexName = %q, want empty", fs.IndexName)
+	}
+	if fs.Cond != nil {
+		t.Fatal("Cond = nil expected for range form")
+	}
+}
+
+func TestParseForRangeIdxElem(t *testing.T) {
+	stmt := parseOneStmt(t, "for idx, elem: arr { exit 0; }")
+	fs, ok := stmt.(*ForStmt)
+	if !ok {
+		t.Fatalf("expected *ForStmt, got %T", stmt)
+	}
+	if fs.IndexName != "idx" {
+		t.Fatalf("IndexName = %q, want %q", fs.IndexName, "idx")
+	}
+	if fs.ElemName != "elem" {
+		t.Fatalf("ElemName = %q, want %q", fs.ElemName, "elem")
+	}
+}
+
+func TestParseForImplicitRange(t *testing.T) {
+	// "for arr { ... }" parses as the single-expression form; the type
+	// checker decides whether it is a while loop or an implicit range.
+	stmt := parseOneStmt(t, "for arr { exit 0; }")
+	fs, ok := stmt.(*ForStmt)
+	if !ok {
+		t.Fatalf("expected *ForStmt, got %T", stmt)
+	}
+	if fs.Cond == nil || fs.Range != nil {
+		t.Fatalf("Cond = %v, Range = %v, want Cond set and Range nil", fs.Cond, fs.Range)
+	}
+}
+
+func TestParseBreakContinue(t *testing.T) {
+	block := parseOneStmtBlock(t, "break; continue;")
+	if len(block.Stmts) != 2 {
+		t.Fatalf("Stmts = %d, want 2", len(block.Stmts))
+	}
+	if _, ok := block.Stmts[0].(*BreakStmt); !ok {
+		t.Fatalf("stmt 0 type = %T, want *BreakStmt", block.Stmts[0])
+	}
+	if _, ok := block.Stmts[1].(*ContinueStmt); !ok {
+		t.Fatalf("stmt 1 type = %T, want *ContinueStmt", block.Stmts[1])
+	}
+}
+
+func TestParseCompoundAssign(t *testing.T) {
+	for _, tt := range []struct {
+		src string
+		op  BinaryOp
+	}{
+		{"a += 1;", BinaryOpAdd},
+		{"a -= 1;", BinaryOpSub},
+	} {
+		stmt := parseOneStmt(t, tt.src)
+		c, ok := stmt.(*CompoundAssignStmt)
+		if !ok {
+			t.Fatalf("expected *CompoundAssignStmt for %q, got %T", tt.src, stmt)
+		}
+		if c.Op != tt.op {
+			t.Errorf("%q: Op = %v, want %v", tt.src, c.Op, tt.op)
+		}
+		if c.Name != "a" {
+			t.Errorf("%q: Name = %q, want %q", tt.src, c.Name, "a")
+		}
+	}
+}
+
+func TestParseIncDec(t *testing.T) {
+	for _, tt := range []struct {
+		src    string
+		op     BinaryOp
+		prefix bool
+	}{
+		{"a++;", BinaryOpAdd, false},
+		{"a--;", BinaryOpSub, false},
+		{"++a;", BinaryOpAdd, true},
+		{"--a;", BinaryOpSub, true},
+	} {
+		stmt := parseOneStmt(t, tt.src)
+		inc, ok := stmt.(*IncDecStmt)
+		if !ok {
+			t.Fatalf("expected *IncDecStmt for %q, got %T", tt.src, stmt)
+		}
+		if inc.Op != tt.op {
+			t.Errorf("%q: Op = %v, want %v", tt.src, inc.Op, tt.op)
+		}
+		if inc.Prefix != tt.prefix {
+			t.Errorf("%q: Prefix = %v, want %v", tt.src, inc.Prefix, tt.prefix)
+		}
+		if inc.Name != "a" {
+			t.Errorf("%q: Name = %q, want %q", tt.src, inc.Name, "a")
+		}
+	}
+}
+
+func TestParseArrayLiteral(t *testing.T) {
+	expr := parseExpr(t, "[]S64.{1, 2, 3}")
+	al, ok := expr.(*ArrayInitExpr)
+	if !ok {
+		t.Fatalf("expected *ArrayInitExpr, got %T", expr)
+	}
+	at, ok := al.Elem.(*IdentExpr)
+	if !ok || at.Name != "S64" {
+		t.Fatalf("Elem = %#v, want Ident(S64)", al.Elem)
+	}
+	if len(al.Items) != 3 {
+		t.Fatalf("Items = %d, want 3", len(al.Items))
+	}
+}
+
+func TestParseArrayTypeExpr(t *testing.T) {
+	// An array type in a declaration: "items: []S64 = ..."
+	decl := parseOneDecl(t, "items: []S64 = []S64.{1};")
+	vd, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	at, ok := vd.DeclType.(*ArrayTypeExpr)
+	if !ok {
+		t.Fatalf("DeclType = %T, want *ArrayTypeExpr", vd.DeclType)
+	}
+	if _, ok := at.Elem.(*IdentExpr); !ok {
+		t.Fatalf("Elem = %T, want *IdentExpr", at.Elem)
+	}
+}
+
+func TestParseIndex(t *testing.T) {
+	expr := parseExpr(t, "arr[0]")
+	ix, ok := expr.(*IndexExpr)
+	if !ok {
+		t.Fatalf("expected *IndexExpr, got %T", expr)
+	}
+	if _, ok := ix.Base.(*IdentExpr); !ok {
+		t.Fatalf("Base = %T, want *IdentExpr", ix.Base)
+	}
+	if _, ok := ix.Index.(*IntExpr); !ok {
+		t.Fatalf("Index = %T, want *IntExpr", ix.Index)
+	}
+}
+
+func TestParseLoopBuiltins(t *testing.T) {
+	stmt := parseOneStmt(t, "for arr { do_something(#this, #index); }")
+	fs, ok := stmt.(*ForStmt)
+	if !ok {
+		t.Fatalf("expected *ForStmt, got %T", stmt)
+	}
+	exprStmt, ok := fs.Body.Stmts[0].(*ExprStmt)
+	if !ok {
+		t.Fatalf("expected *ExprStmt, got %T", fs.Body.Stmts[0])
+	}
+	call, ok := exprStmt.Expr.(*CallExpr)
+	if !ok {
+		t.Fatalf("expected *CallExpr, got %T", exprStmt.Expr)
+	}
+	if len(call.Args) != 2 {
+		t.Fatalf("Args = %d, want 2", len(call.Args))
+	}
+	tb, ok := call.Args[0].(*LoopBuiltinExpr)
+	if !ok || tb.Name != "this" {
+		t.Fatalf("arg 0 = %#v, want LoopBuiltin(this)", call.Args[0])
+	}
+	ib, ok := call.Args[1].(*LoopBuiltinExpr)
+	if !ok || ib.Name != "index" {
+		t.Fatalf("arg 1 = %#v, want LoopBuiltin(index)", call.Args[1])
+	}
+}
+
+// ──────────────────────────────────────────────
 // Expressions — literals
 // ──────────────────────────────────────────────
 
@@ -1422,7 +1667,9 @@ func TestParseUnaryNot(t *testing.T) {
 }
 
 func TestParseUnaryDoubleNeg(t *testing.T) {
-	expr := parseExpr(t, "--5")
+	// '--' is now the decrement operator, so double negation must be written
+	// with a space ('- -5') or parentheses.
+	expr := parseExpr(t, "- -5")
 	e, ok := expr.(*UnaryExpr)
 	if !ok {
 		t.Fatalf("expected *UnaryExpr, got %T", expr)
@@ -2108,7 +2355,9 @@ func TestTolerantStructAndEnum(t *testing.T) {
 }
 
 func TestTolerantUnknownStmtSkipped(t *testing.T) {
-	result := parseTolerantTestCase(t, "main :: proc { for i := 0; i < 10; i := i + 1 { exit 1; } return; }")
+	// 'while' is still an unknown statement keyword in tolerant mode and is
+	// skipped as a balanced block; 'for' is now a real keyword.
+	result := parseTolerantTestCase(t, "main :: proc { while i := 0; i < 10; i := i + 1 { exit 1; } return; }")
 	if result.Diags.HasErrors() {
 		t.Fatalf("unexpected errors: %v", result.Diags)
 	}

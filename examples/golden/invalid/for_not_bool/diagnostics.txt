@@ -1,0 +1,3 @@
+[ERROR] 6:9:for_not_bool.chaos - for condition must be Bool, got S64
+     for x {
+         ^ -> use a boolean condition

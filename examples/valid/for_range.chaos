@@ -1,0 +1,21 @@
+// expect-exit: 126
+// Range loops over arrays: element binding, index binding, and the '#this'
+// and '#index' builtins. Sums the elements twice (60+60) and the indices
+// twice (3+3).
+#entry main :: proc -> S64 {
+    arr := []S64.{10, 20, 30};
+    sum: S64 = 0;
+    for elem: arr {
+        sum += elem;
+    }
+    for idx, elem: arr {
+        sum += idx;
+    }
+    for arr {
+        sum += #this;
+    }
+    for idx, elem: arr {
+        sum += #index;
+    }
+    return sum;
+}

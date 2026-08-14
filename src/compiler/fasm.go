@@ -49,15 +49,16 @@ type fasmEmitter struct {
 	out   strings.Builder
 
 	// Per-function state.
-	fn          *MIRFunction
-	valueSlots  map[ValueID]int
-	valueTypes  map[ValueID]TypeID
-	localSlots  map[LocalID]int
-	blockLabels map[BlockID]string
-	nextOffset  int
-	frameSize   int
-	labelCount  int
-	sretSlot    int // slot holding the sret pointer, -1 when unused
+	fn           *MIRFunction
+	valueSlots   map[ValueID]int
+	valueTypes   map[ValueID]TypeID
+	localSlots   map[LocalID]int
+	blockLabels  map[BlockID]string
+	arrayBuffers map[ValueID]int // stack buffer offset for array.init results
+	nextOffset   int
+	frameSize    int
+	labelCount   int
+	sretSlot     int // slot holding the sret pointer, -1 when unused
 
 	// Float and string constants emitted in the data section.
 	floatConsts   []floatConst
@@ -122,6 +123,8 @@ func (fb *fasmEmitter) checkSupportedTypes() {
 			for _, f := range t.Fields {
 				report(fb.prog.Types.Lookup(f.Type), span)
 			}
+		case TypeKindArray:
+			report(fb.prog.Types.Lookup(t.Elem), span)
 		}
 	}
 	for _, g := range fb.prog.Globals {
@@ -322,6 +325,7 @@ func (fb *fasmEmitter) assignSlots(fn *MIRFunction) {
 	fb.valueSlots = make(map[ValueID]int)
 	fb.valueTypes = make(map[ValueID]TypeID)
 	fb.localSlots = make(map[LocalID]int)
+	fb.arrayBuffers = make(map[ValueID]int)
 	fb.nextOffset = 0
 	fb.sretSlot = -1
 	if len(fn.Results) > 0 && fb.prog.Types.Lookup(fn.Results[0]).Kind == TypeKindStruct {
@@ -337,6 +341,16 @@ func (fb *fasmEmitter) assignSlots(fn *MIRFunction) {
 				t := fb.prog.Types.Lookup(ins.Type)
 				fb.valueTypes[ins.Result] = ins.Type
 				fb.valueSlots[ins.Result] = fb.allocSlot(fb.sizeOf(t))
+				if ins.Op == MIRArrayInit {
+					// Allocate the element buffer for an array literal.
+					et := fb.prog.Types.Lookup(t.Elem)
+					elemSize := fb.sizeOf(et)
+					count := len(ins.Args)
+					if count == 0 {
+						count = 1
+					}
+					fb.arrayBuffers[ins.Result] = fb.allocSlot(elemSize * count)
+				}
 			}
 		}
 	}
@@ -370,7 +384,7 @@ func (fb *fasmEmitter) emitParamMoves(fn *MIRFunction) {
 				fmt.Fprintf(&fb.out, "    movsd qword [rbp-%d], xmm%d\n", slot, floatIdx)
 			}
 			floatIdx++
-		case t.Kind == TypeKindString:
+		case t.Kind == TypeKindString || t.Kind == TypeKindArray:
 			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx))
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
 			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx+1))
@@ -433,6 +447,12 @@ func (fb *fasmEmitter) emitInstr(ins *MIRInstr) {
 		fb.emitStructInit(ins)
 	case MIRFieldLoad:
 		fb.emitFieldLoad(ins)
+	case MIRArrayInit:
+		fb.emitArrayInit(ins)
+	case MIRArrayLen:
+		fb.emitArrayLen(ins)
+	case MIRArrayIndex:
+		fb.emitArrayIndex(ins)
 	case MIRExit:
 		// exit is a terminator, not an instruction.
 	}
@@ -1001,7 +1021,7 @@ func (fb *fasmEmitter) emitCall(ins *MIRInstr) {
 		case t.Kind == TypeKindFloat:
 			regs = append(regs, argReg{arg: a, kind: argFloat, idx: floatIdx})
 			floatIdx++
-		case t.Kind == TypeKindString:
+		case t.Kind == TypeKindString || t.Kind == TypeKindArray:
 			regs = append(regs, argReg{arg: a, kind: argString, idx: intIdx})
 			intIdx += 2
 		case t.Kind == TypeKindStruct:
@@ -1080,7 +1100,7 @@ func (fb *fasmEmitter) emitCall(ins *MIRInstr) {
 		switch {
 		case resultType.Kind == TypeKindStruct:
 			// Already in the sret slot.
-		case resultType.Kind == TypeKindString || isInt128(resultType.Name):
+		case resultType.Kind == TypeKindString || resultType.Kind == TypeKindArray || isInt128(resultType.Name):
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rdx\n", slot)
 		default:
@@ -1119,7 +1139,7 @@ func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 			case vt.Kind == TypeKindStruct:
 				// Copy the struct value to the sret address.
 				fb.emitAggCopyToAddrSlot(slot, fb.sretSlot, fb.sizeOf(vt))
-			case vt.Kind == TypeKindString || isInt128(vt.Name):
+			case vt.Kind == TypeKindString || vt.Kind == TypeKindArray || isInt128(vt.Name):
 				fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", slot)
 				fmt.Fprintf(&fb.out, "    mov rdx, qword [rbp-%d+8]\n", slot)
 			default:
@@ -1180,6 +1200,9 @@ func (fb *fasmEmitter) sizeOf(t IRType) int {
 		}
 	case TypeKindString:
 		return 16
+	case TypeKindArray:
+		// Array values are a pointer to the element data and a length pair.
+		return 16
 	case TypeKindError:
 		// Error values are nominal but backed by a 16-bit ordinal.
 		return 2
@@ -1214,6 +1237,8 @@ func isAggregate(t IRType) bool {
 	switch {
 	case t.Kind == TypeKindString:
 		return true
+	case t.Kind == TypeKindArray:
+		return true
 	case t.Kind == TypeKindStruct:
 		return true
 	case t.Kind == TypeKindInt && isInt128(t.Name):
@@ -1232,6 +1257,8 @@ func isInt128(name string) bool {
 func intRegCount(t IRType) int {
 	switch {
 	case t.Kind == TypeKindString:
+		return 2
+	case t.Kind == TypeKindArray:
 		return 2
 	case t.Kind == TypeKindStruct:
 		return 1 // passed by address
@@ -1358,6 +1385,101 @@ func (fb *fasmEmitter) emitFieldLoad(ins *MIRInstr) {
 	}
 	fb.emitLoad(ft, srcSlot-offsets[fieldIdx])
 	fb.emitStore(ft, resSlot)
+}
+
+// emitArrayInit builds an array value from its element values. The element
+// buffer was allocated in assignSlots; each element is stored at its offset
+// and the value slot receives the buffer address and element count.
+func (fb *fasmEmitter) emitArrayInit(ins *MIRInstr) {
+	t := fb.prog.Types.Lookup(ins.Type)
+	et := fb.prog.Types.Lookup(t.Elem)
+	elemSize := fb.sizeOf(et)
+	buf := fb.arrayBuffers[ins.Result]
+	resSlot := fb.valueSlots[ins.Result]
+	for i, a := range ins.Args {
+		dst := buf - i*elemSize
+		if isAggregate(et) {
+			fb.emitAggCopy(fb.valueSlots[a], dst, elemSize)
+		} else {
+			fb.emitLoad(et, fb.valueSlots[a])
+			fb.emitStore(et, dst)
+		}
+	}
+	fmt.Fprintf(&fb.out, "    lea rax, [rbp-%d]\n", buf)
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
+	fmt.Fprintf(&fb.out, "    mov rax, %d\n", len(ins.Args))
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", resSlot)
+}
+
+// emitArrayLen loads the length half of an array value.
+func (fb *fasmEmitter) emitArrayLen(ins *MIRInstr) {
+	slot := fb.valueSlots[ins.Args[0]]
+	resSlot := fb.valueSlots[ins.Result]
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d+8]\n", slot)
+	fb.emitStore(fb.prog.Types.Lookup(ins.Type), resSlot)
+}
+
+// emitArrayIndex loads the element at the given index of an array value. The
+// element address is base + index*elemSize; aggregate elements are copied as a
+// byte range, others are loaded with the element type's width.
+func (fb *fasmEmitter) emitArrayIndex(ins *MIRInstr) {
+	arrSlot := fb.valueSlots[ins.Args[0]]
+	idxSlot := fb.valueSlots[ins.Args[1]]
+	t := fb.prog.Types.Lookup(ins.Type)
+	elemSize := fb.sizeOf(t)
+	resSlot := fb.valueSlots[ins.Result]
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", arrSlot)
+	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d]\n", idxSlot)
+	if elemSize != 1 {
+		fmt.Fprintf(&fb.out, "    imul rcx, %d\n", elemSize)
+	}
+	fb.out.WriteString("    add rax, rcx\n")
+	if isAggregate(t) {
+		fmt.Fprintf(&fb.out, "    mov rsi, rax\n")
+		fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", resSlot)
+		fmt.Fprintf(&fb.out, "    mov rcx, %d\n", elemSize)
+		fb.out.WriteString("    cld\n")
+		fb.out.WriteString("    rep movsb\n")
+		return
+	}
+	fb.emitLoadIndirect(t, "rax")
+	fb.emitStore(t, resSlot)
+}
+
+// emitLoadIndirect loads the value at [addrReg] into rax (integers) or xmm0
+// (floats), using the type's width and sign extension.
+func (fb *fasmEmitter) emitLoadIndirect(t IRType, addrReg string) {
+	size := fb.sizeOf(t)
+	if t.Kind == TypeKindFloat {
+		if t.Name == "F32" {
+			fmt.Fprintf(&fb.out, "    movss xmm0, dword [%s]\n", addrReg)
+		} else {
+			fmt.Fprintf(&fb.out, "    movsd xmm0, qword [%s]\n", addrReg)
+		}
+		return
+	}
+	switch size {
+	case 1:
+		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+			fmt.Fprintf(&fb.out, "    movsx rax, byte [%s]\n", addrReg)
+		} else {
+			fmt.Fprintf(&fb.out, "    movzx rax, byte [%s]\n", addrReg)
+		}
+	case 2:
+		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+			fmt.Fprintf(&fb.out, "    movsx rax, word [%s]\n", addrReg)
+		} else {
+			fmt.Fprintf(&fb.out, "    movzx rax, word [%s]\n", addrReg)
+		}
+	case 4:
+		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+			fmt.Fprintf(&fb.out, "    movsxd rax, dword [%s]\n", addrReg)
+		} else {
+			fmt.Fprintf(&fb.out, "    mov eax, dword [%s]\n", addrReg)
+		}
+	default:
+		fmt.Fprintf(&fb.out, "    mov rax, qword [%s]\n", addrReg)
+	}
 }
 
 // emitLoad loads the value at [rbp-offset] into rax (integers, sign or zero

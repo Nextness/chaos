@@ -47,11 +47,12 @@ func TestTokenize(t *testing.T) {
 		// ─── Multi-character operators ────────────────────────────────────
 		{
 			name:  "multi-char operators",
-			input: ":: := == != <= >= && || -> ... <>",
+			input: ":: := == != <= >= && || -> ... <> += -= ++ --",
 			want: []TokenKind{
 				TkColon, TkColon, TkColon, TkAssign,
 				TkEq, TkNeq, TkLe, TkGe,
 				TkAnd, TkOr, TkArrow, TkEllipsis, TkErrorReturn,
+				TkPlusAssign, TkMinusAssign, TkInc, TkDec,
 				TkEOF,
 			},
 		},
@@ -59,13 +60,14 @@ func TestTokenize(t *testing.T) {
 		// ─── Keywords ─────────────────────────────────────────────────────
 		{
 			name:  "keywords",
-			input: "true false exit if elif else proc then return as struct error",
+			input: "true false exit if elif else proc then return as struct error unless catch for break continue",
 			want: []TokenKind{
 				TkTrue, TkFalse, TkExit, TkIf, TkElif, TkElse,
 				TkProc, TkThen, TkReturn, TkAs, TkStruct, TkErrorKw,
+				TkUnless, TkCatch, TkFor, TkBreak, TkContinue,
 				TkEOF,
 			},
-			values: []any{"true", "false", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil},
+			values: []any{"true", "false", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil},
 		},
 
 		// ─── Identifiers ──────────────────────────────────────────────────

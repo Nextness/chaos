@@ -1,0 +1,22 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl arr = ArrayInit(Ident(S64), Int(10), Int(20), Int(30)) [mutable=true compileTime=false]
+      VarDecl sum: Ident(S64) = Int(0) [mutable=true compileTime=false]
+      ForStmt range=Ident(arr) elem=elem
+        Block
+          CompoundAssignStmt sum + Ident(elem)
+      ForStmt range=Ident(arr) index=idx elem=elem
+        Block
+          CompoundAssignStmt sum + Ident(idx)
+      ForStmt cond=Ident(arr)
+        Block
+          CompoundAssignStmt sum + LoopBuiltin(this)
+      ForStmt range=Ident(arr) index=idx elem=elem
+        Block
+          CompoundAssignStmt sum + LoopBuiltin(index)
+      ReturnStmt Ident(sum)

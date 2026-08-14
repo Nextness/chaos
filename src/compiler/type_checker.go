@@ -28,13 +28,16 @@ const (
 // TypeChecker validates the types of a parsed program. It maintains a stack of
 // lexical scopes mapping names to their inferred or declared types.
 type TypeChecker struct {
-	diags                 DiagnosticList
-	scopes                []map[string]Type
-	procs                 map[string]*ProcDecl
-	structs               map[string]*StructDecl
-	errors                map[string]*ErrorDecl
-	currentReturnType     Type
+	diags                  DiagnosticList
+	scopes                 []map[string]Type
+	procs                  map[string]*ProcDecl
+	structs                map[string]*StructDecl
+	errors                 map[string]*ErrorDecl
+	currentReturnType      Type
 	currentErrorReturnType Type // error type of a '<>' result ("" when none)
+	loopDepth              int  // nesting depth of for loops (for break/continue)
+	rangeElemType          Type // element type of the innermost range loop ("" when none)
+	rangeIndexType         Type // index type of the innermost range loop ("" when none)
 }
 
 // CheckProgram runs the type checker over a parsed program and returns any
@@ -230,6 +233,32 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		tc.checkUnlessCatch(n)
 	case *IfCatchStmt:
 		tc.checkIfCatch(n)
+	case *ForStmt:
+		tc.checkFor(n)
+	case *BreakStmt:
+		if tc.loopDepth == 0 {
+			tc.diags.Error(n.Span_, "break outside a loop", "use break inside a for loop")
+		}
+	case *ContinueStmt:
+		if tc.loopDepth == 0 {
+			tc.diags.Error(n.Span_, "continue outside a loop", "use continue inside a for loop")
+		}
+	case *CompoundAssignStmt:
+		declType := tc.lookup(n.Name)
+		if declType == TypeUnknown {
+			tc.diags.Error(n.Span_, "assignment to undeclared variable "+n.Name, "declare the variable before assigning to it")
+			return
+		}
+		tc.checkAssign(n.Span_, declType, n.Value)
+	case *IncDecStmt:
+		declType := tc.lookup(n.Name)
+		if declType == TypeUnknown {
+			tc.diags.Error(n.Span_, "cannot modify undeclared variable "+n.Name, "declare the variable before using it")
+			return
+		}
+		if !isIntegerType(declType) {
+			tc.diags.Error(n.Span_, "cannot increment or decrement a value of type "+string(declType), "use an integer variable")
+		}
 	}
 }
 
@@ -268,6 +297,58 @@ func (tc *TypeChecker) checkIfCatch(n *IfCatchStmt) {
 	}
 	tc.checkCatchBody(n.CatchBody, unionErrorType(condType), n.CatchName)
 	tc.updateType(ident.Name, unionValueType(condType))
+}
+
+// checkFor checks a for loop. The single-expression form is resolved by type:
+// a Bool expression is a while loop, an array expression is an implicit range
+// loop. The explicit range form ("for [idx,] elem: arr") declares its bindings
+// in the body scope.
+func (tc *TypeChecker) checkFor(n *ForStmt) {
+	tc.loopDepth++
+	if n.Init != nil {
+		tc.checkStmt(n.Init)
+	}
+	if n.Range != nil {
+		rt := tc.inferExpr(n.Range)
+		if !isArrayType(rt) {
+			tc.diags.Error(n.Range.nodeSpan(), "for range requires an array, got "+string(rt), "use an array value")
+		}
+		elemType := arrayElemType(rt)
+		prevElem, prevIndex := tc.rangeElemType, tc.rangeIndexType
+		tc.rangeElemType = elemType
+		tc.rangeIndexType = TypeS64
+		tc.pushScope()
+		if n.IndexName != "" {
+			tc.declare(n.IndexName, TypeS64)
+		}
+		if n.ElemName != "" {
+			tc.declare(n.ElemName, elemType)
+		}
+		tc.checkBlock(n.Body)
+		tc.popScope()
+		tc.rangeElemType, tc.rangeIndexType = prevElem, prevIndex
+	} else if n.Cond != nil {
+		ct := tc.inferExpr(n.Cond)
+		if isArrayType(ct) {
+			// Implicit range loop: '#this' and '#index' refer to the element
+			// and index.
+			elemType := arrayElemType(ct)
+			prevElem, prevIndex := tc.rangeElemType, tc.rangeIndexType
+			tc.rangeElemType = elemType
+			tc.rangeIndexType = TypeS64
+			tc.checkBlock(n.Body)
+			tc.rangeElemType, tc.rangeIndexType = prevElem, prevIndex
+		} else {
+			if ct != TypeUnknown && ct != TypeBool {
+				tc.diags.Error(n.Cond.nodeSpan(), "for condition must be Bool, got "+string(ct), "use a boolean condition")
+			}
+			tc.checkBlock(n.Body)
+		}
+	}
+	if n.After != nil {
+		tc.checkStmt(n.After)
+	}
+	tc.loopDepth--
 }
 
 // checkCatchBody checks a catch body: it must return or exit (so the value is
@@ -426,6 +507,36 @@ func (tc *TypeChecker) inferExpr(e Expr) Type {
 		return tc.checkErrorMemberExpr(n)
 	case *ErrorExpr:
 		return TypeUnknown
+	case *ArrayInitExpr:
+		elemType := typeOfTypeExpr(n.Elem)
+		for _, item := range n.Items {
+			tc.checkAssign(item.nodeSpan(), elemType, item)
+		}
+		return arrayType(elemType)
+	case *IndexExpr:
+		baseType := tc.inferExpr(n.Base)
+		if !isArrayType(baseType) {
+			tc.diags.Error(n.Base.nodeSpan(), "cannot index a value of type "+string(baseType), "use an array value")
+			return TypeUnknown
+		}
+		idxType := tc.inferExpr(n.Index)
+		if idxType != TypeUnknown && !isIntegerType(idxType) {
+			tc.diags.Error(n.Index.nodeSpan(), "array index must be an integer, got "+string(idxType), "use an integer index")
+		}
+		return arrayElemType(baseType)
+	case *LoopBuiltinExpr:
+		if n.Name == "this" {
+			if tc.rangeElemType == "" {
+				tc.diags.Error(n.Span_, "'#this' is only available inside a range loop", "use '#this' inside a 'for' loop over an array")
+				return TypeUnknown
+			}
+			return tc.rangeElemType
+		}
+		if tc.rangeIndexType == "" {
+			tc.diags.Error(n.Span_, "'#index' is only available inside a range loop", "use '#index' inside a 'for' loop over an array")
+			return TypeUnknown
+		}
+		return tc.rangeIndexType
 	}
 	return TypeUnknown
 }
@@ -666,13 +777,31 @@ func (tc *TypeChecker) checkStructInit(si *StructInitExpr, structType Type) {
 	}
 }
 
-// typeOfTypeExpr extracts the type name from a type expression (currently just
-// an identifier).
+// typeOfTypeExpr extracts the type name from a type expression: an identifier
+// or an array type "[]T".
 func typeOfTypeExpr(e Expr) Type {
-	if ident, ok := e.(*IdentExpr); ok {
-		return Type(ident.Name)
+	switch n := e.(type) {
+	case *IdentExpr:
+		return Type(n.Name)
+	case *ArrayTypeExpr:
+		return arrayType(typeOfTypeExpr(n.Elem))
 	}
 	return TypeUnknown
+}
+
+// arrayType is the type name of an array with the given element type.
+func arrayType(elem Type) Type {
+	return Type("[]" + string(elem))
+}
+
+// isArrayType reports whether t is an array type.
+func isArrayType(t Type) bool {
+	return strings.HasPrefix(string(t), "[]")
+}
+
+// arrayElemType returns the element type of an array type.
+func arrayElemType(t Type) Type {
+	return Type(strings.TrimPrefix(string(t), "[]"))
 }
 
 // checkAssign validates that a value can be assigned to a target type. Literals

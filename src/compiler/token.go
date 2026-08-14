@@ -106,6 +106,10 @@ const (
 	TkQuestion    // ?
 	TkAt          // @
 	TkPipe        // |
+	TkPlusAssign  // +=
+	TkMinusAssign // -=
+	TkInc         // ++
+	TkDec         // --
 
 	// Keywords
 	TkExit
@@ -120,6 +124,9 @@ const (
 	TkErrorKw
 	TkUnless
 	TkCatch
+	TkFor
+	TkBreak
+	TkContinue
 
 	// Compile-time directives and comments
 	TkDirec   // compile-time directive name after '#'
@@ -167,6 +174,10 @@ var tokenKindNames = [...]string{
 	TkQuestion:       "?",
 	TkAt:             "@",
 	TkPipe:           "|",
+	TkPlusAssign:     "+=",
+	TkMinusAssign:    "-=",
+	TkInc:            "++",
+	TkDec:            "--",
 	TkExit:           "exit",
 	TkIf:             "if",
 	TkElif:           "elif",
@@ -179,6 +190,9 @@ var tokenKindNames = [...]string{
 	TkErrorKw:        "error",
 	TkUnless:         "unless",
 	TkCatch:          "catch",
+	TkFor:            "for",
+	TkBreak:          "break",
+	TkContinue:       "continue",
 	TkDirec:          "directive",
 	TkComment:        "comment",
 }
@@ -234,6 +248,9 @@ func init() {
 		{"error", TkErrorKw},
 		{"unless", TkUnless},
 		{"catch", TkCatch},
+		{"for", TkFor},
+		{"break", TkBreak},
+		{"continue", TkContinue},
 	}
 	keywordTokens = make(map[string]TokenKind, 16)
 	for _, entry := range keywordEntries {

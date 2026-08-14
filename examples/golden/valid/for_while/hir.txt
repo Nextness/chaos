@@ -1,0 +1,11 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl a: S64 = Int(0) [mutable=true compileTime=false]
+      For cond=Bool(true)
+        Block
+          Assign a = Binary(+ Ident(a) Int(1))
+          If condition=Binary(== Ident(a) Int(10))
+            Block
+              Break
+      Return Ident(a)

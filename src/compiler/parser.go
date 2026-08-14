@@ -14,14 +14,21 @@ package compiler
 //	param          = ident ":" ident
 //	result_spec    = "->" ident ("," ident)*
 //	block          = "{" stmt* "}"
-//	stmt           = var_decl | proc_decl | struct_decl | assign_stmt | return_stmt | exit_stmt | if_stmt | block | call_stmt | ";"
+//	stmt           = var_decl | proc_decl | struct_decl | assign_stmt | compound_assign_stmt | inc_dec_stmt | return_stmt | exit_stmt | if_stmt | for_stmt | break_stmt | continue_stmt | block | call_stmt | ";"
 //	call_stmt      = ident "(" arg_list? ")" ("(" arg_list? ")")* ";"
 //	assign_stmt    = ident "=" expr ";"
+//	compound_assign_stmt = ident ("+=" | "-=") expr ";"
+//	inc_dec_stmt   = ident ("++" | "--") ";" | ("++" | "--") ident ";"
 //	return_stmt    = "return" expr? ";"
 //	exit_stmt      = "exit" expr ("," expr)? ";"
 //	if_stmt        = "if" expr if_body ("elif" expr if_body)* ("else" else_body)?
 //	if_body        = block | "then"? stmt
 //	else_body      = block | stmt
+//	for_stmt       = "for" (expr | range_header | c_for_header) block
+//	range_header   = (ident ",")? ident ":" expr
+//	c_for_header   = stmt expr ";" stmt
+//	break_stmt     = "break" ";"
+//	continue_stmt  = "continue" ";"
 //	expr           = or_expr
 //	or_expr        = and_expr ("||" and_expr)*
 //	and_expr       = cmp_expr ("&&" cmp_expr)*
@@ -550,11 +557,25 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 	return decl, true
 }
 
-// parseTypeExpr parses a type expression (currently just an identifier).
+// parseTypeExpr parses a type expression: an identifier or an array type
+// "[]T".
 func (p *Parser) parseTypeExpr() Expr {
 	if p.at(TkIdent) {
 		tok := p.bump()
 		return &IdentExpr{Span_: tok.Span, Name: tok.Text()}
+	}
+	if p.at(TkLBracket) && p.peekN(1).Kind == TkRBracket {
+		openTok := p.bump() // consume "["
+		p.bump()            // consume "]"
+		elem := p.parseTypeExpr()
+		if elem == nil {
+			p.diags.Error(p.peek().Span, "expected element type after '[]'", "add an element type after '[]'")
+			return &ArrayTypeExpr{Span_: openTok.Span, Elem: &ErrorExpr{Span_: p.peek().Span}}
+		}
+		return &ArrayTypeExpr{
+			Span_: spanUnion(openTok.Span, elem.nodeSpan()),
+			Elem:  elem,
+		}
 	}
 	return nil
 }
@@ -843,6 +864,43 @@ func (p *Parser) parseStmt() Stmt {
 	case TkIf:
 		return p.parseIfStmt()
 
+	case TkFor:
+		return p.parseForStmt()
+
+	case TkBreak:
+		tok := p.bump() // consume "break"
+		p.expect(TkSemicolon)
+		return &BreakStmt{Span_: tok.Span}
+
+	case TkContinue:
+		tok := p.bump() // consume "continue"
+		p.expect(TkSemicolon)
+		return &ContinueStmt{Span_: tok.Span}
+
+	case TkInc, TkDec:
+		// Prefix increment/decrement: "++name;" or "--name;"
+		opTok := p.bump()
+		if !p.at(TkIdent) {
+			p.diags.Error(p.peek().Span, "expected identifier after "+opTok.Kind.String(), "add a variable name after the operator")
+			p.syncStmt()
+			if p.at(TkSemicolon) {
+				p.bump()
+			}
+			return nil
+		}
+		nameTok := p.bump()
+		p.expect(TkSemicolon)
+		op := BinaryOpAdd
+		if opTok.Kind == TkDec {
+			op = BinaryOpSub
+		}
+		return &IncDecStmt{
+			Span_:  spanUnion(opTok.Span, nameTok.Span),
+			Name:   nameTok.Text(),
+			Op:     op,
+			Prefix: true,
+		}
+
 	case TkIdent:
 		// ident - could be decl, assign, or just an expression statement
 		return p.parseIdentStmt()
@@ -942,6 +1000,43 @@ func (p *Parser) parseIdentStmt() Stmt {
 		p.bump()
 		return p.parseAssignStmt(nameTok, name)
 
+	case p.at(TkPlusAssign), p.at(TkMinusAssign):
+		opTok := p.bump()
+		value := p.parseExpr(0)
+		if value == nil {
+			p.diags.Error(p.peek().Span, "expected expression after "+opTok.Kind.String(), "add an expression after the operator")
+			p.syncStmt()
+			if p.at(TkSemicolon) {
+				p.bump()
+			}
+			return &CompoundAssignStmt{Span_: nameTok.Span, Name: name, Op: BinaryOpAdd}
+		}
+		p.expect(TkSemicolon)
+		op := BinaryOpAdd
+		if opTok.Kind == TkMinusAssign {
+			op = BinaryOpSub
+		}
+		return &CompoundAssignStmt{
+			Span_: spanUnion(nameTok.Span, value.nodeSpan()),
+			Name:  name,
+			Op:    op,
+			Value: value,
+		}
+
+	case p.at(TkInc), p.at(TkDec):
+		// Postfix increment/decrement: "name++;" or "name--;"
+		opTok := p.bump()
+		p.expect(TkSemicolon)
+		op := BinaryOpAdd
+		if opTok.Kind == TkDec {
+			op = BinaryOpSub
+		}
+		return &IncDecStmt{
+			Span_: spanUnion(nameTok.Span, opTok.Span),
+			Name:  name,
+			Op:    op,
+		}
+
 	case p.at(TkLParen):
 		// Call expression used as a statement: f(args);
 		p.bump() // consume "("
@@ -965,9 +1060,9 @@ func (p *Parser) parseIdentStmt() Stmt {
 
 	default:
 		// Tolerant mode: skip known-but-unimplemented statement keywords
-		// (for, while) as balanced blocks. Other unknown ident-led
-		// statements still error.
-		if p.tolerant && (name == "for" || name == "while") {
+		// (while) as balanced blocks. Other unknown ident-led statements
+		// still error.
+		if p.tolerant && name == "while" {
 			p.skipToMatchedBrace()
 			return nil
 		}
@@ -1253,6 +1348,196 @@ func (p *Parser) parseElseBody() *BlockStmt {
 	return &BlockStmt{Span_: stmt.nodeSpan(), Stmts: []Stmt{stmt}}
 }
 
+// parseForStmt parses a loop. The form is chosen by lookahead:
+//
+//	"for [idx,] elem: expr { body }"   range with bindings
+//	"for init; cond; after { body }"   c-style
+//	"for expr { body }"                while or implicit range (by type)
+func (p *Parser) parseForStmt() Stmt {
+	tok := p.bump() // consume "for"
+
+	if p.atRangeFor() {
+		return p.parseRangeFor(tok)
+	}
+	if p.atCFor() {
+		return p.parseCFor(tok)
+	}
+
+	// Single-expression form: while or implicit range.
+	cond := p.parseExpr(0)
+	if cond == nil {
+		p.diags.Error(p.peek().Span, "expected condition after 'for'", "add a condition after 'for'")
+		cond = &ErrorExpr{Span_: p.peek().Span}
+	}
+	body := p.parseBlock()
+	if body == nil {
+		p.diags.Error(p.peek().Span, "expected block after 'for' condition", "add a '{' block for the loop body")
+		body = &BlockStmt{Span_: p.peek().Span}
+	}
+	return &ForStmt{
+		Span_: spanUnion(tok.Span, body.Span_),
+		Cond:  cond,
+		Body:  body,
+	}
+}
+
+// atRangeFor reports whether the tokens after 'for' start a range header:
+// "ident: expr" or "ident, ident: expr". A ':' followed by '=' (':=') is a
+// c-style init, and "ident: Type =" is a typed c-style init, so both are
+// excluded.
+func (p *Parser) atRangeFor() bool {
+	if !p.at(TkIdent) {
+		return false
+	}
+	n1 := p.peekN(1)
+	if n1.Kind == TkComma {
+		return true
+	}
+	if n1.Kind != TkColon {
+		return false
+	}
+	if p.peekN(2).Kind == TkAssign {
+		return false // ':=' is a c-style init
+	}
+	if p.peekN(2).Kind == TkIdent && p.peekN(3).Kind == TkAssign {
+		return false // 'ident: Type =' is a typed c-style init
+	}
+	return true
+}
+
+// atCFor reports whether the tokens after 'for' start a c-style header: a
+// statement that can serve as the init (a declaration, assignment, compound
+// assignment, or increment/decrement).
+func (p *Parser) atCFor() bool {
+	if p.at(TkIdent) {
+		switch p.peekN(1).Kind {
+		case TkColon, TkAssign, TkPlusAssign, TkMinusAssign, TkInc, TkDec:
+			return true
+		}
+		return false
+	}
+	return p.at(TkInc) || p.at(TkDec)
+}
+
+// parseRangeFor parses "for [idx,] elem: expr { body }" after 'for' has been
+// consumed.
+func (p *Parser) parseRangeFor(tok Token) Stmt {
+	indexName := ""
+	if p.at(TkIdent) && p.peekN(1).Kind == TkComma {
+		indexTok := p.bump() // consume the index name
+		indexName = indexTok.Text()
+		p.bump() // consume ","
+	}
+	elemTok := p.bump() // consume the element name
+	elemName := elemTok.Text()
+	p.expect(TkColon)
+	rangeExpr := p.parseExpr(0)
+	if rangeExpr == nil {
+		p.diags.Error(p.peek().Span, "expected array expression after ':' in for", "add an array expression after ':'")
+		rangeExpr = &ErrorExpr{Span_: p.peek().Span}
+	}
+	body := p.parseBlock()
+	if body == nil {
+		p.diags.Error(p.peek().Span, "expected block after 'for' range", "add a '{' block for the loop body")
+		body = &BlockStmt{Span_: p.peek().Span}
+	}
+	return &ForStmt{
+		Span_:     spanUnion(tok.Span, body.Span_),
+		Range:     rangeExpr,
+		IndexName: indexName,
+		ElemName:  elemName,
+		Body:      body,
+	}
+}
+
+// parseCFor parses "for init; cond; after { body }" after 'for' has been
+// consumed.
+func (p *Parser) parseCFor(tok Token) Stmt {
+	init := p.parseStmt()
+	cond := p.parseExpr(0)
+	if cond == nil {
+		p.diags.Error(p.peek().Span, "expected condition after ';' in for", "add a condition after ';'")
+		cond = &ErrorExpr{Span_: p.peek().Span}
+	}
+	p.expect(TkSemicolon)
+	after := p.parseCForAfter()
+	body := p.parseBlock()
+	if body == nil {
+		p.diags.Error(p.peek().Span, "expected block after 'for' header", "add a '{' block for the loop body")
+		body = &BlockStmt{Span_: p.peek().Span}
+	}
+	return &ForStmt{
+		Span_: spanUnion(tok.Span, body.Span_),
+		Init:  init,
+		Cond:  cond,
+		After: after,
+		Body:  body,
+	}
+}
+
+// parseCForAfter parses the after clause of a c-for header. Unlike normal
+// statements it is terminated by the loop body '{' rather than a semicolon.
+// Valid forms are assignments, compound assignments, increments/decrements
+// (prefix and postfix), and calls. Returns nil for an empty after clause
+// ("for (;;)").
+func (p *Parser) parseCForAfter() Stmt {
+	if p.at(TkInc) || p.at(TkDec) {
+		// Prefix increment/decrement: "++a"
+		opTok := p.bump()
+		if !p.at(TkIdent) {
+			p.diags.Error(p.peek().Span, "expected identifier after "+opTok.Kind.String(), "add a variable name after the operator")
+			return nil
+		}
+		nameTok := p.bump()
+		op := BinaryOpAdd
+		if opTok.Kind == TkDec {
+			op = BinaryOpSub
+		}
+		return &IncDecStmt{Span_: spanUnion(opTok.Span, nameTok.Span), Name: nameTok.Text(), Op: op, Prefix: true}
+	}
+	if !p.at(TkIdent) {
+		return nil // empty after clause
+	}
+	nameTok := p.bump()
+	name := nameTok.Text()
+	switch p.peek().Kind {
+	case TkAssign:
+		p.bump()
+		value := p.parseExpr(0)
+		if value == nil {
+			p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
+			return &AssignStmt{Span_: nameTok.Span, Name: name}
+		}
+		return &AssignStmt{Span_: spanUnion(nameTok.Span, value.nodeSpan()), Name: name, Value: value}
+	case TkPlusAssign, TkMinusAssign:
+		opTok := p.bump()
+		value := p.parseExpr(0)
+		if value == nil {
+			p.diags.Error(p.peek().Span, "expected expression after "+opTok.Kind.String(), "add an expression after the operator")
+			return nil
+		}
+		op := BinaryOpAdd
+		if opTok.Kind == TkMinusAssign {
+			op = BinaryOpSub
+		}
+		return &CompoundAssignStmt{Span_: spanUnion(nameTok.Span, value.nodeSpan()), Name: name, Op: op, Value: value}
+	case TkInc, TkDec:
+		opTok := p.bump()
+		op := BinaryOpAdd
+		if opTok.Kind == TkDec {
+			op = BinaryOpSub
+		}
+		return &IncDecStmt{Span_: spanUnion(nameTok.Span, opTok.Span), Name: name, Op: op}
+	case TkLParen:
+		// Call expression used as the after clause: "do_something()"
+		p.bump() // consume "("
+		expr := p.parseCallArgs(&IdentExpr{Span_: nameTok.Span, Name: name}, nameTok.Span)
+		return &ExprStmt{Span_: expr.Span_, Expr: expr}
+	}
+	p.diags.Error(p.peek().Span, "unexpected token after identifier '"+name+"' in for after clause", "use an assignment, increment, decrement, or call")
+	return nil
+}
+
 // parseBlock parses: "{" stmt* "}"
 func (p *Parser) parseBlock() *BlockStmt {
 	if !p.at(TkLBrace) {
@@ -1315,6 +1600,8 @@ func tokenPrecedence(kind TokenKind) int {
 		return precMul
 	case TkLParen:
 		return precCall
+	case TkLBracket:
+		return precCall
 	}
 	return 0
 }
@@ -1345,6 +1632,12 @@ func (p *Parser) parseExpr(minBp int) Expr {
 		// Handle calls (postfix)
 		if tok.Kind == TkLParen {
 			left = p.parseCallArgs(left, tok.Span)
+			continue
+		}
+
+		// Handle array indexing (postfix)
+		if tok.Kind == TkLBracket {
+			left = p.parseIndex(left, tok.Span)
 			continue
 		}
 
@@ -1470,6 +1763,38 @@ func (p *Parser) parseAtom() Expr {
 		}
 		return nil
 
+	case TkLBracket:
+		// Array literal: []T.{...}
+		if p.peekN(1).Kind == TkRBracket {
+			openTok := p.bump() // consume "["
+			p.bump()            // consume "]"
+			elem := p.parseTypeExpr()
+			if elem == nil {
+				p.diags.Error(p.peek().Span, "expected element type after '[]'", "add an element type after '[]'")
+				return &ErrorExpr{Span_: openTok.Span}
+			}
+			if p.at(TkDot) && p.peekN(1).Kind == TkLBrace {
+				p.bump() // consume "."
+				return p.parseArrayInit(openTok, elem)
+			}
+			p.diags.Error(p.peek().Span, "expected '.{' after array type in literal", "add '.{' after the array type")
+			return &ErrorExpr{Span_: openTok.Span}
+		}
+		return nil
+
+	case TkHash:
+		// Loop builtins: #this and #index inside a range loop body.
+		p.bump() // consume "#"
+		direc := p.bump()
+		if direc.Kind == TkDirec && (direc.Value == "this" || direc.Value == "index") {
+			return &LoopBuiltinExpr{
+				Span_: Span{File: tok.Span.File, Start: tok.Span.Start, End: direc.Span.End},
+				Name:  direc.Value,
+			}
+		}
+		p.diags.Error(direc.Span, "unknown directive '"+direc.Text()+"' in expression", "use '#this' or '#index' inside a range loop")
+		return &ErrorExpr{Span_: tok.Span}
+
 	case TkLParen:
 		p.bump() // consume "("
 		inner := p.parseExpr(0)
@@ -1486,6 +1811,46 @@ func (p *Parser) parseAtom() Expr {
 
 	default:
 		return nil
+	}
+}
+
+// parseArrayInit parses the "{ item, item, ... }" part of an array literal
+// after the "." has been consumed. elem is the element type expression from
+// the "[]T" prefix.
+func (p *Parser) parseArrayInit(openTok Token, elem Expr) Expr {
+	if !p.at(TkLBrace) {
+		p.diags.Error(p.peek().Span, "expected '{' after '.' in array literal", "add a '{' block for the array elements")
+		return &ErrorExpr{Span_: openTok.Span}
+	}
+	p.bump() // consume "{"
+
+	var items []Expr
+	for !p.at(TkRBrace) && !p.at(TkEOF) {
+		before := p.pos
+		item := p.parseExpr(0)
+		if item == nil {
+			p.diags.Error(p.peek().Span, "expected element value in array literal", "add an element value")
+			if p.pos == before {
+				p.bump()
+			}
+			continue
+		}
+		items = append(items, item)
+		if !p.at(TkComma) {
+			break
+		}
+		commaTok := p.bump()
+		if p.at(TkRBrace) {
+			p.diags.Error(commaTok.Span, "trailing comma in array literal", "remove the trailing comma")
+			break
+		}
+	}
+	closeTok := p.expect(TkRBrace)
+
+	return &ArrayInitExpr{
+		Span_: Span{File: openTok.Span.File, Start: openTok.Span.Start, End: closeTok.Span.End},
+		Elem:  elem,
+		Items: items,
 	}
 }
 
@@ -1514,6 +1879,21 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 		Span_: spanUnion(fn.nodeSpan(), closeTok.Span),
 		Func:  fn,
 		Args:  args,
+	}
+}
+
+// parseIndex parses the "base[index]" postfix after "[" has been consumed.
+func (p *Parser) parseIndex(base Expr, openSpan Span) Expr {
+	idx := p.parseExpr(0)
+	if idx == nil {
+		p.diags.Error(p.peek().Span, "expected index expression after '['", "add an index expression after '['")
+		idx = &ErrorExpr{Span_: p.peek().Span}
+	}
+	closeTok := p.expect(TkRBracket)
+	return &IndexExpr{
+		Span_: spanUnion(base.nodeSpan(), closeTok.Span),
+		Base:  base,
+		Index: idx,
 	}
 }
 

@@ -1,0 +1,14 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl sum: Ident(S64) = Int(0) [mutable=true compileTime=false]
+      ForStmt init=        VarDecl i = Int(1) [mutable=true compileTime=false]
+ cond=Binary(<= Ident(i) Int(10)) after=        CompoundAssignStmt i + Int(1)
+
+        Block
+          CompoundAssignStmt sum + Ident(i)
+      ReturnStmt Ident(sum)

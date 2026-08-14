@@ -242,6 +242,20 @@ func TestFasmRuntime(t *testing.T) {
 		{"error re-raise", "Some_Error :: error {\n    GENERIC;\n    SOMETHING_ELSE;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\ng :: proc -> (S64 <> Some_Error) {\n    r := f(-1);\n    if r catch {\n        return r;\n    }\n    return r;\n}\n#entry main :: proc -> S64 {\n    r := g() unless catch {\n        return 5;\n    }\n    return r;\n}", 5},
 		{"error string value", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (String <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return «hello»;\n}\n#entry main :: proc -> S64 {\n    s := f(1) unless catch {\n        return -1;\n    }\n    if s == «hello» {\n        return 11;\n    }\n    return 0;\n}", 11},
 		{"exit", "#entry main :: proc {\n    exit 9;\n}", 9},
+		{"while break", "#entry main :: proc -> S64 {\n    a := 0;\n    for true {\n        a += 1;\n        if a == 10 then break;\n    }\n    return a;\n}", 10},
+		{"c-for += after", "#entry main :: proc -> S64 {\n    sum: S64 = 0;\n    for i := 1; i <= 10; i += 1 {\n        sum += i;\n    }\n    return sum;\n}", 55},
+		{"c-for ++ after", "#entry main :: proc -> S64 {\n    for a := 0; a != 10; a++ {\n    }\n    return a;\n}", 10},
+		{"c-for -- after", "#entry main :: proc -> S64 {\n    for a := 10; a != 0; a-- {\n    }\n    return a;\n}", 0},
+		{"continue", "#entry main :: proc -> S64 {\n    arr := []S64.{1, 2, 3, 4, 5};\n    sum: S64 = 0;\n    for i := 0; i < 5; i++ {\n        if arr[i] == 3 then continue;\n        sum += arr[i];\n    }\n    return sum;\n}", 12},
+		{"range elem", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    sum: S64 = 0;\n    for elem: arr {\n        sum += elem;\n    }\n    return sum;\n}", 60},
+		{"range idx elem", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    sum: S64 = 0;\n    for idx, elem: arr {\n        sum += elem + idx;\n    }\n    return sum;\n}", 63},
+		{"range implicit this", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    sum: S64 = 0;\n    for arr {\n        sum += #this;\n    }\n    return sum;\n}", 60},
+		{"range this index", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    sum: S64 = 0;\n    for idx, elem: arr {\n        sum += #this + #index;\n    }\n    return sum;\n}", 63},
+		{"range string array", "count_a :: proc (s: String) -> S64 {\n    if s == «apple» then return 1;\n    return 0;\n}\n#entry main :: proc -> S64 {\n    arr := []String.{«apple», «banana», «apple»};\n    n: S64 = 0;\n    for elem: arr {\n        n += count_a(elem);\n    }\n    return n;\n}", 2},
+		{"array param", "total :: proc (items: []S64) -> S64 {\n    sum: S64 = 0;\n    for elem: items {\n        sum += elem;\n    }\n    return sum;\n}\n#entry main :: proc -> S64 {\n    arr := []S64.{5, 6, 7};\n    return total(arr);\n}", 18},
+		{"array index", "#entry main :: proc -> S64 {\n    arr := []S64.{7, 8, 9};\n    return arr[1];\n}", 8},
+		{"prefix inc dec", "#entry main :: proc -> S64 {\n    a := 5;\n    ++a;\n    ++a;\n    --a;\n    return a;\n}", 6},
+		{"empty array", "#entry main :: proc -> S64 {\n    arr := []S64.{};\n    n: S64 = 0;\n    for elem: arr {\n        n += 1;\n    }\n    return n;\n}", 0},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

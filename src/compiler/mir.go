@@ -82,6 +82,9 @@ const (
 	MIRCall
 	MIRStructInit
 	MIRFieldLoad
+	MIRArrayInit
+	MIRArrayLen
+	MIRArrayIndex
 	MIRExit
 )
 
@@ -134,6 +137,12 @@ func (op MIROpcode) String() string {
 		return "struct.init"
 	case MIRFieldLoad:
 		return "field.load"
+	case MIRArrayInit:
+		return "array.init"
+	case MIRArrayLen:
+		return "array.len"
+	case MIRArrayIndex:
+		return "array.index"
 	case MIRExit:
 		return "exit"
 	}

@@ -1,0 +1,9 @@
+// expect-stage: type
+// expect-error: '#this' is only available inside a range loop
+// '#this' refers to the current element of a range loop.
+#entry main :: proc -> S64 {
+    for true {
+        return #this;
+    }
+    return 0;
+}

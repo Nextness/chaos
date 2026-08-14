@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: for condition must be Bool, got S64
+// A single-expression for must be a Bool condition or an array.
+#entry main :: proc -> S64 {
+    x := 5;
+    for x {
+        return 1;
+    }
+    return 0;
+}

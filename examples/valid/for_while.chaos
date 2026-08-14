@@ -1,0 +1,10 @@
+// expect-exit: 10
+// A while-style loop: "for true" repeats until a break exits.
+#entry main :: proc -> S64 {
+    a := 0;
+    for true {
+        a += 1;
+        if a == 10 then break;
+    }
+    return a;
+}

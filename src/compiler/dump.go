@@ -191,6 +191,46 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 		}
 		b.WriteString("\n")
 		dumpBlock(b, n.CatchBody, depth+1)
+	case *ForStmt:
+		dumpIndent(b, depth)
+		b.WriteString("ForStmt")
+		if n.Range != nil {
+			b.WriteString(" range=")
+			dumpExpr(b, n.Range)
+			if n.IndexName != "" {
+				fmt.Fprintf(b, " index=%s", n.IndexName)
+			}
+			if n.ElemName != "" {
+				fmt.Fprintf(b, " elem=%s", n.ElemName)
+			}
+		} else {
+			if n.Init != nil {
+				b.WriteString(" init=")
+				dumpStmt(b, n.Init, depth+1)
+			}
+			b.WriteString(" cond=")
+			dumpExpr(b, n.Cond)
+			if n.After != nil {
+				b.WriteString(" after=")
+				dumpStmt(b, n.After, depth+1)
+			}
+		}
+		b.WriteString("\n")
+		dumpBlock(b, n.Body, depth+1)
+	case *BreakStmt:
+		dumpIndent(b, depth)
+		b.WriteString("BreakStmt\n")
+	case *ContinueStmt:
+		dumpIndent(b, depth)
+		b.WriteString("ContinueStmt\n")
+	case *CompoundAssignStmt:
+		dumpIndent(b, depth)
+		fmt.Fprintf(b, "CompoundAssignStmt %s %s ", n.Name, n.Op)
+		dumpExpr(b, n.Value)
+		b.WriteString("\n")
+	case *IncDecStmt:
+		dumpIndent(b, depth)
+		fmt.Fprintf(b, "IncDecStmt %s %s\n", n.Name, n.Op)
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Stmt %T\n", s)
@@ -266,6 +306,26 @@ func dumpExpr(b *strings.Builder, e Expr) {
 			b.WriteString("!")
 		}
 		b.WriteString(")")
+	case *ArrayTypeExpr:
+		b.WriteString("ArrayType(")
+		dumpExpr(b, n.Elem)
+		b.WriteString(")")
+	case *ArrayInitExpr:
+		b.WriteString("ArrayInit(")
+		dumpExpr(b, n.Elem)
+		for _, item := range n.Items {
+			b.WriteString(", ")
+			dumpExpr(b, item)
+		}
+		b.WriteString(")")
+	case *IndexExpr:
+		b.WriteString("Index(")
+		dumpExpr(b, n.Base)
+		b.WriteString(", ")
+		dumpExpr(b, n.Index)
+		b.WriteString(")")
+	case *LoopBuiltinExpr:
+		fmt.Fprintf(b, "LoopBuiltin(%s)", n.Name)
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)
 	}

@@ -1,0 +1,30 @@
+MIR
+  Function main() -> S64
+    Local l0: S64
+    Local l1: S64
+    bb0:
+      v0:S64 = const 0
+      store.local v0 l0
+      v1:S64 = const 1
+      store.local v1 l1
+      jump bb1
+    bb1:
+      v2:S64 = load.local l1
+      v3:S64 = const 10
+      v4:Bool = cmp.le v2 v3
+      branch v4, bb2, bb4
+    bb2:
+      v5:S64 = load.local l0
+      v6:S64 = load.local l1
+      v7:S64 = add v5 v6
+      store.local v7 l0
+      jump bb3
+    bb3:
+      v8:S64 = load.local l1
+      v9:S64 = const 1
+      v10:S64 = add v8 v9
+      store.local v10 l1
+      jump bb1
+    bb4:
+      v11:S64 = load.local l0
+      return v11

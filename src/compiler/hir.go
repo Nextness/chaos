@@ -167,6 +167,72 @@ type HIRIfCatch struct {
 func (s *HIRIfCatch) hirStmtNode()  {}
 func (s *HIRIfCatch) hirSpan() Span { return s.Span_ }
 
+// HIRFor is a loop. Init, Cond, and After are the c-style header; the range
+// form is desugared into this shape during lowering (a hidden index variable,
+// a length comparison, and an increment). Break and continue jump to the
+// loop's exit and after blocks.
+type HIRFor struct {
+	Span_ Span
+	Init  HIRStmt
+	Cond  HIRExpr
+	After HIRStmt
+	Body  *HIRBlock
+}
+
+func (s *HIRFor) hirStmtNode()  {}
+func (s *HIRFor) hirSpan() Span { return s.Span_ }
+
+// HIRBreak exits the innermost enclosing loop.
+type HIRBreak struct {
+	Span_ Span
+}
+
+func (s *HIRBreak) hirStmtNode()  {}
+func (s *HIRBreak) hirSpan() Span { return s.Span_ }
+
+// HIRContinue jumps to the after-statement of the innermost enclosing loop.
+type HIRContinue struct {
+	Span_ Span
+}
+
+func (s *HIRContinue) hirStmtNode()  {}
+func (s *HIRContinue) hirSpan() Span { return s.Span_ }
+
+// HIRArrayInit is an array literal. Type is the array type "[]T"; Items holds
+// the element values.
+type HIRArrayInit struct {
+	Span_ Span
+	Type  TypeID
+	Items []HIRExpr
+}
+
+func (e *HIRArrayInit) hirExprNode()    {}
+func (e *HIRArrayInit) hirSpan() Span   { return e.Span_ }
+func (e *HIRArrayInit) hirType() TypeID { return e.Type }
+
+// HIRArrayLen is the length of an array value. Type is S64.
+type HIRArrayLen struct {
+	Span_ Span
+	Array HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRArrayLen) hirExprNode()    {}
+func (e *HIRArrayLen) hirSpan() Span   { return e.Span_ }
+func (e *HIRArrayLen) hirType() TypeID { return e.Type }
+
+// HIRIndex is an array element access. Type is the element type.
+type HIRIndex struct {
+	Span_ Span
+	Base  HIRExpr
+	Index HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRIndex) hirExprNode()    {}
+func (e *HIRIndex) hirSpan() Span   { return e.Span_ }
+func (e *HIRIndex) hirType() TypeID { return e.Type }
+
 // HIRFieldLoad reads one field of a struct value. Field is the field index
 // into the base's struct type; Type is the field type.
 type HIRFieldLoad struct {

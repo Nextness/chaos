@@ -1,0 +1,3 @@
+[ERROR] 6:16:this_outside_range.chaos - '#this' is only available inside a range loop
+         return #this;
+                ^^^^^ -> use '#this' inside a 'for' loop over an array

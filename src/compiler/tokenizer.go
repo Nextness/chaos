@@ -220,6 +220,14 @@ func (t *Tokenizer) next() Token {
 		return t.emitN(TkOr, start, 2)
 	case b == '-' && t.peekN(1) == '>':
 		return t.emitN(TkArrow, start, 2)
+	case b == '+' && t.peekN(1) == '+':
+		return t.emitN(TkInc, start, 2)
+	case b == '-' && t.peekN(1) == '-':
+		return t.emitN(TkDec, start, 2)
+	case b == '+' && t.peekN(1) == '=':
+		return t.emitN(TkPlusAssign, start, 2)
+	case b == '-' && t.peekN(1) == '=':
+		return t.emitN(TkMinusAssign, start, 2)
 	case b == '.' && t.peekN(1) == '.' && t.peekN(2) == '.':
 		return t.emitN(TkEllipsis, start, 3)
 	}

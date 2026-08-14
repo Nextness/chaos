@@ -1,0 +1,3 @@
+[ERROR] 6:15:for_range_not_array.chaos - for range requires an array, got S64
+     for elem: x {
+               ^ -> use an array value

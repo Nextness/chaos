@@ -186,6 +186,16 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			// The constant highlight covers the member name and its '!'.
 			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name) - bangLen, End: e.Span_.End}
 			out = append(out, spanToTokenRows(memberSpan, sf, semTypeConstant)...)
+		case *compiler.ArrayInitExpr:
+			typeToken(e.Elem, sf, known, &out)
+			for _, item := range e.Items {
+				walkExpr(item)
+			}
+		case *compiler.IndexExpr:
+			walkExpr(e.Base)
+			walkExpr(e.Index)
+		case *compiler.LoopBuiltinExpr:
+			// Builtin directive; no highlight.
 		}
 	}
 
@@ -248,6 +258,35 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				out = append(out, spanToTokenRows(s.CatchNameSpan, sf, semTypeVariable)...)
 			}
 			walkBlock(s.CatchBody)
+		case *compiler.ForStmt:
+			if s.Init != nil {
+				walkStmt(s.Init)
+			}
+			if s.Cond != nil {
+				walkExpr(s.Cond)
+			}
+			if s.Range != nil {
+				walkExpr(s.Range)
+			}
+			if s.IndexName != "" {
+				out = append(out, spanToTokenRows(nameSpan(s.Span_, s.IndexName), sf, semTypeVariable)...)
+			}
+			if s.ElemName != "" {
+				out = append(out, spanToTokenRows(nameSpan(s.Span_, s.ElemName), sf, semTypeVariable)...)
+			}
+			if s.After != nil {
+				walkStmt(s.After)
+			}
+			walkBlock(s.Body)
+		case *compiler.BreakStmt, *compiler.ContinueStmt:
+			// No operands to highlight.
+		case *compiler.CompoundAssignStmt:
+			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
+			if s.Value != nil {
+				walkExpr(s.Value)
+			}
+		case *compiler.IncDecStmt:
+			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
 		}
 	}
 

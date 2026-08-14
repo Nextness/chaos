@@ -49,6 +49,8 @@ type Lowerer struct {
 	hir          *HIR
 	diags        DiagnosticList
 	curResults   []TypeID // result types of the procedure being lowered
+	rangeThis    HIRExpr  // expression for '#this' in the innermost range loop
+	rangeIndex   SymbolID // symbol for '#index' in the innermost range loop
 }
 
 func (l *Lowerer) pushScope() {
@@ -74,13 +76,16 @@ func (l *Lowerer) lookup(name string) SymbolID {
 	return l.symbols.Declare(name)
 }
 
-// typeOfTypeExpr resolves a type expression (currently just an identifier) to
-// a TypeID.
+// typeOfTypeExpr resolves a type expression (an identifier or an array type
+// "[]T") to a TypeID.
 func (l *Lowerer) typeOfTypeExpr(e Expr) TypeID {
-	if ident, ok := e.(*IdentExpr); ok {
-		if id, ok := l.types.ByName(ident.Name); ok {
+	switch n := e.(type) {
+	case *IdentExpr:
+		if id, ok := l.types.ByName(n.Name); ok {
 			return id
 		}
+	case *ArrayTypeExpr:
+		return l.types.InternArray(l.typeOfTypeExpr(n.Elem))
 	}
 	return l.types.Unknown()
 }
@@ -269,6 +274,16 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 		return l.lowerUnlessCatch(n)
 	case *IfCatchStmt:
 		return l.lowerIfCatch(n)
+	case *ForStmt:
+		return l.lowerFor(n)
+	case *BreakStmt:
+		return &HIRBreak{Span_: n.Span_}
+	case *ContinueStmt:
+		return &HIRContinue{Span_: n.Span_}
+	case *CompoundAssignStmt:
+		return l.lowerCompoundAssign(n)
+	case *IncDecStmt:
+		return l.lowerIncDec(n)
 	case *ProcDecl, *StructDecl, *ErrorDecl:
 		// Nested declarations are not supported inside bodies.
 		return nil
@@ -318,6 +333,153 @@ func (l *Lowerer) lowerIf(n *IfStmt) HIRStmt {
 		els = l.lowerBlock(n.ElseBody)
 	}
 	return &HIRIf{Span_: n.Span_, Condition: cond, Then: then, Elif: elifs, Else: els}
+}
+
+// lowerFor lowers a for loop. The range form is desugared into a c-style loop
+// over a hidden index variable: the array is bound once, the loop runs while
+// the index is below the array length, and the body binds the element (and
+// index) and exposes '#this' and '#index'.
+func (l *Lowerer) lowerFor(n *ForStmt) HIRStmt {
+	if n.Range != nil {
+		return l.lowerRangeFor(n, n.Range, n.IndexName, n.ElemName)
+	}
+	if n.Cond != nil {
+		var init, after HIRStmt
+		if n.Init != nil {
+			init = l.lowerStmt(n.Init)
+		}
+		cond := l.lowerExpr(n.Cond)
+		if l.types.Lookup(cond.hirType()).Kind == TypeKindArray {
+			// Implicit range loop: "for arr { ... }" with '#this'/'#index'.
+			return l.lowerRangeFor(n, n.Cond, "", "")
+		}
+		if n.After != nil {
+			after = l.lowerStmt(n.After)
+		}
+		return &HIRFor{Span_: n.Span_, Init: init, Cond: cond, After: after, Body: l.lowerBlock(n.Body)}
+	}
+	return &HIRFor{Span_: n.Span_, Body: l.lowerBlock(n.Body)}
+}
+
+// lowerRangeFor desugars a range loop into a c-style loop. The array is bound
+// to a hidden variable so it is evaluated once; a hidden (or named) index
+// variable counts from 0 to the array length; the body binds the element and
+// exposes '#this' and '#index'.
+func (l *Lowerer) lowerRangeFor(n *ForStmt, rangeExpr Expr, indexName, elemName string) HIRStmt {
+	arrVal := l.lowerExpr(rangeExpr)
+	arrType := arrVal.hirType()
+	elemType := l.types.Lookup(arrType).Elem
+
+	// Bind the array once.
+	arrSym := l.symbols.Declare("__arr")
+	l.declare("__arr", arrSym)
+	l.varTypes[arrSym] = arrType
+	arrDecl := &HIRVarDecl{Span_: n.Span_, Symbol: arrSym, Name: "__arr", Type: arrType, Init: arrVal, Mutable: false, CompileTime: false}
+
+	// Index variable: the named index (when given) is the loop counter.
+	idxName := "__idx"
+	if indexName != "" {
+		idxName = indexName
+	}
+	idxSym := l.symbols.Declare(idxName)
+	l.declare(idxName, idxSym)
+	l.varTypes[idxSym] = l.types.S64()
+	idxDecl := &HIRVarDecl{
+		Span_:       n.Span_,
+		Symbol:      idxSym,
+		Name:        idxName,
+		Type:        l.types.S64(),
+		Init:        &HIRConst{Span_: n.Span_, Type: l.types.S64(), Kind: ConstInt, Int: 0},
+		Mutable:     true,
+		CompileTime: false,
+	}
+
+	arrRef := &HIRRef{Span_: n.Span_, Symbol: arrSym, Type: arrType}
+	idxRef := &HIRRef{Span_: n.Span_, Symbol: idxSym, Type: l.types.S64()}
+	cond := &HIRBinary{
+		Span_: n.Span_,
+		Op:    BinaryOpLt,
+		Left:  idxRef,
+		Right: &HIRArrayLen{Span_: n.Span_, Array: arrRef, Type: l.types.S64()},
+		Type:  l.types.Bool(),
+	}
+	after := &HIRAssign{
+		Span_:  n.Span_,
+		Target: idxSym,
+		Value: &HIRBinary{
+			Span_: n.Span_,
+			Op:    BinaryOpAdd,
+			Left:  idxRef,
+			Right: &HIRConst{Span_: n.Span_, Type: l.types.S64(), Kind: ConstInt, Int: 1},
+			Type:  l.types.S64(),
+		},
+	}
+
+	// Lower the body with '#this' and '#index' bound and the element binding
+	// prepended.
+	prevThis, prevIndex := l.rangeThis, l.rangeIndex
+	l.rangeThis = &HIRIndex{Span_: n.Span_, Base: arrRef, Index: idxRef, Type: elemType}
+	l.rangeIndex = idxSym
+
+	l.pushScope()
+	var bodyStmts []HIRStmt
+	if elemName != "" {
+		elemSym := l.symbols.Declare(elemName)
+		l.declare(elemName, elemSym)
+		l.varTypes[elemSym] = elemType
+		bodyStmts = append(bodyStmts, &HIRVarDecl{
+			Span_:       n.Span_,
+			Symbol:      elemSym,
+			Name:        elemName,
+			Type:        elemType,
+			Init:        l.rangeThis,
+			Mutable:     false,
+			CompileTime: false,
+		})
+	}
+	for _, s := range n.Body.Stmts {
+		if hs := l.lowerStmt(s); hs != nil {
+			bodyStmts = append(bodyStmts, hs)
+		}
+	}
+	l.popScope()
+	l.rangeThis, l.rangeIndex = prevThis, prevIndex
+
+	body := &HIRBlock{Span_: n.Body.Span_, Stmts: bodyStmts}
+	forStmt := &HIRFor{Span_: n.Span_, Init: idxDecl, Cond: cond, After: after, Body: body}
+	return &HIRBlock{Span_: n.Span_, Stmts: []HIRStmt{arrDecl, forStmt}}
+}
+
+// lowerCompoundAssign desugars "name += value" into "name = name + value".
+func (l *Lowerer) lowerCompoundAssign(n *CompoundAssignStmt) HIRStmt {
+	sym := l.lookup(n.Name)
+	t := l.varTypes[sym]
+	left := &HIRRef{Span_: n.Span_, Symbol: sym, Type: t}
+	right := l.lowerExprAs(n.Value, t)
+	return &HIRAssign{
+		Span_:  n.Span_,
+		Target: sym,
+		Value:  &HIRBinary{Span_: n.Span_, Op: n.Op, Left: left, Right: right, Type: t},
+	}
+}
+
+// lowerIncDec desugars "name++" / "++name" into "name = name + 1" (and the
+// decrement forms into "name = name - 1").
+func (l *Lowerer) lowerIncDec(n *IncDecStmt) HIRStmt {
+	sym := l.lookup(n.Name)
+	t := l.varTypes[sym]
+	one := &HIRConst{Span_: n.Span_, Type: t, Kind: ConstInt, Int: 1}
+	return &HIRAssign{
+		Span_:  n.Span_,
+		Target: sym,
+		Value: &HIRBinary{
+			Span_: n.Span_,
+			Op:    n.Op,
+			Left:  &HIRRef{Span_: n.Span_, Symbol: sym, Type: t},
+			Right: one,
+			Type:  t,
+		},
+	}
 }
 
 // lowerReturn lowers a return statement, wrapping the value in the
@@ -525,6 +687,27 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		// by lowerExprAs.
 		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
 	case *ErrorExpr:
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	case *ArrayInitExpr:
+		elemType := l.typeOfTypeExpr(n.Elem)
+		arrType := l.types.InternArray(elemType)
+		items := make([]HIRExpr, len(n.Items))
+		for i, item := range n.Items {
+			items[i] = l.lowerExprAs(item, elemType)
+		}
+		return &HIRArrayInit{Span_: n.Span_, Type: arrType, Items: items}
+	case *IndexExpr:
+		base := l.lowerExpr(n.Base)
+		idx := l.lowerExpr(n.Index)
+		elemType := l.types.Lookup(base.hirType()).Elem
+		return &HIRIndex{Span_: n.Span_, Base: base, Index: idx, Type: elemType}
+	case *LoopBuiltinExpr:
+		if n.Name == "this" && l.rangeThis != nil {
+			return l.rangeThis
+		}
+		if n.Name == "index" && l.rangeIndex != NoSymbol {
+			return &HIRRef{Span_: n.Span_, Symbol: l.rangeIndex, Type: l.types.S64()}
+		}
 		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
 	}
 	return &HIRConst{Span_: e.nodeSpan(), Type: l.types.Unknown(), Kind: ConstUnknown}

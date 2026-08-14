@@ -146,6 +146,27 @@ func dumpHIRStmt(b *strings.Builder, hir *HIR, s HIRStmt, depth int) {
 		}
 		b.WriteString("\n")
 		dumpHIRBlock(b, hir, n.CatchBody, depth+1)
+	case *HIRFor:
+		dumpIndent(b, depth)
+		b.WriteString("For")
+		if n.Init != nil {
+			b.WriteString(" init=")
+			dumpHIRStmt(b, hir, n.Init, depth+1)
+		}
+		b.WriteString(" cond=")
+		dumpHIRExpr(b, hir, n.Cond)
+		if n.After != nil {
+			b.WriteString(" after=")
+			dumpHIRStmt(b, hir, n.After, depth+1)
+		}
+		b.WriteString("\n")
+		dumpHIRBlock(b, hir, n.Body, depth+1)
+	case *HIRBreak:
+		dumpIndent(b, depth)
+		b.WriteString("Break\n")
+	case *HIRContinue:
+		dumpIndent(b, depth)
+		b.WriteString("Continue\n")
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Stmt %T\n", s)
@@ -202,6 +223,25 @@ func dumpHIRExpr(b *strings.Builder, hir *HIR, e HIRExpr) {
 		b.WriteString("FieldLoad(")
 		dumpHIRExpr(b, hir, n.Base)
 		fmt.Fprintf(b, ", %d)", n.Field)
+	case *HIRArrayInit:
+		b.WriteString("ArrayInit(")
+		for i, item := range n.Items {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			dumpHIRExpr(b, hir, item)
+		}
+		b.WriteString(")")
+	case *HIRArrayLen:
+		b.WriteString("ArrayLen(")
+		dumpHIRExpr(b, hir, n.Array)
+		b.WriteString(")")
+	case *HIRIndex:
+		b.WriteString("Index(")
+		dumpHIRExpr(b, hir, n.Base)
+		b.WriteString(", ")
+		dumpHIRExpr(b, hir, n.Index)
+		b.WriteString(")")
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)
 	}

@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: continue outside a loop
+// continue is only valid inside a for loop.
+#entry main :: proc -> S64 {
+    continue;
+    return 0;
+}

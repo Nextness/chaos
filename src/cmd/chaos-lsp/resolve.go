@@ -278,6 +278,18 @@ func (r *resolver) collectOccurrences() {
 				msym = r.uniqueErrorMember(e.Name)
 			}
 			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: memberSpan, sym: msym})
+		case *compiler.ArrayInitExpr:
+			if e.Elem != nil {
+				walkExpr(e.Elem)
+			}
+			for _, item := range e.Items {
+				walkExpr(item)
+			}
+		case *compiler.IndexExpr:
+			walkExpr(e.Base)
+			walkExpr(e.Index)
+		case *compiler.LoopBuiltinExpr:
+			// Builtin directive; no symbol.
 		}
 	}
 
@@ -329,6 +341,29 @@ func (r *resolver) collectOccurrences() {
 		case *compiler.IfCatchStmt:
 			walkExpr(s.Cond)
 			walkBlock(s.CatchBody)
+		case *compiler.ForStmt:
+			if s.Init != nil {
+				walkStmt(s.Init)
+			}
+			if s.Cond != nil {
+				walkExpr(s.Cond)
+			}
+			if s.Range != nil {
+				walkExpr(s.Range)
+			}
+			if s.After != nil {
+				walkStmt(s.After)
+			}
+			walkBlock(s.Body)
+		case *compiler.BreakStmt, *compiler.ContinueStmt:
+			// No operands.
+		case *compiler.CompoundAssignStmt:
+			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: nameSpan(s.Span_, s.Name)})
+			if s.Value != nil {
+				walkExpr(s.Value)
+			}
+		case *compiler.IncDecStmt:
+			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: nameSpan(s.Span_, s.Name)})
 		}
 	}
 

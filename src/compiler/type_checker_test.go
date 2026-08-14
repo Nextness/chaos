@@ -429,3 +429,107 @@ func TestTypeCheckErrorReassignAfterCatch(t *testing.T) {
 		t.Errorf("unexpected errors: %v", diags)
 	}
 }
+
+// ──────────────────────────────────────────────
+// For loops and arrays
+// ──────────────────────────────────────────────
+
+func TestTypeCheckForLoop(t *testing.T) {
+	// All three loop forms type-check cleanly.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n"+
+		"    a := 0;\n"+
+		"    for true { a += 1; if a == 10 then break; }\n"+
+		"    for b := 0; b != 10; b += 1 { a += b; }\n"+
+		"    arr := []S64.{1, 2, 3};\n"+
+		"    for elem: arr { a += elem; }\n"+
+		"    for idx, elem: arr { a += elem + idx; }\n"+
+		"    for arr { a += #this; }\n"+
+		"    for idx, elem: arr { a += #this + #index; }\n"+
+		"    return a;\n"+
+		"}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckForConditionType(t *testing.T) {
+	// A non-Bool, non-array condition is rejected.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    x := 5;\n    for x { return 1; }\n    return 0;\n}")
+	if !hasError(diags, "for condition must be Bool, got S64") {
+		t.Errorf("expected non-bool for condition error, got %v", diags)
+	}
+}
+
+func TestTypeCheckBreakContinueOutsideLoop(t *testing.T) {
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    break;\n    return 0;\n}")
+	if !hasError(diags, "break outside a loop") {
+		t.Errorf("expected break-outside-loop error, got %v", diags)
+	}
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    continue;\n    return 0;\n}")
+	if !hasError(diags, "continue outside a loop") {
+		t.Errorf("expected continue-outside-loop error, got %v", diags)
+	}
+}
+
+func TestTypeCheckLoopBuiltinsOutsideRange(t *testing.T) {
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    for true { return #this; }\n    return 0;\n}")
+	if !hasError(diags, "'#this' is only available inside a range loop") {
+		t.Errorf("expected #this-outside-range error, got %v", diags)
+	}
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    x := 5;\n    return #index;\n}")
+	if !hasError(diags, "'#index' is only available inside a range loop") {
+		t.Errorf("expected #index-outside-range error, got %v", diags)
+	}
+}
+
+func TestTypeCheckForRangeNotArray(t *testing.T) {
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    x := 5;\n    for elem: x { return 1; }\n    return 0;\n}")
+	if !hasError(diags, "for range requires an array") {
+		t.Errorf("expected requires-array error, got %v", diags)
+	}
+}
+
+func TestTypeCheckArrayLiteral(t *testing.T) {
+	// Elements must match the declared element type; literals adapt.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    arr := []S64.{1, 2, 3};\n    arr2 := []String.{«a», «b»};\n    arr3: []S32 = []S32.{1};\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+	// A String element in an S64 array is an error.
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    arr := []S64.{1, «bad»};\n    return 0;\n}")
+	if !hasError(diags, "cannot assign String to S64") {
+		t.Errorf("expected element type error, got %v", diags)
+	}
+}
+
+func TestTypeCheckIndex(t *testing.T) {
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    arr := []S64.{1, 2, 3};\n    x := arr[1];\n    return x;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+	// Indexing a non-array is an error.
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    x := 5;\n    y := x[0];\n    return 0;\n}")
+	if !hasError(diags, "cannot index a value of type S64") {
+		t.Errorf("expected cannot-index error, got %v", diags)
+	}
+	// A non-integer index is an error.
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    arr := []S64.{1};\n    s := «x»;\n    y := arr[s];\n    return 0;\n}")
+	if !hasError(diags, "array index must be an integer") {
+		t.Errorf("expected non-integer index error, got %v", diags)
+	}
+}
+
+func TestTypeCheckIncDecType(t *testing.T) {
+	// Increment/decrement requires an integer variable.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    s := «x»;\n    s++;\n    return 0;\n}")
+	if !hasError(diags, "cannot increment or decrement a value of type String") {
+		t.Errorf("expected inc-dec type error, got %v", diags)
+	}
+}
+
+func TestTypeCheckCompoundAssignType(t *testing.T) {
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    a := 5;\n    a += «x»;\n    return 0;\n}")
+	if !hasError(diags, "cannot assign String to S64") {
+		t.Errorf("expected compound assign type error, got %v", diags)
+	}
+}

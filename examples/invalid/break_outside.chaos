@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: break outside a loop
+// break is only valid inside a for loop.
+#entry main :: proc -> S64 {
+    break;
+    return 0;
+}

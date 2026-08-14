@@ -1,0 +1,15 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl a = Int(0) [mutable=true compileTime=false]
+      ForStmt cond=Bool(true)
+        Block
+          CompoundAssignStmt a + Int(1)
+          IfStmt condition=Binary(== Ident(a) Int(10))
+            Block
+              BreakStmt
+      ReturnStmt Ident(a)

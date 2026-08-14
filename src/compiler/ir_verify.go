@@ -145,6 +145,32 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, ins *MIRInstr) {
 		}
 	case MIRExit:
 		// exit is emitted as a terminator, not an instruction.
+	case MIRArrayInit:
+		t := v.prog.Types.Lookup(ins.Type)
+		if t.Kind != TypeKindArray {
+			v.diags.Error(ins.Span, "array.init result type "+v.typeName(ins.Type)+" is not an array", "use an array type")
+		} else {
+			et := t.Elem
+			for i, a := range ins.Args {
+				if vt := v.valueTypes[a]; vt != et && vt != v.prog.Types.Unknown() {
+					v.diags.Error(ins.Span, "array.init element "+strconv.Itoa(i)+" type "+v.typeName(vt)+" does not match element type "+v.typeName(et), "use the element type")
+				}
+			}
+		}
+	case MIRArrayLen:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "array.len requires one value argument", "add the array value")
+		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind != TypeKindArray && at.Kind != TypeKindUnknown {
+			v.diags.Error(ins.Span, "array.len operand type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not an array", "use an array value")
+		}
+	case MIRArrayIndex:
+		if len(ins.Args) != 2 {
+			v.diags.Error(ins.Span, "array.index requires two value arguments", "add the array and index values")
+		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind != TypeKindArray && at.Kind != TypeKindUnknown {
+			v.diags.Error(ins.Span, "array.index base type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not an array", "use an array value")
+		} else if at.Kind == TypeKindArray && ins.Type != at.Elem {
+			v.diags.Error(ins.Span, "array.index result type "+v.typeName(ins.Type)+" does not match element type "+v.typeName(at.Elem), "use the element type")
+		}
 	}
 }
 
