@@ -104,6 +104,51 @@ func TestReferencesRespectShadowedDeclarations(t *testing.T) {
 	}
 }
 
+func TestShadowInitializerResolvesOuterDeclaration(t *testing.T) {
+	source := "main :: proc {\n    x := 1;\n    #shadow x := x + 1;\n    result := x;\n}"
+	r := buildResolverFor(t, source)
+	initRef := offsetOf(t, source, "x + 1")
+	sym := r.definitionAt(initRef)
+	if sym == nil || sym.span.Start != offsetOf(t, source, "x := 1") {
+		t.Fatalf("shadow initializer definition = %+v, want outer declaration", sym)
+	}
+	afterRef := offsetOf(t, source, "result := x") + len("result := ")
+	sym = r.definitionAt(afterRef)
+	if sym == nil || sym.span.Start != offsetOf(t, source, "x := x + 1") {
+		t.Fatalf("post-shadow definition = %+v, want shadow declaration", sym)
+	}
+}
+
+func TestTopLevelShadowInitializerResolvesPreviousGlobal(t *testing.T) {
+	source := "value :: 1;\n#shadow value :: value + 1;\nmain :: proc -> S64 { return value; }"
+	r := buildResolverFor(t, source)
+	initRef := offsetOf(t, source, "value + 1")
+	sym := r.definitionAt(initRef)
+	if sym == nil || sym.span.Start != offsetOf(t, source, "value :: 1") {
+		t.Fatalf("top-level shadow initializer definition = %+v, want previous global", sym)
+	}
+	returnRef := offsetOf(t, source, "return value") + len("return ")
+	sym = r.definitionAt(returnRef)
+	if sym == nil || sym.span.Start != offsetOf(t, source, "value :: value") {
+		t.Fatalf("top-level post-shadow definition = %+v, want new global", sym)
+	}
+}
+
+func TestShadowUnlessInitializerResolvesOuterDeclaration(t *testing.T) {
+	source := "Some_Error :: error { BAD; }\nf :: proc (value: S64) -> (S64 <> Some_Error) { return value; }\nmain :: proc {\n    value := 1;\n    #shadow value := f(value) unless catch { exit 1; }\n    result := value;\n}"
+	r := buildResolverFor(t, source)
+	initRef := offsetOf(t, source, "f(value)") + len("f(")
+	sym := r.definitionAt(initRef)
+	if sym == nil || sym.span.Start != offsetOf(t, source, "value := 1") {
+		t.Fatalf("unless initializer definition = %+v, want outer declaration", sym)
+	}
+	afterRef := offsetOf(t, source, "result := value") + len("result := ")
+	sym = r.definitionAt(afterRef)
+	if sym == nil || sym.span.Start != offsetOf(t, source, "value := f") {
+		t.Fatalf("post-unless definition = %+v, want shadow declaration", sym)
+	}
+}
+
 func TestDefinitionResolvesForwardGlobal(t *testing.T) {
 	source := "main :: proc {\n    later();\n}\nlater :: proc { }"
 	r := buildResolverFor(t, source)

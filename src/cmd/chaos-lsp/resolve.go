@@ -32,6 +32,7 @@ type symbol struct {
 	errorType   string // owning error type name for an error member
 	param       *compiler.Param
 	scope       *scope
+	visibleFrom int // byte offset where a local binding becomes usable
 }
 
 // scope is a lexical scope with a parent and nested children.
@@ -87,7 +88,8 @@ func (r *resolver) buildScopes() {
 			r.global.children = append(r.global.children, procScope)
 			for i := range d.Params {
 				p := &d.Params[i]
-				psym := &symbol{name: p.Name, kind: completionKindVariable, span: nameSpan(p.Span_, p.Name), param: p, scope: procScope}
+				span := nameSpan(p.Span_, p.Name)
+				psym := &symbol{name: p.Name, kind: completionKindVariable, span: span, param: p, scope: procScope, visibleFrom: span.End}
 				procScope.symbols = append(procScope.symbols, psym)
 				r.decls = append(r.decls, psym)
 			}
@@ -149,7 +151,7 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 			}
 		case *compiler.UnlessCatchStmt:
 			if st.Target != "" {
-				r.addBinding(s, st.Target, nameSpan(st.Span_, st.Target))
+				r.addBinding(s, st.Target, st.TargetSpan, st.CatchBody.Span_.Start)
 			}
 			r.buildCatchScope(st.CatchBody, st.CatchName, st.CatchNameSpan, s)
 		case *compiler.IfCatchStmt:
@@ -161,7 +163,8 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 			s.children = append(s.children, procScope)
 			for i := range st.Params {
 				p := &st.Params[i]
-				psym := &symbol{name: p.Name, kind: completionKindVariable, span: nameSpan(p.Span_, p.Name), param: p, scope: procScope}
+				span := nameSpan(p.Span_, p.Name)
+				psym := &symbol{name: p.Name, kind: completionKindVariable, span: span, param: p, scope: procScope, visibleFrom: span.End}
 				procScope.symbols = append(procScope.symbols, psym)
 				r.decls = append(r.decls, psym)
 			}
@@ -188,13 +191,14 @@ func (r *resolver) addVarDecl(sc *scope, decl *compiler.VarDecl) {
 	if decl.CompileTime {
 		kind = completionKindConstant
 	}
-	sym := &symbol{name: decl.Name, kind: kind, span: nameSpan(decl.Span_, decl.Name), varDecl: decl, scope: sc}
+	span := nameSpan(decl.Span_, decl.Name)
+	sym := &symbol{name: decl.Name, kind: kind, span: span, varDecl: decl, scope: sc, visibleFrom: decl.Span_.End}
 	sc.symbols = append(sc.symbols, sym)
 	r.decls = append(r.decls, sym)
 }
 
-func (r *resolver) addBinding(sc *scope, name string, span compiler.Span) {
-	sym := &symbol{name: name, kind: completionKindVariable, span: span, scope: sc}
+func (r *resolver) addBinding(sc *scope, name string, span compiler.Span, visibleFrom int) {
+	sym := &symbol{name: name, kind: completionKindVariable, span: span, scope: sc, visibleFrom: visibleFrom}
 	sc.symbols = append(sc.symbols, sym)
 	r.decls = append(r.decls, sym)
 }
@@ -214,10 +218,10 @@ func (r *resolver) buildForScope(loop *compiler.ForStmt, parent *scope) {
 	loopScope := &scope{parent: parent, start: loop.Body.Span_.Start, end: loop.Body.Span_.End}
 	parent.children = append(parent.children, loopScope)
 	if loop.IndexName != "" {
-		r.addBinding(loopScope, loop.IndexName, loop.IndexNameSpan)
+		r.addBinding(loopScope, loop.IndexName, loop.IndexNameSpan, loop.IndexNameSpan.End)
 	}
 	if loop.ElemName != "" {
-		r.addBinding(loopScope, loop.ElemName, loop.ElemNameSpan)
+		r.addBinding(loopScope, loop.ElemName, loop.ElemNameSpan, loop.ElemNameSpan.End)
 	}
 	r.buildBlockScope(loop.Body, loopScope)
 }
@@ -244,7 +248,7 @@ func (r *resolver) buildCatchScope(body *compiler.BlockStmt, catchName string, c
 	s := &scope{parent: parent, start: body.Span_.Start, end: body.Span_.End}
 	parent.children = append(parent.children, s)
 	if catchName != "" {
-		sym := &symbol{name: catchName, kind: completionKindVariable, span: catchNameSpan, scope: s}
+		sym := &symbol{name: catchName, kind: completionKindVariable, span: catchNameSpan, scope: s, visibleFrom: catchNameSpan.End}
 		s.symbols = append(s.symbols, sym)
 		r.decls = append(r.decls, sym)
 	}
@@ -453,13 +457,26 @@ func (r *resolver) resolveName(name string, offset int) *symbol {
 	for sc != nil {
 		for i := len(sc.symbols) - 1; i >= 0; i-- {
 			sym := sc.symbols[i]
-			if sym.name == name && (sc == r.global || sym.span.End <= offset) {
+			if sym.name == name && r.symbolVisibleAt(sym, sc, offset) {
 				return sym
 			}
 		}
 		sc = sc.parent
 	}
 	return nil
+}
+
+func (r *resolver) symbolVisibleAt(sym *symbol, sc *scope, offset int) bool {
+	if sc != r.global {
+		return sym.visibleFrom <= offset
+	}
+	// Globals remain visible regardless of source order. Within the
+	// initializer of an explicit top-level shadow, however, the new binding is
+	// not active yet, so lookup continues to the previous declaration.
+	if sym.varDecl != nil && sym.varDecl.Shadow && offset > sym.span.End && offset <= sym.varDecl.Span_.End {
+		return false
+	}
+	return true
 }
 
 // occurrenceAt returns the occurrence whose span contains the byte offset.
@@ -549,7 +566,7 @@ func (r *resolver) completionAt(offset int) []CompletionItem {
 	for sc != nil {
 		for i := len(sc.symbols) - 1; i >= 0; i-- {
 			sym := sc.symbols[i]
-			if (sc == r.global || sym.span.End <= offset) && !seen[sym.name] {
+			if r.symbolVisibleAt(sym, sc, offset) && !seen[sym.name] {
 				seen[sym.name] = true
 				item := CompletionItem{Label: sym.name, Kind: sym.kind}
 				if sym.proc != nil {

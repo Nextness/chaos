@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: declaration of 'input1' shadows an existing name
+// A body declaration that reuses a parameter name must be explicit with
+// '#shadow' or renamed.
+something :: proc (input1: String) -> String {
+    input1 := «another»;
+    return input1;
+}

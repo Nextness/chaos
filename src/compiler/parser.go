@@ -312,6 +312,12 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		p.bump()
 	}
 
+	// '#shadow name :: expr' (or ':=' / ': Type =') explicitly allows a
+	// top-level redeclaration.
+	if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "shadow" {
+		return p.parseShadowDecl()
+	}
+
 	// Top-level '#entry name :: proc {...}' is the canonical entry point.
 	// Handle it in both strict and tolerant modes so the CLI accepts it.
 	// Tolerant mode also accepts generic type parameters before '::'
@@ -912,6 +918,24 @@ func (p *Parser) parseStmt() Stmt {
 		// ident - could be decl, assign, or just an expression statement
 		return p.parseIdentStmt()
 
+	case TkHash:
+		// '#shadow name := expr' explicitly allows reusing an outer name.
+		if p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "shadow" {
+			return p.parseShadowVarDecl()
+		}
+		// Other directives keep the tolerant-mode skip behavior.
+		if p.tolerant {
+			p.skipToMatchedBraces()
+			return nil
+		}
+		tok := p.peek()
+		p.diags.Error(tok.Span, "unexpected token "+tok.Kind.String()+" in statement", "remove the token or start a valid statement")
+		p.syncStmt()
+		if p.at(TkSemicolon) {
+			p.bump()
+		}
+		return nil
+
 	default:
 		// Tolerant mode: skip directives (#foo ...;) inside bodies.
 		if p.tolerant && p.at(TkHash) {
@@ -928,6 +952,74 @@ func (p *Parser) parseStmt() Stmt {
 		}
 		return nil
 	}
+}
+
+// parseShadowVarDecl parses "#shadow ident := expr" (or "::", ": Type =", or
+// ":= expr unless catch"), marking the declaration as an explicit shadow so
+// the type checker allows reusing an outer name.
+func (p *Parser) parseShadowVarDecl() Stmt {
+	p.bump() // consume "#"
+	p.bump() // consume TkDirec("shadow")
+	if !p.at(TkIdent) {
+		p.diags.Error(p.peek().Span, "expected variable declaration after '#shadow'", "declare a variable after '#shadow'")
+		p.syncStmt()
+		if p.at(TkSemicolon) {
+			p.bump()
+		}
+		return nil
+	}
+	stmt := p.parseIdentStmt()
+	switch s := stmt.(type) {
+	case *VarDecl:
+		s.Shadow = true
+	case *UnlessCatchStmt:
+		s.Shadow = true
+	default:
+		if stmt != nil {
+			p.diags.Error(stmt.nodeSpan(), "'#shadow' can only be used with a variable declaration", "remove '#shadow' or declare a variable")
+		}
+	}
+	return stmt
+}
+
+// parseShadowDecl parses a top-level "#shadow name :: expr" (or ":=" or
+// ": Type =") declaration, marking it as an explicit shadow.
+func (p *Parser) parseShadowDecl() (Decl, bool) {
+	p.bump() // consume "#"
+	p.bump() // consume TkDirec("shadow")
+	if !p.at(TkIdent) {
+		p.diags.Error(p.peek().Span, "expected declaration after '#shadow'", "declare a variable after '#shadow'")
+		return nil, false
+	}
+	nameTok := p.bump()
+	name := nameTok.Text()
+	var decl Decl
+	var ok bool
+	switch {
+	case p.atCompTimeAssign():
+		p.bump() // consume first ':' of '::'
+		p.bump() // consume second ':' of '::'
+		decl, ok = p.parseProcOrVarDecl(nameTok, name, true)
+	case p.atInfer():
+		p.bump() // consume ':' of ':='
+		p.bump() // consume '=' of ':='
+		decl, ok = p.parseInferVarDecl(nameTok, name)
+	case p.at(TkColon):
+		p.bump()
+		decl, ok = p.parseTypedVarDecl(nameTok, name)
+	default:
+		p.diags.Error(p.peek().Span, "expected '::', ':', or ':=' after identifier in declaration", "add '::', ':', or ':=' after the identifier")
+		return nil, false
+	}
+	if !ok {
+		return decl, false
+	}
+	if vd, isVar := decl.(*VarDecl); isVar {
+		vd.Shadow = true
+	} else {
+		p.diags.Error(decl.nodeSpan(), "'#shadow' can only be used with a variable declaration", "remove '#shadow' or declare a variable")
+	}
+	return decl, true
 }
 
 // parseIdentStmt handles statements starting with an identifier. This could be
@@ -1110,9 +1202,14 @@ func (p *Parser) parseUnlessCatch(nameTok Token, target string, init Expr) Stmt 
 		p.diags.Error(p.peek().Span, "expected '{' block after 'catch'", "add a '{' block for the catch body")
 		return nil
 	}
+	var targetSpan Span
+	if target != "" {
+		targetSpan = nameTok.Span
+	}
 	return &UnlessCatchStmt{
 		Span_:         spanUnion(nameTok.Span, body.Span_),
 		Target:        target,
+		TargetSpan:    targetSpan,
 		Init:          init,
 		CatchName:     catchName,
 		CatchNameSpan: catchNameSpan,

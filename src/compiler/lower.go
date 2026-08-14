@@ -15,16 +15,18 @@ import (
 // LowerProgram lowers a parsed AST into the typed HIR.
 func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 	l := &Lowerer{
-		symbols:      NewSymbolTable(),
-		types:        NewTypeTable(),
-		varTypes:     make(map[SymbolID]TypeID),
-		procs:        make(map[string]*ProcDecl),
-		structs:      make(map[string]*StructDecl),
-		errors:       make(map[string]*ErrorDecl),
-		errorOrdinal: make(map[string]map[string]int),
-		hirStructs:   make(map[string]*HIRStruct),
-		unwrapped:    make(map[SymbolID]bool),
-		hir:          &HIR{},
+		symbols:        NewSymbolTable(),
+		types:          NewTypeTable(),
+		varTypes:       make(map[SymbolID]TypeID),
+		procs:          make(map[string]*ProcDecl),
+		structs:        make(map[string]*StructDecl),
+		errors:         make(map[string]*ErrorDecl),
+		errorOrdinal:   make(map[string]map[string]int),
+		hirStructs:     make(map[string]*HIRStruct),
+		globalSymbols:  make(map[*VarDecl]SymbolID),
+		globalPrevious: make(map[*VarDecl]SymbolID),
+		unwrapped:      make(map[SymbolID]bool),
+		hir:            &HIR{},
 	}
 	l.hir.Symbols = l.symbols
 	l.hir.Types = l.types
@@ -36,21 +38,23 @@ func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 // Lowerer lowers an AST into the HIR. It maintains a stack of lexical scopes
 // mapping names to SymbolIDs and a map from each declared symbol to its type.
 type Lowerer struct {
-	symbols      *SymbolTable
-	types        *TypeTable
-	scopes       []map[string]SymbolID
-	varTypes     map[SymbolID]TypeID
-	procs        map[string]*ProcDecl
-	structs      map[string]*StructDecl
-	errors       map[string]*ErrorDecl
-	errorOrdinal map[string]map[string]int
-	hirStructs   map[string]*HIRStruct
-	unwrapped    map[SymbolID]bool // variables whose error was handled
-	hir          *HIR
-	diags        DiagnosticList
-	curResults   []TypeID // result types of the procedure being lowered
-	rangeThis    HIRExpr  // expression for '#this' in the innermost range loop
-	rangeIndex   SymbolID // symbol for '#index' in the innermost range loop
+	symbols        *SymbolTable
+	types          *TypeTable
+	scopes         []map[string]SymbolID
+	varTypes       map[SymbolID]TypeID
+	procs          map[string]*ProcDecl
+	structs        map[string]*StructDecl
+	errors         map[string]*ErrorDecl
+	errorOrdinal   map[string]map[string]int
+	hirStructs     map[string]*HIRStruct
+	globalSymbols  map[*VarDecl]SymbolID
+	globalPrevious map[*VarDecl]SymbolID
+	unwrapped      map[SymbolID]bool // variables whose error was handled
+	hir            *HIR
+	diags          DiagnosticList
+	curResults     []TypeID // result types of the procedure being lowered
+	rangeThis      HIRExpr  // expression for '#this' in the innermost range loop
+	rangeIndex     SymbolID // symbol for '#index' in the innermost range loop
 }
 
 func (l *Lowerer) pushScope() {
@@ -92,6 +96,7 @@ func (l *Lowerer) typeOfTypeExpr(e Expr) TypeID {
 
 func (l *Lowerer) lowerProgram(program *Program) {
 	l.pushScope() // global scope
+	latestGlobals := make(map[string]SymbolID)
 
 	// Pass 1: register all top-level declarations so bodies can reference
 	// them regardless of source order.
@@ -120,7 +125,12 @@ func (l *Lowerer) lowerProgram(program *Program) {
 			}
 			l.errorOrdinal[d.Name] = ordinals
 		case *VarDecl:
+			if previous, ok := latestGlobals[d.Name]; ok {
+				l.globalPrevious[d] = previous
+			}
 			sym := l.symbols.Declare(d.Name)
+			l.globalSymbols[d] = sym
+			latestGlobals[d.Name] = sym
 			l.declare(d.Name, sym)
 		}
 	}
@@ -154,14 +164,23 @@ func (l *Lowerer) lowerProgram(program *Program) {
 }
 
 func (l *Lowerer) lowerGlobal(d *VarDecl) {
-	sym := l.lookup(d.Name)
+	sym := l.globalSymbols[d]
 	var t TypeID = l.types.Unknown()
 	if d.DeclType != nil {
 		t = l.typeOfTypeExpr(d.DeclType)
 	}
 	var init HIRExpr
 	if d.Init != nil {
+		// A top-level shadow initializer references the previous global
+		// declaration. Other code continues to see the final global binding.
+		final := l.scopes[0][d.Name]
+		initializerBinding := sym
+		if previous, ok := l.globalPrevious[d]; ok {
+			initializerBinding = previous
+		}
+		l.scopes[0][d.Name] = initializerBinding
 		init = l.lowerExprAs(d.Init, t)
+		l.scopes[0][d.Name] = final
 		if t == l.types.Unknown() {
 			t = init.hirType()
 		}
@@ -298,12 +317,13 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 }
 
 func (l *Lowerer) lowerVarDecl(d *VarDecl) HIRStmt {
-	sym := l.symbols.Declare(d.Name)
-	l.declare(d.Name, sym)
 	var t TypeID = l.types.Unknown()
 	if d.DeclType != nil {
 		t = l.typeOfTypeExpr(d.DeclType)
 	}
+	// The initializer is lowered before the symbol is declared so that a
+	// shadowing declaration ("#shadow x := x + 1") references the outer
+	// binding, matching the type checker's scoping.
 	var init HIRExpr
 	if d.Init != nil {
 		init = l.lowerExprAs(d.Init, t)
@@ -311,6 +331,8 @@ func (l *Lowerer) lowerVarDecl(d *VarDecl) HIRStmt {
 			t = init.hirType()
 		}
 	}
+	sym := l.symbols.Declare(d.Name)
+	l.declare(d.Name, sym)
 	l.varTypes[sym] = t
 	return &HIRVarDecl{
 		Span_:       d.Span_,

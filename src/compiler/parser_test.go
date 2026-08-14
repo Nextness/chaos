@@ -1334,6 +1334,74 @@ func TestParseLoopBuiltins(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
+// #shadow directive
+// ──────────────────────────────────────────────
+
+func TestParseShadowVarDecl(t *testing.T) {
+	// '#shadow' marks a declaration as an explicit shadow.
+	for _, src := range []string{
+		"#shadow x := 5;",
+		"#shadow x :: 5;",
+		"#shadow x: S64 = 5;",
+	} {
+		stmt := parseOneStmt(t, src)
+		vd, ok := stmt.(*VarDecl)
+		if !ok {
+			t.Fatalf("expected *VarDecl for %q, got %T", src, stmt)
+		}
+		if !vd.Shadow {
+			t.Errorf("%q: Shadow = false, want true", src)
+		}
+	}
+}
+
+func TestParseShadowUnlessCatch(t *testing.T) {
+	// '#shadow' also applies to the 'unless catch' target.
+	stmt := parseOneStmt(t, "#shadow x := f() unless catch { return; }")
+	uc, ok := stmt.(*UnlessCatchStmt)
+	if !ok {
+		t.Fatalf("expected *UnlessCatchStmt, got %T", stmt)
+	}
+	if !uc.Shadow {
+		t.Error("Shadow = false, want true")
+	}
+	if uc.Target != "x" {
+		t.Fatalf("Target = %q, want %q", uc.Target, "x")
+	}
+}
+
+func TestParseBareUnlessCatchHasNoTargetSpan(t *testing.T) {
+	stmt := parseOneStmt(t, "f() unless catch { return; }")
+	uc, ok := stmt.(*UnlessCatchStmt)
+	if !ok {
+		t.Fatalf("expected *UnlessCatchStmt, got %T", stmt)
+	}
+	if uc.Target != "" || uc.TargetSpan != (Span{}) {
+		t.Errorf("bare unless target = %q span=%+v, want empty target and span", uc.Target, uc.TargetSpan)
+	}
+}
+
+func TestParseShadowTopLevel(t *testing.T) {
+	// '#shadow' works for top-level declarations too.
+	decl := parseOneDecl(t, "#shadow x := 5;")
+	vd, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	if !vd.Shadow {
+		t.Error("Shadow = false, want true")
+	}
+}
+
+func TestParseShadowRejectsNonVariableDeclaration(t *testing.T) {
+	tokens, _ := Tokenize([]byte("#shadow f :: proc { }"), 0)
+	result := ParseProgram(tokens)
+	if !hasError(result.Diags, "'#shadow' can only be used with a variable declaration") {
+		t.Fatalf("expected non-variable #shadow error, got %v", result.Diags)
+	}
+}
+
+// ──────────────────────────────────────────────
 // Expressions — literals
 // ──────────────────────────────────────────────
 

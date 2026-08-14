@@ -1,0 +1,9 @@
+// expect-stage: type
+// expect-error: declaration of 'SOME_VAR' shadows an existing name
+// A body declaration that reuses a global name must be explicit with
+// '#shadow' or renamed.
+SOME_VAR :: 10;
+something :: proc -> S64 {
+    SOME_VAR :: SOME_VAR;
+    return 0;
+}

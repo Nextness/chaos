@@ -108,7 +108,11 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 			b.WriteString(" = ")
 			dumpExpr(b, n.Init)
 		}
-		fmt.Fprintf(b, " [mutable=%v compileTime=%v]\n", n.Mutable, n.CompileTime)
+		fmt.Fprintf(b, " [mutable=%v compileTime=%v", n.Mutable, n.CompileTime)
+		if n.Shadow {
+			b.WriteString(" shadow=true")
+		}
+		b.WriteString("]\n")
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Decl %T\n", d)
@@ -174,6 +178,9 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 		b.WriteString("UnlessCatchStmt")
 		if n.Target != "" {
 			fmt.Fprintf(b, " %s", n.Target)
+		}
+		if n.Shadow {
+			b.WriteString(" [shadow=true]")
 		}
 		b.WriteString(" = ")
 		dumpExpr(b, n.Init)

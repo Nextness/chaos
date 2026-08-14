@@ -1,0 +1,5 @@
+// expect-stage: type
+// expect-error: declaration of 'value' shadows an existing name
+// A top-level redeclaration also requires an explicit '#shadow'.
+value :: 1;
+value :: 2;

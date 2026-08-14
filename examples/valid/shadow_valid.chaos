@@ -1,0 +1,11 @@
+// expect-exit: 42
+// The '#shadow' directive explicitly allows reusing an outer name. The
+// initializer of a shadowing declaration references the outer binding.
+BASE :: 10;
+#shadow BASE :: BASE + 5;
+
+#entry main :: proc -> S64 {
+    input1 := 25;
+    #shadow input1 := input1 + 2;
+    return input1 + BASE;
+}

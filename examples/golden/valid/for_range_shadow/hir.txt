@@ -5,11 +5,11 @@ HIR
       VarDecl idx: S64 = Int(40) [mutable=true compileTime=false]
       Block
         VarDecl __arr: []S64 = Ident(arr) [mutable=false compileTime=false]
-        For init=          VarDecl idx: S64 = Int() [mutable=true compileTime=false]
- cond=Binary(< Ident(idx) ArrayLen(Ident(__arr))) after=          Assign idx = Binary(+ Ident(idx) Int())
+        For init=          VarDecl i: S64 = Int() [mutable=true compileTime=false]
+ cond=Binary(< Ident(i) ArrayLen(Ident(__arr))) after=          Assign i = Binary(+ Ident(i) Int())
 
           Block
-            VarDecl elem: S64 = Index(Ident(__arr), Ident(idx)) [mutable=false compileTime=false]
+            VarDecl elem: S64 = Index(Ident(__arr), Ident(i)) [mutable=false compileTime=false]
             If condition=Binary(== Ident(elem) Int(2))
               Block
                 Continue

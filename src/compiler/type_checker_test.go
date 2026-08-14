@@ -598,3 +598,92 @@ func TestTypeCheckVoidBindRejected(t *testing.T) {
 		t.Errorf("unexpected errors for bare form: %v", diags)
 	}
 }
+
+// ──────────────────────────────────────────────
+// Shadowing
+// ──────────────────────────────────────────────
+
+func TestTypeCheckShadowingRejected(t *testing.T) {
+	cases := []struct {
+		name, src, want string
+	}{
+		{"parameter", "f :: proc (input1: String) -> String {\n    input1 := «x»;\n    return input1;\n}", "shadows an existing name"},
+		{"global compile-time", "SOME_VAR_1 :: 10;\nf :: proc -> S64 {\n    SOME_VAR_1 :: SOME_VAR_1;\n    return 0;\n}", "shadows an existing name"},
+		{"global runtime", "SOME_VAR_3 := 10;\nf :: proc -> S64 {\n    SOME_VAR_3 := SOME_VAR_3;\n    return 0;\n}", "shadows an existing name"},
+		{"same scope", "main :: proc -> S64 {\n    x := 1;\n    x := 2;\n    return x;\n}", "shadows an existing name"},
+		{"enclosing block", "main :: proc -> S64 {\n    x := 1;\n    {\n        x := 2;\n    }\n    return x;\n}", "shadows an existing name"},
+		{"range binding", "main :: proc -> S64 {\n    arr := []S64.{1};\n    x := 5;\n    for x: arr { }\n    return 0;\n}", "shadows an existing name"},
+		{"unless catch target", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (S64 <> Some_Error) {\n    return 1;\n}\nmain :: proc -> S64 {\n    x := 5;\n    x := f() unless catch {\n        return -1;\n    }\n    return x;\n}", "shadows an existing name"},
+		{"catch binding", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (S64 <> Some_Error) {\n    return 1;\n}\nmain :: proc -> S64 {\n    x := 5;\n    r := f() unless catch x {\n        return -1;\n    }\n    return r;\n}", "shadows an existing name"},
+		{"struct type", "Point :: struct { x: S64; }\nmain :: proc -> S64 {\n    Point := 5;\n    return 0;\n}", "shadows a struct type"},
+		{"error type", "Some_Error :: error {\n    GENERIC;\n}\nmain :: proc -> S64 {\n    Some_Error := 5;\n    return 0;\n}", "shadows an error type"},
+		{"procedure", "helper :: proc -> S64 { return 1; }\nmain :: proc -> S64 { helper := 2; return helper; }", "shadows an existing procedure"},
+		{"struct definition", "Point :: struct { x: S64; }\nPoint :: struct { y: S64; }", "shadows a struct type"},
+		{"error definition", "Some_Error :: error { ONE; }\nSome_Error :: error { TWO; }", "shadows an error type"},
+		{"procedure definition", "helper :: proc { }\nhelper :: proc { }", "declared more than once"},
+	}
+	for _, c := range cases {
+		diags := typeCheckSource(t, c.src)
+		if !hasError(diags, c.want) {
+			t.Errorf("%s: expected %q error, got %v", c.name, c.want, diags)
+		}
+	}
+}
+
+func TestTypeCheckShadowDirectiveAllows(t *testing.T) {
+	// '#shadow' explicitly allows reusing an outer name.
+	diags := typeCheckSource(t, "f :: proc (input1: String) -> String {\n    #shadow input1 := «x»;\n    return input1;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for #shadow param: %v", diags)
+	}
+	diags = typeCheckSource(t, "SOME_VAR_1 :: 10;\nf :: proc -> S64 {\n    #shadow SOME_VAR_1 :: SOME_VAR_1;\n    return SOME_VAR_1;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for #shadow global: %v", diags)
+	}
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    x := 1;\n    #shadow x := 2;\n    return x;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for #shadow same scope: %v", diags)
+	}
+	diags = typeCheckSource(t, "value :: 1;\n#shadow value :: value + 1;\nmain :: proc -> S64 { return value; }")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for top-level #shadow: %v", diags)
+	}
+	diags = typeCheckSource(t, "helper :: proc -> S64 { return 1; }\nmain :: proc -> S64 { #shadow helper := 2; return helper; }")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for explicit procedure-name shadow: %v", diags)
+	}
+	// '#shadow' does not allow shadowing a struct or error type.
+	diags = typeCheckSource(t, "Point :: struct { x: S64; }\nmain :: proc -> S64 {\n    #shadow Point := 5;\n    return 0;\n}")
+	if !hasError(diags, "shadows a struct type") {
+		t.Errorf("expected struct shadow error even with #shadow, got %v", diags)
+	}
+}
+
+func TestTypeCheckParamPlaceholderNotShadowed(t *testing.T) {
+	// A parameter name is a placeholder and does not shadow a global.
+	diags := typeCheckSource(t, "var := 10;\nprocedure :: proc (var: S64) -> S64 {\n    return var;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for param placeholder: %v", diags)
+	}
+}
+
+func TestTypeCheckShadowTypeConflictIsOrderIndependent(t *testing.T) {
+	diags := typeCheckSource(t, "Point := 1;\nPoint :: struct { x: S64; }")
+	if !hasError(diags, "shadows a struct type") {
+		t.Fatalf("expected type shadow error when variable appears first, got %v", diags)
+	}
+}
+
+func TestTypeCheckTopLevelShadowInitializerUsesPreviousType(t *testing.T) {
+	diags := typeCheckSource(t, "value: String = «outer»;\n#shadow value: S64 = value;")
+	if !hasError(diags, "cannot assign String to S64") {
+		t.Fatalf("expected shadow initializer to use previous String binding, got %v", diags)
+	}
+}
+
+func TestTypeCheckTopLevelProcedureShadowRejected(t *testing.T) {
+	diags := typeCheckSource(t, "helper :: proc -> S64 { return 1; }\n#shadow helper :: 2;")
+	if !hasError(diags, "top-level variable cannot shadow procedure") {
+		t.Fatalf("expected top-level procedure shadow error, got %v", diags)
+	}
+}

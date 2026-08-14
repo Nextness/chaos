@@ -1,0 +1,11 @@
+// expect-stage: type
+// expect-error: declaration of 'Point' shadows a struct type
+// Shadowing a struct definition is never allowed, even with '#shadow'.
+Point :: struct {
+    x: S64;
+}
+
+#entry main :: proc -> S64 {
+    Point := 5;
+    return 0;
+}

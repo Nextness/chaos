@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: declaration of 'x' shadows an existing name
+// A range loop binding that reuses an outer name is shadowing; rename it.
+#entry main :: proc -> S64 {
+    arr := []S64.{1, 2};
+    x := 5;
+    for x: arr {
+    }
+    return 0;
+}

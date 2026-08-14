@@ -103,7 +103,9 @@ func TestLowerVarDeclLiteralAdaptation(t *testing.T) {
 }
 
 func TestLowerRangeIndexDoesNotReplaceOuterBinding(t *testing.T) {
-	hir, _ := lowerSource(t, "main :: proc -> S64 {\n    arr := []S64.{1, 2};\n    idx := 40;\n    for idx, elem: arr { }\n    return idx;\n}")
+	// The range index binding is scoped to the loop body and does not replace
+	// an outer binding with a different name.
+	hir, _ := lowerSource(t, "main :: proc -> S64 {\n    arr := []S64.{1, 2};\n    idx := 40;\n    for i, elem: arr { }\n    return idx;\n}")
 	p := findHIRProc(hir, "main")
 	outer, ok := p.Body.Stmts[1].(*HIRVarDecl)
 	if !ok {
@@ -347,7 +349,9 @@ func TestLowerGlobal(t *testing.T) {
 }
 
 func TestLowerShadowing(t *testing.T) {
-	hir, _ := lowerSource(t, "main :: proc {\n    x := 1;\n    {\n        x := 2;\n    }\n}")
+	// An explicit '#shadow' declaration reuses an outer name with a distinct
+	// symbol.
+	hir, _ := lowerSource(t, "main :: proc {\n    x := 1;\n    {\n        #shadow x := 2;\n    }\n}")
 	p := findHIRProc(hir, "main")
 	if p == nil {
 		t.Fatal("proc main not found")
@@ -366,6 +370,25 @@ func TestLowerShadowing(t *testing.T) {
 	}
 	if outer.Symbol == inner.Symbol {
 		t.Errorf("shadowed declarations share SymbolID %d", outer.Symbol)
+	}
+}
+
+func TestLowerTopLevelShadowInitializerUsesPreviousBinding(t *testing.T) {
+	hir, _ := lowerSource(t, "value :: 10;\n#shadow value :: value + 5;")
+	if len(hir.Globals) != 2 {
+		t.Fatalf("globals = %d, want 2", len(hir.Globals))
+	}
+	outer, inner := hir.Globals[0], hir.Globals[1]
+	if outer.Symbol == inner.Symbol {
+		t.Fatalf("shadowed globals share SymbolID %d", outer.Symbol)
+	}
+	init, ok := inner.Init.(*HIRBinary)
+	if !ok {
+		t.Fatalf("shadow initializer = %T, want *HIRBinary", inner.Init)
+	}
+	ref, ok := init.Left.(*HIRRef)
+	if !ok || ref.Symbol != outer.Symbol {
+		t.Fatalf("shadow initializer left = %#v, want outer symbol %d", init.Left, outer.Symbol)
 	}
 }
 

@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: declaration of 'Point' shadows a struct type
+// Type names cannot be shadowed even when the variable appears first.
+Point := 1;
+Point :: struct {
+    x: S64;
+}

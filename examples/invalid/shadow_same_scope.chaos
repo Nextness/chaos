@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: declaration of 'x' shadows an existing name
+// Redeclaring a name in the same block is shadowing and must be explicit.
+#entry main :: proc -> S64 {
+    x := 1;
+    x := 2;
+    return x;
+}

@@ -311,6 +311,7 @@ type VarDecl struct {
 	Init        Expr // initializer (nil for uninitialized)
 	Mutable     bool // can be reassigned
 	CompileTime bool // compile-time constant (::)
+	Shadow      bool // explicit '#shadow' directive allows reusing an outer name
 }
 
 func (d *VarDecl) nodeSpan() Span {
@@ -403,10 +404,12 @@ func (s *IfCatchStmt) stmtNode() {}
 type UnlessCatchStmt struct {
 	Span_         Span
 	Target        string // variable name ("" for the bare form)
+	TargetSpan    Span   // span of the target name (zero when unnamed)
 	Init          Expr
 	CatchName     string // error binding name ("" when unnamed)
 	CatchNameSpan Span   // span of the binding name (zero when unnamed)
 	CatchBody     *BlockStmt
+	Shadow        bool // explicit '#shadow' directive allows reusing an outer name
 }
 
 func (s *UnlessCatchStmt) nodeSpan() Span {

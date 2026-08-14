@@ -1,0 +1,69 @@
+format ELF64 executable 3
+
+segment readable writable
+g_BASE__shadow_0:
+    rb 8
+g_BASE__shadow_1:
+    rb 8
+
+segment readable executable
+
+entry _start
+
+_start:
+    call f___global_init
+    call f_main
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+f_main:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 80
+L0:
+    mov rax, 25
+    mov qword [rbp-24], rax
+    mov rax, qword [rbp-24]
+    mov qword [rbp-8], rax
+    mov rax, qword [rbp-8]
+    mov qword [rbp-32], rax
+    mov rax, 2
+    mov qword [rbp-40], rax
+    mov rax, qword [rbp-32]
+    add rax, qword [rbp-40]
+    mov qword [rbp-48], rax
+    mov rax, qword [rbp-48]
+    mov qword [rbp-16], rax
+    mov rax, qword [rbp-16]
+    mov qword [rbp-56], rax
+    mov rax, qword [g_BASE__shadow_1]
+    mov qword [rbp-64], rax
+    mov rax, qword [rbp-56]
+    add rax, qword [rbp-64]
+    mov qword [rbp-72], rax
+    mov rax, qword [rbp-72]
+    leave
+    ret
+
+f___global_init:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 32
+L1:
+    mov rax, 10
+    mov qword [rbp-8], rax
+    mov rax, qword [rbp-8]
+    mov qword [g_BASE__shadow_0], rax
+    mov rax, qword [g_BASE__shadow_0]
+    mov qword [rbp-16], rax
+    mov rax, 5
+    mov qword [rbp-24], rax
+    mov rax, qword [rbp-16]
+    add rax, qword [rbp-24]
+    mov qword [rbp-32], rax
+    mov rax, qword [rbp-32]
+    mov qword [g_BASE__shadow_1], rax
+    leave
+    ret
+

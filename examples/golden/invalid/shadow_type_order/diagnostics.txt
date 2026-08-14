@@ -1,0 +1,3 @@
+[ERROR] 4:1:shadow_type_order.chaos - declaration of 'Point' shadows a struct type; this is not allowed
+ Point := 1;
+ ^^^^^^^^^^ -> choose a different name

@@ -1,0 +1,6 @@
+// expect-stage: parse
+// expect-error: '#shadow' can only be used with a variable declaration
+// The directive cannot be applied to procedures or type definitions.
+#shadow Point :: struct {
+    x: S64;
+}

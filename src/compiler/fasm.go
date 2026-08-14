@@ -65,6 +65,7 @@ type fasmEmitter struct {
 	floatIndexes  map[floatConstKey]int
 	strings       []string
 	stringIndexes map[string]int
+	globalLabels  map[SymbolID]string
 }
 
 // floatConst is a float constant with its storage size (4 for F32, 8 for
@@ -147,6 +148,7 @@ func (fb *fasmEmitter) checkSupportedTypes() {
 
 func (fb *fasmEmitter) emit() {
 	fb.checkSupportedTypes()
+	fb.prepareGlobalLabels()
 	fb.out.WriteString("format ELF64 executable 3\n\n")
 	fb.collectFloatConsts()
 	fb.collectStringConsts()
@@ -1578,7 +1580,34 @@ func (fb *fasmEmitter) funcLabel(name string) string {
 }
 
 func (fb *fasmEmitter) globalLabel(sym SymbolID) string {
+	if label, ok := fb.globalLabels[sym]; ok {
+		return label
+	}
 	return "g_" + fb.prog.Symbols.Lookup(sym)
+}
+
+func (fb *fasmEmitter) prepareGlobalLabels() {
+	counts := make(map[string]int)
+	reserved := make(map[string]bool)
+	for _, global := range fb.prog.Globals {
+		name := fb.prog.Symbols.Lookup(global.Symbol)
+		counts[name]++
+		reserved["g_"+name] = true
+	}
+	fb.globalLabels = make(map[SymbolID]string, len(fb.prog.Globals))
+	used := make(map[string]bool)
+	for _, global := range fb.prog.Globals {
+		name := fb.prog.Symbols.Lookup(global.Symbol)
+		label := "g_" + name
+		if counts[name] > 1 {
+			label += "__shadow_" + strconv.Itoa(int(global.Symbol))
+			for reserved[label] || used[label] {
+				label += "_"
+			}
+		}
+		fb.globalLabels[global.Symbol] = label
+		used[label] = true
+	}
 }
 
 func (fb *fasmEmitter) findFunction(sym SymbolID) *MIRFunction {

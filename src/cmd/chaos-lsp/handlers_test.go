@@ -71,6 +71,17 @@ func TestDidOpenPublishesTypeDiagnostics(t *testing.T) {
 	}
 }
 
+func TestDidOpenPublishesShadowingDiagnostic(t *testing.T) {
+	s, buf := newTestServer()
+	s.handleNotification(message{
+		Method: "textDocument/didOpen",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///shadow.chaos","languageId":"chaos","version":1,"text":"main :: proc { x := 1; x := 2; }"}}`),
+	})
+	if out := buf.String(); !strings.Contains(out, "use '#shadow' or rename") {
+		t.Errorf("publishDiagnostics missing shadowing error: %q", out)
+	}
+}
+
 func TestReferencesHonorsIncludeDeclaration(t *testing.T) {
 	s, _ := newTestServer()
 	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})

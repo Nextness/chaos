@@ -1,0 +1,3 @@
+[ERROR] 6:5:shadow_same_scope.chaos - declaration of 'x' shadows an existing name; use '#shadow' or rename
+     x := 2;
+     ^^^^^^ -> add '#shadow' before the declaration or choose a new name

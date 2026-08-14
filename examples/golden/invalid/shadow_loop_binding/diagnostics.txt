@@ -1,0 +1,3 @@
+[ERROR] 7:9:shadow_loop_binding.chaos - declaration of 'x' shadows an existing name; use '#shadow' or rename
+     for x: arr {
+         ^ -> add '#shadow' before the declaration or choose a new name

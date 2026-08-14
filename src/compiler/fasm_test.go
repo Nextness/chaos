@@ -262,6 +262,11 @@ func TestFasmRuntime(t *testing.T) {
 		{"void union fall off end", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (Void <> Some_Error) {\n    x := 1;\n}\n#entry main :: proc -> S64 {\n    f() unless catch {\n        return -1;\n    }\n    return 9;\n}", 9},
 		{"explicit void result", "f :: proc -> Void {\n    return;\n}\n#entry main :: proc -> S64 {\n    f();\n    return 9;\n}", 9},
 		{"void result fall off end", "f :: proc -> Void {\n    x := 1;\n}\n#entry main :: proc -> S64 {\n    f();\n    return 9;\n}", 9},
+		{"shadow directive", "f :: proc (input1: S64) -> S64 {\n    #shadow input1 := input1 + 1;\n    return input1;\n}\n#entry main :: proc -> S64 {\n    return f(41);\n}", 42},
+		{"shadow global", "SOME_VAR :: 10;\nf :: proc -> S64 {\n    #shadow SOME_VAR :: SOME_VAR + 5;\n    return SOME_VAR;\n}\n#entry main :: proc -> S64 {\n    return f();\n}", 15},
+		{"shadow top-level global", "SOME_VAR :: 10;\n#shadow SOME_VAR :: SOME_VAR + 5;\n#entry main :: proc -> S64 {\n    return SOME_VAR;\n}", 15},
+		{"shadow global label collision", "x :: 1;\n#shadow x :: x + 1;\nx_1 :: 40;\n#entry main :: proc -> S64 {\n    return x + x_1;\n}", 42},
+		{"shadow unless target", "Some_Error :: error { BAD; }\nf :: proc (value: S64) -> (S64 <> Some_Error) {\n    return value + 1;\n}\n#entry main :: proc -> S64 {\n    value := 40;\n    #shadow value := f(value) unless catch {\n        return -1;\n    }\n    return value + 1;\n}", 42},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

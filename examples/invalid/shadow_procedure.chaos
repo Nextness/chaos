@@ -1,0 +1,11 @@
+// expect-stage: type
+// expect-error: declaration of 'helper' shadows an existing procedure
+// Procedure names are visible values and require explicit variable shadowing.
+helper :: proc -> S64 {
+    return 1;
+}
+
+#entry main :: proc -> S64 {
+    helper := 2;
+    return helper;
+}

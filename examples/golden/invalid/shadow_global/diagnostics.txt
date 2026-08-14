@@ -1,0 +1,3 @@
+[ERROR] 7:5:shadow_global.chaos - declaration of 'SOME_VAR' shadows an existing name; use '#shadow' or rename
+     SOME_VAR :: SOME_VAR;
+     ^^^^^^^^^^^^^^^^^^^^ -> add '#shadow' before the declaration or choose a new name

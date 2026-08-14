@@ -33,6 +33,8 @@ type TypeChecker struct {
 	procs                  map[string]*ProcDecl
 	structs                map[string]*StructDecl
 	errors                 map[string]*ErrorDecl
+	globalPrevious         map[*VarDecl]*VarDecl
+	globalTypes            map[*VarDecl]Type
 	currentReturnType      Type
 	currentErrorReturnType Type // error type of a '<>' result ("" when none)
 	loopDepth              int  // nesting depth of for loops (for break/continue)
@@ -44,9 +46,11 @@ type TypeChecker struct {
 // diagnostics it produced.
 func CheckProgram(program *Program) DiagnosticList {
 	tc := &TypeChecker{
-		procs:   make(map[string]*ProcDecl),
-		structs: make(map[string]*StructDecl),
-		errors:  make(map[string]*ErrorDecl),
+		procs:          make(map[string]*ProcDecl),
+		structs:        make(map[string]*StructDecl),
+		errors:         make(map[string]*ErrorDecl),
+		globalPrevious: make(map[*VarDecl]*VarDecl),
+		globalTypes:    make(map[*VarDecl]Type),
 	}
 	tc.checkProgram(program)
 	return tc.diags
@@ -79,14 +83,37 @@ func (tc *TypeChecker) lookup(name string) (Type, bool) {
 func (tc *TypeChecker) checkProgram(program *Program) {
 	tc.pushScope() // global scope
 
-	// First pass: register all global declarations so bodies can reference
-	// them regardless of source order.
+	// Register named declarations first so a variable cannot evade the
+	// no-shadowing rule merely by appearing before a type declaration.
+	seenProcs := make(map[string]bool)
 	for _, decl := range program.Decls {
 		switch d := decl.(type) {
 		case *ProcDecl:
+			if seenProcs[d.Name] {
+				tc.diags.Error(d.Span_, "procedure '"+d.Name+"' is declared more than once", "choose a different procedure name")
+			}
+			seenProcs[d.Name] = true
 			tc.procs[d.Name] = d
 		case *StructDecl:
 			tc.structs[d.Name] = d
+		case *ErrorDecl:
+			tc.errors[d.Name] = d
+		}
+	}
+
+	// Register all global values and types so bodies can reference them
+	// regardless of source order. Keep the previous variable declaration for
+	// an explicit top-level shadow initializer.
+	latestGlobals := make(map[string]*VarDecl)
+	seenTypes := make(map[string]string)
+	for _, decl := range program.Decls {
+		switch d := decl.(type) {
+		case *ProcDecl:
+		case *StructDecl:
+			if previous, ok := seenTypes[d.Name]; ok {
+				tc.reportTypeShadow(d.Name, previous, d.Span_)
+			}
+			seenTypes[d.Name] = "struct"
 			tc.declare(d.Name, Type(d.Name))
 			// Void is only valid as a function result type, so a struct field
 			// of type Void is rejected.
@@ -94,7 +121,10 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 				tc.checkTypeExprValid(f.Type)
 			}
 		case *ErrorDecl:
-			tc.errors[d.Name] = d
+			if previous, ok := seenTypes[d.Name]; ok {
+				tc.reportTypeShadow(d.Name, previous, d.Span_)
+			}
+			seenTypes[d.Name] = "error"
 			tc.declare(d.Name, Type(d.Name))
 			// Error members are numbered sequentially from 0; duplicate
 			// member names would make the numbering ambiguous.
@@ -106,25 +136,43 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 				seen[m.Name] = true
 			}
 		case *VarDecl:
-			if d.DeclType != nil {
-				tc.declare(d.Name, typeOfTypeExpr(d.DeclType))
-			} else {
-				tc.declare(d.Name, TypeUnknown)
+			tc.checkShadow(d.Name, d.Span_, d.Shadow)
+			if previous := latestGlobals[d.Name]; previous != nil {
+				tc.globalPrevious[d] = previous
 			}
+			latestGlobals[d.Name] = d
+			declType := TypeUnknown
+			if d.DeclType != nil {
+				declType = typeOfTypeExpr(d.DeclType)
+			}
+			tc.globalTypes[d] = declType
+			tc.declare(d.Name, declType)
 		}
 	}
 
-	// Second pass: check procedure bodies and infer the types of inferred
-	// global declarations.
+	// Resolve globals in declaration order. A shadowing initializer sees the
+	// previous declaration, while unrelated globals retain forward visibility.
 	for _, decl := range program.Decls {
-		switch d := decl.(type) {
-		case *ProcDecl:
+		d, ok := decl.(*VarDecl)
+		if !ok {
+			continue
+		}
+		if previous := tc.globalPrevious[d]; previous != nil {
+			tc.scopes[0][d.Name] = tc.globalTypes[previous]
+		} else {
+			tc.scopes[0][d.Name] = tc.globalTypes[d]
+		}
+		t := tc.checkVarDecl(d)
+		tc.globalTypes[d] = t
+		tc.scopes[0][d.Name] = t
+	}
+	// Procedures see the final global binding regardless of source order.
+	for name, decl := range latestGlobals {
+		tc.scopes[0][name] = tc.globalTypes[decl]
+	}
+	for _, decl := range program.Decls {
+		if d, ok := decl.(*ProcDecl); ok {
 			tc.checkProc(d)
-		case *VarDecl:
-			t := tc.checkVarDecl(d)
-			if d.DeclType == nil {
-				tc.scopes[0][d.Name] = t
-			}
 		}
 	}
 
@@ -220,6 +268,7 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 	switch n := s.(type) {
 	case *VarDecl:
 		t := tc.checkVarDecl(n)
+		tc.checkShadow(n.Name, n.Span_, n.Shadow)
 		tc.declare(n.Name, t)
 	case *AssignStmt:
 		declType, ok := tc.lookup(n.Name)
@@ -312,13 +361,14 @@ func (tc *TypeChecker) checkUnlessCatch(n *UnlessCatchStmt) {
 			tc.diags.Error(n.Span_, "cannot bind a Void value; use the bare 'unless catch' form", "remove the target name")
 			return
 		}
+		tc.checkShadow(n.Target, n.TargetSpan, n.Shadow)
 		tc.declare(n.Target, initType)
 	}
 	if !isErrorUnion(initType) {
 		tc.diags.Error(n.Init.nodeSpan(), "unless catch requires an error-returning expression, got "+string(initType), "use an expression that can return an error")
 		return
 	}
-	tc.checkCatchBody(n.CatchBody, unionErrorType(initType), n.CatchName)
+	tc.checkCatchBody(n.CatchBody, unionErrorType(initType), n.CatchName, n.CatchNameSpan)
 	if n.Target != "" {
 		tc.updateType(n.Target, unionValueType(initType))
 	}
@@ -338,7 +388,7 @@ func (tc *TypeChecker) checkIfCatch(n *IfCatchStmt) {
 		tc.diags.Error(n.Cond.nodeSpan(), "catch requires a variable holding the error-returning value", "bind the value to a variable first")
 		return
 	}
-	tc.checkCatchBody(n.CatchBody, unionErrorType(condType), n.CatchName)
+	tc.checkCatchBody(n.CatchBody, unionErrorType(condType), n.CatchName, n.CatchNameSpan)
 	tc.updateType(ident.Name, unionValueType(condType))
 }
 
@@ -362,9 +412,11 @@ func (tc *TypeChecker) checkFor(n *ForStmt) {
 		tc.rangeIndexType = TypeS64
 		tc.pushScope()
 		if n.IndexName != "" {
+			tc.checkShadow(n.IndexName, n.IndexNameSpan, false)
 			tc.declare(n.IndexName, TypeS64)
 		}
 		if n.ElemName != "" {
+			tc.checkShadow(n.ElemName, n.ElemNameSpan, false)
 			tc.declare(n.ElemName, elemType)
 		}
 		tc.checkBlock(n.Body)
@@ -397,16 +449,53 @@ func (tc *TypeChecker) checkFor(n *ForStmt) {
 // checkCatchBody checks a catch body: it must return or exit (so the value is
 // always defined afterward), and the optional error binding is declared in the
 // body's scope.
-func (tc *TypeChecker) checkCatchBody(body *BlockStmt, errorType Type, catchName string) {
+func (tc *TypeChecker) checkCatchBody(body *BlockStmt, errorType Type, catchName string, catchNameSpan Span) {
 	if !blockDiverges(body) {
 		tc.diags.Error(body.Span_, "the catch block must return or exit", "end the catch block with a return or exit")
 	}
 	tc.pushScope()
 	if catchName != "" {
+		tc.checkShadow(catchName, catchNameSpan, false)
 		tc.declare(catchName, errorType)
 	}
 	tc.checkBlock(body)
 	tc.popScope()
+}
+
+// checkShadow reports whether declaring 'name' shadows an existing name and
+// emits the appropriate diagnostic. Shadowing a struct or error type is never
+// allowed; shadowing a value name requires the explicit '#shadow' directive.
+// Parameter names are placeholders and are never checked.
+func (tc *TypeChecker) checkShadow(name string, span Span, shadow bool) {
+	if _, ok := tc.structs[name]; ok {
+		tc.diags.Error(span, "declaration of '"+name+"' shadows a struct type; this is not allowed", "choose a different name")
+		return
+	}
+	if _, ok := tc.errors[name]; ok {
+		tc.diags.Error(span, "declaration of '"+name+"' shadows an error type; this is not allowed", "choose a different name")
+		return
+	}
+	if _, ok := tc.procs[name]; ok {
+		if shadow && len(tc.scopes) == 1 {
+			tc.diags.Error(span, "a top-level variable cannot shadow procedure '"+name+"'", "choose a different variable name")
+			return
+		}
+		if !shadow {
+			tc.diags.Error(span, "declaration of '"+name+"' shadows an existing procedure; use '#shadow' or rename", "add '#shadow' before the declaration or choose a new name")
+			return
+		}
+	}
+	if _, ok := tc.lookup(name); ok && !shadow {
+		tc.diags.Error(span, "declaration of '"+name+"' shadows an existing name; use '#shadow' or rename", "add '#shadow' before the declaration or choose a new name")
+	}
+}
+
+func (tc *TypeChecker) reportTypeShadow(name, kind string, span Span) {
+	article := "a"
+	if kind == "error" {
+		article = "an"
+	}
+	tc.diags.Error(span, "declaration of '"+name+"' shadows "+article+" "+kind+" type; this is not allowed", "choose a different name")
 }
 
 // updateType changes the type of a declared name in the scope where it is

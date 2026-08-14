@@ -1,0 +1,26 @@
+MIR
+  Global BASE: S64 [mutable=false]
+  Global BASE: S64 [mutable=false]
+  Function main() -> S64
+    Local l0: S64
+    Local l1: S64
+    bb0:
+      v0:S64 = const 25
+      store.local v0 l0
+      v1:S64 = load.local l0
+      v2:S64 = const 2
+      v3:S64 = add v1 v2
+      store.local v3 l1
+      v4:S64 = load.local l1
+      v5:S64 = load.global BASE
+      v6:S64 = add v4 v5
+      return v6
+  Function __global_init()
+    bb0:
+      v0:S64 = const 10
+      store.global v0 BASE
+      v1:S64 = load.global BASE
+      v2:S64 = const 5
+      v3:S64 = add v1 v2
+      store.global v3 BASE
+      return
