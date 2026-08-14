@@ -1,0 +1,15 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl arr = ArrayInit(Ident(S64), Int(1), Int(2), Int(3)) [mutable=true compileTime=false]
+      VarDecl idx = Int(40) [mutable=true compileTime=false]
+      ForStmt range=Ident(arr) index=idx elem=elem
+        Block
+          IfStmt condition=Binary(== Ident(elem) Int(2))
+            Block
+              ContinueStmt
+      ReturnStmt Ident(idx)

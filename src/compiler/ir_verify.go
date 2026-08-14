@@ -23,12 +23,17 @@ type MIRVerifier struct {
 	valueTypes map[ValueID]TypeID
 	localTypes map[LocalID]TypeID
 	functions  map[SymbolID]*MIRFunction
+	globals    map[SymbolID]MIRGlobal
 }
 
 func (v *MIRVerifier) verify() {
 	v.functions = make(map[SymbolID]*MIRFunction, len(v.prog.Functions))
 	for _, fn := range v.prog.Functions {
 		v.functions[fn.Symbol] = fn
+	}
+	v.globals = make(map[SymbolID]MIRGlobal, len(v.prog.Globals))
+	for _, global := range v.prog.Globals {
+		v.globals[global.Symbol] = global
 	}
 	for _, fn := range v.prog.Functions {
 		v.verifyFunction(fn)
@@ -88,7 +93,9 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, ins *MIRInstr) {
 	case MIRLoadLocal:
 		if ins.Imm.Kind != MIRImmLocal {
 			v.diags.Error(ins.Span, "load.local requires a local operand", "add a local operand")
-		} else if lt, ok := v.localTypes[ins.Imm.Local]; ok && ins.Type != lt {
+		} else if lt, ok := v.localTypes[ins.Imm.Local]; !ok {
+			v.diags.Error(ins.Span, "load.local references unknown local l"+strconv.Itoa(int(ins.Imm.Local)), "use a declared local")
+		} else if ins.Type != lt {
 			v.diags.Error(ins.Span, "load.local type "+v.typeName(ins.Type)+" does not match local type "+v.typeName(lt), "use the local's type")
 		}
 	case MIRStoreLocal:
@@ -96,15 +103,31 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, ins *MIRInstr) {
 			v.diags.Error(ins.Span, "store.local requires a local operand", "add a local operand")
 		} else if len(ins.Args) != 1 {
 			v.diags.Error(ins.Span, "store.local requires one value argument", "add the stored value")
-		} else if lt, ok := v.localTypes[ins.Imm.Local]; ok {
+		} else if lt, ok := v.localTypes[ins.Imm.Local]; !ok {
+			v.diags.Error(ins.Span, "store.local references unknown local l"+strconv.Itoa(int(ins.Imm.Local)), "use a declared local")
+		} else {
 			vt := v.valueTypes[ins.Args[0]]
 			if vt != lt && vt != v.prog.Types.Unknown() {
 				v.diags.Error(ins.Span, "store.local value type "+v.typeName(vt)+" does not match local type "+v.typeName(lt), "store a value of the local's type")
 			}
 		}
-	case MIRLoadGlobal, MIRStoreGlobal:
+	case MIRLoadGlobal:
 		if ins.Imm.Kind != MIRImmSymbol {
 			v.diags.Error(ins.Span, ins.Op.String()+" requires a symbol operand", "add a symbol operand")
+		} else if global, ok := v.globals[ins.Imm.Symbol]; !ok {
+			v.diags.Error(ins.Span, "load.global references unknown global "+v.prog.Symbols.Lookup(ins.Imm.Symbol), "use a declared global")
+		} else if ins.Type != global.Type {
+			v.diags.Error(ins.Span, "load.global type "+v.typeName(ins.Type)+" does not match global type "+v.typeName(global.Type), "use the global's type")
+		}
+	case MIRStoreGlobal:
+		if ins.Imm.Kind != MIRImmSymbol {
+			v.diags.Error(ins.Span, ins.Op.String()+" requires a symbol operand", "add a symbol operand")
+		} else if global, ok := v.globals[ins.Imm.Symbol]; !ok {
+			v.diags.Error(ins.Span, "store.global references unknown global "+v.prog.Symbols.Lookup(ins.Imm.Symbol), "use a declared global")
+		} else if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "store.global requires one value argument", "add the stored value")
+		} else if vt := v.valueTypes[ins.Args[0]]; vt != global.Type && vt != v.prog.Types.Unknown() {
+			v.diags.Error(ins.Span, "store.global value type "+v.typeName(vt)+" does not match global type "+v.typeName(global.Type), "store a value of the global's type")
 		}
 	case MIRAdd, MIRSub, MIRMul, MIRDiv, MIRMod:
 		v.checkBinaryArith(ins)

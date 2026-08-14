@@ -320,8 +320,8 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		p.peekN(2).Kind == TkIdent &&
 		(p.peekN(3).Kind == TkColon && p.peekN(4).Kind == TkColon && p.peekN(5).Kind == TkProc ||
 			p.tolerant && p.peekN(3).Kind == TkLt) {
-		p.bump() // consume '#'
-		p.bump() // consume TkDirec("entry")
+		p.bump()            // consume '#'
+		p.bump()            // consume TkDirec("entry")
 		nameTok := p.bump() // consume the ident
 		name := nameTok.Text()
 		if p.tolerant && p.at(TkLt) {
@@ -1430,9 +1430,11 @@ func (p *Parser) atCFor() bool {
 // consumed.
 func (p *Parser) parseRangeFor(tok Token) Stmt {
 	indexName := ""
+	var indexNameSpan Span
 	if p.at(TkIdent) && p.peekN(1).Kind == TkComma {
 		indexTok := p.bump() // consume the index name
 		indexName = indexTok.Text()
+		indexNameSpan = indexTok.Span
 		p.bump() // consume ","
 	}
 	elemTok := p.bump() // consume the element name
@@ -1449,11 +1451,13 @@ func (p *Parser) parseRangeFor(tok Token) Stmt {
 		body = &BlockStmt{Span_: p.peek().Span}
 	}
 	return &ForStmt{
-		Span_:     spanUnion(tok.Span, body.Span_),
-		Range:     rangeExpr,
-		IndexName: indexName,
-		ElemName:  elemName,
-		Body:      body,
+		Span_:         spanUnion(tok.Span, body.Span_),
+		Range:         rangeExpr,
+		IndexName:     indexName,
+		IndexNameSpan: indexNameSpan,
+		ElemName:      elemName,
+		ElemNameSpan:  elemTok.Span,
+		Body:          body,
 	}
 }
 

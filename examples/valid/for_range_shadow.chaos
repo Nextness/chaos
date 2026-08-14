@@ -1,0 +1,11 @@
+// expect-exit: 40
+#entry main :: proc -> S64 {
+    arr := []S64.{1, 2, 3};
+    idx := 40;
+    for idx, elem: arr {
+        if elem == 2 {
+            continue;
+        }
+    }
+    return idx;
+}

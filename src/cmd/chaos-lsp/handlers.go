@@ -75,7 +75,7 @@ func (s *Server) handleInitialize(msg message) Response {
 	s.mu.Unlock()
 	result := InitializeResult{
 		Capabilities: ServerCapabilities{
-			TextDocumentSync: &TextDocumentSyncOptions{OpenClose: true, Change: 2},
+			TextDocumentSync:       &TextDocumentSyncOptions{OpenClose: true, Change: 2},
 			DocumentSymbolProvider: true,
 			SemanticTokensProvider: &SemanticTokensOptions{
 				Legend: SemanticTokensLegend{TokenTypes: semanticTokenTypes, TokenModifiers: []string{}},
@@ -149,6 +149,9 @@ func (s *Server) publishDiagnostics(doc *Document) {
 	tokens, diags := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
 	result := compiler.ParseProgramTolerant(tokens)
 	all := append(diags, result.Diags...)
+	if !all.HasErrors() {
+		all = append(all, compiler.CheckProgram(result.Program)...)
+	}
 	s.sendNotification("textDocument/publishDiagnostics", PublishDiagnosticsParams{
 		URI:         doc.URI,
 		Diagnostics: convertDiagnostics(all, doc.sf),

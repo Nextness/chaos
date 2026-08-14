@@ -85,6 +85,43 @@ func TestVerifyStoreTypeMismatch(t *testing.T) {
 	}
 }
 
+func TestVerifyUnknownLocal(t *testing.T) {
+	tt := NewTypeTable()
+	st := NewSymbolTable()
+	fn := &MIRFunction{
+		Symbol: st.Declare("main"),
+		Name:   "main",
+		Blocks: []*MIRBlock{{
+			ID:     0,
+			Instrs: []*MIRInstr{{Result: 0, Op: MIRLoadLocal, Type: tt.S64(), Imm: MIRImmediate{Kind: MIRImmLocal, Local: 7}}},
+			Term:   MIRTerminator{Kind: MIRReturn, Value: NoValue},
+		}},
+	}
+	diags := VerifyMIR(&MIRProgram{Symbols: st, Types: tt, Functions: []*MIRFunction{fn}})
+	if !hasError(diags, "references unknown local l7") {
+		t.Errorf("expected unknown-local error, got %v", diags)
+	}
+}
+
+func TestVerifyUnknownGlobal(t *testing.T) {
+	tt := NewTypeTable()
+	st := NewSymbolTable()
+	missing := st.Declare("missing")
+	fn := &MIRFunction{
+		Symbol: st.Declare("main"),
+		Name:   "main",
+		Blocks: []*MIRBlock{{
+			ID:     0,
+			Instrs: []*MIRInstr{{Result: 0, Op: MIRLoadGlobal, Type: tt.S64(), Imm: MIRImmediate{Kind: MIRImmSymbol, Symbol: missing}}},
+			Term:   MIRTerminator{Kind: MIRReturn, Value: NoValue},
+		}},
+	}
+	diags := VerifyMIR(&MIRProgram{Symbols: st, Types: tt, Functions: []*MIRFunction{fn}})
+	if !hasError(diags, "references unknown global missing") {
+		t.Errorf("expected unknown-global error, got %v", diags)
+	}
+}
+
 func TestVerifyReturnMismatch(t *testing.T) {
 	tt := NewTypeTable()
 	st := NewSymbolTable()

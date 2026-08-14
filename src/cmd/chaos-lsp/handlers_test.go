@@ -60,6 +60,52 @@ func TestDidChangePublishesDiagnostics(t *testing.T) {
 	}
 }
 
+func TestDidOpenPublishesTypeDiagnostics(t *testing.T) {
+	s, buf := newTestServer()
+	s.handleNotification(message{
+		Method: "textDocument/didOpen",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///type.chaos","languageId":"chaos","version":1,"text":"main :: proc { value: Bool = 1; }"}}`),
+	})
+	if out := buf.String(); !strings.Contains(out, "cannot assign S64 to Bool") {
+		t.Errorf("publishDiagnostics missing type error: %q", out)
+	}
+}
+
+func TestReferencesHonorsIncludeDeclaration(t *testing.T) {
+	s, _ := newTestServer()
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
+	s.handleNotification(message{
+		Method: "textDocument/didOpen",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///refs.chaos","languageId":"chaos","version":1,"text":"main :: proc { x := 1; y := x; }"}}`),
+	})
+
+	request := func(include bool) []Location {
+		params, err := json.Marshal(ReferenceParams{
+			TextDocument: VersionedTextDocumentIdentifier{URI: "file:///refs.chaos"},
+			Position:     Position{Line: 0, Character: 28},
+			Context:      ReferenceContext{IncludeDeclaration: include},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp := s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "textDocument/references", Params: params})
+		if resp.Error != nil {
+			t.Fatalf("references error: %+v", resp.Error)
+		}
+		var locs []Location
+		if err := json.Unmarshal(resp.Result, &locs); err != nil {
+			t.Fatalf("unmarshal references: %v", err)
+		}
+		return locs
+	}
+	if got := request(false); len(got) != 1 {
+		t.Errorf("references without declaration = %d, want 1", len(got))
+	}
+	if got := request(true); len(got) != 2 {
+		t.Errorf("references with declaration = %d, want 2", len(got))
+	}
+}
+
 func TestDidCloseClearsDiagnostics(t *testing.T) {
 	s, buf := newTestServer()
 	s.handleNotification(message{

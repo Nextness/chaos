@@ -369,6 +369,7 @@ func (l *Lowerer) lowerRangeFor(n *ForStmt, rangeExpr Expr, indexName, elemName 
 	arrVal := l.lowerExpr(rangeExpr)
 	arrType := arrVal.hirType()
 	elemType := l.types.Lookup(arrType).Elem
+	l.pushScope()
 
 	// Bind the array once.
 	arrSym := l.symbols.Declare("__arr")
@@ -447,6 +448,7 @@ func (l *Lowerer) lowerRangeFor(n *ForStmt, rangeExpr Expr, indexName, elemName 
 
 	body := &HIRBlock{Span_: n.Body.Span_, Stmts: bodyStmts}
 	forStmt := &HIRFor{Span_: n.Span_, Init: idxDecl, Cond: cond, After: after, Body: body}
+	l.popScope()
 	return &HIRBlock{Span_: n.Span_, Stmts: []HIRStmt{arrDecl, forStmt}}
 }
 

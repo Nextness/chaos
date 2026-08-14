@@ -8,15 +8,22 @@ import (
 )
 
 func main() {
+	os.Exit(runServer(os.Stdin, os.Stdout))
+}
+
+// runServer processes framed JSON-RPC messages until EOF or an exit
+// notification. It returns the LSP-required exit status: zero after shutdown,
+// one when the client exits without first shutting down.
+func runServer(in io.Reader, out io.Writer) int {
 	server := NewServer()
-	reader := bufio.NewReader(os.Stdin)
-	writer := os.Stdout
+	server.writer = out
+	reader := bufio.NewReader(in)
 
 	for {
 		body, err := readMessage(reader)
 		if err != nil {
 			if err == io.EOF {
-				return
+				return 0
 			}
 			// Malformed frame: skip and continue.
 			continue
@@ -32,13 +39,13 @@ func main() {
 			if err != nil {
 				continue
 			}
-			writeMessage(writer, out)
+			writeMessage(server.writer, out)
 		} else {
 			if msg.Method == "exit" {
 				if server.isShutdown() {
-					os.Exit(0)
+					return 0
 				}
-				os.Exit(1)
+				return 1
 			}
 			server.handleNotification(msg)
 		}

@@ -385,11 +385,11 @@ func TestSemanticTokensErrorReturnSpec(t *testing.T) {
 		line, start int
 		want        int
 	}{
-		{3, 0, semTypeFunction},  // f
-		{3, 14, semTypeType},     // String (value type)
+		{3, 0, semTypeFunction},   // f
+		{3, 14, semTypeType},      // String (value type)
 		{3, 21, semTypeDelimiter}, // <>
-		{3, 24, semTypeType},     // Some_Error (error type)
-		{4, 12, semTypeConstant}, // GENERIC! (error literal)
+		{3, 24, semTypeType},      // Some_Error (error type)
+		{4, 12, semTypeConstant},  // GENERIC! (error literal)
 	}
 	for _, c := range checks {
 		tok, ok := tokenAt(tokens, c.line, c.start)
@@ -450,6 +450,28 @@ func TestSemanticTokensUnlessCatch(t *testing.T) {
 		}
 		if tok.typeIndex != c.want {
 			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
+		}
+	}
+}
+
+func TestSemanticTokensLoopAndUnlessBindings(t *testing.T) {
+	source := "main :: proc {\n    arr := []S64.{1};\n    for idx, elem: arr {\n        value := idx + elem;\n    }\n    result := work() unless catch err { exit 1; }\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, length int
+	}{
+		{2, 8, 3},  // idx
+		{2, 13, 4}, // elem
+		{5, 4, 6},  // result
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok {
+			t.Errorf("no semantic token at line %d col %d", check.line, check.start)
+			continue
+		}
+		if tok.typeIndex != semTypeVariable || tok.length != check.length {
+			t.Errorf("token at line %d col %d = type %d length %d, want variable length %d", check.line, check.start, tok.typeIndex, tok.length, check.length)
 		}
 	}
 }

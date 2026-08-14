@@ -1,0 +1,5 @@
+// expect-stage: type
+// expect-error: use of undeclared variable missing
+main :: proc {
+    value := missing;
+}

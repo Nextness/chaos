@@ -102,6 +102,26 @@ func TestLowerVarDeclLiteralAdaptation(t *testing.T) {
 	}
 }
 
+func TestLowerRangeIndexDoesNotReplaceOuterBinding(t *testing.T) {
+	hir, _ := lowerSource(t, "main :: proc -> S64 {\n    arr := []S64.{1, 2};\n    idx := 40;\n    for idx, elem: arr { }\n    return idx;\n}")
+	p := findHIRProc(hir, "main")
+	outer, ok := p.Body.Stmts[1].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("outer declaration = %T, want *HIRVarDecl", p.Body.Stmts[1])
+	}
+	ret, ok := p.Body.Stmts[3].(*HIRReturn)
+	if !ok {
+		t.Fatalf("post-loop statement = %T, want *HIRReturn", p.Body.Stmts[3])
+	}
+	ref, ok := ret.Value.(*HIRRef)
+	if !ok {
+		t.Fatalf("return value = %T, want *HIRRef", ret.Value)
+	}
+	if ref.Symbol != outer.Symbol {
+		t.Errorf("return resolves to symbol %d, want outer idx symbol %d", ref.Symbol, outer.Symbol)
+	}
+}
+
 func TestLowerBinaryLiteralAdaptation(t *testing.T) {
 	hir, _ := lowerSource(t, "main :: proc {\n    x: U64 = 10;\n    y := x + 1;\n}")
 	p := findHIRProc(hir, "main")

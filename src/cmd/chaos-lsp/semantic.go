@@ -9,16 +9,16 @@ import (
 
 // Semantic token type indices into the legend declared in initialize.
 const (
-	semTypeKeyword    = 0
-	semTypeNumber     = 1
-	semTypeString     = 2
-	semTypeComment    = 3
-	semTypeFunction   = 4
-	semTypeVariable   = 5
-	semTypeParameter  = 6
-	semTypeType       = 7
-	semTypeConstant   = 8
-	semTypeDelimiter  = 9
+	semTypeKeyword   = 0
+	semTypeNumber    = 1
+	semTypeString    = 2
+	semTypeComment   = 3
+	semTypeFunction  = 4
+	semTypeVariable  = 5
+	semTypeParameter = 6
+	semTypeType      = 7
+	semTypeConstant  = 8
+	semTypeDelimiter = 9
 )
 
 // semanticToken is one token to be delta-encoded. Positions and lengths are in
@@ -98,7 +98,7 @@ var builtinTypes = map[string]bool{
 	"S8": true, "S16": true, "S32": true, "S64": true, "S128": true,
 	"U8": true, "U16": true, "U32": true, "U64": true, "U128": true,
 	"Size": true,
-	"F16": true, "F32": true, "F64": true, "F128": true,
+	"F16":  true, "F32": true, "F64": true, "F128": true,
 	"C64": true, "C128": true,
 	"Q128": true, "Q256": true,
 	"String": true, "Byte": true, "Void": true, "Addr": true, "Bool": true,
@@ -247,6 +247,9 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		case *compiler.ErrorDecl:
 			walkError(s)
 		case *compiler.UnlessCatchStmt:
+			if s.Target != "" {
+				out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Target), sf, semTypeVariable)...)
+			}
 			walkExpr(s.Init)
 			if s.CatchName != "" {
 				out = append(out, spanToTokenRows(s.CatchNameSpan, sf, semTypeVariable)...)
@@ -269,10 +272,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				walkExpr(s.Range)
 			}
 			if s.IndexName != "" {
-				out = append(out, spanToTokenRows(nameSpan(s.Span_, s.IndexName), sf, semTypeVariable)...)
+				out = append(out, spanToTokenRows(s.IndexNameSpan, sf, semTypeVariable)...)
 			}
 			if s.ElemName != "" {
-				out = append(out, spanToTokenRows(nameSpan(s.Span_, s.ElemName), sf, semTypeVariable)...)
+				out = append(out, spanToTokenRows(s.ElemNameSpan, sf, semTypeVariable)...)
 			}
 			if s.After != nil {
 				walkStmt(s.After)

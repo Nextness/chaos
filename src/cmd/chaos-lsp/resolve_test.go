@@ -81,6 +81,72 @@ func TestReferencesListsAllOccurrences(t *testing.T) {
 	}
 }
 
+func TestReferencesRespectShadowedDeclarations(t *testing.T) {
+	source := "main :: proc {\n    x := 1;\n    {\n        x := 2;\n        inner := x;\n    }\n    outer := x;\n}"
+	r := buildResolverFor(t, source)
+
+	innerRef := offsetOf(t, source, "inner := x") + len("inner := ")
+	inner := r.referencesAt(innerRef)
+	if len(inner) != 2 {
+		t.Fatalf("inner x references = %d, want declaration and inner use", len(inner))
+	}
+	if sym := r.definitionAt(innerRef); sym == nil || sym.span.Start != offsetOf(t, source, "x := 2") {
+		t.Fatalf("inner x definition = %+v, want inner declaration", sym)
+	}
+
+	outerRef := offsetOf(t, source, "outer := x") + len("outer := ")
+	outer := r.referencesAt(outerRef)
+	if len(outer) != 2 {
+		t.Fatalf("outer x references = %d, want declaration and outer use", len(outer))
+	}
+	if sym := r.definitionAt(outerRef); sym == nil || sym.span.Start != offsetOf(t, source, "x := 1") {
+		t.Fatalf("outer x definition = %+v, want outer declaration", sym)
+	}
+}
+
+func TestDefinitionResolvesForwardGlobal(t *testing.T) {
+	source := "main :: proc {\n    later();\n}\nlater :: proc { }"
+	r := buildResolverFor(t, source)
+	ref := offsetOf(t, source, "later();")
+	sym := r.definitionAt(ref)
+	if sym == nil || sym.proc == nil || sym.span.Start != offsetOf(t, source, "later :: proc") {
+		t.Fatalf("forward definition = %+v, want later procedure", sym)
+	}
+}
+
+func TestLoopAndUnlessBindingsResolve(t *testing.T) {
+	source := "Some_Error :: error { BAD; }\nf :: proc -> (S64 <> Some_Error) { return 1; }\nmain :: proc {\n    arr := []S64.{1};\n    for idx, elem: arr {\n        value := idx + elem;\n    }\n    result := f() unless catch err { exit 1; }\n    final := result;\n}"
+	r := buildResolverFor(t, source)
+
+	for _, tt := range []struct {
+		decl string
+		ref  string
+		add  int
+	}{
+		{decl: "idx, elem", ref: "idx + elem"},
+		{decl: "elem: arr", ref: "idx + elem", add: len("idx + ")},
+		{decl: "result := f", ref: "result;"},
+	} {
+		ref := offsetOf(t, source, tt.ref) + tt.add
+		sym := r.definitionAt(ref)
+		if sym == nil || sym.span.Start != offsetOf(t, source, tt.decl) {
+			t.Errorf("definition at %q = %+v, want declaration %q", tt.ref, sym, tt.decl)
+		}
+	}
+
+	bodyPos := offsetOf(t, source, "value := idx") + len("value := idx")
+	items := r.completionAt(bodyPos)
+	names := make(map[string]bool)
+	for _, item := range items {
+		names[item.Label] = true
+	}
+	for _, want := range []string{"idx", "elem"} {
+		if !names[want] {
+			t.Errorf("loop-body completion missing %q", want)
+		}
+	}
+}
+
 func TestHoverReturnsSignature(t *testing.T) {
 	r := buildResolverFor(t, resolveSource)
 

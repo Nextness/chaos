@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"sort"
 	"strings"
 
 	"chaos_new/compiler"
@@ -9,19 +10,19 @@ import (
 
 // LSP CompletionItemKind values used by the server.
 const (
-	completionKindFunction    = 3
-	completionKindVariable    = 6
-	completionKindEnum        = 13
-	completionKindConstant    = 14
-	completionKindEnumMember  = 20
-	completionKindStruct      = 22
+	completionKindFunction   = 3
+	completionKindVariable   = 6
+	completionKindEnum       = 13
+	completionKindConstant   = 14
+	completionKindEnumMember = 20
+	completionKindStruct     = 22
 )
 
 // symbol is a declared name (proc, var, const, struct, error type, error
 // member, param, local).
 type symbol struct {
 	name        string
-	kind        int // LSP CompletionItemKind
+	kind        int           // LSP CompletionItemKind
 	span        compiler.Span // name span
 	proc        *compiler.ProcDecl
 	varDecl     *compiler.VarDecl
@@ -137,13 +138,7 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 	for _, stmt := range block.Stmts {
 		switch st := stmt.(type) {
 		case *compiler.VarDecl:
-			kind := completionKindVariable
-			if st.CompileTime {
-				kind = completionKindConstant
-			}
-			sym := &symbol{name: st.Name, kind: kind, span: nameSpan(st.Span_, st.Name), varDecl: st, scope: s}
-			s.symbols = append(s.symbols, sym)
-			r.decls = append(r.decls, sym)
+			r.addVarDecl(s, st)
 		case *compiler.IfStmt:
 			r.buildBlockScope(st.Body, s)
 			for _, elif := range st.Elif {
@@ -153,6 +148,9 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 				r.buildBlockScope(st.ElseBody, s)
 			}
 		case *compiler.UnlessCatchStmt:
+			if st.Target != "" {
+				r.addBinding(s, st.Target, nameSpan(st.Span_, st.Target))
+			}
 			r.buildCatchScope(st.CatchBody, st.CatchName, st.CatchNameSpan, s)
 		case *compiler.IfCatchStmt:
 			r.buildCatchScope(st.CatchBody, st.CatchName, st.CatchNameSpan, s)
@@ -179,8 +177,49 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 			s.symbols = append(s.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectErrorMembers(st)
+		case *compiler.ForStmt:
+			r.buildForScope(st, s)
 		}
 	}
+}
+
+func (r *resolver) addVarDecl(sc *scope, decl *compiler.VarDecl) {
+	kind := completionKindVariable
+	if decl.CompileTime {
+		kind = completionKindConstant
+	}
+	sym := &symbol{name: decl.Name, kind: kind, span: nameSpan(decl.Span_, decl.Name), varDecl: decl, scope: sc}
+	sc.symbols = append(sc.symbols, sym)
+	r.decls = append(r.decls, sym)
+}
+
+func (r *resolver) addBinding(sc *scope, name string, span compiler.Span) {
+	sym := &symbol{name: name, kind: completionKindVariable, span: span, scope: sc}
+	sc.symbols = append(sc.symbols, sym)
+	r.decls = append(r.decls, sym)
+}
+
+// buildForScope indexes loop declarations using the same visibility as the
+// compiler. C-style initializers live in the surrounding scope. Range
+// bindings are visible only in the loop body and do not shadow names in the
+// iterable expression.
+func (r *resolver) buildForScope(loop *compiler.ForStmt, parent *scope) {
+	if init, ok := loop.Init.(*compiler.VarDecl); ok {
+		r.addVarDecl(parent, init)
+	}
+	if loop.Range == nil {
+		r.buildBlockScope(loop.Body, parent)
+		return
+	}
+	loopScope := &scope{parent: parent, start: loop.Body.Span_.Start, end: loop.Body.Span_.End}
+	parent.children = append(parent.children, loopScope)
+	if loop.IndexName != "" {
+		r.addBinding(loopScope, loop.IndexName, loop.IndexNameSpan)
+	}
+	if loop.ElemName != "" {
+		r.addBinding(loopScope, loop.ElemName, loop.ElemNameSpan)
+	}
+	r.buildBlockScope(loop.Body, loopScope)
 }
 
 // uniqueErrorMember returns the member symbol for a bare '.MEMBER' reference
@@ -406,13 +445,15 @@ func (r *resolver) scopeAt(offset int) *scope {
 	return best
 }
 
-// resolveName resolves a name to the deepest scope containing offset, checking
-// only names declared before the offset (no forward references).
+// resolveName resolves a name to the deepest scope containing offset. Local
+// names must be declared before the offset; globals are visible regardless of
+// source order, matching the compiler's global declaration pass.
 func (r *resolver) resolveName(name string, offset int) *symbol {
 	sc := r.scopeAt(offset)
 	for sc != nil {
-		for _, sym := range sc.symbols {
-			if sym.name == name && sym.span.End <= offset {
+		for i := len(sc.symbols) - 1; i >= 0; i-- {
+			sym := sc.symbols[i]
+			if sym.name == name && (sc == r.global || sym.span.End <= offset) {
 				return sym
 			}
 		}
@@ -444,15 +485,27 @@ func (r *resolver) definitionAt(offset int) *symbol {
 	return r.resolveName(occ.name, offset)
 }
 
-// referencesAt returns all occurrences of the name under the cursor.
+func (r *resolver) resolveOccurrence(occ *occurrence) *symbol {
+	if occ == nil {
+		return nil
+	}
+	if occ.sym != nil {
+		return occ.sym
+	}
+	return r.resolveName(occ.name, occ.span.Start)
+}
+
+// referencesAt returns all occurrences that resolve to the same declaration
+// as the name under the cursor.
 func (r *resolver) referencesAt(offset int) []*occurrence {
 	occ := r.occurrenceAt(offset)
-	if occ == nil {
+	target := r.resolveOccurrence(occ)
+	if target == nil {
 		return nil
 	}
 	var out []*occurrence
 	for _, o := range r.occurrences {
-		if o.name == occ.name {
+		if r.resolveOccurrence(o) == target {
 			out = append(out, o)
 		}
 	}
@@ -494,8 +547,9 @@ func (r *resolver) completionAt(offset int) []CompletionItem {
 	seen := make(map[string]bool)
 	out := []CompletionItem{}
 	for sc != nil {
-		for _, sym := range sc.symbols {
-			if sym.span.End <= offset && !seen[sym.name] {
+		for i := len(sc.symbols) - 1; i >= 0; i-- {
+			sym := sc.symbols[i]
+			if (sc == r.global || sym.span.End <= offset) && !seen[sym.name] {
 				seen[sym.name] = true
 				item := CompletionItem{Label: sym.name, Kind: sym.kind}
 				if sym.proc != nil {
@@ -506,6 +560,7 @@ func (r *resolver) completionAt(offset int) []CompletionItem {
 		}
 		sc = sc.parent
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
 }
 
@@ -536,6 +591,7 @@ func (r *resolver) memberCompletion(offset int) []CompletionItem {
 	for _, msym := range members {
 		out = append(out, CompletionItem{Label: msym.name, Kind: msym.kind})
 	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
 }
 
@@ -682,6 +738,9 @@ func (s *Server) handleReferences(msg message) Response {
 	occs := buildResolver(doc).referencesAt(offset)
 	var locs []Location
 	for _, occ := range occs {
+		if !params.Context.IncludeDeclaration && occ.sym != nil && occ.span == occ.sym.span {
+			continue
+		}
 		locs = append(locs, Location{URI: doc.URI, Range: toLSPRange(compiler.SpanToRange(occ.span, doc.sf))})
 	}
 	out, err := json.Marshal(locs)

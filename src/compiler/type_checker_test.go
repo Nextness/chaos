@@ -44,6 +44,13 @@ func TestTypeCheckLiteralInference(t *testing.T) {
 	}
 }
 
+func TestTypeCheckUndeclaredIdentifier(t *testing.T) {
+	diags := typeCheckSource(t, "main :: proc {\n    value := missing;\n}")
+	if !hasError(diags, "use of undeclared variable missing") {
+		t.Errorf("expected undeclared-variable error, got %v", diags)
+	}
+}
+
 func TestTypeCheckLiteralAdaptation(t *testing.T) {
 	// Literals adapt to a compatible typed target: an integer literal to any
 	// integer type, a float literal to any float type.

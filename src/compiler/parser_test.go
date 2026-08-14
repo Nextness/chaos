@@ -1159,7 +1159,8 @@ func TestParseForRangeElem(t *testing.T) {
 }
 
 func TestParseForRangeIdxElem(t *testing.T) {
-	stmt := parseOneStmt(t, "for idx, elem: arr { exit 0; }")
+	source := "for idx, elem: arr { exit 0; }"
+	stmt := parseOneStmt(t, source)
 	fs, ok := stmt.(*ForStmt)
 	if !ok {
 		t.Fatalf("expected *ForStmt, got %T", stmt)
@@ -1169,6 +1170,18 @@ func TestParseForRangeIdxElem(t *testing.T) {
 	}
 	if fs.ElemName != "elem" {
 		t.Fatalf("ElemName = %q, want %q", fs.ElemName, "elem")
+	}
+	if got := fs.IndexNameSpan.Start - fs.Span_.Start; got != len("for ") {
+		t.Errorf("IndexNameSpan starts %d bytes into loop, want %d", got, len("for "))
+	}
+	if got := fs.IndexNameSpan.End - fs.IndexNameSpan.Start; got != len("idx") {
+		t.Errorf("IndexNameSpan length = %d, want %d", got, len("idx"))
+	}
+	if got := fs.ElemNameSpan.Start - fs.Span_.Start; got != len("for idx, ") {
+		t.Errorf("ElemNameSpan starts %d bytes into loop, want %d", got, len("for idx, "))
+	}
+	if got := fs.ElemNameSpan.End - fs.ElemNameSpan.Start; got != len("elem") {
+		t.Errorf("ElemNameSpan length = %d, want %d", got, len("elem"))
 	}
 }
 

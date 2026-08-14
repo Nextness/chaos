@@ -428,14 +428,16 @@ func (s *UnlessCatchStmt) stmtNode() {}
 // resolved by type: a Bool expression is a while loop, an array expression is
 // an implicit range loop.
 type ForStmt struct {
-	Span_     Span
-	Init      Stmt // c-style init (nil for while/range)
-	Cond      Expr // while condition or implicit range iterable
-	After     Stmt // c-style after statement (nil for while/range)
-	Range     Expr // range iterable (nil for while/c-style)
-	IndexName string
-	ElemName  string
-	Body      *BlockStmt
+	Span_         Span
+	Init          Stmt // c-style init (nil for while/range)
+	Cond          Expr // while condition or implicit range iterable
+	After         Stmt // c-style after statement (nil for while/range)
+	Range         Expr // range iterable (nil for while/c-style)
+	IndexName     string
+	IndexNameSpan Span
+	ElemName      string
+	ElemNameSpan  Span
+	Body          *BlockStmt
 }
 
 func (s *ForStmt) nodeSpan() Span {

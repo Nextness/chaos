@@ -64,15 +64,16 @@ func (tc *TypeChecker) declare(name string, t Type) {
 	tc.scopes[len(tc.scopes)-1][name] = t
 }
 
-// lookup returns the type of a name, searching from the innermost scope
-// outward. It returns TypeUnknown when the name is not declared.
-func (tc *TypeChecker) lookup(name string) Type {
+// lookup returns the type of a name and whether it was declared, searching
+// from the innermost scope outward. The boolean distinguishes an undeclared
+// name from a declared name whose type is not known yet.
+func (tc *TypeChecker) lookup(name string) (Type, bool) {
 	for i := len(tc.scopes) - 1; i >= 0; i-- {
 		if t, ok := tc.scopes[i][name]; ok {
-			return t
+			return t, true
 		}
 	}
-	return TypeUnknown
+	return TypeUnknown, false
 }
 
 func (tc *TypeChecker) checkProgram(program *Program) {
@@ -185,8 +186,8 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		t := tc.checkVarDecl(n)
 		tc.declare(n.Name, t)
 	case *AssignStmt:
-		declType := tc.lookup(n.Name)
-		if declType == TypeUnknown {
+		declType, ok := tc.lookup(n.Name)
+		if !ok {
 			tc.diags.Error(n.Span_, "assignment to undeclared variable "+n.Name, "declare the variable before assigning to it")
 			return
 		}
@@ -244,15 +245,15 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 			tc.diags.Error(n.Span_, "continue outside a loop", "use continue inside a for loop")
 		}
 	case *CompoundAssignStmt:
-		declType := tc.lookup(n.Name)
-		if declType == TypeUnknown {
+		declType, ok := tc.lookup(n.Name)
+		if !ok {
 			tc.diags.Error(n.Span_, "assignment to undeclared variable "+n.Name, "declare the variable before assigning to it")
 			return
 		}
 		tc.checkAssign(n.Span_, declType, n.Value)
 	case *IncDecStmt:
-		declType := tc.lookup(n.Name)
-		if declType == TypeUnknown {
+		declType, ok := tc.lookup(n.Name)
+		if !ok {
 			tc.diags.Error(n.Span_, "cannot modify undeclared variable "+n.Name, "declare the variable before using it")
 			return
 		}
@@ -268,12 +269,12 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 // target holds the unwrapped value.
 func (tc *TypeChecker) checkUnlessCatch(n *UnlessCatchStmt) {
 	initType := tc.inferExpr(n.Init)
+	if n.Target != "" {
+		tc.declare(n.Target, initType)
+	}
 	if !isErrorUnion(initType) {
 		tc.diags.Error(n.Init.nodeSpan(), "unless catch requires an error-returning expression, got "+string(initType), "use an expression that can return an error")
 		return
-	}
-	if n.Target != "" {
-		tc.declare(n.Target, initType)
 	}
 	tc.checkCatchBody(n.CatchBody, unionErrorType(initType), n.CatchName)
 	if n.Target != "" {
@@ -487,7 +488,11 @@ func (tc *TypeChecker) inferExpr(e Expr) Type {
 	case *BoolExpr:
 		return TypeBool
 	case *IdentExpr:
-		return tc.lookup(n.Name)
+		t, ok := tc.lookup(n.Name)
+		if !ok {
+			tc.diags.Error(n.Span_, "use of undeclared variable "+n.Name, "declare the variable before using it")
+		}
+		return t
 	case *ParenExpr:
 		return tc.inferExpr(n.Inner)
 	case *BinaryExpr:
