@@ -11,7 +11,7 @@ HIR
         VarDecl r: S64<>Some_Error = Call(f, Unary(- Int(1))) [mutable=true compileTime=false]
         IfCatch Ident(r) catch err
           Block
-            If condition=Binary(== Ident(err) Unknown)
+            If condition=Binary(== Ident(err) Error(GENERIC))
               Block
                 Return Int(7)
             Return Int(8)

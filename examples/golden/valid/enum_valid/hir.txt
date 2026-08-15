@@ -1,0 +1,8 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl x: Another_Enum = Int(11) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(x) Int(11))
+        Block
+          Return Int(42)
+      Return Int(0)

@@ -8,6 +8,7 @@
 package compiler
 
 import (
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -22,6 +23,7 @@ func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 		structs:        make(map[string]*StructDecl),
 		errors:         make(map[string]*ErrorDecl),
 		errorOrdinal:   make(map[string]map[string]int),
+		enumValues:     make(map[string]map[string]string),
 		hirStructs:     make(map[string]*HIRStruct),
 		globalSymbols:  make(map[*VarDecl]SymbolID),
 		globalPrevious: make(map[*VarDecl]SymbolID),
@@ -46,6 +48,7 @@ type Lowerer struct {
 	structs        map[string]*StructDecl
 	errors         map[string]*ErrorDecl
 	errorOrdinal   map[string]map[string]int
+	enumValues     map[string]map[string]string
 	hirStructs     map[string]*HIRStruct
 	globalSymbols  map[*VarDecl]SymbolID
 	globalPrevious map[*VarDecl]SymbolID
@@ -124,6 +127,27 @@ func (l *Lowerer) lowerProgram(program *Program) {
 				ordinals[m.Name] = i
 			}
 			l.errorOrdinal[d.Name] = ordinals
+		case *EnumDecl:
+			underlying := l.typeOfTypeExpr(d.Members[0].Type)
+			l.types.InternEnum(d.Name, underlying)
+			sym := l.symbols.Declare(d.Name)
+			l.declare(d.Name, sym)
+			values := make(map[string]string, len(d.Members))
+			prev := big.NewInt(0)
+			for i, m := range d.Members {
+				val := new(big.Int).Add(prev, big.NewInt(1))
+				if i == 0 {
+					val.SetInt64(0)
+				}
+				if m.Value != nil {
+					if v, ok := evalEnumMemberValue(m.Value); ok {
+						val.Set(v)
+					}
+				}
+				values[m.Name] = val.String()
+				prev.Set(val)
+			}
+			l.enumValues[d.Name] = values
 		case *VarDecl:
 			if previous, ok := latestGlobals[d.Name]; ok {
 				l.globalPrevious[d] = previous
@@ -309,7 +333,7 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 		return l.lowerCompoundAssign(n)
 	case *IncDecStmt:
 		return l.lowerIncDec(n)
-	case *ProcDecl, *StructDecl, *ErrorDecl:
+	case *ProcDecl, *StructDecl, *ErrorDecl, *EnumDecl:
 		// Nested declarations are not supported inside bodies.
 		return nil
 	}
@@ -546,11 +570,10 @@ func (l *Lowerer) lowerReturn(n *ReturnStmt) HIRStmt {
 			}
 		}
 	} else if n.Value != nil {
-		value = l.lowerExpr(n.Value)
 		if len(l.curResults) > 0 {
-			// Adapt the value to the procedure's result type so that
-			// return literals match wider or narrower types.
-			value = l.adaptLiteral(value, l.curResults[0])
+			value = l.lowerExprAs(n.Value, l.curResults[0])
+		} else {
+			value = l.lowerExpr(n.Value)
 		}
 	}
 	return &HIRReturn{Span_: n.Span_, Value: value}
@@ -722,6 +745,13 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		// Bare error member: the type comes from context, so it is resolved
 		// by lowerExprAs.
 		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	case *EnumMemberExpr:
+		if n.TypeName != "" {
+			return l.lowerEnumMember(n, n.TypeName)
+		}
+		// Bare enum member: the type comes from context, so it is resolved
+		// by lowerExprAs.
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
 	case *ErrorExpr:
 		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
 	case *ArrayInitExpr:
@@ -759,6 +789,9 @@ func (l *Lowerer) lowerExprAs(e Expr, target TypeID) HIRExpr {
 	if em, ok := e.(*ErrorMemberExpr); ok && em.TypeName == "" {
 		return l.lowerErrorMember(em, l.types.Lookup(target).Name)
 	}
+	if em, ok := e.(*EnumMemberExpr); ok && em.TypeName == "" {
+		return l.lowerEnumMember(em, l.types.Lookup(target).Name)
+	}
 	return l.adaptLiteral(l.lowerExpr(e), target)
 }
 
@@ -781,9 +814,48 @@ func (l *Lowerer) lowerErrorMember(n *ErrorMemberExpr, typeName string) HIRExpr 
 	return &HIRConst{Span_: n.Span_, Type: tid, Kind: ConstError, Int: int64(ord), Str: n.Name}
 }
 
+// lowerEnumMember lowers an enum member reference to its integer value as a
+// constant of the enum type.
+func (l *Lowerer) lowerEnumMember(n *EnumMemberExpr, typeName string) HIRExpr {
+	values, ok := l.enumValues[typeName]
+	if !ok {
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	}
+	value, ok := values[n.Name]
+	if !ok {
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	}
+	tid, ok := l.types.ByName(typeName)
+	if !ok {
+		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	}
+	parsed, _ := new(big.Int).SetString(value, 10)
+	return &HIRConst{Span_: n.Span_, Type: tid, Kind: ConstInt, Int: parsed.Int64(), Str: value}
+}
+
 func (l *Lowerer) lowerBinary(n *BinaryExpr) HIRExpr {
-	left := l.lowerExpr(n.Left)
-	right := l.lowerExpr(n.Right)
+	leftBare := isBareMemberExpr(n.Left)
+	rightBare := isBareMemberExpr(n.Right)
+	var left, right HIRExpr
+	if !leftBare {
+		left = l.lowerExpr(n.Left)
+	}
+	if !rightBare {
+		right = l.lowerExpr(n.Right)
+	}
+	if leftBare && right != nil {
+		left = l.lowerExprAs(n.Left, right.hirType())
+	}
+	if rightBare && left != nil {
+		right = l.lowerExprAs(n.Right, left.hirType())
+	}
+	// The type checker rejects expressions where both sides lack context.
+	if left == nil {
+		left = l.lowerExpr(n.Left)
+	}
+	if right == nil {
+		right = l.lowerExpr(n.Right)
+	}
 	switch n.Op {
 	case BinaryOpAdd, BinaryOpSub, BinaryOpMul, BinaryOpDiv, BinaryOpMod:
 		left, right = l.adaptLiteralTypes(left, right)
@@ -799,6 +871,16 @@ func (l *Lowerer) lowerBinary(n *BinaryExpr) HIRExpr {
 		return &HIRBinary{Span_: n.Span_, Op: n.Op, Left: left, Right: right, Type: l.types.Bool()}
 	}
 	return &HIRBinary{Span_: n.Span_, Op: n.Op, Left: left, Right: right, Type: l.types.Unknown()}
+}
+
+func isBareMemberExpr(e Expr) bool {
+	switch n := e.(type) {
+	case *ErrorMemberExpr:
+		return n.TypeName == ""
+	case *EnumMemberExpr:
+		return n.TypeName == ""
+	}
+	return false
 }
 
 func (l *Lowerer) lowerUnary(n *UnaryExpr) HIRExpr {

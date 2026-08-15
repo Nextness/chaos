@@ -8,6 +8,7 @@
 package compiler
 
 import (
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -33,6 +34,7 @@ type TypeChecker struct {
 	procs                  map[string]*ProcDecl
 	structs                map[string]*StructDecl
 	errors                 map[string]*ErrorDecl
+	enums                  map[string]*EnumDecl
 	globalPrevious         map[*VarDecl]*VarDecl
 	globalTypes            map[*VarDecl]Type
 	currentReturnType      Type
@@ -49,6 +51,7 @@ func CheckProgram(program *Program) DiagnosticList {
 		procs:          make(map[string]*ProcDecl),
 		structs:        make(map[string]*StructDecl),
 		errors:         make(map[string]*ErrorDecl),
+		enums:          make(map[string]*EnumDecl),
 		globalPrevious: make(map[*VarDecl]*VarDecl),
 		globalTypes:    make(map[*VarDecl]Type),
 	}
@@ -98,6 +101,8 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 			tc.structs[d.Name] = d
 		case *ErrorDecl:
 			tc.errors[d.Name] = d
+		case *EnumDecl:
+			tc.enums[d.Name] = d
 		}
 	}
 
@@ -135,6 +140,13 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 				}
 				seen[m.Name] = true
 			}
+		case *EnumDecl:
+			if previous, ok := seenTypes[d.Name]; ok {
+				tc.reportTypeShadow(d.Name, previous, d.Span_)
+			}
+			seenTypes[d.Name] = "enum"
+			tc.declare(d.Name, Type(d.Name))
+			tc.checkEnum(d)
 		case *VarDecl:
 			tc.checkShadow(d.Name, d.Span_, d.Shadow)
 			if previous := latestGlobals[d.Name]; previous != nil {
@@ -315,6 +327,8 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		// Struct declarations are registered in the first pass.
 	case *ErrorDecl:
 		// Error declarations are registered in the first pass.
+	case *EnumDecl:
+		// Enum declarations are registered in the first pass.
 	case *UnlessCatchStmt:
 		tc.checkUnlessCatch(n)
 	case *IfCatchStmt:
@@ -333,6 +347,10 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		declType, ok := tc.lookup(n.Name)
 		if !ok {
 			tc.diags.Error(n.Span_, "assignment to undeclared variable "+n.Name, "declare the variable before assigning to it")
+			return
+		}
+		if tc.isEnumType(declType) {
+			tc.diags.Error(n.Span_, "cannot apply "+n.Op.String()+" to enum values", "enum values support only == and !=")
 			return
 		}
 		tc.checkAssign(n.Span_, declType, n.Value)
@@ -475,6 +493,10 @@ func (tc *TypeChecker) checkShadow(name string, span Span, shadow bool) {
 		tc.diags.Error(span, "declaration of '"+name+"' shadows an error type; this is not allowed", "choose a different name")
 		return
 	}
+	if _, ok := tc.enums[name]; ok {
+		tc.diags.Error(span, "declaration of '"+name+"' shadows an enum type; this is not allowed", "choose a different name")
+		return
+	}
 	if _, ok := tc.procs[name]; ok {
 		if shadow && len(tc.scopes) == 1 {
 			tc.diags.Error(span, "a top-level variable cannot shadow procedure '"+name+"'", "choose a different variable name")
@@ -608,6 +630,11 @@ func (tc *TypeChecker) checkReturnStmt(s *ReturnStmt) {
 		tc.checkAssign(s.Span_, tc.currentReturnType, s.Value)
 		return
 	}
+	// A bare enum member ('.MEMBER') takes the value return type.
+	if em, ok := s.Value.(*EnumMemberExpr); ok && em.TypeName == "" {
+		tc.checkEnumMember(em, tc.currentReturnType)
+		return
+	}
 	if tc.currentReturnType != TypeVoid {
 		// A '<>' procedure may return either the value type or the error type.
 		if tc.currentErrorReturnType != "" {
@@ -660,6 +687,8 @@ func (tc *TypeChecker) inferExpr(e Expr) Type {
 		return TypeUnknown
 	case *ErrorMemberExpr:
 		return tc.checkErrorMemberExpr(n)
+	case *EnumMemberExpr:
+		return tc.checkEnumMemberExpr(n)
 	case *ErrorExpr:
 		return TypeUnknown
 	case *ArrayInitExpr:
@@ -772,16 +801,185 @@ func (tc *TypeChecker) hasErrorMember(typeName, member string) bool {
 	return false
 }
 
+// checkEnum validates an enum declaration: the first member must declare an
+// integer underlying type, only that member may carry a type, member names
+// must be unique, and every member value (explicit or sequential) must fit
+// the underlying type.
+func (tc *TypeChecker) checkEnum(d *EnumDecl) {
+	if len(d.Members) == 0 {
+		tc.diags.Error(d.Span_, "enum '"+d.Name+"' must have at least one member", "add at least one member")
+		return
+	}
+	first := d.Members[0]
+	if first.Type == nil {
+		tc.diags.Error(first.Span_, "the first enum member must declare the underlying type", "add ': Type' to the first member")
+		return
+	}
+	underlying := typeOfTypeExpr(first.Type)
+	if !isIntegerType(underlying) {
+		tc.diags.Error(first.Type.nodeSpan(), "enum underlying type must be an integer type, got "+string(underlying), "use an integer type")
+		return
+	}
+	for i := 1; i < len(d.Members); i++ {
+		if d.Members[i].Type != nil {
+			tc.diags.Error(d.Members[i].Type.nodeSpan(), "only the first enum member may declare the underlying type", "remove the type annotation")
+		}
+	}
+	seen := make(map[string]bool, len(d.Members))
+	prev := big.NewInt(0)
+	for i, m := range d.Members {
+		if seen[m.Name] {
+			tc.diags.Error(m.Span_, "duplicate enum member "+m.Name+" in "+d.Name, "use a unique member name")
+		}
+		seen[m.Name] = true
+		val := new(big.Int).Add(prev, big.NewInt(1))
+		if i == 0 {
+			val.SetInt64(0)
+		}
+		if m.Value != nil {
+			v, ok := evalEnumMemberValue(m.Value)
+			if !ok {
+				tc.diags.Error(m.Value.nodeSpan(), "enum member value must be an integer literal", "use an integer literal")
+				continue
+			}
+			val = v
+		}
+		if !fitsIntegerType(underlying, val) {
+			tc.diags.Error(m.Span_, "enum member value "+val.String()+" does not fit "+string(underlying), "use a value that fits the underlying type")
+		}
+		prev.Set(val)
+	}
+}
+
+// isEnumType reports whether t names a declared enum type.
+func (tc *TypeChecker) isEnumType(t Type) bool {
+	_, ok := tc.enums[string(t)]
+	return ok
+}
+
+// hasEnumMember reports whether the named enum type declares the member.
+func (tc *TypeChecker) hasEnumMember(typeName, member string) bool {
+	d, ok := tc.enums[typeName]
+	if !ok {
+		return false
+	}
+	for _, m := range d.Members {
+		if m.Name == member {
+			return true
+		}
+	}
+	return false
+}
+
+// checkEnumMemberExpr infers the type of an enum member reference. The
+// explicit "Enum.MEMBER" form resolves against the named enum type; the bare
+// ".MEMBER" form has no type context here and is reported as unresolvable
+// (typed contexts resolve it via checkAssign and comparisons).
+func (tc *TypeChecker) checkEnumMemberExpr(n *EnumMemberExpr) Type {
+	if n.TypeName == "" {
+		tc.diags.Error(n.Span_, "cannot infer the enum type of '. "+n.Name+"'", "annotate the declaration with an enum type")
+		return TypeUnknown
+	}
+	if !tc.isEnumType(Type(n.TypeName)) {
+		if tc.isErrorType(Type(n.TypeName)) {
+			tc.diags.Error(n.Span_, "error values must be instantiated with '!'", "add '!' after the member name")
+		} else {
+			tc.diags.Error(n.Span_, n.TypeName+" is not an enum type", "use a declared enum type")
+		}
+		return TypeUnknown
+	}
+	if !tc.hasEnumMember(n.TypeName, n.Name) {
+		tc.diags.Error(n.Span_, "unknown enum member "+n.Name+" in "+n.TypeName, "use a declared enum member")
+		return TypeUnknown
+	}
+	return Type(n.TypeName)
+}
+
+// checkEnumMember validates a bare enum member reference against a target
+// enum type.
+func (tc *TypeChecker) checkEnumMember(em *EnumMemberExpr, t Type) {
+	if !tc.isEnumType(t) {
+		tc.diags.Error(em.Span_, string(t)+" is not an enum type", "use a declared enum type")
+		return
+	}
+	if !tc.hasEnumMember(string(t), em.Name) {
+		tc.diags.Error(em.Span_, "unknown enum member "+em.Name+" in "+string(t), "use a declared enum member")
+	}
+}
+
+// evalEnumMemberValue evaluates an enum member value exactly at compile time.
+// Only integer literals (and negated integer literals) are allowed.
+func evalEnumMemberValue(e Expr) (*big.Int, bool) {
+	switch n := e.(type) {
+	case *IntExpr:
+		v, ok := new(big.Int).SetString(strings.ReplaceAll(n.Value, "_", ""), 10)
+		return v, ok
+	case *UnaryExpr:
+		if n.Op == UnaryOpNeg {
+			if lit, ok := n.Operand.(*IntExpr); ok {
+				v, parsed := new(big.Int).SetString(strings.ReplaceAll(lit.Value, "_", ""), 10)
+				if parsed {
+					return v.Neg(v), true
+				}
+			}
+		}
+	}
+	return nil, false
+}
+
+// fitsIntegerType reports whether v fits the given fixed-width integer type.
+// big.Int is used only during compile-time validation so overflow is detected
+// before the value is lowered to its declared machine representation.
+func fitsIntegerType(t Type, v *big.Int) bool {
+	bits, signed := 0, false
+	switch t {
+	case "S8":
+		bits, signed = 8, true
+	case "S16":
+		bits, signed = 16, true
+	case "S32":
+		bits, signed = 32, true
+	case "S64":
+		bits, signed = 64, true
+	case "S128":
+		bits, signed = 128, true
+	case "U8", "Byte":
+		bits = 8
+	case "U16":
+		bits = 16
+	case "U32":
+		bits = 32
+	case "U64", "Size":
+		bits = 64
+	case "U128":
+		bits = 128
+	default:
+		return false
+	}
+	if signed {
+		limit := new(big.Int).Lsh(big.NewInt(1), uint(bits-1))
+		min := new(big.Int).Neg(new(big.Int).Set(limit))
+		max := new(big.Int).Sub(limit, big.NewInt(1))
+		return v.Cmp(min) >= 0 && v.Cmp(max) <= 0
+	}
+	max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(bits)), big.NewInt(1))
+	return v.Sign() >= 0 && v.Cmp(max) <= 0
+}
+
 func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 	// Infer operand types, deferring bare error members ('.MEMBER') until the
 	// other operand's type is known.
 	var lt, rt Type
 	if em, ok := n.Left.(*ErrorMemberExpr); ok && em.TypeName == "" {
 		lt = TypeUnknown
+	} else if em, ok := n.Left.(*EnumMemberExpr); ok && em.TypeName == "" {
+		lt = TypeUnknown
 	} else {
 		lt = tc.inferExpr(n.Left)
 	}
 	if em, ok := n.Right.(*ErrorMemberExpr); ok && em.TypeName == "" {
+		rt = TypeUnknown
+	} else if em, ok := n.Right.(*EnumMemberExpr); ok && em.TypeName == "" {
 		rt = TypeUnknown
 	} else {
 		rt = tc.inferExpr(n.Right)
@@ -804,6 +1002,24 @@ func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 			tc.diags.Error(em.Span_, "cannot infer the error type of '. "+em.Name+"'", "use the explicit 'Type.MEMBER' form")
 		}
 	}
+	// Resolve a bare enum member against the other operand's type when that
+	// type is a declared enum type.
+	if em, ok := n.Left.(*EnumMemberExpr); ok && em.TypeName == "" {
+		if tc.isEnumType(rt) {
+			tc.checkEnumMember(em, rt)
+			lt = rt
+		} else {
+			tc.diags.Error(em.Span_, "cannot infer the enum type of '. "+em.Name+"'", "use the explicit 'Enum.MEMBER' form")
+		}
+	}
+	if em, ok := n.Right.(*EnumMemberExpr); ok && em.TypeName == "" {
+		if tc.isEnumType(lt) {
+			tc.checkEnumMember(em, lt)
+			rt = lt
+		} else {
+			tc.diags.Error(em.Span_, "cannot infer the enum type of '. "+em.Name+"'", "use the explicit 'Enum.MEMBER' form")
+		}
+	}
 	// Error-returning values must be handled before they are used.
 	if isErrorUnion(lt) || isErrorUnion(rt) {
 		tc.diags.Error(n.Span_, "must handle the error before using the value", "use 'unless catch' or 'if ... catch' first")
@@ -813,6 +1029,10 @@ func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 	case BinaryOpAdd, BinaryOpSub, BinaryOpMul, BinaryOpDiv, BinaryOpMod:
 		if tc.isErrorType(lt) || tc.isErrorType(rt) {
 			tc.diags.Error(n.Span_, "cannot apply "+n.Op.String()+" to error values", "error values support only == and !=")
+			return lt
+		}
+		if tc.isEnumType(lt) || tc.isEnumType(rt) {
+			tc.diags.Error(n.Span_, "cannot apply "+n.Op.String()+" to enum values", "enum values support only == and !=")
 			return lt
 		}
 		if !tc.operandsCompatible(n.Left, lt, n.Right, rt) {
@@ -827,6 +1047,10 @@ func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 	case BinaryOpLt, BinaryOpGt, BinaryOpLe, BinaryOpGe:
 		if tc.isErrorType(lt) || tc.isErrorType(rt) {
 			tc.diags.Error(n.Span_, "cannot order error values with "+n.Op.String(), "error values support only == and !=")
+			return TypeBool
+		}
+		if tc.isEnumType(lt) || tc.isEnumType(rt) {
+			tc.diags.Error(n.Span_, "cannot order enum values with "+n.Op.String(), "enum values support only == and !=")
 			return TypeBool
 		}
 		if !tc.operandsCompatible(n.Left, lt, n.Right, rt) {
@@ -854,6 +1078,9 @@ func (tc *TypeChecker) checkUnaryExpr(n *UnaryExpr) Type {
 	ot := tc.inferExpr(n.Operand)
 	switch n.Op {
 	case UnaryOpNeg:
+		if tc.isEnumType(ot) {
+			tc.diags.Error(n.Span_, "cannot negate an enum value", "enum values support only == and !=")
+		}
 		return ot
 	case UnaryOpNot:
 		if ot != TypeUnknown && ot != TypeBool {
@@ -981,6 +1208,18 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 			return
 		}
 		tc.diags.Error(span, "cannot assign an error member to "+string(target), "use a value of type "+string(target))
+		return
+	}
+	if em, ok := value.(*EnumMemberExpr); ok && em.TypeName == "" {
+		if tc.isEnumType(target) {
+			tc.checkEnumMember(em, target)
+			return
+		}
+		if tc.isErrorType(target) {
+			tc.diags.Error(span, "error values must be instantiated with '!'", "add '!' after the member name")
+			return
+		}
+		tc.diags.Error(span, "cannot assign an enum member to "+string(target), "use a value of type "+string(target))
 		return
 	}
 	valType := tc.inferExpr(value)

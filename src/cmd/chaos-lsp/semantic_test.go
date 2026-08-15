@@ -475,3 +475,25 @@ func TestSemanticTokensLoopAndUnlessBindings(t *testing.T) {
 		}
 	}
 }
+
+func TestSemanticTokensEnum(t *testing.T) {
+	source := "Color :: enum {\n    RED: U8 = 1;\n    GREEN;\n}\nmain :: proc {\n    c: Color = Color.GREEN;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want int
+	}{
+		{0, 0, semTypeType},
+		{1, 4, semTypeConstant},
+		{1, 9, semTypeType},
+		{2, 4, semTypeConstant},
+		{5, 7, semTypeType},
+		{5, 15, semTypeType},
+		{5, 21, semTypeConstant},
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want {
+			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}

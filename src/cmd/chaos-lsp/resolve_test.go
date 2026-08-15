@@ -16,7 +16,7 @@ func buildResolverFor(t *testing.T, source string) *resolver {
 	sf := sm.Lookup(fileID)
 	tokens, _ := compiler.Tokenize(sf.Source, fileID)
 	result := compiler.ParseProgramTolerant(tokens)
-	r := &resolver{sf: sf, uri: "file:///test.chaos", program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol)}
+	r := &resolver{sf: sf, uri: "file:///test.chaos", program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol)}
 	r.buildScopes()
 	r.collectOccurrences()
 	return r
@@ -398,6 +398,44 @@ func TestErrorReferences(t *testing.T) {
 	occs = r.referencesAt(ref)
 	if len(occs) != 2 {
 		t.Fatalf("references for NOT_FOUND = %d, want 2", len(occs))
+	}
+}
+
+func TestEnumDefinitionHoverAndCompletion(t *testing.T) {
+	source := "Color :: enum {\n\tRED: U8 = 1;\n\tGREEN;\n}\nmain :: proc {\n\tc: Color = .GREEN;\n\tif c == Color.RED { }\n}"
+	r := buildResolverFor(t, source)
+
+	decl := offsetOf(t, source, "Color :: enum")
+	sym := r.definitionAt(decl)
+	if sym == nil || sym.enumDecl == nil {
+		t.Fatalf("enum declaration resolved as %+v", sym)
+	}
+	explicit := offsetOf(t, source, "Color.RED") + len("Color.")
+	if sym := r.definitionAt(explicit); sym == nil || sym.enumMember == nil || sym.name != "RED" {
+		t.Fatalf("explicit enum member resolved as %+v", sym)
+	}
+	bare := offsetOf(t, source, ".GREEN") + 1
+	if sym := r.definitionAt(bare); sym == nil || sym.enumMember == nil || sym.name != "GREEN" {
+		t.Fatalf("bare enum member resolved as %+v", sym)
+	}
+	greenDecl := offsetOf(t, source, "GREEN;")
+	if refs := r.referencesAt(greenDecl); len(refs) != 2 {
+		t.Errorf("GREEN references = %d, want declaration and bare use", len(refs))
+	}
+	if hover := r.hoverAt(decl); !strings.Contains(hover, "Color :: enum") || !strings.Contains(hover, "RED: U8 = 1") {
+		t.Errorf("enum hover = %q", hover)
+	}
+	if hover := r.hoverAt(explicit); !strings.Contains(hover, "Color.RED : Color") {
+		t.Errorf("enum member hover = %q", hover)
+	}
+	pos := offsetOf(t, source, "Color.RED") + len("Color.")
+	items := r.completionAt(pos)
+	names := make(map[string]bool)
+	for _, item := range items {
+		names[item.Label] = true
+	}
+	if !names["RED"] || !names["GREEN"] {
+		t.Errorf("enum member completion = %+v", items)
 	}
 }
 

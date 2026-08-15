@@ -1,0 +1,3 @@
+[ERROR] 6:8:enum_two_types.chaos - only the first enum member may declare the underlying type
+     B: U64;
+        ^^^ -> remove the type annotation

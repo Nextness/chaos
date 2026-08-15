@@ -1,0 +1,3 @@
+[ERROR] 6:5:enum_duplicate.chaos - duplicate enum member A in Bad_Enum
+     A;
+     ^ -> use a unique member name

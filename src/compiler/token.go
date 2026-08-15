@@ -122,6 +122,7 @@ const (
 	TkAs
 	TkStruct
 	TkErrorKw
+	TkEnum
 	TkUnless
 	TkCatch
 	TkFor
@@ -188,6 +189,7 @@ var tokenKindNames = [...]string{
 	TkAs:             "as",
 	TkStruct:         "struct",
 	TkErrorKw:        "error",
+	TkEnum:           "enum",
 	TkUnless:         "unless",
 	TkCatch:          "catch",
 	TkFor:            "for",
@@ -246,6 +248,7 @@ func init() {
 		{"as", TkAs},
 		{"struct", TkStruct},
 		{"error", TkErrorKw},
+		{"enum", TkEnum},
 		{"unless", TkUnless},
 		{"catch", TkCatch},
 		{"for", TkFor},

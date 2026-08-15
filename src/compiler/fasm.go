@@ -25,6 +25,7 @@ package compiler
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 )
@@ -126,6 +127,8 @@ func (fb *fasmEmitter) checkSupportedTypes() {
 			}
 		case TypeKindArray:
 			report(fb.prog.Types.Lookup(t.Elem), span)
+		case TypeKindEnum:
+			report(fb.prog.Types.Lookup(t.Underlying), span)
 		}
 	}
 	for _, g := range fb.prog.Globals {
@@ -273,7 +276,7 @@ func (fb *fasmEmitter) emitEntry() {
 	// Zero the integer argument registers the entry procedure uses.
 	intCount := 0
 	for _, lid := range entryFn.Params {
-		intCount += intRegCount(fb.prog.Types.Lookup(entryFn.LocalTypes[lid]))
+		intCount += fb.intRegCount(fb.prog.Types.Lookup(entryFn.LocalTypes[lid]))
 	}
 	for i := 0; i < intCount && i < 6; i++ {
 		fmt.Fprintf(&fb.out, "    xor %s, %s\n", intArgReg(i), intArgReg(i))
@@ -402,7 +405,7 @@ func (fb *fasmEmitter) emitParamMoves(fn *MIRFunction) {
 			fb.out.WriteString("    cld\n")
 			fb.out.WriteString("    rep movsb\n")
 			intIdx++
-		case isInt128(t.Name):
+		case fb.isInt128Storage(t):
 			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx))
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
 			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx+1))
@@ -468,20 +471,40 @@ func (fb *fasmEmitter) emitConst(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
 	switch ins.Imm.Kind {
 	case MIRImmInt:
-		if isInt128(t.Name) {
-			// Low half holds the value; the high half is sign or zero
-			// extended.
-			fmt.Fprintf(&fb.out, "    mov rax, %d\n", ins.Imm.Int)
-			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
-			if isSignedInt(t.Name) {
-				fb.out.WriteString("    sar rax, 63\n")
-			} else {
-				fb.out.WriteString("    xor eax, eax\n")
+		if fb.isInt128Storage(t) {
+			// Preserve the compact legacy sequence for ordinary 128-bit literals
+			// that fit int64. Enum constants and genuinely wide literals need the
+			// exact two-word path below.
+			if t.Kind == TypeKindInt {
+				raw := strings.ReplaceAll(ins.Imm.Str, "_", "")
+				if raw == "" {
+					raw = strconv.FormatInt(ins.Imm.Int, 10)
+				}
+				if _, err := strconv.ParseInt(raw, 10, 64); err == nil {
+					fmt.Fprintf(&fb.out, "    mov rax, %d\n", ins.Imm.Int)
+					fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
+					if isSignedInt(t.Name) {
+						fb.out.WriteString("    sar rax, 63\n")
+					} else {
+						fb.out.WriteString("    xor eax, eax\n")
+					}
+					fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", slot)
+					return
+				}
 			}
+			lo, hi := integerImmediateWords(ins.Imm.Str, ins.Imm.Int, fb.sizeOf(t)*8)
+			// Store the complete fixed-width two's-complement representation.
+			fmt.Fprintf(&fb.out, "    mov rax, 0x%x\n", lo)
+			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
+			fmt.Fprintf(&fb.out, "    mov rax, 0x%x\n", hi)
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", slot)
 			return
 		}
-		fmt.Fprintf(&fb.out, "    mov rax, %d\n", ins.Imm.Int)
+		literal := ins.Imm.Str
+		if literal == "" {
+			literal = strconv.FormatInt(ins.Imm.Int, 10)
+		}
+		fmt.Fprintf(&fb.out, "    mov rax, %s\n", literal)
 		fb.emitStore(t, slot)
 	case MIRImmBool:
 		v := 0
@@ -510,7 +533,7 @@ func (fb *fasmEmitter) emitConst(ins *MIRInstr) {
 
 func (fb *fasmEmitter) emitLoadLocal(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
-	if isAggregate(t) {
+	if fb.isAggregate(t) {
 		fb.emitAggCopy(fb.localSlots[ins.Imm.Local], fb.valueSlots[ins.Result], fb.sizeOf(t))
 		return
 	}
@@ -520,7 +543,7 @@ func (fb *fasmEmitter) emitLoadLocal(ins *MIRInstr) {
 
 func (fb *fasmEmitter) emitStoreLocal(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
-	if isAggregate(t) {
+	if fb.isAggregate(t) {
 		fb.emitAggCopy(fb.valueSlots[ins.Args[0]], fb.localSlots[ins.Imm.Local], fb.sizeOf(t))
 		return
 	}
@@ -531,7 +554,7 @@ func (fb *fasmEmitter) emitStoreLocal(ins *MIRInstr) {
 func (fb *fasmEmitter) emitLoadGlobal(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
 	name := fb.globalLabel(ins.Imm.Symbol)
-	if isAggregate(t) {
+	if fb.isAggregate(t) {
 		fb.emitAggCopyFromAddr(name, fb.valueSlots[ins.Result], fb.sizeOf(t))
 		return
 	}
@@ -542,7 +565,29 @@ func (fb *fasmEmitter) emitLoadGlobal(ins *MIRInstr) {
 			fmt.Fprintf(&fb.out, "    movsd xmm0, qword [%s]\n", name)
 		}
 	} else {
-		fmt.Fprintf(&fb.out, "    mov rax, qword [%s]\n", name)
+		size := fb.sizeOf(t)
+		switch size {
+		case 1:
+			if fb.isSignedStorage(t) {
+				fmt.Fprintf(&fb.out, "    movsx rax, byte [%s]\n", name)
+			} else {
+				fmt.Fprintf(&fb.out, "    movzx rax, byte [%s]\n", name)
+			}
+		case 2:
+			if fb.isSignedStorage(t) {
+				fmt.Fprintf(&fb.out, "    movsx rax, word [%s]\n", name)
+			} else {
+				fmt.Fprintf(&fb.out, "    movzx rax, word [%s]\n", name)
+			}
+		case 4:
+			if fb.isSignedStorage(t) {
+				fmt.Fprintf(&fb.out, "    movsxd rax, dword [%s]\n", name)
+			} else {
+				fmt.Fprintf(&fb.out, "    mov eax, dword [%s]\n", name)
+			}
+		default:
+			fmt.Fprintf(&fb.out, "    mov rax, qword [%s]\n", name)
+		}
 	}
 	fb.emitStore(t, fb.valueSlots[ins.Result])
 }
@@ -550,7 +595,7 @@ func (fb *fasmEmitter) emitLoadGlobal(ins *MIRInstr) {
 func (fb *fasmEmitter) emitStoreGlobal(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
 	name := fb.globalLabel(ins.Imm.Symbol)
-	if isAggregate(t) {
+	if fb.isAggregate(t) {
 		fb.emitAggCopyToAddr(fb.valueSlots[ins.Args[0]], name, fb.sizeOf(t))
 		return
 	}
@@ -562,7 +607,8 @@ func (fb *fasmEmitter) emitStoreGlobal(ins *MIRInstr) {
 			fmt.Fprintf(&fb.out, "    movsd qword [%s], xmm0\n", name)
 		}
 	} else {
-		fmt.Fprintf(&fb.out, "    mov qword [%s], rax\n", name)
+		size := fb.sizeOf(t)
+		fmt.Fprintf(&fb.out, "    mov %s [%s], %s\n", memSize(size), name, widthReg(size))
 	}
 }
 
@@ -769,7 +815,7 @@ func (fb *fasmEmitter) emitCmp(ins *MIRInstr) {
 		fb.emitStructCmp(ins, lt, lslot, rslot, resSlot)
 		return
 	}
-	if isInt128(lt.Name) {
+	if fb.isInt128Storage(lt) {
 		fb.emitCmp128(ins, lt, lslot, rslot, resSlot)
 		return
 	}
@@ -786,7 +832,7 @@ func (fb *fasmEmitter) emitCmp(ins *MIRInstr) {
 	size := fb.sizeOf(lt)
 	fb.emitLoad(lt, lslot)
 	fmt.Fprintf(&fb.out, "    cmp %s, %s [rbp-%d]\n", widthReg(size), memSize(size), rslot)
-	fb.emitSetcc(ins.Op, isSignedInt(lt.Name), resSlot)
+	fb.emitSetcc(ins.Op, fb.isSignedStorage(lt), resSlot)
 }
 
 // emitStructCmp emits a byte-wise comparison of two struct values using
@@ -822,7 +868,7 @@ func (fb *fasmEmitter) emitCmp128(ins *MIRInstr, t IRType, lslot, rslot, resSlot
 	fmt.Fprintf(&fb.out, "    mov r10, qword [rbp-%d]\n", rslot)
 	fmt.Fprintf(&fb.out, "    mov r11, qword [rbp-%d+8]\n", rslot)
 	fb.out.WriteString("    cmp r9, r11\n")
-	less, greater, lessEq, greaterEq := cmpBranches(isSignedInt(t.Name))
+	less, greater, lessEq, greaterEq := cmpBranches(fb.isSignedStorage(t))
 	trueLabel := fb.newLabel()
 	falseLabel := fb.newLabel()
 	doneLabel := fb.newLabel()
@@ -1032,7 +1078,7 @@ func (fb *fasmEmitter) emitCall(ins *MIRInstr) {
 		case t.Kind == TypeKindStruct:
 			regs = append(regs, argReg{arg: a, kind: argStruct, idx: intIdx})
 			intIdx++
-		case isInt128(t.Name):
+		case fb.isInt128Storage(t):
 			regs = append(regs, argReg{arg: a, kind: argInt128, idx: intIdx})
 			intIdx += 2
 		default:
@@ -1105,7 +1151,7 @@ func (fb *fasmEmitter) emitCall(ins *MIRInstr) {
 		switch {
 		case resultType.Kind == TypeKindStruct:
 			// Already in the sret slot.
-		case resultType.Kind == TypeKindString || resultType.Kind == TypeKindArray || isInt128(resultType.Name):
+		case resultType.Kind == TypeKindString || resultType.Kind == TypeKindArray || fb.isInt128Storage(resultType):
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rdx\n", slot)
 		default:
@@ -1144,7 +1190,7 @@ func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 			case vt.Kind == TypeKindStruct:
 				// Copy the struct value to the sret address.
 				fb.emitAggCopyToAddrSlot(slot, fb.sretSlot, fb.sizeOf(vt))
-			case vt.Kind == TypeKindString || vt.Kind == TypeKindArray || isInt128(vt.Name):
+			case vt.Kind == TypeKindString || vt.Kind == TypeKindArray || fb.isInt128Storage(vt):
 				fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", slot)
 				fmt.Fprintf(&fb.out, "    mov rdx, qword [rbp-%d+8]\n", slot)
 			default:
@@ -1214,6 +1260,9 @@ func (fb *fasmEmitter) sizeOf(t IRType) int {
 	case TypeKindError:
 		// Error values are nominal but backed by a 16-bit ordinal.
 		return 2
+	case TypeKindEnum:
+		// Enum values are backed by their underlying integer type.
+		return fb.sizeOf(fb.prog.Types.Lookup(t.Underlying))
 	case TypeKindStruct:
 		size := 0
 		for _, f := range t.Fields {
@@ -1239,9 +1288,26 @@ func (fb *fasmEmitter) structFieldOffsets(t IRType) []int {
 	return offsets
 }
 
+// storageType resolves a nominal enum to the fixed-width integer type that
+// backs it. Other types are returned unchanged.
+func (fb *fasmEmitter) storageType(t IRType) IRType {
+	for t.Kind == TypeKindEnum {
+		t = fb.prog.Types.Lookup(t.Underlying)
+	}
+	return t
+}
+
+func (fb *fasmEmitter) isSignedStorage(t IRType) bool {
+	return isSignedInt(fb.storageType(t).Name)
+}
+
+func (fb *fasmEmitter) isInt128Storage(t IRType) bool {
+	return isInt128(fb.storageType(t).Name)
+}
+
 // isAggregate reports whether a type occupies more than one register-sized
 // piece and must be copied as a byte range.
-func isAggregate(t IRType) bool {
+func (fb *fasmEmitter) isAggregate(t IRType) bool {
 	switch {
 	case t.Kind == TypeKindString:
 		return true
@@ -1249,7 +1315,7 @@ func isAggregate(t IRType) bool {
 		return true
 	case t.Kind == TypeKindStruct:
 		return true
-	case t.Kind == TypeKindInt && isInt128(t.Name):
+	case fb.isInt128Storage(t):
 		return true
 	}
 	return false
@@ -1260,9 +1326,31 @@ func isInt128(name string) bool {
 	return name == "S128" || name == "U128"
 }
 
+// integerImmediateWords converts an already type-checked decimal literal to
+// its fixed-width two's-complement representation. Arbitrary precision is
+// used only here at compile time; the emitted value still has exactly bits
+// bits of storage.
+func integerImmediateWords(raw string, fallback int64, bits int) (uint64, uint64) {
+	var value *big.Int
+	if raw != "" {
+		value, _ = new(big.Int).SetString(strings.ReplaceAll(raw, "_", ""), 10)
+	}
+	if value == nil {
+		value = big.NewInt(fallback)
+	}
+	if bits <= 0 {
+		bits = 64
+	}
+	modulus := new(big.Int).Lsh(big.NewInt(1), uint(bits))
+	encoded := new(big.Int).Mod(new(big.Int).Set(value), modulus)
+	low := encoded.Uint64()
+	high := new(big.Int).Rsh(encoded, 64).Uint64()
+	return low, high
+}
+
 // intRegCount returns the number of integer argument registers a type
 // consumes when passed by value.
-func intRegCount(t IRType) int {
+func (fb *fasmEmitter) intRegCount(t IRType) int {
 	switch {
 	case t.Kind == TypeKindString:
 		return 2
@@ -1270,7 +1358,7 @@ func intRegCount(t IRType) int {
 		return 2
 	case t.Kind == TypeKindStruct:
 		return 1 // passed by address
-	case t.Kind == TypeKindInt && isInt128(t.Name):
+	case fb.isInt128Storage(t):
 		return 2
 	default:
 		return 1
@@ -1361,7 +1449,7 @@ func (fb *fasmEmitter) emitStructInit(ins *MIRInstr) {
 	for i, a := range ins.Args {
 		ft := fb.prog.Types.Lookup(t.Fields[i].Type)
 		dstOffset := resSlot - offsets[i]
-		if isAggregate(ft) {
+		if fb.isAggregate(ft) {
 			fb.emitAggCopy(fb.valueSlots[a], dstOffset, fb.sizeOf(ft))
 		} else {
 			fb.emitLoad(ft, fb.valueSlots[a])
@@ -1381,7 +1469,7 @@ func (fb *fasmEmitter) emitFieldLoad(ins *MIRInstr) {
 	ft := fb.prog.Types.Lookup(baseType.Fields[fieldIdx].Type)
 	resSlot := fb.valueSlots[ins.Result]
 	srcSlot := fb.valueSlots[ins.Args[0]]
-	if isAggregate(ft) {
+	if fb.isAggregate(ft) {
 		// Copy the field's bytes as data (for example a string's pointer and
 		// length pair), not the value they point to.
 		fmt.Fprintf(&fb.out, "    lea rsi, [rbp-%d]\n", srcSlot-offsets[fieldIdx])
@@ -1406,7 +1494,7 @@ func (fb *fasmEmitter) emitArrayInit(ins *MIRInstr) {
 	resSlot := fb.valueSlots[ins.Result]
 	for i, a := range ins.Args {
 		dst := buf - i*elemSize
-		if isAggregate(et) {
+		if fb.isAggregate(et) {
 			fb.emitAggCopy(fb.valueSlots[a], dst, elemSize)
 		} else {
 			fb.emitLoad(et, fb.valueSlots[a])
@@ -1442,7 +1530,7 @@ func (fb *fasmEmitter) emitArrayIndex(ins *MIRInstr) {
 		fmt.Fprintf(&fb.out, "    imul rcx, %d\n", elemSize)
 	}
 	fb.out.WriteString("    add rax, rcx\n")
-	if isAggregate(t) {
+	if fb.isAggregate(t) {
 		fmt.Fprintf(&fb.out, "    mov rsi, rax\n")
 		fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", resSlot)
 		fmt.Fprintf(&fb.out, "    mov rcx, %d\n", elemSize)
@@ -1468,19 +1556,19 @@ func (fb *fasmEmitter) emitLoadIndirect(t IRType, addrReg string) {
 	}
 	switch size {
 	case 1:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsx rax, byte [%s]\n", addrReg)
 		} else {
 			fmt.Fprintf(&fb.out, "    movzx rax, byte [%s]\n", addrReg)
 		}
 	case 2:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsx rax, word [%s]\n", addrReg)
 		} else {
 			fmt.Fprintf(&fb.out, "    movzx rax, word [%s]\n", addrReg)
 		}
 	case 4:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsxd rax, dword [%s]\n", addrReg)
 		} else {
 			fmt.Fprintf(&fb.out, "    mov eax, dword [%s]\n", addrReg)
@@ -1507,19 +1595,19 @@ func (fb *fasmEmitter) emitLoad(t IRType, offset int) {
 	}
 	switch size {
 	case 1:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsx rax, byte [rbp-%d]\n", offset)
 		} else {
 			fmt.Fprintf(&fb.out, "    movzx rax, byte [rbp-%d]\n", offset)
 		}
 	case 2:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsx rax, word [rbp-%d]\n", offset)
 		} else {
 			fmt.Fprintf(&fb.out, "    movzx rax, word [rbp-%d]\n", offset)
 		}
 	case 4:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsxd rax, dword [rbp-%d]\n", offset)
 		} else {
 			fmt.Fprintf(&fb.out, "    mov eax, dword [rbp-%d]\n", offset)
@@ -1535,19 +1623,19 @@ func (fb *fasmEmitter) emitLoadRight(t IRType, offset int) {
 	size := fb.sizeOf(t)
 	switch size {
 	case 1:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsx rcx, byte [rbp-%d]\n", offset)
 		} else {
 			fmt.Fprintf(&fb.out, "    movzx rcx, byte [rbp-%d]\n", offset)
 		}
 	case 2:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsx rcx, word [rbp-%d]\n", offset)
 		} else {
 			fmt.Fprintf(&fb.out, "    movzx rcx, word [rbp-%d]\n", offset)
 		}
 	case 4:
-		if t.Kind == TypeKindInt && isSignedInt(t.Name) {
+		if fb.isSignedStorage(t) {
 			fmt.Fprintf(&fb.out, "    movsxd rcx, dword [rbp-%d]\n", offset)
 		} else {
 			fmt.Fprintf(&fb.out, "    mov ecx, dword [rbp-%d]\n", offset)

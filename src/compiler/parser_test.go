@@ -596,14 +596,18 @@ func TestParseBareErrorMemberExpr(t *testing.T) {
 }
 
 func TestParseErrorMemberExprNoBang(t *testing.T) {
-	// The bang is optional at parse time; the type checker enforces it.
+	// A member reference without '!' now parses as an enum member reference;
+	// the type checker will report the missing '!' when the type is an error.
 	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND")
-	e, ok := expr.(*ErrorMemberExpr)
+	e, ok := expr.(*EnumMemberExpr)
 	if !ok {
-		t.Fatalf("expected *ErrorMemberExpr, got %T", expr)
+		t.Fatalf("expected *EnumMemberExpr, got %T", expr)
 	}
-	if e.Bang {
-		t.Error("Bang = true, want false without '!'")
+	if e.TypeName != "Hash_Table_Error" {
+		t.Errorf("TypeName = %q, want %q", e.TypeName, "Hash_Table_Error")
+	}
+	if e.Name != "NOT_FOUND" {
+		t.Errorf("Name = %q, want %q", e.Name, "NOT_FOUND")
 	}
 }
 
@@ -2421,17 +2425,20 @@ func TestTolerantStructParsed(t *testing.T) {
 }
 
 func TestTolerantStructAndEnum(t *testing.T) {
-	source := "Foo :: struct { x: S64; }\nBar :: enum { A, B }"
+	source := "Foo :: struct { x: S64; }\nBar :: enum { A; B; }"
 	result := parseTolerantTestCase(t, source)
 	if result.Diags.HasErrors() {
 		t.Fatalf("unexpected errors: %v", result.Diags)
 	}
-	// struct parses as a declaration; enum is still skipped.
-	if len(result.Program.Decls) != 1 {
-		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	// Both struct and enum parse as declarations.
+	if len(result.Program.Decls) != 2 {
+		t.Fatalf("Decls = %d, want 2", len(result.Program.Decls))
 	}
 	if _, ok := result.Program.Decls[0].(*StructDecl); !ok {
 		t.Fatalf("Decls[0] type = %T, want *StructDecl", result.Program.Decls[0])
+	}
+	if _, ok := result.Program.Decls[1].(*EnumDecl); !ok {
+		t.Fatalf("Decls[1] type = %T, want *EnumDecl", result.Program.Decls[1])
 	}
 }
 
@@ -2487,14 +2494,20 @@ func TestTolerantUnknownStmtSkipped(t *testing.T) {
 	}
 }
 
-func TestTolerantStrictStillErrors(t *testing.T) {
+func TestStrictDirectiveStillErrorsAndEnumParses(t *testing.T) {
 	strict := parseTestCase(t, "main :: #entry proc { return 0; }")
 	if !strict.Diags.HasErrors() {
 		t.Error("strict mode should error on #entry proc, got none")
 	}
-	strictEnum := parseTestCase(t, "Bar :: enum { A, B }")
-	if !strictEnum.Diags.HasErrors() {
-		t.Error("strict mode should error on enum, got none")
+	strictEnum := parseTestCase(t, "Bar :: enum { A: S64; B; }")
+	if strictEnum.Diags.HasErrors() {
+		t.Fatalf("strict mode should parse a valid enum: %v", strictEnum.Diags)
+	}
+	if len(strictEnum.Program.Decls) != 1 {
+		t.Fatalf("strict enum declarations = %d, want 1", len(strictEnum.Program.Decls))
+	}
+	if _, ok := strictEnum.Program.Decls[0].(*EnumDecl); !ok {
+		t.Fatalf("strict enum declaration = %T, want *EnumDecl", strictEnum.Program.Decls[0])
 	}
 }
 
@@ -2510,10 +2523,9 @@ func TestTolerantCommentsDoNotChangeParse(t *testing.T) {
 }
 
 func TestTolerantBracelessFormDoesNotSwallowNextDecl(t *testing.T) {
+	// 'Foo :: enum;' is invalid (enum requires a body), but the next
+	// declaration 'x :: 42;' must still be parsed.
 	result := parseTolerantTestCase(t, "Foo :: enum; x :: 42;")
-	if result.Diags.HasErrors() {
-		t.Fatalf("unexpected errors: %v", result.Diags)
-	}
 	if len(result.Program.Decls) != 1 {
 		t.Fatalf("Decls = %d, want 1 (x :: 42)", len(result.Program.Decls))
 	}

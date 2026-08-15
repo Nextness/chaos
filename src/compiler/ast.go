@@ -627,6 +627,61 @@ func (e *ErrorMemberExpr) nodeSpan() Span {
 
 func (e *ErrorMemberExpr) exprNode() {}
 
+// EnumDecl is an enum type definition.
+//
+//	Another_Enum :: enum {
+//	    SOMETHING_IN_HERE: S64 = 0;
+//	    ANOTHER_THING_HERE; // 1
+//	    YET_ANOTHER_THING_IS_HERE = 12;
+//	}
+//
+// The first member must declare the underlying integer type; only that member
+// may carry a type annotation. Members without an explicit value take the
+// previous value plus one (the first member defaults to 0). The declaration
+// itself does not require a trailing semicolon; each member ends with its own
+// semicolon.
+type EnumDecl struct {
+	Span_   Span
+	Name    string
+	Members []EnumMember
+}
+
+func (d *EnumDecl) nodeSpan() Span {
+	return d.Span_
+}
+
+func (d *EnumDecl) stmtNode() {}
+func (d *EnumDecl) declNode() {}
+
+// EnumMember is a single member of an enum type: "NAME;", "NAME = value;", or
+// (on the first member only) "NAME: Type = value;". Type is nil for members
+// after the first; Value is nil when the member takes the sequential value.
+type EnumMember struct {
+	Span_ Span
+	Name  string
+	Type  Expr // underlying type annotation (first member only)
+	Value Expr // explicit value (nil when sequential)
+}
+
+func (m EnumMember) nodeSpan() Span {
+	return m.Span_
+}
+
+// EnumMemberExpr is a reference to an enum member: "Enum.MEMBER" or the bare
+// ".MEMBER" form. TypeName is empty for the bare form, whose type is inferred
+// from the surrounding context.
+type EnumMemberExpr struct {
+	Span_    Span
+	TypeName string // enum type name (empty for the bare ".MEMBER" form)
+	Name     string // member name
+}
+
+func (e *EnumMemberExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *EnumMemberExpr) exprNode() {}
+
 // Param is a single procedure parameter.
 type Param struct {
 	Span_ Span

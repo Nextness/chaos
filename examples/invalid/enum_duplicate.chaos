@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: duplicate enum member A
+// Enum member names must be unique.
+Bad_Enum :: enum {
+    A: S64;
+    A;
+}

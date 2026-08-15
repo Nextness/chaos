@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: only the first enum member may declare the underlying type
+// Only the first enum member may carry a type annotation.
+Bad_Enum :: enum {
+    A: S64;
+    B: U64;
+}

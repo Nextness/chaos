@@ -1,0 +1,15 @@
+// expect-exit: 42
+// Enum declaration, member values, assignment, and comparison.
+Another_Enum :: enum {
+    FOO: S64 = 0;
+    BAR = 10;
+    BAZ;
+}
+
+#entry main :: proc -> S64 {
+    x: Another_Enum = Another_Enum.BAZ;
+    if x == .BAZ {
+        return 42;
+    }
+    return 0;
+}

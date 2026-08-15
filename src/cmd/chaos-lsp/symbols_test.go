@@ -110,3 +110,14 @@ func TestDocumentSymbolsError(t *testing.T) {
 		t.Errorf("child[1].Name = %q, want OUT_OF_MEMORY", symbols[0].Children[1].Name)
 	}
 }
+
+func TestDocumentSymbolsEnum(t *testing.T) {
+	program, sf := parseDoc(t, "Color :: enum { RED: U8 = 1; GREEN; }")
+	symbols := documentSymbols(program, sf)
+	if len(symbols) != 1 || symbols[0].Name != "Color" || symbols[0].Kind != symbolKindEnum {
+		t.Fatalf("enum symbols = %+v", symbols)
+	}
+	if len(symbols[0].Children) != 2 || symbols[0].Children[0].Name != "RED" || symbols[0].Children[1].Name != "GREEN" {
+		t.Fatalf("enum children = %+v", symbols[0].Children)
+	}
+}

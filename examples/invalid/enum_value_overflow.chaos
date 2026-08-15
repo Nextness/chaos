@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: enum member value -1 does not fit U64
+// A negative value does not fit an unsigned underlying type.
+Bad_Enum :: enum {
+    A: U64 = -1;
+    B;
+}

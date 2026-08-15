@@ -45,7 +45,7 @@ L1:
 L2:
     jmp L3
 L3:
-    mov rax, qword [g_default_error]
+    movzx rax, word [g_default_error]
     mov word [rbp-26], ax
     mov rax, 2
     mov word [rbp-28], ax
@@ -105,7 +105,7 @@ L10:
     mov rax, 2
     mov word [rbp-2], ax
     movzx rax, word [rbp-2]
-    mov qword [g_default_error], rax
+    mov word [g_default_error], ax
     leave
     ret
 

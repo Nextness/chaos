@@ -122,11 +122,13 @@ L5:
     mov word [rbp-14], ax
     movzx rax, word [rbp-14]
     mov word [rbp-60], ax
+    mov rax, 0
+    mov word [rbp-62], ax
     movzx rax, word [rbp-60]
-    cmp ax, word [rbp-72]
+    cmp ax, word [rbp-62]
     sete al
-    mov byte [rbp-73], al
-    movzx rax, byte [rbp-73]
+    mov byte [rbp-63], al
+    movzx rax, byte [rbp-63]
     test al, al
     jnz L8
     jmp L9
@@ -134,27 +136,27 @@ L6:
     jmp L7
 L7:
     lea rsi, [rbp-11]
-    lea rdi, [rbp-88]
+    lea rdi, [rbp-77]
     mov rcx, 11
     cld
     rep movsb
+    mov rax, qword [rbp-77]
+    mov qword [rbp-88], rax
     mov rax, qword [rbp-88]
-    mov qword [rbp-96], rax
-    mov rax, qword [rbp-96]
     leave
     ret
 L8:
     mov rax, 7
-    mov qword [rbp-104], rax
-    mov rax, qword [rbp-104]
+    mov qword [rbp-96], rax
+    mov rax, qword [rbp-96]
     leave
     ret
 L9:
     jmp L10
 L10:
     mov rax, 8
-    mov qword [rbp-112], rax
-    mov rax, qword [rbp-112]
+    mov qword [rbp-104], rax
+    mov rax, qword [rbp-104]
     leave
     ret
 

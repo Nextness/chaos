@@ -30,6 +30,9 @@ type symbol struct {
 	errorDecl   *compiler.ErrorDecl
 	errorMember *compiler.ErrorMember
 	errorType   string // owning error type name for an error member
+	enumDecl    *compiler.EnumDecl
+	enumMember  *compiler.EnumMember
+	enumType    string // owning enum type name for an enum member
 	param       *compiler.Param
 	scope       *scope
 	visibleFrom int // byte offset where a local binding becomes usable
@@ -57,11 +60,12 @@ type resolver struct {
 	sf           *compiler.SourceFile
 	uri          string
 	program      *compiler.Program
-	tokens       compiler.TokenList
-	global       *scope
+	tokens       []compiler.Token
 	decls        []*symbol
+	global       *scope
 	occurrences  []*occurrence
 	errorMembers map[string]map[string]*symbol // error type name -> member name -> symbol
+	enumMembers  map[string]map[string]*symbol // enum type name -> member name -> symbol
 }
 
 // buildResolver tokenizes and parses a document in tolerant mode and builds
@@ -69,7 +73,7 @@ type resolver struct {
 func buildResolver(doc *Document) *resolver {
 	tokens, _ := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
 	result := compiler.ParseProgramTolerant(tokens)
-	r := &resolver{sf: doc.sf, uri: doc.URI, program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol)}
+	r := &resolver{sf: doc.sf, uri: doc.URI, program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol)}
 	r.buildScopes()
 	r.collectOccurrences()
 	return r
@@ -113,6 +117,11 @@ func (r *resolver) buildScopes() {
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectErrorMembers(d)
+		case *compiler.EnumDecl:
+			sym := &symbol{name: d.Name, kind: completionKindEnum, span: nameSpan(d.Span_, d.Name), enumDecl: d, scope: r.global}
+			r.global.symbols = append(r.global.symbols, sym)
+			r.decls = append(r.decls, sym)
+			r.collectEnumMembers(d)
 		}
 	}
 }
@@ -129,6 +138,18 @@ func (r *resolver) collectErrorMembers(ed *compiler.ErrorDecl) {
 		m := &ed.Members[i]
 		msym := &symbol{name: m.Name, kind: completionKindEnumMember, span: nameSpan(m.Span_, m.Name), errorMember: m, errorType: ed.Name, scope: r.global}
 		r.errorMembers[ed.Name][m.Name] = msym
+		r.occurrences = append(r.occurrences, &occurrence{name: m.Name, span: msym.span, sym: msym})
+	}
+}
+
+func (r *resolver) collectEnumMembers(ed *compiler.EnumDecl) {
+	if r.enumMembers[ed.Name] == nil {
+		r.enumMembers[ed.Name] = make(map[string]*symbol)
+	}
+	for i := range ed.Members {
+		m := &ed.Members[i]
+		msym := &symbol{name: m.Name, kind: completionKindEnumMember, span: nameSpan(m.Span_, m.Name), enumMember: m, enumType: ed.Name, scope: r.global}
+		r.enumMembers[ed.Name][m.Name] = msym
 		r.occurrences = append(r.occurrences, &occurrence{name: m.Name, span: msym.span, sym: msym})
 	}
 }
@@ -180,6 +201,11 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 			s.symbols = append(s.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectErrorMembers(st)
+		case *compiler.EnumDecl:
+			sym := &symbol{name: st.Name, kind: completionKindEnum, span: nameSpan(st.Span_, st.Name), enumDecl: st, scope: s}
+			s.symbols = append(s.symbols, sym)
+			r.decls = append(r.decls, sym)
+			r.collectEnumMembers(st)
 		case *compiler.ForStmt:
 			r.buildForScope(st, s)
 		}
@@ -235,6 +261,21 @@ func (r *resolver) uniqueErrorMember(name string) *symbol {
 		if msym, ok := members[name]; ok {
 			if found != nil {
 				return nil // ambiguous
+			}
+			found = msym
+		}
+	}
+	return found
+}
+
+// uniqueEnumMember returns the member symbol for a bare '.MEMBER' reference
+// when the name occurs in exactly one enum type.
+func (r *resolver) uniqueEnumMember(name string) *symbol {
+	var found *symbol
+	for _, members := range r.enumMembers {
+		if msym, ok := members[name]; ok {
+			if found != nil {
+				return nil
 			}
 			found = msym
 		}
@@ -319,6 +360,21 @@ func (r *resolver) collectOccurrences() {
 				msym = r.errorMembers[e.TypeName][e.Name]
 			} else {
 				msym = r.uniqueErrorMember(e.Name)
+			}
+			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: memberSpan, sym: msym})
+		case *compiler.EnumMemberExpr:
+			if e.TypeName != "" {
+				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
+				r.occurrences = append(r.occurrences, &occurrence{name: e.TypeName, span: typeSpan})
+			}
+			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name), End: e.Span_.End}
+			var msym *symbol
+			if e.TypeName != "" {
+				if inner, ok := r.enumMembers[e.TypeName]; ok {
+					msym = inner[e.Name]
+				}
+			} else {
+				msym = r.uniqueEnumMember(e.Name)
 			}
 			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: memberSpan, sym: msym})
 		case *compiler.ArrayInitExpr:
@@ -581,7 +637,7 @@ func (r *resolver) completionAt(offset int) []CompletionItem {
 	return out
 }
 
-// memberCompletion returns the members of the error type named just before a
+// memberCompletion returns the members of the error or enum type named before a
 // trailing '.' at the offset, or nil when the cursor is not after 'TypeName.'.
 func (r *resolver) memberCompletion(offset int) []CompletionItem {
 	if offset <= 0 {
@@ -602,7 +658,10 @@ func (r *resolver) memberCompletion(offset int) []CompletionItem {
 	name := string(src[j+1 : i])
 	members, ok := r.errorMembers[name]
 	if !ok {
-		return nil
+		members, ok = r.enumMembers[name]
+		if !ok {
+			return nil
+		}
 	}
 	out := []CompletionItem{}
 	for _, msym := range members {
@@ -696,6 +755,39 @@ func errorSignature(ed *compiler.ErrorDecl) string {
 	return b.String()
 }
 
+func enumExprText(expr compiler.Expr) string {
+	switch e := expr.(type) {
+	case *compiler.IdentExpr:
+		return e.Name
+	case *compiler.IntExpr:
+		return e.Value
+	case *compiler.UnaryExpr:
+		return e.Op.String() + enumExprText(e.Operand)
+	}
+	return ""
+}
+
+func enumSignature(ed *compiler.EnumDecl) string {
+	var b strings.Builder
+	b.WriteString(ed.Name)
+	b.WriteString(" :: enum {\n")
+	for _, m := range ed.Members {
+		b.WriteString("\t")
+		b.WriteString(m.Name)
+		if m.Type != nil {
+			b.WriteString(": ")
+			b.WriteString(enumExprText(m.Type))
+		}
+		if m.Value != nil {
+			b.WriteString(" = ")
+			b.WriteString(enumExprText(m.Value))
+		}
+		b.WriteString(";\n")
+	}
+	b.WriteString("}")
+	return b.String()
+}
+
 // symbolHover renders markdown content for a symbol.
 func symbolHover(sym *symbol) string {
 	switch {
@@ -707,6 +799,10 @@ func symbolHover(sym *symbol) string {
 		return "```chaos\n" + errorSignature(sym.errorDecl) + "\n```"
 	case sym.errorMember != nil:
 		return "```chaos\n" + sym.errorType + "." + sym.name + " : " + sym.errorType + "\n```"
+	case sym.enumDecl != nil:
+		return "```chaos\n" + enumSignature(sym.enumDecl) + "\n```"
+	case sym.enumMember != nil:
+		return "```chaos\n" + sym.enumType + "." + sym.name + " : " + sym.enumType + "\n```"
 	case sym.varDecl != nil:
 		if sym.varDecl.DeclType != nil {
 			return "```chaos\n" + sym.name + " : " + exprText(sym.varDecl.DeclType) + "\n```"

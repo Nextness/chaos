@@ -83,6 +83,7 @@ const (
 	TypeKindStruct
 	TypeKindError
 	TypeKindArray
+	TypeKindEnum
 	TypeKindUnknown
 )
 
@@ -95,12 +96,14 @@ type TypeField struct {
 }
 
 // IRType is a resolved type in the IR. Primitives carry only a name; struct
-// types carry their field list; array types carry their element type.
+// types carry their field list; array types carry their element type; enum
+// types carry their underlying integer type.
 type IRType struct {
-	Kind   TypeKind
-	Name   string
-	Fields []TypeField
-	Elem   TypeID // element type for TypeKindArray
+	Kind       TypeKind
+	Name       string
+	Fields     []TypeField
+	Elem       TypeID // element type for TypeKindArray
+	Underlying TypeID // underlying integer type for TypeKindEnum
 }
 
 // TypeTable interns types by name.
@@ -165,6 +168,17 @@ func (tt *TypeTable) InternArray(elem TypeID) TypeID {
 	}
 	id := tt.intern(name, TypeKindArray)
 	tt.types[id].Elem = elem
+	return id
+}
+
+// InternEnum interns an enum type with the given name and underlying integer
+// type.
+func (tt *TypeTable) InternEnum(name string, underlying TypeID) TypeID {
+	if id, ok := tt.byName[name]; ok {
+		return id
+	}
+	id := tt.intern(name, TypeKindEnum)
+	tt.types[id].Underlying = underlying
 	return id
 }
 

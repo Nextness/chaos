@@ -97,6 +97,22 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 			dumpIndent(b, depth+1)
 			fmt.Fprintf(b, "Member %s\n", m.Name)
 		}
+	case *EnumDecl:
+		dumpIndent(b, depth)
+		fmt.Fprintf(b, "EnumDecl %s\n", n.Name)
+		for _, m := range n.Members {
+			dumpIndent(b, depth+1)
+			fmt.Fprintf(b, "Member %s", m.Name)
+			if m.Type != nil {
+				b.WriteString(": ")
+				dumpExpr(b, m.Type)
+			}
+			if m.Value != nil {
+				b.WriteString(" = ")
+				dumpExpr(b, m.Value)
+			}
+			b.WriteString("\n")
+		}
 	case *VarDecl:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "VarDecl %s", n.Name)
@@ -325,6 +341,12 @@ func dumpExpr(b *strings.Builder, e Expr) {
 			dumpExpr(b, item)
 		}
 		b.WriteString(")")
+	case *EnumMemberExpr:
+		if n.TypeName != "" {
+			fmt.Fprintf(b, "EnumMember(%s.%s)", n.TypeName, n.Name)
+		} else {
+			fmt.Fprintf(b, "EnumMember(.%s)", n.Name)
+		}
 	case *IndexExpr:
 		b.WriteString("Index(")
 		dumpExpr(b, n.Base)

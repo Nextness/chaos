@@ -390,12 +390,6 @@ func (p *Parser) parseDecl() (Decl, bool) {
 				p.skipToMatchedBraces()
 				return nil, false
 			}
-			// ident :: enum {...} — still tolerant-only (struct is a keyword
-			// handled by parseProcOrVarDecl in both modes).
-			if p.at(TkIdent) && p.peek().Text() == "enum" {
-				p.skipToMatchedBraces()
-				return nil, false
-			}
 		}
 		return p.parseProcOrVarDecl(nameTok, name, true)
 	}
@@ -439,6 +433,10 @@ func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool
 	if p.at(TkErrorKw) {
 		p.bump() // consume "error"
 		return p.parseErrorDecl(nameTok, name)
+	}
+	if p.at(TkEnum) {
+		p.bump() // consume "enum"
+		return p.parseEnumDecl(nameTok, name)
 	}
 	// Tolerant mode: 'ident :: { ... }' with an unknown body (for example an
 	// error type written without the 'error' keyword) is parsed as an error
@@ -809,6 +807,84 @@ func (p *Parser) parseErrorMember() (ErrorMember, bool) {
 
 	p.expect(TkSemicolon)
 	return ErrorMember{Span_: nameTok.Span, Name: name}, true
+}
+
+// parseEnumDecl parses the rest of an enum type definition after "enum" has
+// been consumed. Members are "NAME;", "NAME = value;", or (on the first
+// member) "NAME: Type = value;" entries inside a braced block. The
+// declaration itself does not require a trailing semicolon.
+func (p *Parser) parseEnumDecl(nameTok Token, name string) (Decl, bool) {
+	if !p.at(TkLBrace) {
+		p.diags.Error(p.peek().Span, "expected '{' after 'enum'", "add a '{' block for the enum members")
+		return nil, false
+	}
+	p.bump() // consume "{"
+
+	var members []EnumMember
+	for !p.at(TkRBrace) && !p.at(TkEOF) {
+		before := p.pos
+		member, ok := p.parseEnumMember()
+		if ok {
+			members = append(members, member)
+		}
+		// Guarantee forward motion on malformed members.
+		if p.pos == before && p.peek().Kind != TkRBrace && p.peek().Kind != TkEOF {
+			p.bump()
+		}
+	}
+	closeTok := p.expect(TkRBrace)
+
+	decl := &EnumDecl{
+		Span_:   Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
+		Name:    name,
+		Members: members,
+	}
+	return decl, true
+}
+
+// parseEnumMember parses a single enum member: "NAME;", "NAME = value;", or
+// "NAME: Type = value;".
+func (p *Parser) parseEnumMember() (EnumMember, bool) {
+	if !p.at(TkIdent) {
+		p.diags.Error(p.peek().Span, "expected enum member name", "add a member name")
+		return EnumMember{}, false
+	}
+	nameTok := p.bump()
+	name := nameTok.Text()
+
+	var typeExpr Expr
+	if p.at(TkColon) {
+		p.bump() // consume ":"
+		typeExpr = p.parseTypeExpr()
+		if typeExpr == nil {
+			p.diags.Error(p.peek().Span, "expected type after ':' in enum member", "add a type after ':'")
+		}
+	}
+
+	var value Expr
+	if p.at(TkAssign) {
+		p.bump() // consume "="
+		value = p.parseExpr(0)
+		if value == nil {
+			p.diags.Error(p.peek().Span, "expected value after '=' in enum member", "add a value after '='")
+		}
+	}
+
+	p.expect(TkSemicolon)
+
+	end := nameTok.Span.End
+	if typeExpr != nil {
+		end = typeExpr.nodeSpan().End
+	}
+	if value != nil {
+		end = value.nodeSpan().End
+	}
+	return EnumMember{
+		Span_: Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: end},
+		Name:  name,
+		Type:  typeExpr,
+		Value: value,
+	}, true
 }
 
 // isErrorTypeAnnotation reports whether a type expression is the 'Error'
@@ -1837,16 +1913,23 @@ func (p *Parser) parseAtom() Expr {
 			p.bump() // consume "."
 			return p.parseStructInit(ident, tok.Span)
 		}
-		// Error value: TypeName.MEMBER!
+		// Member reference: TypeName.MEMBER! (error) or TypeName.MEMBER (enum).
 		if p.at(TkDot) && p.peekN(1).Kind == TkIdent {
 			p.bump() // consume "."
 			memberTok := p.bump()
 			bang, end := p.parseErrorBang(memberTok.Span.End)
-			return &ErrorMemberExpr{
+			if bang {
+				return &ErrorMemberExpr{
+					Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
+					TypeName: tok.Text(),
+					Name:     memberTok.Text(),
+					Bang:     true,
+				}
+			}
+			return &EnumMemberExpr{
 				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
 				TypeName: tok.Text(),
 				Name:     memberTok.Text(),
-				Bang:     bang,
 			}
 		}
 		return ident
@@ -1857,16 +1940,23 @@ func (p *Parser) parseAtom() Expr {
 			p.bump() // consume "."
 			return p.parseStructInit(nil, tok.Span)
 		}
-		// Error value with inferred type: .MEMBER!
+		// Member reference with inferred type: .MEMBER! (error) or .MEMBER (enum).
 		if p.peekN(1).Kind == TkIdent {
 			p.bump() // consume "."
 			memberTok := p.bump()
 			bang, end := p.parseErrorBang(memberTok.Span.End)
-			return &ErrorMemberExpr{
+			if bang {
+				return &ErrorMemberExpr{
+					Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
+					TypeName: "",
+					Name:     memberTok.Text(),
+					Bang:     true,
+				}
+			}
+			return &EnumMemberExpr{
 				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
 				TypeName: "",
 				Name:     memberTok.Text(),
-				Bang:     bang,
 			}
 		}
 		return nil

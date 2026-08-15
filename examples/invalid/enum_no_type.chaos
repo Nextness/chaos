@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: the first enum member must declare the underlying type
+// An enum must declare the underlying type in its first member.
+Bad_Enum :: enum {
+    A;
+    B;
+}

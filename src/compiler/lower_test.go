@@ -516,3 +516,28 @@ func TestLowerErrorReturn(t *testing.T) {
 		t.Errorf("union fields = %s, %s, want String, Some_Error", typeName(hir, rt.Fields[0].Type), typeName(hir, rt.Fields[1].Type))
 	}
 }
+
+func TestLowerBareEnumMembersWithContext(t *testing.T) {
+	src := `
+E :: enum { A: S64 = 7; B = 9; }
+value :: proc -> E { return .B; }
+main :: proc -> S64 {
+    x: E = E.B;
+    if x == .B { return 1; }
+    return 0;
+}`
+	hir, _ := lowerSource(t, src)
+	valueProc := findHIRProc(hir, "value")
+	ret := valueProc.Body.Stmts[0].(*HIRReturn)
+	retConst, ok := ret.Value.(*HIRConst)
+	if !ok || typeName(hir, retConst.Type) != "E" || retConst.Str != "9" {
+		t.Fatalf("bare enum return lowered as %#v, want E constant 9", ret.Value)
+	}
+	mainProc := findHIRProc(hir, "main")
+	ifStmt := mainProc.Body.Stmts[1].(*HIRIf)
+	comparison := ifStmt.Condition.(*HIRBinary)
+	right, ok := comparison.Right.(*HIRConst)
+	if !ok || typeName(hir, right.Type) != "E" || right.Str != "9" {
+		t.Fatalf("bare enum comparison lowered as %#v, want E constant 9", comparison.Right)
+	}
+}

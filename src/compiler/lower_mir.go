@@ -440,7 +440,7 @@ func (ml *MIRLowerer) lowerStructInit(n *HIRStructInit) ValueID {
 func constImmediate(c *HIRConst) MIRImmediate {
 	switch c.Kind {
 	case ConstInt:
-		return MIRImmediate{Kind: MIRImmInt, Int: c.Int}
+		return MIRImmediate{Kind: MIRImmInt, Int: c.Int, Str: c.Str}
 	case ConstFloat:
 		return MIRImmediate{Kind: MIRImmFloat, Float: c.Float}
 	case ConstString:

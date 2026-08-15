@@ -324,7 +324,11 @@ func dumpMIRInstr(b *strings.Builder, prog *MIRProgram, fn *MIRFunction, ins *MI
 	}
 	switch ins.Imm.Kind {
 	case MIRImmInt:
-		fmt.Fprintf(b, " %d", ins.Imm.Int)
+		if ins.Imm.Str != "" {
+			fmt.Fprintf(b, " %s", ins.Imm.Str)
+		} else {
+			fmt.Fprintf(b, " %d", ins.Imm.Int)
+		}
 	case MIRImmFloat:
 		fmt.Fprintf(b, " %v", ins.Imm.Float)
 	case MIRImmString:

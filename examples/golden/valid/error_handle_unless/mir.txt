@@ -37,7 +37,7 @@ MIR
       v5:Some_Error = field.load v3 field1
       store.local v5 l1
       v6:Some_Error = load.local l1
-      v7: = const
+      v7:Some_Error = const 0
       v8:Bool = cmp.eq v6 v7
       branch v8, bb4, bb5
     bb2:

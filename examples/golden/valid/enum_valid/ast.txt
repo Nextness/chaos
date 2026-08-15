@@ -1,0 +1,16 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  EnumDecl Another_Enum
+    Member FOO: Ident(S64) = Int(0)
+    Member BAR = Int(10)
+    Member BAZ
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl x: Ident(Another_Enum) = EnumMember(Another_Enum.BAZ) [mutable=true compileTime=false]
+      IfStmt condition=Binary(== Ident(x) EnumMember(.BAZ))
+        Block
+          ReturnStmt Int(42)
+      ReturnStmt Int(0)

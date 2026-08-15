@@ -687,3 +687,50 @@ func TestTypeCheckTopLevelProcedureShadowRejected(t *testing.T) {
 		t.Fatalf("expected top-level procedure shadow error, got %v", diags)
 	}
 }
+
+func TestTypeCheckEnumValueRanges(t *testing.T) {
+	valid := `
+Signed :: enum { MIN: S128 = -170141183460469231731687303715884105728; }
+Unsigned :: enum { MAX: U128 = 340282366920938463463374607431768211455; }
+U64_Max :: enum { MAX: U64 = 18446744073709551615; }
+main :: proc { }
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("unexpected enum range errors: %v", diags)
+	}
+
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"s64 explicit overflow", "E :: enum { A: S64 = 9223372036854775808; }", "does not fit S64"},
+		{"s64 sequential overflow", "E :: enum { A: S64 = 9223372036854775807; B; }", "does not fit S64"},
+		{"u64 overflow", "E :: enum { A: U64 = 18446744073709551616; }", "does not fit U64"},
+		{"s128 underflow", "E :: enum { A: S128 = -170141183460469231731687303715884105729; }", "does not fit S128"},
+		{"u128 overflow", "E :: enum { A: U128 = 340282366920938463463374607431768211456; }", "does not fit U128"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diags := typeCheckSource(t, tt.src)
+			if !hasError(diags, tt.want) {
+				t.Fatalf("expected %q, got %v", tt.want, diags)
+			}
+		})
+	}
+}
+
+func TestTypeCheckRejectsEnumArithmetic(t *testing.T) {
+	prefix := "E :: enum { A: S64 = 1; B = 2; }\nmain :: proc {\n    x: E = E.A;\n"
+	tests := []string{
+		"    y: E = E.A + E.B;\n",
+		"    y: E = -E.A;\n",
+		"    x += E.B;\n",
+	}
+	for _, body := range tests {
+		diags := typeCheckSource(t, prefix+body+"}")
+		if !hasError(diags, "enum") {
+			t.Errorf("expected enum arithmetic error for %q, got %v", body, diags)
+		}
+	}
+}
