@@ -1,7 +1,31 @@
+Some_Enum :: enum {
+    OPTION1;
+    OPTION2;
+    OPTION3;
+    OPTION4;
+}
+
+Some_Error :: error {
+    GENERIC;
+    SPECIFIC;
+    ANOTHER;
+}
+
 Something_New :: struct {
     field1: String;
     field2: U64;
     field3: Bool;
+}
+
+proc_that_fails :: proc (param1: Some_Enum, param2: String, param3: Bool) -> (String <> Some_Error) {
+    if param1 == .OPTION1 {
+        return «Hello world»;
+    } elif param1 == .OPTION2 && param2 != «» {
+        return .GENERIC!;
+    }
+
+    if param3 then return .ANOTHER!;
+    return .SPECIFIC!;
 }
 
 some_procedure :: proc (param_1: String, param_2: S64) -> String {
