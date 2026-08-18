@@ -2,7 +2,7 @@
 
 ## Build & Test
 
-The Go module root is `src/` (module `chaos_new`). Two binaries are built into
+The Go module root is `src/` (module `chaos_compiler`). Two binaries are built into
 `./build` by `make`:
 
 ```bash

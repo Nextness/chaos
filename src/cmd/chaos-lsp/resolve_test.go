@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 // buildResolverFor tokenizes and parses source in tolerant mode and builds a

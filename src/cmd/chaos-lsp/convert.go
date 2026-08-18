@@ -5,7 +5,7 @@ import (
 	"unicode/utf16"
 	"unicode/utf8"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 // severityToLSP maps a compiler severity to the LSP DiagnosticSeverity enum

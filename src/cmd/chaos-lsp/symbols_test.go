@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 // parseDoc tokenizes and parses source in tolerant mode, returning the program

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 	"golang.org/x/text/unicode/norm"
 )
 

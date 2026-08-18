@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 func main() {

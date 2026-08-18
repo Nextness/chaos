@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 // Semantic token type indices into the legend declared in initialize.

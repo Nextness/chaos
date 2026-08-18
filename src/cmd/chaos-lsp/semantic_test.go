@@ -6,7 +6,7 @@ import (
 	"testing"
 	"unicode/utf16"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 // semanticData tokenizes and parses source in tolerant mode and returns the

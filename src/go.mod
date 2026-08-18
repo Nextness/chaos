@@ -1,4 +1,4 @@
-module chaos_new
+module chaos_compiler
 
 go 1.24.1
 

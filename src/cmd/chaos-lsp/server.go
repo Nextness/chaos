@@ -6,7 +6,7 @@ import (
 	"os"
 	"sync"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 // Document is the server's in-memory view of one open text document.

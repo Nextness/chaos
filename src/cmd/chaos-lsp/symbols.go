@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 // LSP DocumentSymbol kinds used by the server.

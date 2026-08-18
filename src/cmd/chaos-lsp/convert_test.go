@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 func TestSeverityToLSP(t *testing.T) {

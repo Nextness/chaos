@@ -42,7 +42,7 @@ import (
 	"strings"
 	"testing"
 
-	"chaos_new/compiler"
+	"chaos_compiler/compiler"
 )
 
 var update = flag.Bool("update", false, "regenerate golden dump files")
