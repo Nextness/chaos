@@ -3,5 +3,6 @@ Diagnostics:
 AST:
 Program
   ProcDecl main
+    Results: Ident(S64)
     Block
       ExitStmt status=Int(3) message=String("boom")

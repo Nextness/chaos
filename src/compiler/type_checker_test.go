@@ -219,12 +219,12 @@ func TestTypeCheckErrorNoOrderingOrArithmetic(t *testing.T) {
 	// Error values support only == and !=; ordering and arithmetic are
 	// rejected.
 	diags := typeCheckSource(t, "A :: error {\n    X;\n    Y;\n}\nmain :: proc {\n    if A.X! < A.Y! { }\n}")
-	if !hasError(diags, "cannot order error values") {
+	if !hasError(diags, "ordering is not defined for A") {
 		t.Errorf("expected ordering error, got %v", diags)
 	}
 
 	diags = typeCheckSource(t, "A :: error {\n    X;\n    Y;\n}\nmain :: proc {\n    z := A.X! + A.Y!;\n}")
-	if !hasError(diags, "cannot apply + to error values") {
+	if !hasError(diags, "operator + is not defined for A") {
 		t.Errorf("expected arithmetic error, got %v", diags)
 	}
 }
@@ -330,7 +330,7 @@ func TestTypeCheckErrorReturnSpecInvalid(t *testing.T) {
 
 	// A bare return is rejected in a '<>' procedure.
 	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (String <> Some_Error) {\n    return;\n}")
-	if !hasError(diags, "return without a value") {
+	if !hasError(diags, "return without values") {
 		t.Errorf("expected missing value error, got %v", diags)
 	}
 }
@@ -397,7 +397,7 @@ func TestTypeCheckErrorMustHandle(t *testing.T) {
 func TestTypeCheckCatchMustDiverge(t *testing.T) {
 	// A catch block that falls through is rejected.
 	diags := typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch {\n    }\n    return r;\n}")
-	if !hasError(diags, "the catch block must return or exit") {
+	if !hasError(diags, "the catch block must diverge") {
 		t.Errorf("expected must-diverge error, got %v", diags)
 	}
 
@@ -405,6 +405,30 @@ func TestTypeCheckCatchMustDiverge(t *testing.T) {
 	diags = typeCheckSource(t, "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    return x;\n}\nmain :: proc -> S64 {\n    r := f(5) unless catch {\n        if true {\n            return 1;\n        } else {\n            return 2;\n        }\n    }\n    return r;\n}")
 	if diags.HasErrors() {
 		t.Errorf("unexpected errors for diverging if/else catch: %v", diags)
+	}
+
+	// A constant-true loop without a reachable break also diverges.
+	diags = typeCheckSource(t, "Some_Error :: error { BAD; }\nf :: proc -> (S64 <> Some_Error) { return .BAD!; }\nmain :: proc -> S64 { r := f() unless catch { for true { } } return r; }")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors for infinite catch loop: %v", diags)
+	}
+}
+
+func TestTypeCheckMustReturnRecognizesControlFlowDivergence(t *testing.T) {
+	valid := []string{
+		"f :: proc -> S64 { for true { } }",
+		"f :: proc -> S64 { return 1; value := 2; }",
+		"f :: proc (flag: Bool) -> S64 { for true { if flag { return 1; } } }",
+		"f :: proc -> S64 { for true { for true { break; } } }",
+	}
+	for _, source := range valid {
+		if diags := typeCheckSource(t, source); diags.HasErrors() {
+			t.Errorf("valid diverging procedure failed for %q: %v", source, diags)
+		}
+	}
+	invalid := "f :: proc -> S64 { for true { break; } }"
+	if diags := typeCheckSource(t, invalid); !hasError(diags, "not every path returns a value") {
+		t.Fatalf("reachable break was treated as divergence: %v", diags)
 	}
 }
 
@@ -575,7 +599,7 @@ func TestTypeCheckVoidInvalidPositions(t *testing.T) {
 		{"array element", "main :: proc { arr := []Void.{ }; }", "Void is only valid as a function result type"},
 		{"nested result", "f :: proc -> []Void { }", "Void is only valid as a function result type"},
 		{"nested error result", "Some_Error :: error { BAD; }\nf :: proc -> ([]Void <> Some_Error) { return; }", "Void is only valid as a function result type"},
-		{"multiple results", "f :: proc -> Void, S64 { }", "Void must be the only function result"},
+		{"multiple results", "f :: proc -> (Void, S64) { }", "Void must be the only function result"},
 	}
 	for _, c := range cases {
 		diags := typeCheckSource(t, c.src)
@@ -615,12 +639,12 @@ func TestTypeCheckShadowingRejected(t *testing.T) {
 		{"range binding", "main :: proc -> S64 {\n    arr := []S64.{1};\n    x := 5;\n    for x: arr { }\n    return 0;\n}", "shadows an existing name"},
 		{"unless catch target", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (S64 <> Some_Error) {\n    return 1;\n}\nmain :: proc -> S64 {\n    x := 5;\n    x := f() unless catch {\n        return -1;\n    }\n    return x;\n}", "shadows an existing name"},
 		{"catch binding", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc -> (S64 <> Some_Error) {\n    return 1;\n}\nmain :: proc -> S64 {\n    x := 5;\n    r := f() unless catch x {\n        return -1;\n    }\n    return r;\n}", "shadows an existing name"},
-		{"struct type", "Point :: struct { x: S64; }\nmain :: proc -> S64 {\n    Point := 5;\n    return 0;\n}", "shadows a struct type"},
-		{"error type", "Some_Error :: error {\n    GENERIC;\n}\nmain :: proc -> S64 {\n    Some_Error := 5;\n    return 0;\n}", "shadows an error type"},
-		{"procedure", "helper :: proc -> S64 { return 1; }\nmain :: proc -> S64 { helper := 2; return helper; }", "shadows an existing procedure"},
-		{"struct definition", "Point :: struct { x: S64; }\nPoint :: struct { y: S64; }", "shadows a struct type"},
-		{"error definition", "Some_Error :: error { ONE; }\nSome_Error :: error { TWO; }", "shadows an error type"},
-		{"procedure definition", "helper :: proc { }\nhelper :: proc { }", "declared more than once"},
+		{"struct type", "Point :: struct { x: S64; }\nmain :: proc -> S64 {\n    Point := 5;\n    return 0;\n}", "shadows an existing name"},
+		{"error type", "Some_Error :: error {\n    GENERIC;\n}\nmain :: proc -> S64 {\n    Some_Error := 5;\n    return 0;\n}", "shadows an existing name"},
+		{"procedure", "helper :: proc -> S64 { return 1; }\nmain :: proc -> S64 { helper := 2; return helper; }", "shadows an existing name"},
+		{"struct definition", "Point :: struct { x: S64; }\nPoint :: struct { y: S64; }", "shadows an existing name"},
+		{"error definition", "Some_Error :: error { ONE; }\nSome_Error :: error { TWO; }", "shadows an existing name"},
+		{"procedure definition", "helper :: proc { }\nhelper :: proc { }", "shadows an existing name"},
 	}
 	for _, c := range cases {
 		diags := typeCheckSource(t, c.src)
@@ -652,10 +676,10 @@ func TestTypeCheckShadowDirectiveAllows(t *testing.T) {
 	if diags.HasErrors() {
 		t.Errorf("unexpected errors for explicit procedure-name shadow: %v", diags)
 	}
-	// '#shadow' does not allow shadowing a struct or error type.
+	// '#shadow' applies uniformly to type/procedure/value declarations.
 	diags = typeCheckSource(t, "Point :: struct { x: S64; }\nmain :: proc -> S64 {\n    #shadow Point := 5;\n    return 0;\n}")
-	if !hasError(diags, "shadows a struct type") {
-		t.Errorf("expected struct shadow error even with #shadow, got %v", diags)
+	if diags.HasErrors() {
+		t.Errorf("unexpected explicit struct-name shadow error: %v", diags)
 	}
 }
 
@@ -669,7 +693,7 @@ func TestTypeCheckParamPlaceholderNotShadowed(t *testing.T) {
 
 func TestTypeCheckShadowTypeConflictIsOrderIndependent(t *testing.T) {
 	diags := typeCheckSource(t, "Point := 1;\nPoint :: struct { x: S64; }")
-	if !hasError(diags, "shadows a struct type") {
+	if !hasError(diags, "shadows an existing name") {
 		t.Fatalf("expected type shadow error when variable appears first, got %v", diags)
 	}
 }
@@ -681,15 +705,18 @@ func TestTypeCheckTopLevelShadowInitializerUsesPreviousType(t *testing.T) {
 	}
 }
 
-func TestTypeCheckTopLevelProcedureShadowRejected(t *testing.T) {
+func TestTypeCheckTopLevelProcedureShadowAllowedExplicitly(t *testing.T) {
 	diags := typeCheckSource(t, "helper :: proc -> S64 { return 1; }\n#shadow helper :: 2;")
-	if !hasError(diags, "top-level variable cannot shadow procedure") {
-		t.Fatalf("expected top-level procedure shadow error, got %v", diags)
+	if diags.HasErrors() {
+		t.Fatalf("unexpected explicit procedure shadow error: %v", diags)
 	}
 }
 
 func TestTypeCheckEnumValueRanges(t *testing.T) {
 	valid := `
+Signed8 :: enum { MIN: S8 = -128; MAX = 127; }
+Unsigned8 :: enum { MIN: U8 = 0; MAX = 255; }
+Signed64 :: enum { MIN: S64 = -9223372036854775808; MAX = 9223372036854775807; }
 Signed :: enum { MIN: S128 = -170141183460469231731687303715884105728; }
 Unsigned :: enum { MAX: U128 = 340282366920938463463374607431768211455; }
 U64_Max :: enum { MAX: U64 = 18446744073709551615; }
@@ -704,17 +731,55 @@ main :: proc { }
 		src  string
 		want string
 	}{
+		{"s8 explicit underflow", "E :: enum { A: S8 = -129; }", "does not fit S8"},
+		{"s8 sequential overflow", "E :: enum { A: S8 = 127; B; }", "does not fit S8"},
+		{"u8 negative", "E :: enum { A: U8 = -1; }", "does not fit U8"},
+		{"u8 sequential overflow", "E :: enum { A: U8 = 255; B; }", "does not fit U8"},
 		{"s64 explicit overflow", "E :: enum { A: S64 = 9223372036854775808; }", "does not fit S64"},
 		{"s64 sequential overflow", "E :: enum { A: S64 = 9223372036854775807; B; }", "does not fit S64"},
 		{"u64 overflow", "E :: enum { A: U64 = 18446744073709551616; }", "does not fit U64"},
+		{"u64 sequential overflow", "E :: enum { A: U64 = 18446744073709551615; B; }", "does not fit U64"},
 		{"s128 underflow", "E :: enum { A: S128 = -170141183460469231731687303715884105729; }", "does not fit S128"},
+		{"s128 sequential overflow", "E :: enum { A: S128 = 170141183460469231731687303715884105727; B; }", "does not fit S128"},
 		{"u128 overflow", "E :: enum { A: U128 = 340282366920938463463374607431768211456; }", "does not fit U128"},
+		{"u128 sequential overflow", "E :: enum { A: U128 = 340282366920938463463374607431768211455; B; }", "does not fit U128"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			diags := typeCheckSource(t, tt.src)
 			if !hasError(diags, tt.want) {
 				t.Fatalf("expected %q, got %v", tt.want, diags)
+			}
+		})
+	}
+}
+
+func TestTypeCheckOrdinaryIntegerLiteralRanges(t *testing.T) {
+	tests := []struct {
+		typeName, min, max, below, above string
+	}{
+		{"S8", "-128", "127", "-129", "128"},
+		{"U8", "0", "255", "-1", "256"},
+		{"S16", "-32768", "32767", "-32769", "32768"},
+		{"U16", "0", "65535", "-1", "65536"},
+		{"S32", "-2147483648", "2147483647", "-2147483649", "2147483648"},
+		{"U32", "0", "4294967295", "-1", "4294967296"},
+		{"S64", "-9223372036854775808", "9223372036854775807", "-9223372036854775809", "9223372036854775808"},
+		{"U64", "0", "18446744073709551615", "-1", "18446744073709551616"},
+		{"S128", "-170141183460469231731687303715884105728", "170141183460469231731687303715884105727", "-170141183460469231731687303715884105729", "170141183460469231731687303715884105728"},
+		{"U128", "0", "340282366920938463463374607431768211455", "-1", "340282366920938463463374607431768211456"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.typeName, func(t *testing.T) {
+			valid := "main :: proc { low: " + tt.typeName + " = " + tt.min + "; high: " + tt.typeName + " = " + tt.max + "; }"
+			if diags := typeCheckSource(t, valid); diags.HasErrors() {
+				t.Fatalf("valid boundaries failed: %v", diags)
+			}
+			for _, value := range []string{tt.below, tt.above} {
+				source := "main :: proc { value: " + tt.typeName + " = " + value + "; }"
+				if diags := typeCheckSource(t, source); !hasError(diags, "does not fit "+tt.typeName) {
+					t.Fatalf("out-of-range %s accepted: %v", value, diags)
+				}
 			}
 		})
 	}
@@ -729,8 +794,190 @@ func TestTypeCheckRejectsEnumArithmetic(t *testing.T) {
 	}
 	for _, body := range tests {
 		diags := typeCheckSource(t, prefix+body+"}")
-		if !hasError(diags, "enum") {
+		if !diags.HasErrors() {
 			t.Errorf("expected enum arithmetic error for %q, got %v", body, diags)
 		}
+	}
+}
+
+func TestTypeCheckDefiniteInitializationAcrossControlFlow(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want bool
+	}{
+		{
+			name: "both branches initialize",
+			src:  "f :: proc (flag: Bool) -> S64 { x: S64; if flag { x = 1; } else { x = 2; } return x; }",
+		},
+		{
+			name: "one branch initializes",
+			src:  "f :: proc (flag: Bool) -> S64 { x: S64; if flag { x = 1; } return x; }",
+			want: true,
+		},
+		{
+			name: "loop may execute zero times",
+			src:  "f :: proc -> S64 { x: S64; for false { x = 1; } return x; }",
+			want: true,
+		},
+		{
+			name: "c loop initializer executes",
+			src:  "f :: proc -> S64 { x: S64; for x = 1; false; x += 1 { } return x; }",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			diags := typeCheckSource(t, tt.src)
+			if got := hasError(diags, "is not initialized"); got != tt.want {
+				t.Fatalf("uninitialized diagnostic = %v, want %v: %v", got, tt.want, diags)
+			}
+		})
+	}
+}
+
+func TestTypeCheckNestedDeclarationsAndNoCapture(t *testing.T) {
+	valid := `
+outer :: proc (input: S64) -> S64 {
+    C :: 2;
+    Local :: struct { value: S64 = C; }
+    inner :: proc (value: S64) -> S64 { return value + C; }
+    item: Local = .{};
+    return inner(input);
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid nested declarations failed: %v", diags)
+	}
+
+	capture := `
+outer :: proc (input: S64) -> S64 {
+    inner :: proc -> S64 { return input; }
+    return inner();
+}
+`
+	if diags := typeCheckSource(t, capture); !hasError(diags, "cannot implicitly capture runtime binding 'input'") {
+		t.Fatalf("expected no-capture diagnostic, got %v", diags)
+	}
+
+	beforeDeclaration := `
+outer :: proc -> S64 {
+    value := inner();
+    inner :: proc -> S64 { return 1; }
+    return value;
+}
+`
+	if diags := typeCheckSource(t, beforeDeclaration); !hasError(diags, "call to unknown procedure inner") {
+		t.Fatalf("expected source-order diagnostic, got %v", diags)
+	}
+}
+
+func TestTypeCheckShadowedNominalAndProcedureIdentity(t *testing.T) {
+	source := `
+outer :: proc -> S64 {
+    Item :: struct { old: S64; }
+    first: Item = .{};
+    helper :: proc -> S64 { return 1; }
+    old_helper :: helper;
+    #shadow Item :: struct { newer: S64; }
+    #shadow helper :: proc -> S64 { return 2; }
+    second: Item = first;
+    return old_helper() + helper();
+}
+`
+	diags := typeCheckSource(t, source)
+	if !hasError(diags, "cannot assign Item to Item") {
+		t.Fatalf("shadowed nominal types compared equal: %v", diags)
+	}
+}
+
+func TestSemanticAnalysisFormatsStableNominalTypes(t *testing.T) {
+	tokens, _ := Tokenize([]byte("Item :: struct { x: S64; }\nvalue: Item = .{};"), 0)
+	parsed := ParseProgram(tokens)
+	analysis, diags := AnalyzeProgram(parsed.Program)
+	if diags.HasErrors() {
+		t.Fatalf("analysis failed: %v", diags)
+	}
+	value := parsed.Program.Decls[1].(*VarDecl)
+	if got := analysis.FormatType(analysis.DeclTypes[value]); got != "Item" {
+		t.Fatalf("formatted type = %q, want Item", got)
+	}
+}
+
+func TestTypeCheckForwardCompileTimeStructDefault(t *testing.T) {
+	valid := "Item :: struct { value: S64 = LATER; }\nFIRST :: Item.{};\nLATER :: 42;"
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("forward compile-time default failed: %v", diags)
+	}
+	invalid := "Item :: struct { value: S64 = LATER; }\nLATER :: «wrong»;"
+	if diags := typeCheckSource(t, invalid); !hasError(diags, "cannot assign String to S64") {
+		t.Fatalf("expected default type mismatch, got %v", diags)
+	}
+}
+
+func TestSemanticAnalysisProvidesGlobalDependencyOrder(t *testing.T) {
+	tokens, _ := Tokenize([]byte("FIRST :: LATER + 1;\nLATER :: 41;"), 0)
+	parsed := ParseProgram(tokens)
+	analysis, diags := AnalyzeProgram(parsed.Program)
+	if diags.HasErrors() {
+		t.Fatalf("analysis failed: %v", diags)
+	}
+	if len(analysis.GlobalOrder) != 2 || analysis.GlobalOrder[0].Name != "LATER" || analysis.GlobalOrder[1].Name != "FIRST" {
+		t.Fatalf("global order = %+v, want LATER then FIRST", analysis.GlobalOrder)
+	}
+}
+
+func TestTypeCheckCompileTimeIntegerEvaluation(t *testing.T) {
+	valid := `
+base :: 100;
+small : S8 : base + 27;
+runtime_wrap :: proc -> S8 { value: S8 = 127 + 1; return value; }
+runtime_divide :: proc (divisor: S64) -> S64 { return 1 / divisor; }
+runtime_float :: proc -> F32 { value: F32 = 1.25 + 2.5; return value; }
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid constant/runtime arithmetic failed: %v", diags)
+	}
+
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{name: "typed overflow", src: "bad : S8 : 127 + 1;", want: "compile-time integer value 128 does not fit S8"},
+		{name: "inferred overflow", src: "bad :: 9223372036854775807 + 1;", want: "compile-time integer value 9223372036854775808 does not fit S64"},
+		{name: "division by zero", src: "bad :: 10 / 0;", want: "division by zero in compile-time expression"},
+		{name: "modulo by zero", src: "bad :: 10 % 0;", want: "modulo by zero in compile-time expression"},
+		{name: "float division by zero", src: "bad :: 10.0 / 0.0;", want: "division by zero in compile-time expression"},
+		{name: "typed float overflow", src: "bad : F32 : 340282346638528859811704183484516925440.0 * 2.0;", want: "compile-time floating-point value does not fit F32"},
+		{name: "array element overflow", src: "bad : []S8 : []S8.{127 + 1};", want: "compile-time integer value 128 does not fit S8"},
+		{name: "struct field overflow", src: "Item :: struct { value: S8; }\nbad :: Item.{127 + 1};", want: "compile-time integer value 128 does not fit S8"},
+		{name: "struct default division by zero", src: "Item :: struct { value: S64 = 10 / 0; }", want: "division by zero in compile-time expression"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diags := typeCheckSource(t, tt.src); !hasError(diags, tt.want) {
+				t.Fatalf("diagnostics = %v, want %q", diags, tt.want)
+			}
+		})
+	}
+}
+
+func TestTypeCheckCompileTimeTypeAliases(t *testing.T) {
+	valid := `
+Number :: Later;
+Later :: S64;
+identity :: proc (value: Number) -> Number { return value; }
+outer :: proc -> S64 {
+    Local :: Number;
+    value: Local = identity(42);
+    return value;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid type aliases failed: %v", diags)
+	}
+	invalid := "Not_A_Type :: 42;\nf :: proc (value: Not_A_Type) { }"
+	if diags := typeCheckSource(t, invalid); !hasError(diags, "unknown type name 'Not_A_Type'") {
+		t.Fatalf("runtime value was accepted as a type alias: %v", diags)
 	}
 }

@@ -1,3 +1,9 @@
 [ERROR] 4:16:void_nested_result.chaos - Void is only valid as a function result type
  f :: proc -> []Void {
                 ^^^^ -> remove the type or use a value type
+[ERROR] 4:1:void_nested_result.chaos - arrays cannot escape through procedure results until owned array storage is implemented
+ f :: proc -> []Void {
+ ^ -> return a non-array value for now
+[ERROR] 4:21:void_nested_result.chaos - not every path returns a value from procedure 'f'
+ f :: proc -> []Void {
+                     ^ -> return []Void on every reachable path

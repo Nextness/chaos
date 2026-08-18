@@ -80,3 +80,21 @@ func TestTypeTableStruct(t *testing.T) {
 		t.Errorf("Lookup(out of range) kind = %v, want unknown", tt.Lookup(TypeID(999)).Kind)
 	}
 }
+
+func TestTypeTableNominalInterningReportsCrossKindCollisions(t *testing.T) {
+	tt := NewTypeTable()
+	if id, ok := tt.TryInternStruct("S64"); ok || id != tt.S64() {
+		t.Fatalf("TryInternStruct(S64) = %d, %v; want existing ID and collision", id, ok)
+	}
+	tt.SetStructFields(tt.S64(), []TypeField{{Name: "corruption", Type: tt.S64()}})
+	if fields := tt.Lookup(tt.S64()).Fields; len(fields) != 0 {
+		t.Fatalf("SetStructFields mutated integer metadata: %+v", fields)
+	}
+	structID, ok := tt.TryInternStruct("Nominal")
+	if !ok {
+		t.Fatal("first struct interning failed")
+	}
+	if id, ok := tt.TryInternEnum("Nominal", tt.S64()); ok || id != structID {
+		t.Fatalf("TryInternEnum collision = %d, %v; want %d, false", id, ok, structID)
+	}
+}

@@ -1,3 +1,6 @@
+[ERROR] 4:24:error_return_undeclared.chaos - unknown type name 'Nope'
+ f :: proc -> String <> Nope {
+                        ^^^^ -> declare the type before using it in this scope
 [ERROR] 4:24:error_return_undeclared.chaos - Nope is not an error type
  f :: proc -> String <> Nope {
                         ^^^^ -> use a declared error type after '<>'

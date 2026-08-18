@@ -1,6 +1,10 @@
-// expect-stage: parse
-// expect-error: '#shadow' can only be used with a variable declaration
-// The directive cannot be applied to procedures or type definitions.
-#shadow Point :: struct {
+// expect-stage: type
+// expect-error: declaration of 'Point' shadows an existing name
+// Type definitions may be shadowed, but the reuse must be explicit.
+Point :: struct {
     x: S64;
+}
+
+Point :: struct {
+    y: S64;
 }

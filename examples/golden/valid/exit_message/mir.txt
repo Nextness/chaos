@@ -1,5 +1,5 @@
 MIR
-  Function main()
+  Function main() -> S64
     bb0:
       v0:S64 = const 3
       v1:String = const "boom"

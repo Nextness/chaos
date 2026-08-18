@@ -1,3 +1,3 @@
 [ERROR] 4:14:unknown_variable.chaos - use of undeclared variable missing
      value := missing;
-              ^^^^^^^ -> declare the variable before using it
+              ^^^^^^^ -> declare it before using it in this scope

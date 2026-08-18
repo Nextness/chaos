@@ -7,7 +7,7 @@ MIR
       v2:Bool = cmp.lt v0 v1
       branch v2, bb1, bb2
     bb1:
-      v3:S64 = const
+      v3:S64 = const 0
       v4:Some_Error = const 0
       v5:Bool = const true
       v6:S64<>Some_Error = struct.init v3 v4 v5
@@ -18,7 +18,7 @@ MIR
       v7:S64 = load.local l0
       v8:S64 = const 2
       v9:S64 = mul v7 v8
-      v10:Some_Error = const
+      v10:Some_Error = const 0
       v11:Bool = const false
       v12:S64<>Some_Error = struct.init v9 v10 v11
       return v12
@@ -32,12 +32,11 @@ MIR
       v3:Bool = field.load v2 field2
       branch v3, bb1, bb2
     bb1:
-      v4:S64 = const 1
-      v5:S64 = neg v4
-      return v5
+      v4:S64 = const -1
+      return v4
     bb2:
       jump bb3
     bb3:
-      v6:S64<>Some_Error = load.local l0
-      v7:S64 = field.load v6 field0
-      return v7
+      v5:S64<>Some_Error = load.local l0
+      v6:S64 = field.load v5 field0
+      return v6

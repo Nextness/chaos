@@ -2,6 +2,8 @@ package main
 
 import (
 	"strings"
+	"unicode/utf16"
+	"unicode/utf8"
 
 	"chaos_new/compiler"
 )
@@ -22,14 +24,11 @@ func severityToLSP(s compiler.Severity) int {
 }
 
 // convertDiagnostics converts compiler diagnostics to LSP diagnostics. The
-// suggestion is appended to the message. Diagnostics whose span exceeds the
-// current source length are dropped rather than panicking.
+// suggestion is appended to the message. Invalid internal spans are clamped
+// by the compiler's shared reporting helper rather than crashing the server.
 func convertDiagnostics(diags compiler.DiagnosticList, sf *compiler.SourceFile) []Diagnostic {
 	out := []Diagnostic{}
 	for _, d := range diags {
-		if d.Span.Start > len(sf.Source) || d.Span.End > len(sf.Source) {
-			continue
-		}
 		r := compiler.SpanToRange(d.Span, sf)
 		msg := d.Message
 		if d.Suggestion != "" {
@@ -52,42 +51,85 @@ func convertDiagnostics(diags compiler.DiagnosticList, sf *compiler.SourceFile) 
 // range is a full-document replacement. Each edit is applied against the text
 // as it is after the previous edit.
 func applyEdits(text string, changes []TextDocumentContentChangeEvent) string {
+	updated, ok := applyEditsChecked(text, changes)
+	if !ok {
+		return text
+	}
+	return updated
+}
+
+func applyEditsChecked(text string, changes []TextDocumentContentChangeEvent) (string, bool) {
 	for _, change := range changes {
 		if change.Range == nil {
 			text = change.Text
 			continue
 		}
-		start := positionToByteOffset(text, change.Range.Start)
-		end := positionToByteOffset(text, change.Range.End)
-		if start > end {
-			start, end = end, start
+		start, startOK := positionToByteOffsetChecked(text, change.Range.Start)
+		end, endOK := positionToByteOffsetChecked(text, change.Range.End)
+		if !startOK || !endOK || start > end {
+			return "", false
 		}
 		text = text[:start] + change.Text + text[end:]
 	}
-	return text
+	return text, true
 }
 
 // positionToByteOffset converts an LSP position (0-based line, UTF-16
 // character) to a byte offset in text.
 func positionToByteOffset(text string, pos Position) int {
+	if offset, ok := positionToByteOffsetChecked(text, pos); ok {
+		return offset
+	}
+	if pos.Line < 0 || pos.Character < 0 {
+		return 0
+	}
+	return len(text)
+}
+
+func positionToByteOffsetChecked(text string, pos Position) (int, bool) {
+	if pos.Line < 0 || pos.Character < 0 {
+		return 0, false
+	}
 	offset := 0
 	for line := 0; line < pos.Line; line++ {
 		idx := strings.IndexByte(text[offset:], '\n')
 		if idx < 0 {
-			return len(text)
+			return 0, false
 		}
 		offset += idx + 1
 	}
 	lineStart := offset
-	lineEnd := strings.IndexByte(text[offset:], '\n')
-	if lineEnd < 0 {
-		lineEnd = len(text)
+	relativeEnd := strings.IndexByte(text[offset:], '\n')
+	lineEnd := len(text)
+	if relativeEnd >= 0 {
+		lineEnd = offset + relativeEnd
+	}
+	contentEnd := lineEnd
+	if contentEnd > lineStart && text[contentEnd-1] == '\r' {
+		contentEnd--
+	}
+	units := 0
+	for offset < contentEnd {
+		if units == pos.Character {
+			return offset, true
+		}
+		r, size := utf8.DecodeRuneInString(text[offset:contentEnd])
+		if size == 0 {
+			break
+		}
+		width := 1
+		if utf16.RuneLen(r) == 2 {
+			width = 2
+		}
+		if units+width > pos.Character {
+			return 0, false
+		}
+		units += width
+		offset += size
+	}
+	if units == pos.Character {
+		return contentEnd, true
 	} else {
-		lineEnd += offset
+		return 0, false
 	}
-	byteOff := compiler.UTF16ToByteOffset([]byte(text), lineStart, pos.Character)
-	if byteOff > lineEnd {
-		byteOff = lineEnd
-	}
-	return byteOff
 }

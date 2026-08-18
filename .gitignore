@@ -1,7 +1,11 @@
-# Binary files
+# Compiler and test outputs
 build/
-
-# Random shit noone cares
-.vscode
-chaos_compiler*
 *.asm
+chaos_compiler*
+
+# Editor and operating-system metadata
+.vscode/
+.DS_Store
+
+# Repository-local tooling dependencies
+.opencode/node_modules/

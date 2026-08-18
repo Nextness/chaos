@@ -4,34 +4,34 @@ HIR
       VarDecl arr: []S64 = ArrayInit(Int(10), Int(20), Int(30)) [mutable=true compileTime=false]
       VarDecl sum: S64 = Int(0) [mutable=true compileTime=false]
       Block
-        VarDecl __arr: []S64 = Ident(arr) [mutable=false compileTime=false]
-        For init=          VarDecl __idx: S64 = Int() [mutable=true compileTime=false]
- cond=Binary(< Ident(__idx) ArrayLen(Ident(__arr))) after=          Assign __idx = Binary(+ Ident(__idx) Int())
+        VarDecl __chaos_range_array: []S64 = Ident(arr) [mutable=false compileTime=false]
+        For init=          VarDecl __chaos_range_index: S64 = Int() [mutable=true compileTime=false]
+ cond=Binary(< Ident(__chaos_range_index) ArrayLen(Ident(__chaos_range_array))) after=          Assign __chaos_range_index = Binary(+ Ident(__chaos_range_index) Int())
 
           Block
-            VarDecl elem: S64 = Index(Ident(__arr), Ident(__idx)) [mutable=false compileTime=false]
+            VarDecl elem: S64 = Index(Ident(__chaos_range_array), Ident(__chaos_range_index)) [mutable=false compileTime=false]
             Assign sum = Binary(+ Ident(sum) Ident(elem))
       Block
-        VarDecl __arr: []S64 = Ident(arr) [mutable=false compileTime=false]
+        VarDecl __chaos_range_array: []S64 = Ident(arr) [mutable=false compileTime=false]
         For init=          VarDecl idx: S64 = Int() [mutable=true compileTime=false]
- cond=Binary(< Ident(idx) ArrayLen(Ident(__arr))) after=          Assign idx = Binary(+ Ident(idx) Int())
+ cond=Binary(< Ident(idx) ArrayLen(Ident(__chaos_range_array))) after=          Assign idx = Binary(+ Ident(idx) Int())
 
           Block
-            VarDecl elem: S64 = Index(Ident(__arr), Ident(idx)) [mutable=false compileTime=false]
+            VarDecl elem: S64 = Index(Ident(__chaos_range_array), Ident(idx)) [mutable=false compileTime=false]
             Assign sum = Binary(+ Ident(sum) Ident(idx))
       Block
-        VarDecl __arr: []S64 = Ident(arr) [mutable=false compileTime=false]
-        For init=          VarDecl __idx: S64 = Int() [mutable=true compileTime=false]
- cond=Binary(< Ident(__idx) ArrayLen(Ident(__arr))) after=          Assign __idx = Binary(+ Ident(__idx) Int())
+        VarDecl __chaos_range_array: []S64 = Ident(arr) [mutable=false compileTime=false]
+        For init=          VarDecl __chaos_range_index: S64 = Int() [mutable=true compileTime=false]
+ cond=Binary(< Ident(__chaos_range_index) ArrayLen(Ident(__chaos_range_array))) after=          Assign __chaos_range_index = Binary(+ Ident(__chaos_range_index) Int())
 
           Block
-            Assign sum = Binary(+ Ident(sum) Index(Ident(__arr), Ident(__idx)))
+            Assign sum = Binary(+ Ident(sum) Index(Ident(__chaos_range_array), Ident(__chaos_range_index)))
       Block
-        VarDecl __arr: []S64 = Ident(arr) [mutable=false compileTime=false]
+        VarDecl __chaos_range_array: []S64 = Ident(arr) [mutable=false compileTime=false]
         For init=          VarDecl idx: S64 = Int() [mutable=true compileTime=false]
- cond=Binary(< Ident(idx) ArrayLen(Ident(__arr))) after=          Assign idx = Binary(+ Ident(idx) Int())
+ cond=Binary(< Ident(idx) ArrayLen(Ident(__chaos_range_array))) after=          Assign idx = Binary(+ Ident(idx) Int())
 
           Block
-            VarDecl elem: S64 = Index(Ident(__arr), Ident(idx)) [mutable=false compileTime=false]
+            VarDecl elem: S64 = Index(Ident(__chaos_range_array), Ident(idx)) [mutable=false compileTime=false]
             Assign sum = Binary(+ Ident(sum) Ident(idx))
       Return Ident(sum)

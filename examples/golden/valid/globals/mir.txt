@@ -1,16 +1,5 @@
 MIR
-  Global A: S64 [mutable=false]
-  Global B: S64 [mutable=false]
   Function main() -> S64
     bb0:
-      v0:S64 = load.global B
+      v0:S64 = const 7
       return v0
-  Function __global_init()
-    bb0:
-      v0:S64 = const 3
-      store.global v0 A
-      v1:S64 = load.global A
-      v2:S64 = const 4
-      v3:S64 = add v1 v2
-      store.global v3 B
-      return

@@ -595,3 +595,54 @@ func TestUnknownCharacterDiagnosticPadsHexByte(t *testing.T) {
 		t.Errorf("diagnostic span = %#v", diagnostics[0].Span)
 	}
 }
+
+func TestInvalidUTF8ProducesOneDiagnosticPerMalformedSequence(t *testing.T) {
+	tests := []struct {
+		name   string
+		source []byte
+		start  int
+		end    int
+	}{
+		{"two byte truncated at start", []byte{0xc2}, 0, 1},
+		{"three byte truncated in middle", []byte{'x', ' ', 0xe2, 0x82}, 2, 4},
+		{"four byte truncated at eof", []byte{'x', ' ', 0xf0, 0x9f, 0x92}, 2, 5},
+		{"continuation run", []byte{0x80, 0x81, 'x'}, 0, 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokens, diags := Tokenize(tt.source, 7)
+			if len(diags) != 1 {
+				t.Fatalf("diagnostics = %v, want one", diags)
+			}
+			if got := diags[0].Span; got.Start != tt.start || got.End != tt.end {
+				t.Fatalf("diagnostic span = %+v, want [%d,%d)", got, tt.start, tt.end)
+			}
+			foundError := false
+			for _, tok := range tokens {
+				foundError = foundError || tok.Kind == TkError
+			}
+			if !foundError || len(tokens) < 2 || tokens[len(tokens)-1].Kind != TkEOF {
+				t.Fatalf("tokens = %v, want an error token and eventual EOF", tokens)
+			}
+		})
+	}
+}
+
+func TestUnicodeIdentifiersNormalizeToNFC(t *testing.T) {
+	composed := "café"
+	decomposed := "cafe\u0301"
+	source := []byte(decomposed + " := 1; " + composed + " = 2; 𐐀name := 3;")
+	tokens, diags := Tokenize(source, 0)
+	if diags.HasErrors() {
+		t.Fatalf("tokenization failed: %v", diags)
+	}
+	var identifiers []string
+	for _, tok := range tokens {
+		if tok.Kind == TkIdent {
+			identifiers = append(identifiers, tok.Text())
+		}
+	}
+	if len(identifiers) != 3 || identifiers[0] != composed || identifiers[1] != composed || identifiers[2] != "𐐀name" {
+		t.Fatalf("normalized identifiers = %q", identifiers)
+	}
+}

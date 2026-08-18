@@ -1,3 +1,3 @@
-[ERROR] 4:9:shadow_non_variable.chaos - '#shadow' can only be used with a variable declaration
- #shadow Point :: struct {
-         ^^^^^^^^^^^^^^^^^ -> remove '#shadow' or declare a variable
+[ERROR] 8:1:shadow_non_variable.chaos - declaration of 'Point' shadows an existing name; use '#shadow' or rename
+ Point :: struct {
+ ^^^^^ -> add '#shadow' before the declaration or choose a new name

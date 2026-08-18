@@ -1,4 +1,4 @@
-// expect-stage: emit
+// expect-stage: target
 // expect-error: float type F16 is not yet supported by the fasm backend
 // F16 is accepted by the front end but rejected by the fasm backend.
 #entry main :: proc -> S64 {

@@ -5,72 +5,97 @@ segment readable executable
 entry _start
 
 _start:
-    call f_main
+    call chaos_fn_1
     mov rdi, rax
     mov rax, 60
     syscall
 
-f_fact:
+chaos_fn_0:
     push rbp
     mov rbp, rsp
-    sub rsp, 96
+    sub rsp, 128
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
     mov rax, rdi
-    mov qword [rbp-8], rax
+    mov qword [rbp-48], rax
 L0:
-    mov rax, qword [rbp-8]
-    mov qword [rbp-16], rax
+    mov rax, qword [rbp-48]
+    mov qword [rbp-56], rax
     mov rax, 1
-    mov qword [rbp-24], rax
-    mov rax, qword [rbp-16]
-    cmp rax, qword [rbp-24]
+    mov qword [rbp-64], rax
+    mov rax, qword [rbp-56]
+    cmp rax, qword [rbp-64]
     setle al
-    mov byte [rbp-25], al
-    movzx rax, byte [rbp-25]
+    mov byte [rbp-65], al
+    movzx rax, byte [rbp-65]
     test al, al
     jnz L1
     jmp L2
 L1:
     mov rax, 1
-    mov qword [rbp-40], rax
-    mov rax, qword [rbp-40]
+    mov qword [rbp-80], rax
+    mov rax, qword [rbp-80]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 L2:
     jmp L3
 L3:
-    mov rax, qword [rbp-8]
-    mov qword [rbp-48], rax
-    mov rax, qword [rbp-8]
-    mov qword [rbp-56], rax
-    mov rax, 1
-    mov qword [rbp-64], rax
-    mov rax, qword [rbp-56]
-    sub rax, qword [rbp-64]
-    mov qword [rbp-72], rax
-    mov rax, qword [rbp-72]
-    mov rdi, rax
-    call f_fact
-    mov qword [rbp-80], rax
     mov rax, qword [rbp-48]
-    mov rcx, qword [rbp-80]
-    imul rax, rcx
     mov qword [rbp-88], rax
+    mov rax, qword [rbp-48]
+    mov qword [rbp-96], rax
+    mov rax, 1
+    mov qword [rbp-104], rax
+    mov rax, qword [rbp-96]
+    sub rax, qword [rbp-104]
+    mov qword [rbp-112], rax
+    mov rax, qword [rbp-112]
+    mov rdi, rax
+    call chaos_fn_0
+    mov qword [rbp-120], rax
     mov rax, qword [rbp-88]
+    mov rcx, qword [rbp-120]
+    imul rax, rcx
+    mov qword [rbp-128], rax
+    mov rax, qword [rbp-128]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 
-f_main:
+chaos_fn_1:
     push rbp
     mov rbp, rsp
-    sub rsp, 16
+    sub rsp, 64
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
 L4:
     mov rax, 5
-    mov qword [rbp-8], rax
-    mov rax, qword [rbp-8]
+    mov qword [rbp-48], rax
+    mov rax, qword [rbp-48]
     mov rdi, rax
-    call f_fact
-    mov qword [rbp-16], rax
-    mov rax, qword [rbp-16]
+    call chaos_fn_0
+    mov qword [rbp-56], rax
+    mov rax, qword [rbp-56]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 

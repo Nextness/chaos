@@ -3,20 +3,21 @@ HIR
     Block
       If condition=Binary(< Ident(x) Int(0))
         Block
-          Return StructInit(value, value=Unknown, error=Error(GENERIC), hasError=Bool(true))
-      Return StructInit(value, value=Binary(* Ident(x) Int(2)), error=Unknown, hasError=Bool(false))
+          Return StructInit(value, value=Int(0), error=Error(GENERIC), hasError=Bool(true))
+      Return StructInit(value, value=Binary(* Ident(x) Int(2)), error=Error(0), hasError=Bool(false))
   Proc g() -> S64<>Some_Error
     Block
-      VarDecl r: S64<>Some_Error = Call(f, Unary(- Int(1))) [mutable=true compileTime=false]
+      VarDecl r: S64<>Some_Error = Call(f, Int(-1)) [mutable=true compileTime=false]
       IfCatch Ident(r)
         Block
           Return Ident(r)
-      Return StructInit(value, value=FieldLoad(Ident(r), 0), error=Unknown, hasError=Bool(false))
+      Return StructInit(value, value=FieldLoad(Ident(r), 0), error=Error(0), hasError=Bool(false))
   Proc main() -> S64
     Block
       Block
-        VarDecl r: S64<>Some_Error = Call(g) [mutable=true compileTime=false]
-        IfCatch Ident(r)
+        VarDecl : S64<>Some_Error = Call(g) [mutable=false compileTime=false]
+        IfCatch Ident(__chaos_union)
           Block
             Return Int(5)
-      Return FieldLoad(Ident(r), 0)
+        VarDecl r: S64 = FieldLoad(Ident(__chaos_union), 0) [mutable=true compileTime=false]
+      Return Ident(r)

@@ -168,22 +168,33 @@ func TestMIRParams(t *testing.T) {
 
 func TestMIRGlobal(t *testing.T) {
 	_, mir := lowerSource(t, "G :: 5;\nmain :: proc {\n    x := G;\n}")
-	if len(mir.Globals) != 1 || mir.Globals[0].Name != "G" {
-		t.Fatalf("globals = %+v, want G", mir.Globals)
-	}
-	if mir.Types.Lookup(mir.Globals[0].Type).Name != "S64" {
-		t.Errorf("global G type = %s, want S64", mir.Types.Lookup(mir.Globals[0].Type).Name)
+	if len(mir.Globals) != 0 {
+		t.Fatalf("compile-time globals survived into MIR: %+v", mir.Globals)
 	}
 	fn := findMIRFunction(mir, "main")
 	if fn == nil {
 		t.Fatal("function main not found")
 	}
-	load := findInstr(fn, MIRLoadGlobal)
-	if load == nil {
-		t.Fatal("load.global instruction not found")
+	if load := findInstr(fn, MIRLoadGlobal); load != nil {
+		t.Fatalf("compile-time G was loaded at runtime: %+v", load)
 	}
-	if mir.Symbols.Lookup(load.Imm.Symbol) != "G" {
-		t.Errorf("load.global symbol = %s, want G", mir.Symbols.Lookup(load.Imm.Symbol))
+}
+
+func TestMIRCompileTimeArithmeticIsFolded(t *testing.T) {
+	_, mir := lowerSource(t, "#entry main :: proc -> S64 { answer :: 40 + 2; return answer; }")
+	fn := findMIRFunction(mir, "main")
+	if fn == nil {
+		t.Fatal("main function not found")
+	}
+	if len(fn.Locals) != 0 {
+		t.Fatalf("compile-time binding allocated locals: %+v", fn.Locals)
+	}
+	if add := findInstr(fn, MIRAdd); add != nil {
+		t.Fatalf("compile-time addition survived into MIR: %+v", add)
+	}
+	constant := findInstr(fn, MIRConst)
+	if constant == nil || constant.Imm.Kind != MIRImmInt || constant.Imm.Str != "42" {
+		t.Fatalf("folded constant = %+v, want exact integer 42", constant)
 	}
 }
 
@@ -200,7 +211,7 @@ func TestMIRVoidProcFallsOffEnd(t *testing.T) {
 }
 
 func TestMIRUnary(t *testing.T) {
-	_, mir := lowerSource(t, "main :: proc {\n    flag := false;\n    x := -5;\n    y := !flag;\n}")
+	_, mir := lowerSource(t, "main :: proc {\n    flag := false;\n    magnitude := 5;\n    x := -magnitude;\n    y := !flag;\n}")
 	fn := findMIRFunction(mir, "main")
 	if fn == nil {
 		t.Fatal("function main not found")
@@ -233,7 +244,7 @@ func TestMIRAssign(t *testing.T) {
 }
 
 func TestMIRGlobalAssign(t *testing.T) {
-	_, mir := lowerSource(t, "G :: 1;\nmain :: proc {\n    G = 2;\n}")
+	_, mir := lowerSource(t, "G: S64 = 1;\nmain :: proc {\n    G = 2;\n}")
 	fn := findMIRFunction(mir, "main")
 	if fn == nil {
 		t.Fatal("function main not found")

@@ -15,68 +15,87 @@ segment readable executable
 entry _start
 
 _start:
-    call f_main
+    call chaos_fn_0
     mov rdi, rax
     mov rax, 60
     syscall
 
-f_main:
+chaos_fn_0:
     push rbp
     mov rbp, rsp
-    sub rsp, 128
+    sub rsp, 176
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
 L0:
     movsd xmm0, qword [fc0]
-    movsd qword [rbp-32], xmm0
-    movsd xmm0, qword [rbp-32]
-    movsd qword [rbp-8], xmm0
-    movsd xmm0, qword [fc1]
-    movsd qword [rbp-40], xmm0
-    movsd xmm0, qword [rbp-40]
-    movsd qword [rbp-16], xmm0
-    movsd xmm0, qword [rbp-8]
+    movsd qword [rbp-72], xmm0
+    movsd xmm0, qword [rbp-72]
     movsd qword [rbp-48], xmm0
-    movsd xmm0, qword [rbp-16]
+    movsd xmm0, qword [fc1]
+    movsd qword [rbp-80], xmm0
+    movsd xmm0, qword [rbp-80]
     movsd qword [rbp-56], xmm0
     movsd xmm0, qword [rbp-48]
-    addsd xmm0, qword [rbp-56]
+    movsd qword [rbp-88], xmm0
+    movsd xmm0, qword [rbp-56]
+    movsd qword [rbp-96], xmm0
+    movsd xmm0, qword [rbp-88]
+    addsd xmm0, qword [rbp-96]
+    movsd qword [rbp-104], xmm0
+    movsd xmm0, qword [rbp-104]
     movsd qword [rbp-64], xmm0
     movsd xmm0, qword [rbp-64]
-    movsd qword [rbp-24], xmm0
-    movsd xmm0, qword [rbp-24]
-    movsd qword [rbp-72], xmm0
+    movsd qword [rbp-112], xmm0
     movsd xmm0, qword [fc2]
-    movsd qword [rbp-80], xmm0
-    movsd xmm0, qword [rbp-72]
-    comisd xmm0, qword [rbp-80]
+    movsd qword [rbp-120], xmm0
+    movsd xmm0, qword [rbp-112]
+    ucomisd xmm0, qword [rbp-120]
+    setnp dl
     seta al
-    mov byte [rbp-81], al
-    movsd xmm0, qword [rbp-24]
-    movsd qword [rbp-96], xmm0
+    and al, dl
+    mov byte [rbp-121], al
+    movsd xmm0, qword [rbp-64]
+    movsd qword [rbp-136], xmm0
     movsd xmm0, qword [fc3]
-    movsd qword [rbp-104], xmm0
-    movsd xmm0, qword [rbp-96]
-    comisd xmm0, qword [rbp-104]
+    movsd qword [rbp-144], xmm0
+    movsd xmm0, qword [rbp-136]
+    ucomisd xmm0, qword [rbp-144]
+    setnp dl
     setb al
-    mov byte [rbp-105], al
-    movzx rax, byte [rbp-81]
-    and al, byte [rbp-105]
-    mov byte [rbp-106], al
-    movzx rax, byte [rbp-106]
+    and al, dl
+    mov byte [rbp-145], al
+    movzx rax, byte [rbp-121]
+    and al, byte [rbp-145]
+    mov byte [rbp-146], al
+    movzx rax, byte [rbp-146]
     test al, al
     jnz L1
     jmp L2
 L1:
     mov rax, 4
-    mov qword [rbp-120], rax
-    mov rax, qword [rbp-120]
+    mov qword [rbp-160], rax
+    mov rax, qword [rbp-160]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 L2:
     jmp L3
 L3:
     mov rax, 0
-    mov qword [rbp-128], rax
-    mov rax, qword [rbp-128]
+    mov qword [rbp-168], rax
+    mov rax, qword [rbp-168]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 

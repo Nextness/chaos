@@ -49,6 +49,12 @@ type VersionedTextDocumentIdentifier struct {
 	Version int    `json:"version"`
 }
 
+// TextDocumentIdentifier identifies a document for requests/notifications
+// whose protocol shape does not carry a version.
+type TextDocumentIdentifier struct {
+	URI string `json:"uri"`
+}
+
 // DidOpenTextDocumentParams is the payload of textDocument/didOpen.
 type DidOpenTextDocumentParams struct {
 	TextDocument TextDocumentItem `json:"textDocument"`
@@ -63,13 +69,13 @@ type TextDocumentContentChangeEvent struct {
 
 // DidChangeTextDocumentParams is the payload of textDocument/didChange.
 type DidChangeTextDocumentParams struct {
-	TextDocument   VersionedTextDocumentIdentifier `json:"textDocument"`
+	TextDocument   VersionedTextDocumentIdentifier  `json:"textDocument"`
 	ContentChanges []TextDocumentContentChangeEvent `json:"contentChanges"`
 }
 
 // DidCloseTextDocumentParams is the payload of textDocument/didClose.
 type DidCloseTextDocumentParams struct {
-	TextDocument VersionedTextDocumentIdentifier `json:"textDocument"`
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
 
 // TextDocumentSyncOptions advertises open/close and incremental sync.
@@ -121,7 +127,7 @@ type InitializeResult struct {
 
 // DocumentSymbolParams is the payload of textDocument/documentSymbol.
 type DocumentSymbolParams struct {
-	TextDocument VersionedTextDocumentIdentifier `json:"textDocument"`
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
 
 // DocumentSymbol is a symbol in the document outline.
@@ -136,7 +142,7 @@ type DocumentSymbol struct {
 
 // SemanticTokensParams is the payload of textDocument/semanticTokens/full.
 type SemanticTokensParams struct {
-	TextDocument VersionedTextDocumentIdentifier `json:"textDocument"`
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
 }
 
 // SemanticTokens is the response to textDocument/semanticTokens/full.
@@ -147,8 +153,8 @@ type SemanticTokens struct {
 // TextDocumentPositionParams is the payload of definition, references,
 // documentHighlight, hover, and completion.
 type TextDocumentPositionParams struct {
-	TextDocument VersionedTextDocumentIdentifier `json:"textDocument"`
-	Position     Position                        `json:"position"`
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
 }
 
 // ReferenceContext is the context of a references request.
@@ -158,9 +164,9 @@ type ReferenceContext struct {
 
 // ReferenceParams is the payload of textDocument/references.
 type ReferenceParams struct {
-	TextDocument VersionedTextDocumentIdentifier `json:"textDocument"`
-	Position     Position                        `json:"position"`
-	Context      ReferenceContext                `json:"context"`
+	TextDocument TextDocumentIdentifier `json:"textDocument"`
+	Position     Position               `json:"position"`
+	Context      ReferenceContext       `json:"context"`
 }
 
 // DocumentHighlight is a range highlighted for the identifier under the cursor.

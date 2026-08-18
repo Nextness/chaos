@@ -26,8 +26,10 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 // FasmBackend emits flat ELF64 executables for fasm.
@@ -38,6 +40,9 @@ func (b *FasmBackend) Name() string { return "fasm" }
 
 // Emit renders a MIR program as fasm assembly text.
 func (b *FasmBackend) Emit(prog *MIRProgram) (string, DiagnosticList) {
+	if verifyDiags := VerifyMIR(prog); verifyDiags.HasErrors() {
+		return "", verifyDiags
+	}
 	fb := &fasmEmitter{prog: prog}
 	fb.emit()
 	return fb.out.String(), fb.diags
@@ -50,23 +55,36 @@ type fasmEmitter struct {
 	out   strings.Builder
 
 	// Per-function state.
-	fn           *MIRFunction
-	valueSlots   map[ValueID]int
-	valueTypes   map[ValueID]TypeID
-	localSlots   map[LocalID]int
-	blockLabels  map[BlockID]string
-	arrayBuffers map[ValueID]int // stack buffer offset for array.init results
-	nextOffset   int
-	frameSize    int
-	labelCount   int
-	sretSlot     int // slot holding the sret pointer, -1 when unused
+	fn              *MIRFunction
+	valueSlots      map[ValueID]int
+	valueTypes      map[ValueID]TypeID
+	localSlots      map[LocalID]int
+	blockLabels     map[BlockID]string
+	arrayBuffers    map[ValueID]int // stack buffer offset for array.init results
+	nextOffset      int
+	frameSize       int
+	labelCount      int
+	sretSlot        int // slot holding the sret pointer, -1 when unused
+	calleeSaveSlots [5]int
 
 	// Float and string constants emitted in the data section.
-	floatConsts   []floatConst
-	floatIndexes  map[floatConstKey]int
-	strings       []string
-	stringIndexes map[string]int
-	globalLabels  map[SymbolID]string
+	floatConsts      []floatConst
+	floatIndexes     map[floatConstKey]int
+	strings          []string
+	stringIndexes    map[string]int
+	divisionMessages map[*MIRInstr]int
+	globalLabels     map[SymbolID]string
+	layouts          map[TypeID]Layout
+	layoutVisiting   map[TypeID]bool
+	equalityTypes    map[TypeID]bool
+}
+
+// Layout is the single backend storage contract used for stack slots,
+// globals, aggregate fields, array strides, calls, and comparisons.
+type Layout struct {
+	Size         int
+	Align        int
+	FieldOffsets []int
 }
 
 // floatConst is a float constant with its storage size (4 for F32, 8 for
@@ -111,39 +129,60 @@ type floatConstKey struct {
 // implementation boundary.
 func (fb *fasmEmitter) checkSupportedTypes() {
 	reported := make(map[string]Span)
-	var report func(t IRType, span Span)
-	report = func(t IRType, span Span) {
+	visiting := make(map[TypeID]bool)
+	var report func(TypeID, Span)
+	report = func(tid TypeID, span Span) {
+		t := fb.prog.Types.Lookup(tid)
+		if visiting[tid] {
+			key := "recursive:" + strconv.FormatUint(uint64(tid), 10)
+			if _, ok := reported[key]; !ok {
+				reported[key] = span
+				fb.diags.Error(span, "recursive by-value type reached the fasm backend", "reject recursive storage during semantic analysis")
+			}
+			return
+		}
+		visiting[tid] = true
+		defer delete(visiting, tid)
 		switch t.Kind {
+		case TypeKindUnknown:
+			fb.diags.Error(span, "unresolved type reached the fasm backend", "fix semantic errors before code generation")
+		case TypeKindInt:
+			if info, ok := LookupBuiltinType(t.Name); !ok || info.Kind != BuiltinInteger {
+				fb.diags.Error(span, "unsupported integer type reached the fasm backend", "use a compiler-defined integer type")
+			}
 		case TypeKindFloat:
-			if t.Name != "F32" && t.Name != "F64" {
+			info, known := LookupBuiltinType(t.Name)
+			if !known || info.Kind != BuiltinFloat {
+				fb.diags.Error(span, "unsupported floating-point type reached the fasm backend", "use F32 or F64")
+			} else if !info.FasmSupported {
 				if _, ok := reported[t.Name]; !ok {
 					reported[t.Name] = span
 					fb.diags.Error(span, "float type "+t.Name+" is not yet supported by the fasm backend", "use F32 or F64")
 				}
 			}
-		case TypeKindStruct:
+		case TypeKindStruct, TypeKindTuple:
 			for _, f := range t.Fields {
-				report(fb.prog.Types.Lookup(f.Type), span)
+				report(f.Type, span)
 			}
 		case TypeKindArray:
-			report(fb.prog.Types.Lookup(t.Elem), span)
+			report(t.Elem, span)
 		case TypeKindEnum:
-			report(fb.prog.Types.Lookup(t.Underlying), span)
+			report(t.Underlying, span)
 		}
 	}
 	for _, g := range fb.prog.Globals {
-		report(fb.prog.Types.Lookup(g.Type), g.Span)
+		report(g.Type, g.Span)
 	}
 	for _, fn := range fb.prog.Functions {
 		for _, lid := range fn.Locals {
-			report(fb.prog.Types.Lookup(fn.LocalTypes[lid]), fn.Span)
+			report(fn.LocalTypes[lid], fn.Span)
 		}
 		for _, r := range fn.Results {
-			report(fb.prog.Types.Lookup(r), fn.Span)
+			report(r, fn.Span)
 		}
 		for _, b := range fn.Blocks {
 			for _, ins := range b.Instrs {
-				report(fb.prog.Types.Lookup(ins.Type), ins.Span)
+				report(ins.Type, ins.Span)
 			}
 		}
 	}
@@ -151,6 +190,15 @@ func (fb *fasmEmitter) checkSupportedTypes() {
 
 func (fb *fasmEmitter) emit() {
 	fb.checkSupportedTypes()
+	entry := fb.findFunction(fb.prog.Entry)
+	if fb.prog.Entry == NoSymbol || entry == nil {
+		fb.diags.Error(Span{}, "program has no valid #entry procedure", "declare '#entry name :: proc -> S64'")
+	} else if len(entry.Params) != 0 || len(entry.Results) != 1 || entry.Results[0] != fb.prog.Types.S64() {
+		fb.diags.Error(entry.Span, "entry procedure does not have the required () -> S64 target signature", "declare '#entry name :: proc -> S64'")
+	}
+	if fb.diags.HasErrors() {
+		return
+	}
 	fb.prepareGlobalLabels()
 	fb.out.WriteString("format ELF64 executable 3\n\n")
 	fb.collectFloatConsts()
@@ -160,6 +208,10 @@ func (fb *fasmEmitter) emit() {
 	fb.emitEntry()
 	for _, fn := range fb.prog.Functions {
 		fb.emitFunction(fn)
+	}
+	fb.emitEqualityHelpers()
+	if fb.diags.HasErrors() {
+		fb.out.Reset()
 	}
 }
 
@@ -188,6 +240,7 @@ func (fb *fasmEmitter) collectFloatConsts() {
 // be emitted before the code that references it.
 func (fb *fasmEmitter) collectStringConsts() {
 	fb.stringIndexes = make(map[string]int)
+	fb.divisionMessages = make(map[*MIRInstr]int)
 	for _, fn := range fb.prog.Functions {
 		for _, b := range fn.Blocks {
 			for _, ins := range b.Instrs {
@@ -197,9 +250,47 @@ func (fb *fasmEmitter) collectStringConsts() {
 						fb.strings = append(fb.strings, ins.Imm.Str)
 					}
 				}
+				if ins.Op == MIRDiv || ins.Op == MIRMod {
+					// Integer, enum, and floating-point division all share the
+					// same source-located run-time trap. Collect its message before
+					// emitting the data section; adding it lazily from the code
+					// emitter would leave the referenced label undefined.
+					message := fb.divisionMessage(ins.Span)
+					index, ok := fb.stringIndexes[message]
+					if !ok {
+						index = len(fb.strings)
+						fb.stringIndexes[message] = index
+						fb.strings = append(fb.strings, message)
+					}
+					fb.divisionMessages[ins] = index
+				}
 			}
 		}
 	}
+}
+
+func (fb *fasmEmitter) divisionMessage(span Span) string {
+	if sf, ok := fb.prog.Sources[span.File]; ok {
+		clamped, source := ClampSpan(span, &sf)
+		line, _ := OffsetToLineCol(clamped.Start, source.LineOffsets)
+		lineStart := source.LineOffsets[line-1]
+		column := utf8.RuneCount(source.Source[lineStart:clamped.Start]) + 1
+		return fmt.Sprintf("division by zero at %s:%d:%d\n", source.Path, line, column)
+	}
+	return fmt.Sprintf("division by zero at file-%d:%d\n", span.File, span.Start)
+}
+
+func (fb *fasmEmitter) emitDivisionZeroExit(ins *MIRInstr) {
+	index := fb.divisionMessages[ins]
+	message := fb.strings[index]
+	fb.out.WriteString("    mov rax, 1\n")
+	fb.out.WriteString("    mov rdi, 2\n")
+	fmt.Fprintf(&fb.out, "    mov rsi, str%d\n", index)
+	fmt.Fprintf(&fb.out, "    mov rdx, %d\n", len(message))
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov rax, 60\n")
+	fb.out.WriteString("    mov rdi, 1\n")
+	fb.out.WriteString("    syscall\n")
 }
 
 func (fb *fasmEmitter) emitData() {
@@ -255,7 +346,7 @@ func (fb *fasmEmitter) emitEntry() {
 	fb.out.WriteString("entry _start\n\n")
 	fb.out.WriteString("_start:\n")
 	if fb.prog.GlobalInit != nil {
-		fmt.Fprintf(&fb.out, "    call %s\n", fb.funcLabel(fb.prog.GlobalInit.Name))
+		fmt.Fprintf(&fb.out, "    call %s\n", fb.funcLabel(fb.prog.GlobalInit.Symbol))
 	}
 	entryFn := fb.findFunction(fb.prog.Entry)
 	if entryFn == nil {
@@ -268,7 +359,7 @@ func (fb *fasmEmitter) emitEntry() {
 	// RDI (sret); reserve room on the stack for the result.
 	if len(entryFn.Results) > 0 {
 		rt := fb.prog.Types.Lookup(entryFn.Results[0])
-		if rt.Kind == TypeKindStruct {
+		if isRecordKind(rt.Kind) {
 			fmt.Fprintf(&fb.out, "    sub rsp, %d\n", align16(fb.sizeOf(rt)))
 			fb.out.WriteString("    mov rdi, rsp\n")
 		}
@@ -281,11 +372,11 @@ func (fb *fasmEmitter) emitEntry() {
 	for i := 0; i < intCount && i < 6; i++ {
 		fmt.Fprintf(&fb.out, "    xor %s, %s\n", intArgReg(i), intArgReg(i))
 	}
-	fmt.Fprintf(&fb.out, "    call %s\n", fb.funcLabel(entryFn.Name))
+	fmt.Fprintf(&fb.out, "    call %s\n", fb.funcLabel(entryFn.Symbol))
 	if len(entryFn.Results) > 0 {
 		rt := fb.prog.Types.Lookup(entryFn.Results[0])
 		switch {
-		case rt.Kind == TypeKindStruct:
+		case isRecordKind(rt.Kind):
 			fb.out.WriteString("    xor edi, edi\n")
 		case rt.Kind == TypeKindFloat:
 			if rt.Name == "F32" {
@@ -310,11 +401,14 @@ func (fb *fasmEmitter) emitFunction(fn *MIRFunction) {
 	for _, b := range fn.Blocks {
 		fb.blockLabels[b.ID] = fb.newLabel()
 	}
-	fmt.Fprintf(&fb.out, "%s:\n", fb.funcLabel(fn.Name))
+	fmt.Fprintf(&fb.out, "%s:\n", fb.funcLabel(fn.Symbol))
 	fb.out.WriteString("    push rbp\n")
 	fb.out.WriteString("    mov rbp, rsp\n")
 	if fb.frameSize > 0 {
 		fmt.Fprintf(&fb.out, "    sub rsp, %d\n", fb.frameSize)
+	}
+	for i, reg := range []string{"rbx", "r12", "r13", "r14", "r15"} {
+		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], %s\n", fb.calleeSaveSlots[i], reg)
 	}
 	fb.emitParamMoves(fn)
 	for _, b := range fn.Blocks {
@@ -333,19 +427,24 @@ func (fb *fasmEmitter) assignSlots(fn *MIRFunction) {
 	fb.arrayBuffers = make(map[ValueID]int)
 	fb.nextOffset = 0
 	fb.sretSlot = -1
-	if len(fn.Results) > 0 && fb.prog.Types.Lookup(fn.Results[0]).Kind == TypeKindStruct {
-		fb.sretSlot = fb.allocSlot(8)
+	for i := range fb.calleeSaveSlots {
+		fb.calleeSaveSlots[i] = fb.allocSlot(8, 8)
+	}
+	if len(fn.Results) > 0 && isRecordKind(fb.prog.Types.Lookup(fn.Results[0]).Kind) {
+		fb.sretSlot = fb.allocSlot(8, 8)
 	}
 	for _, lid := range fn.Locals {
 		t := fb.prog.Types.Lookup(fn.LocalTypes[lid])
-		fb.localSlots[lid] = fb.allocSlot(fb.sizeOf(t))
+		layout := fb.layoutOf(t)
+		fb.localSlots[lid] = fb.allocSlot(layout.Size, layout.Align)
 	}
 	for _, b := range fn.Blocks {
 		for _, ins := range b.Instrs {
 			if ins.Result != NoValue {
 				t := fb.prog.Types.Lookup(ins.Type)
 				fb.valueTypes[ins.Result] = ins.Type
-				fb.valueSlots[ins.Result] = fb.allocSlot(fb.sizeOf(t))
+				layout := fb.layoutOf(t)
+				fb.valueSlots[ins.Result] = fb.allocSlot(layout.Size, layout.Align)
 				if ins.Op == MIRArrayInit {
 					// Allocate the element buffer for an array literal.
 					et := fb.prog.Types.Lookup(t.Elem)
@@ -354,7 +453,7 @@ func (fb *fasmEmitter) assignSlots(fn *MIRFunction) {
 					if count == 0 {
 						count = 1
 					}
-					fb.arrayBuffers[ins.Result] = fb.allocSlot(elemSize * count)
+					fb.arrayBuffers[ins.Result] = fb.allocSlot(elemSize*count, fb.layoutOf(et).Align)
 				}
 			}
 		}
@@ -362,11 +461,14 @@ func (fb *fasmEmitter) assignSlots(fn *MIRFunction) {
 	fb.frameSize = align16(fb.nextOffset)
 }
 
-func (fb *fasmEmitter) allocSlot(size int) int {
+func (fb *fasmEmitter) allocSlot(size, alignment int) int {
 	if size <= 0 {
 		return fb.nextOffset
 	}
-	fb.nextOffset = align(fb.nextOffset, size)
+	if alignment < 1 {
+		alignment = 1
+	}
+	fb.nextOffset = align(fb.nextOffset, alignment)
 	fb.nextOffset += size
 	return fb.nextOffset
 }
@@ -376,46 +478,93 @@ func (fb *fasmEmitter) allocSlot(size int) int {
 // pointer/length); struct parameters arrive as an address and are copied.
 // A struct-returning function receives its sret pointer in RDI.
 func (fb *fasmEmitter) emitParamMoves(fn *MIRFunction) {
-	intIdx, floatIdx := 0, 0
 	if fb.sretSlot >= 0 {
 		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rdi\n", fb.sretSlot)
-		intIdx = 1
 	}
-	for _, lid := range fn.Params {
+	types := make([]IRType, len(fn.Params))
+	for i, lid := range fn.Params {
+		types[i] = fb.prog.Types.Lookup(fn.LocalTypes[lid])
+	}
+	locations, _ := fb.classifyABI(types, fb.sretSlot >= 0)
+	for i, lid := range fn.Params {
 		slot := fb.localSlots[lid]
-		t := fb.prog.Types.Lookup(fn.LocalTypes[lid])
-		switch {
-		case t.Kind == TypeKindFloat:
-			if t.Name == "F32" {
-				fmt.Fprintf(&fb.out, "    movss dword [rbp-%d], xmm%d\n", slot, floatIdx)
-			} else {
-				fmt.Fprintf(&fb.out, "    movsd qword [rbp-%d], xmm%d\n", slot, floatIdx)
+		t := types[i]
+		loc := locations[i]
+		if loc.stackOffset >= 0 {
+			source := fmt.Sprintf("[rbp+%d]", 16+loc.stackOffset)
+			switch loc.kind {
+			case argFloat:
+				if t.Name == "F32" {
+					fmt.Fprintf(&fb.out, "    movss xmm0, dword %s\n", source)
+					fmt.Fprintf(&fb.out, "    movss dword [rbp-%d], xmm0\n", slot)
+				} else {
+					fmt.Fprintf(&fb.out, "    movsd xmm0, qword %s\n", source)
+					fmt.Fprintf(&fb.out, "    movsd qword [rbp-%d], xmm0\n", slot)
+				}
+			case argString, argInt128:
+				fmt.Fprintf(&fb.out, "    mov rax, qword %s\n", source)
+				fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
+				fmt.Fprintf(&fb.out, "    mov rax, qword [rbp+%d]\n", 24+loc.stackOffset)
+				fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", slot)
+			case argStruct:
+				fmt.Fprintf(&fb.out, "    mov r10, qword %s\n", source)
+				fb.emitCopyFromR10(slot, fb.sizeOf(t))
+			default:
+				fmt.Fprintf(&fb.out, "    mov rax, qword %s\n", source)
+				fb.emitStore(t, slot)
 			}
-			floatIdx++
-		case t.Kind == TypeKindString || t.Kind == TypeKindArray:
-			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx))
-			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
-			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx+1))
-			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", slot)
-			intIdx += 2
-		case t.Kind == TypeKindStruct:
-			fmt.Fprintf(&fb.out, "    mov rsi, %s\n", intArgReg(intIdx))
-			fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", slot)
-			fmt.Fprintf(&fb.out, "    mov rcx, %d\n", fb.sizeOf(t))
-			fb.out.WriteString("    cld\n")
-			fb.out.WriteString("    rep movsb\n")
-			intIdx++
-		case fb.isInt128Storage(t):
-			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx))
-			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
-			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx+1))
-			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", slot)
-			intIdx += 2
-		default:
-			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(intIdx))
-			fb.emitStore(t, slot)
-			intIdx++
+			continue
 		}
+
+		switch loc.kind {
+		case argFloat:
+			if t.Name == "F32" {
+				fmt.Fprintf(&fb.out, "    movss dword [rbp-%d], xmm%d\n", slot, loc.floatReg)
+			} else {
+				fmt.Fprintf(&fb.out, "    movsd qword [rbp-%d], xmm%d\n", slot, loc.floatReg)
+			}
+		case argString:
+			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(loc.intReg))
+			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
+			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(loc.intReg+1))
+			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", slot)
+		case argStruct:
+			fmt.Fprintf(&fb.out, "    mov r10, %s\n", intArgReg(loc.intReg))
+			fb.emitCopyFromR10(slot, fb.sizeOf(t))
+		case argInt128:
+			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(loc.intReg))
+			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
+			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(loc.intReg+1))
+			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", slot)
+		default:
+			fmt.Fprintf(&fb.out, "    mov rax, %s\n", intArgReg(loc.intReg))
+			fb.emitStore(t, slot)
+		}
+	}
+}
+
+// emitCopyFromR10 copies size bytes from the address in R10 to a local slot
+// without clobbering any System V argument registers.
+func (fb *fasmEmitter) emitCopyFromR10(slot, size int) {
+	offset := 0
+	for size-offset >= 8 {
+		fmt.Fprintf(&fb.out, "    mov rax, qword [r10+%d]\n", offset)
+		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+%d], rax\n", slot, offset)
+		offset += 8
+	}
+	if size-offset >= 4 {
+		fmt.Fprintf(&fb.out, "    mov eax, dword [r10+%d]\n", offset)
+		fmt.Fprintf(&fb.out, "    mov dword [rbp-%d+%d], eax\n", slot, offset)
+		offset += 4
+	}
+	if size-offset >= 2 {
+		fmt.Fprintf(&fb.out, "    mov ax, word [r10+%d]\n", offset)
+		fmt.Fprintf(&fb.out, "    mov word [rbp-%d+%d], ax\n", slot, offset)
+		offset += 2
+	}
+	if size-offset == 1 {
+		fmt.Fprintf(&fb.out, "    mov al, byte [r10+%d]\n", offset)
+		fmt.Fprintf(&fb.out, "    mov byte [rbp-%d+%d], al\n", slot, offset)
 	}
 }
 
@@ -431,6 +580,8 @@ func (fb *fasmEmitter) emitInstr(ins *MIRInstr) {
 	switch ins.Op {
 	case MIRConst:
 		fb.emitConst(ins)
+	case MIRZero:
+		fb.emitZero(ins)
 	case MIRLoadLocal:
 		fb.emitLoadLocal(ins)
 	case MIRStoreLocal:
@@ -461,9 +612,22 @@ func (fb *fasmEmitter) emitInstr(ins *MIRInstr) {
 		fb.emitArrayLen(ins)
 	case MIRArrayIndex:
 		fb.emitArrayIndex(ins)
-	case MIRExit:
-		// exit is a terminator, not an instruction.
+	default:
+		fb.diags.Error(ins.Span, "unsupported MIR opcode reached the fasm backend", "verify MIR before code generation")
 	}
+}
+
+func (fb *fasmEmitter) emitZero(ins *MIRInstr) {
+	slot := fb.valueSlots[ins.Result]
+	size := fb.sizeOf(fb.prog.Types.Lookup(ins.Type))
+	if size <= 0 {
+		return
+	}
+	fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", slot)
+	fb.out.WriteString("    xor eax, eax\n")
+	fmt.Fprintf(&fb.out, "    mov rcx, %d\n", size)
+	fb.out.WriteString("    cld\n")
+	fb.out.WriteString("    rep stosb\n")
 }
 
 func (fb *fasmEmitter) emitConst(ins *MIRInstr) {
@@ -623,6 +787,23 @@ func (fb *fasmEmitter) emitArith(ins *MIRInstr) {
 	}
 	if t.Kind == TypeKindFloat {
 		fb.emitLoad(t, lslot)
+		if ins.Op == MIRDiv {
+			nonzero := fb.newLabel()
+			if t.Name == "F32" {
+				fmt.Fprintf(&fb.out, "    movss xmm1, dword [rbp-%d]\n", rslot)
+				fb.out.WriteString("    xorps xmm2, xmm2\n")
+				fb.out.WriteString("    ucomiss xmm1, xmm2\n")
+			} else {
+				fmt.Fprintf(&fb.out, "    movsd xmm1, qword [rbp-%d]\n", rslot)
+				fb.out.WriteString("    xorpd xmm2, xmm2\n")
+				fb.out.WriteString("    ucomisd xmm1, xmm2\n")
+			}
+			fmt.Fprintf(&fb.out, "    jp %s\n", nonzero)
+			fmt.Fprintf(&fb.out, "    jne %s\n", nonzero)
+			fb.emitDivisionZeroExit(ins)
+			fmt.Fprintf(&fb.out, "%s:\n", nonzero)
+			fb.emitLoad(t, lslot)
+		}
 		switch ins.Op {
 		case MIRAdd:
 			fmt.Fprintf(&fb.out, "    add%s xmm0, %s [rbp-%d]\n", floatSuffix(t), floatMemSize(t), rslot)
@@ -707,6 +888,12 @@ func (fb *fasmEmitter) emitDivMod128(ins *MIRInstr, t IRType, lslot, rslot, resS
 	fmt.Fprintf(&fb.out, "    mov r9, qword [rbp-%d+8]\n", lslot)
 	fmt.Fprintf(&fb.out, "    mov r10, qword [rbp-%d]\n", rslot)
 	fmt.Fprintf(&fb.out, "    mov r11, qword [rbp-%d+8]\n", rslot)
+	nonzero := fb.newLabel()
+	fb.out.WriteString("    mov rax, r10\n")
+	fb.out.WriteString("    or rax, r11\n")
+	fmt.Fprintf(&fb.out, "    jnz %s\n", nonzero)
+	fb.emitDivisionZeroExit(ins)
+	fmt.Fprintf(&fb.out, "%s:\n", nonzero)
 	if isSignedInt(t.Name) {
 		// Track the dividend sign in ebx; negate it if negative.
 		fb.out.WriteString("    xor ebx, ebx\n")
@@ -789,6 +976,38 @@ func (fb *fasmEmitter) emitDivMod128(ins *MIRInstr, t IRType, lslot, rslot, resS
 // every supported width.
 func (fb *fasmEmitter) emitDivMod(ins *MIRInstr, t IRType, size int, rslot, resSlot int) {
 	fb.emitLoadRight(t, rslot)
+	nonzero := fb.newLabel()
+	fb.out.WriteString("    test rcx, rcx\n")
+	fmt.Fprintf(&fb.out, "    jnz %s\n", nonzero)
+	fb.emitDivisionZeroExit(ins)
+	fmt.Fprintf(&fb.out, "%s:\n", nonzero)
+	if size == 8 && isSignedInt(t.Name) {
+		normal := fb.newLabel()
+		fmt.Fprintf(&fb.out, "    mov r8, 0x8000000000000000\n")
+		fb.out.WriteString("    cmp rax, r8\n")
+		fmt.Fprintf(&fb.out, "    jne %s\n", normal)
+		fb.out.WriteString("    cmp rcx, -1\n")
+		fmt.Fprintf(&fb.out, "    jne %s\n", normal)
+		if ins.Op == MIRMod {
+			fb.out.WriteString("    xor eax, eax\n")
+		} else {
+			fb.out.WriteString("    mov rax, r8\n")
+		}
+		fb.emitStore(t, resSlot)
+		returnLabel := fb.newLabel()
+		fmt.Fprintf(&fb.out, "    jmp %s\n", returnLabel)
+		fmt.Fprintf(&fb.out, "%s:\n", normal)
+		if isSignedInt(t.Name) {
+			fb.out.WriteString("    cqo\n")
+			fb.out.WriteString("    idiv rcx\n")
+		}
+		if ins.Op == MIRMod {
+			fb.out.WriteString("    mov rax, rdx\n")
+		}
+		fb.emitStore(t, resSlot)
+		fmt.Fprintf(&fb.out, "%s:\n", returnLabel)
+		return
+	}
 	if isSignedInt(t.Name) {
 		fb.out.WriteString("    cqo\n")
 		fb.out.WriteString("    idiv rcx\n")
@@ -811,8 +1030,19 @@ func (fb *fasmEmitter) emitCmp(ins *MIRInstr) {
 		fb.emitStringCmp(ins, lslot, rslot, resSlot)
 		return
 	}
-	if lt.Kind == TypeKindStruct {
-		fb.emitStructCmp(ins, lt, lslot, rslot, resSlot)
+	if isRecordKind(lt.Kind) || lt.Kind == TypeKindArray {
+		if ins.Op != MIRCmpEq && ins.Op != MIRCmpNeq {
+			fb.diags.Error(ins.Span, "aggregate ordering reached the fasm backend", "use == or != for aggregate values")
+			return
+		}
+		fb.requestEqualityHelper(lt.ID)
+		fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", lslot)
+		fmt.Fprintf(&fb.out, "    lea rsi, [rbp-%d]\n", rslot)
+		fmt.Fprintf(&fb.out, "    call %s\n", fb.equalityLabel(lt.ID))
+		if ins.Op == MIRCmpNeq {
+			fb.out.WriteString("    xor al, 1\n")
+		}
+		fmt.Fprintf(&fb.out, "    mov byte [rbp-%d], al\n", resSlot)
 		return
 	}
 	if fb.isInt128Storage(lt) {
@@ -822,42 +1052,17 @@ func (fb *fasmEmitter) emitCmp(ins *MIRInstr) {
 	if lt.Kind == TypeKindFloat {
 		fb.emitLoad(lt, lslot)
 		if lt.Name == "F32" {
-			fmt.Fprintf(&fb.out, "    comiss xmm0, dword [rbp-%d]\n", rslot)
+			fmt.Fprintf(&fb.out, "    ucomiss xmm0, dword [rbp-%d]\n", rslot)
 		} else {
-			fmt.Fprintf(&fb.out, "    comisd xmm0, qword [rbp-%d]\n", rslot)
+			fmt.Fprintf(&fb.out, "    ucomisd xmm0, qword [rbp-%d]\n", rslot)
 		}
-		fb.emitSetcc(ins.Op, false, resSlot)
+		fb.emitFloatSetcc(ins.Op, resSlot)
 		return
 	}
 	size := fb.sizeOf(lt)
 	fb.emitLoad(lt, lslot)
 	fmt.Fprintf(&fb.out, "    cmp %s, %s [rbp-%d]\n", widthReg(size), memSize(size), rslot)
 	fb.emitSetcc(ins.Op, fb.isSignedStorage(lt), resSlot)
-}
-
-// emitStructCmp emits a byte-wise comparison of two struct values using
-// repe cmpsb. The flags afterwards describe the lexicographic byte order.
-func (fb *fasmEmitter) emitStructCmp(ins *MIRInstr, t IRType, lslot, rslot, resSlot int) {
-	fmt.Fprintf(&fb.out, "    lea rsi, [rbp-%d]\n", lslot)
-	fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", rslot)
-	fmt.Fprintf(&fb.out, "    mov rcx, %d\n", fb.sizeOf(t))
-	fb.out.WriteString("    cld\n")
-	fb.out.WriteString("    repe cmpsb\n")
-	cc := "sete"
-	switch ins.Op {
-	case MIRCmpNeq:
-		cc = "setne"
-	case MIRCmpLt:
-		cc = "setb"
-	case MIRCmpGt:
-		cc = "seta"
-	case MIRCmpLe:
-		cc = "setbe"
-	case MIRCmpGe:
-		cc = "setae"
-	}
-	fmt.Fprintf(&fb.out, "    %s al\n", cc)
-	fmt.Fprintf(&fb.out, "    mov byte [rbp-%d], al\n", resSlot)
 }
 
 // emitCmp128 emits a 128-bit signed or unsigned comparison by comparing the
@@ -983,6 +1188,34 @@ func (fb *fasmEmitter) emitSetcc(op MIROpcode, signed bool, resSlot int) {
 	fb.emitStore(fb.prog.Types.Lookup(fb.prog.Types.Bool()), resSlot)
 }
 
+// emitFloatSetcc implements ordered IEEE comparisons. Every ordering and
+// equality comparison involving NaN is false; inequality involving NaN is
+// true. UCOMIS* exposes the unordered state through PF.
+func (fb *fasmEmitter) emitFloatSetcc(op MIROpcode, resSlot int) {
+	if op == MIRCmpNeq {
+		fb.out.WriteString("    setp dl\n")
+		fb.out.WriteString("    setne al\n")
+		fb.out.WriteString("    or al, dl\n")
+		fmt.Fprintf(&fb.out, "    mov byte [rbp-%d], al\n", resSlot)
+		return
+	}
+	cc := "sete"
+	switch op {
+	case MIRCmpLt:
+		cc = "setb"
+	case MIRCmpGt:
+		cc = "seta"
+	case MIRCmpLe:
+		cc = "setbe"
+	case MIRCmpGe:
+		cc = "setae"
+	}
+	fb.out.WriteString("    setnp dl\n")
+	fmt.Fprintf(&fb.out, "    %s al\n", cc)
+	fb.out.WriteString("    and al, dl\n")
+	fmt.Fprintf(&fb.out, "    mov byte [rbp-%d], al\n", resSlot)
+}
+
 func (fb *fasmEmitter) emitLogical(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
 	lslot := fb.valueSlots[ins.Args[0]]
@@ -1050,40 +1283,45 @@ func (fb *fasmEmitter) emitCall(ins *MIRInstr) {
 		return
 	}
 	resultType := fb.prog.Types.Lookup(ins.Type)
-	returnsStruct := resultType.Kind == TypeKindStruct
+	returnsStruct := isRecordKind(resultType.Kind)
+	argTypes := make([]IRType, len(ins.Args))
+	for i, arg := range ins.Args {
+		argTypes[i] = fb.prog.Types.Lookup(fb.valueTypes[arg])
+	}
+	locations, stackSize := fb.classifyABI(argTypes, returnsStruct)
+	if stackSize > 0 {
+		fmt.Fprintf(&fb.out, "    sub rsp, %d\n", stackSize)
+	}
 
-	// Assign each argument to its System V register or registers. String and
-	// 128-bit arguments take two integer registers; struct arguments pass an
-	// address. Arguments are loaded in reverse order so that loading a later
-	// argument cannot clobber an earlier one.
-	type argReg struct {
-		arg  ValueID
-		kind argKind
-		idx  int
-	}
-	regs := make([]argReg, 0, len(ins.Args))
-	intIdx, floatIdx := 0, 0
-	if returnsStruct {
-		intIdx = 1 // RDI is reserved for the sret pointer.
-	}
-	for _, a := range ins.Args {
-		t := fb.prog.Types.Lookup(fb.valueTypes[a])
-		switch {
-		case t.Kind == TypeKindFloat:
-			regs = append(regs, argReg{arg: a, kind: argFloat, idx: floatIdx})
-			floatIdx++
-		case t.Kind == TypeKindString || t.Kind == TypeKindArray:
-			regs = append(regs, argReg{arg: a, kind: argString, idx: intIdx})
-			intIdx += 2
-		case t.Kind == TypeKindStruct:
-			regs = append(regs, argReg{arg: a, kind: argStruct, idx: intIdx})
-			intIdx++
-		case fb.isInt128Storage(t):
-			regs = append(regs, argReg{arg: a, kind: argInt128, idx: intIdx})
-			intIdx += 2
+	// Materialize stack arguments before assigning registers. Source values
+	// have stable RBP-relative addresses, so reserving outgoing stack space
+	// cannot invalidate them.
+	for i, arg := range ins.Args {
+		loc := locations[i]
+		if loc.stackOffset < 0 {
+			continue
+		}
+		t := argTypes[i]
+		slot := fb.valueSlots[arg]
+		switch loc.kind {
+		case argFloat:
+			fb.emitLoad(t, slot)
+			if t.Name == "F32" {
+				fmt.Fprintf(&fb.out, "    movss dword [rsp+%d], xmm0\n", loc.stackOffset)
+			} else {
+				fmt.Fprintf(&fb.out, "    movsd qword [rsp+%d], xmm0\n", loc.stackOffset)
+			}
+		case argString, argInt128:
+			fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", slot)
+			fmt.Fprintf(&fb.out, "    mov qword [rsp+%d], rax\n", loc.stackOffset)
+			fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d+8]\n", slot)
+			fmt.Fprintf(&fb.out, "    mov qword [rsp+%d], rax\n", loc.stackOffset+8)
+		case argStruct:
+			fmt.Fprintf(&fb.out, "    lea rax, [rbp-%d]\n", slot)
+			fmt.Fprintf(&fb.out, "    mov qword [rsp+%d], rax\n", loc.stackOffset)
 		default:
-			regs = append(regs, argReg{arg: a, kind: argInt, idx: intIdx})
-			intIdx++
+			fb.emitLoad(t, slot)
+			fmt.Fprintf(&fb.out, "    mov qword [rsp+%d], rax\n", loc.stackOffset)
 		}
 	}
 
@@ -1092,64 +1330,51 @@ func (fb *fasmEmitter) emitCall(ins *MIRInstr) {
 		fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", fb.valueSlots[ins.Result])
 	}
 
-	for i := len(regs) - 1; i >= 0; i-- {
-		r := regs[i]
-		t := fb.prog.Types.Lookup(fb.valueTypes[r.arg])
-		slot := fb.valueSlots[r.arg]
-		switch r.kind {
+	for i := len(ins.Args) - 1; i >= 0; i-- {
+		loc := locations[i]
+		if loc.stackOffset >= 0 {
+			continue
+		}
+		arg := ins.Args[i]
+		t := argTypes[i]
+		slot := fb.valueSlots[arg]
+		switch loc.kind {
 		case argFloat:
-			if r.idx >= 8 {
-				fb.diags.Error(ins.Span, "calls with more than 8 float arguments are not yet supported", "reduce the number of float arguments")
-				continue
-			}
 			fb.emitLoad(t, slot)
 			if t.Name == "F32" {
-				fmt.Fprintf(&fb.out, "    movss xmm%d, xmm0\n", r.idx)
+				fmt.Fprintf(&fb.out, "    movss xmm%d, xmm0\n", loc.floatReg)
 			} else {
-				fmt.Fprintf(&fb.out, "    movsd xmm%d, xmm0\n", r.idx)
+				fmt.Fprintf(&fb.out, "    movsd xmm%d, xmm0\n", loc.floatReg)
 			}
 		case argString:
-			if r.idx+1 >= 6 {
-				fb.diags.Error(ins.Span, "calls with too many integer arguments are not yet supported", "reduce the number of arguments")
-				continue
-			}
 			fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", slot)
-			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(r.idx))
+			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(loc.intReg))
 			fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d+8]\n", slot)
-			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(r.idx+1))
+			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(loc.intReg+1))
 		case argStruct:
-			if r.idx >= 6 {
-				fb.diags.Error(ins.Span, "calls with too many integer arguments are not yet supported", "reduce the number of arguments")
-				continue
-			}
 			fmt.Fprintf(&fb.out, "    lea rax, [rbp-%d]\n", slot)
-			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(r.idx))
+			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(loc.intReg))
 		case argInt128:
-			if r.idx+1 >= 6 {
-				fb.diags.Error(ins.Span, "calls with too many integer arguments are not yet supported", "reduce the number of arguments")
-				continue
-			}
 			fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", slot)
-			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(r.idx))
+			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(loc.intReg))
 			fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d+8]\n", slot)
-			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(r.idx+1))
+			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(loc.intReg+1))
 		case argInt:
-			if r.idx >= 6 {
-				fb.diags.Error(ins.Span, "calls with more than 6 integer arguments are not yet supported", "reduce the number of integer arguments")
-				continue
-			}
 			fb.emitLoad(t, slot)
-			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(r.idx))
+			fmt.Fprintf(&fb.out, "    mov %s, rax\n", intArgReg(loc.intReg))
 		}
 	}
-	fmt.Fprintf(&fb.out, "    call %s\n", fb.funcLabel(callee.Name))
+	fmt.Fprintf(&fb.out, "    call %s\n", fb.funcLabel(callee.Symbol))
+	if stackSize > 0 {
+		fmt.Fprintf(&fb.out, "    add rsp, %d\n", stackSize)
+	}
 
 	// Store the result. Struct results were written into the sret slot by the
 	// callee; String and 128-bit results arrive in RAX:RDX.
 	if ins.Type != fb.prog.Types.Void() {
 		slot := fb.valueSlots[ins.Result]
 		switch {
-		case resultType.Kind == TypeKindStruct:
+		case isRecordKind(resultType.Kind):
 			// Already in the sret slot.
 		case resultType.Kind == TypeKindString || resultType.Kind == TypeKindArray || fb.isInt128Storage(resultType):
 			fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", slot)
@@ -1171,6 +1396,241 @@ const (
 	argInt128
 )
 
+type abiArgLocation struct {
+	kind        argKind
+	intReg      int
+	floatReg    int
+	stackOffset int
+}
+
+func (fb *fasmEmitter) equalityLabel(id TypeID) string {
+	return "chaos_eq_" + strconv.FormatUint(uint64(id), 10)
+}
+
+func (fb *fasmEmitter) requestEqualityHelper(id TypeID) {
+	if fb.equalityTypes == nil {
+		fb.equalityTypes = make(map[TypeID]bool)
+	}
+	if fb.equalityTypes[id] {
+		return
+	}
+	fb.equalityTypes[id] = true
+	t := fb.prog.Types.Lookup(id)
+	switch t.Kind {
+	case TypeKindStruct, TypeKindTuple:
+		for _, field := range t.Fields {
+			fb.requestEqualityHelper(field.Type)
+		}
+	case TypeKindArray:
+		fb.requestEqualityHelper(t.Elem)
+	}
+}
+
+func (fb *fasmEmitter) emitEqualityHelpers() {
+	ids := make([]int, 0, len(fb.equalityTypes))
+	for id := range fb.equalityTypes {
+		ids = append(ids, int(id))
+	}
+	sort.Ints(ids)
+	for _, raw := range ids {
+		id := TypeID(raw)
+		t := fb.prog.Types.Lookup(id)
+		fmt.Fprintf(&fb.out, "%s:\n", fb.equalityLabel(id))
+		switch t.Kind {
+		case TypeKindString:
+			fb.emitStringEqualityHelper()
+		case TypeKindArray:
+			fb.emitArrayEqualityHelper(t)
+		case TypeKindStruct, TypeKindTuple:
+			fb.emitRecordEqualityHelper(t)
+		case TypeKindFloat:
+			if t.Name == "F32" {
+				fb.out.WriteString("    movss xmm0, dword [rdi]\n")
+				fb.out.WriteString("    ucomiss xmm0, dword [rsi]\n")
+			} else {
+				fb.out.WriteString("    movsd xmm0, qword [rdi]\n")
+				fb.out.WriteString("    ucomisd xmm0, qword [rsi]\n")
+			}
+			fb.out.WriteString("    setnp dl\n")
+			fb.out.WriteString("    sete al\n")
+			fb.out.WriteString("    and al, dl\n")
+			fb.out.WriteString("    ret\n\n")
+		default:
+			storage := fb.storageType(t)
+			if fb.isInt128Storage(t) {
+				falseLabel := fb.newLabel()
+				doneLabel := fb.newLabel()
+				fb.out.WriteString("    mov rax, qword [rdi]\n")
+				fb.out.WriteString("    cmp rax, qword [rsi]\n")
+				fmt.Fprintf(&fb.out, "    jne %s\n", falseLabel)
+				fb.out.WriteString("    mov rax, qword [rdi+8]\n")
+				fb.out.WriteString("    cmp rax, qword [rsi+8]\n")
+				fmt.Fprintf(&fb.out, "    jne %s\n", falseLabel)
+				fb.out.WriteString("    mov al, 1\n")
+				fmt.Fprintf(&fb.out, "    jmp %s\n", doneLabel)
+				fmt.Fprintf(&fb.out, "%s:\n", falseLabel)
+				fb.out.WriteString("    xor eax, eax\n")
+				fmt.Fprintf(&fb.out, "%s:\n", doneLabel)
+				fb.out.WriteString("    ret\n\n")
+				continue
+			}
+			size := fb.sizeOf(storage)
+			fmt.Fprintf(&fb.out, "    mov %s, %s [rdi]\n", widthReg(size), memSize(size))
+			fmt.Fprintf(&fb.out, "    cmp %s, %s [rsi]\n", widthReg(size), memSize(size))
+			fb.out.WriteString("    sete al\n")
+			fb.out.WriteString("    ret\n\n")
+		}
+	}
+}
+
+func (fb *fasmEmitter) emitStringEqualityHelper() {
+	loopLabel := fb.newLabel()
+	falseLabel := fb.newLabel()
+	trueLabel := fb.newLabel()
+	fb.out.WriteString("    mov rcx, qword [rdi+8]\n")
+	fb.out.WriteString("    cmp rcx, qword [rsi+8]\n")
+	fmt.Fprintf(&fb.out, "    jne %s\n", falseLabel)
+	fb.out.WriteString("    mov r8, qword [rdi]\n")
+	fb.out.WriteString("    mov r9, qword [rsi]\n")
+	fb.out.WriteString("    xor rdx, rdx\n")
+	fmt.Fprintf(&fb.out, "%s:\n", loopLabel)
+	fb.out.WriteString("    cmp rdx, rcx\n")
+	fmt.Fprintf(&fb.out, "    jae %s\n", trueLabel)
+	fb.out.WriteString("    mov al, byte [r8+rdx]\n")
+	fb.out.WriteString("    cmp al, byte [r9+rdx]\n")
+	fmt.Fprintf(&fb.out, "    jne %s\n", falseLabel)
+	fb.out.WriteString("    inc rdx\n")
+	fmt.Fprintf(&fb.out, "    jmp %s\n", loopLabel)
+	fmt.Fprintf(&fb.out, "%s:\n", trueLabel)
+	fb.out.WriteString("    mov al, 1\n")
+	fb.out.WriteString("    ret\n")
+	fmt.Fprintf(&fb.out, "%s:\n", falseLabel)
+	fb.out.WriteString("    xor eax, eax\n")
+	fb.out.WriteString("    ret\n\n")
+}
+
+func (fb *fasmEmitter) emitRecordEqualityHelper(t IRType) {
+	falseLabel := fb.newLabel()
+	doneLabel := fb.newLabel()
+	fb.out.WriteString("    push rbp\n")
+	fb.out.WriteString("    mov rbp, rsp\n")
+	fb.out.WriteString("    push rbx\n")
+	fb.out.WriteString("    push r12\n")
+	fb.out.WriteString("    mov rbx, rdi\n")
+	fb.out.WriteString("    mov r12, rsi\n")
+	offsets := fb.structFieldOffsets(t)
+	for i, field := range t.Fields {
+		fmt.Fprintf(&fb.out, "    lea rdi, [rbx+%d]\n", offsets[i])
+		fmt.Fprintf(&fb.out, "    lea rsi, [r12+%d]\n", offsets[i])
+		fmt.Fprintf(&fb.out, "    call %s\n", fb.equalityLabel(field.Type))
+		fb.out.WriteString("    test al, al\n")
+		fmt.Fprintf(&fb.out, "    jz %s\n", falseLabel)
+	}
+	fb.out.WriteString("    mov al, 1\n")
+	fmt.Fprintf(&fb.out, "    jmp %s\n", doneLabel)
+	fmt.Fprintf(&fb.out, "%s:\n", falseLabel)
+	fb.out.WriteString("    xor eax, eax\n")
+	fmt.Fprintf(&fb.out, "%s:\n", doneLabel)
+	fb.out.WriteString("    pop r12\n")
+	fb.out.WriteString("    pop rbx\n")
+	fb.out.WriteString("    leave\n")
+	fb.out.WriteString("    ret\n\n")
+}
+
+func (fb *fasmEmitter) emitArrayEqualityHelper(t IRType) {
+	loopLabel := fb.newLabel()
+	falseLabel := fb.newLabel()
+	trueLabel := fb.newLabel()
+	doneLabel := fb.newLabel()
+	elemSize := fb.sizeOf(fb.prog.Types.Lookup(t.Elem))
+	if elemSize <= 0 {
+		fb.diags.Error(Span{}, "array equality reached an element type with no storage", "use a storable array element type")
+		elemSize = 1
+	}
+	fb.out.WriteString("    push rbp\n")
+	fb.out.WriteString("    mov rbp, rsp\n")
+	fb.out.WriteString("    push rbx\n")
+	fb.out.WriteString("    push r12\n")
+	fb.out.WriteString("    push r13\n")
+	fb.out.WriteString("    push r14\n")
+	fb.out.WriteString("    mov r13, qword [rdi+8]\n")
+	fb.out.WriteString("    cmp r13, qword [rsi+8]\n")
+	fmt.Fprintf(&fb.out, "    jne %s\n", falseLabel)
+	fb.out.WriteString("    mov rbx, qword [rdi]\n")
+	fb.out.WriteString("    mov r12, qword [rsi]\n")
+	fb.out.WriteString("    xor r14, r14\n")
+	fmt.Fprintf(&fb.out, "%s:\n", loopLabel)
+	fb.out.WriteString("    test r13, r13\n")
+	fmt.Fprintf(&fb.out, "    jz %s\n", trueLabel)
+	fb.out.WriteString("    lea rdi, [rbx+r14]\n")
+	fb.out.WriteString("    lea rsi, [r12+r14]\n")
+	fmt.Fprintf(&fb.out, "    call %s\n", fb.equalityLabel(t.Elem))
+	fb.out.WriteString("    test al, al\n")
+	fmt.Fprintf(&fb.out, "    jz %s\n", falseLabel)
+	fmt.Fprintf(&fb.out, "    add r14, %d\n", elemSize)
+	fb.out.WriteString("    dec r13\n")
+	fmt.Fprintf(&fb.out, "    jmp %s\n", loopLabel)
+	fmt.Fprintf(&fb.out, "%s:\n", trueLabel)
+	fb.out.WriteString("    mov al, 1\n")
+	fmt.Fprintf(&fb.out, "    jmp %s\n", doneLabel)
+	fmt.Fprintf(&fb.out, "%s:\n", falseLabel)
+	fb.out.WriteString("    xor eax, eax\n")
+	fmt.Fprintf(&fb.out, "%s:\n", doneLabel)
+	fb.out.WriteString("    pop r14\n")
+	fb.out.WriteString("    pop r13\n")
+	fb.out.WriteString("    pop r12\n")
+	fb.out.WriteString("    pop rbx\n")
+	fb.out.WriteString("    leave\n")
+	fb.out.WriteString("    ret\n\n")
+}
+
+// classifyABI gives callers and callees one authoritative description of the
+// compiler's internal x86-64 calling convention. Multi-register values remain
+// whole: if all of their registers are unavailable, the complete value is
+// placed in an aligned outgoing stack slot.
+func (fb *fasmEmitter) classifyABI(types []IRType, sret bool) ([]abiArgLocation, int) {
+	locations := make([]abiArgLocation, len(types))
+	intIdx, floatIdx, stackSize := 0, 0, 0
+	if sret {
+		intIdx = 1
+	}
+	for i, t := range types {
+		loc := abiArgLocation{intReg: -1, floatReg: -1, stackOffset: -1}
+		intUnits, stackBytes := 1, 8
+		switch {
+		case t.Kind == TypeKindFloat:
+			loc.kind = argFloat
+			if floatIdx < 8 {
+				loc.floatReg = floatIdx
+				floatIdx++
+			} else {
+				loc.stackOffset = stackSize
+				stackSize += 8
+			}
+			locations[i] = loc
+			continue
+		case t.Kind == TypeKindString || t.Kind == TypeKindArray:
+			loc.kind, intUnits, stackBytes = argString, 2, 16
+		case isRecordKind(t.Kind):
+			loc.kind = argStruct
+		case fb.isInt128Storage(t):
+			loc.kind, intUnits, stackBytes = argInt128, 2, 16
+		default:
+			loc.kind = argInt
+		}
+		if intIdx+intUnits <= 6 {
+			loc.intReg = intIdx
+			intIdx += intUnits
+		} else {
+			stackSize = align(stackSize, 8)
+			loc.stackOffset = stackSize
+			stackSize += stackBytes
+		}
+		locations[i] = loc
+	}
+	return locations, align16(stackSize)
+}
+
 func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 	t := b.Term
 	switch t.Kind {
@@ -1187,7 +1647,7 @@ func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 			vt := fb.prog.Types.Lookup(fb.valueTypes[t.Value])
 			slot := fb.valueSlots[t.Value]
 			switch {
-			case vt.Kind == TypeKindStruct:
+			case isRecordKind(vt.Kind):
 				// Copy the struct value to the sret address.
 				fb.emitAggCopyToAddrSlot(slot, fb.sretSlot, fb.sizeOf(vt))
 			case vt.Kind == TypeKindString || vt.Kind == TypeKindArray || fb.isInt128Storage(vt):
@@ -1196,6 +1656,9 @@ func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 			default:
 				fb.emitLoad(vt, slot)
 			}
+		}
+		for i, reg := range []string{"rbx", "r12", "r13", "r14", "r15"} {
+			fmt.Fprintf(&fb.out, "    mov %s, qword [rbp-%d]\n", reg, fb.calleeSaveSlots[i])
 		}
 		fb.out.WriteString("    leave\n")
 		fb.out.WriteString("    ret\n")
@@ -1219,73 +1682,81 @@ func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 		fb.out.WriteString("    syscall\n")
 	case MIRUnreachable:
 		fb.out.WriteString("    ud2\n")
+	default:
+		fb.diags.Error(t.Span, "unsupported MIR terminator reached the fasm backend", "verify MIR before code generation")
 	}
 }
 
-// sizeOf returns the storage size in bytes for a type. String values are a
-// pointer and length pair, 128-bit integers a low and high half pair, and
-// structs the sum of their aligned fields.
-func (fb *fasmEmitter) sizeOf(t IRType) int {
+func (fb *fasmEmitter) layoutOf(t IRType) Layout {
+	if t.Kind == TypeKindUnknown {
+		return Layout{Align: 1}
+	}
+	if fb.layouts == nil {
+		fb.layouts = make(map[TypeID]Layout)
+		fb.layoutVisiting = make(map[TypeID]bool)
+	}
+	if layout, ok := fb.layouts[t.ID]; ok {
+		return layout
+	}
+	if fb.layoutVisiting[t.ID] {
+		return Layout{Align: 1}
+	}
+	fb.layoutVisiting[t.ID] = true
+	defer delete(fb.layoutVisiting, t.ID)
+	layout := Layout{Align: 1}
 	switch t.Kind {
 	case TypeKindVoid:
-		// Void occupies no storage; it is only valid as a function result.
-		return 0
+		layout = Layout{Align: 1}
 	case TypeKindBool:
-		return 1
+		layout = Layout{Size: 1, Align: 1}
 	case TypeKindInt:
-		switch t.Name {
-		case "S8", "U8", "Byte":
-			return 1
-		case "S16", "U16":
-			return 2
-		case "S32", "U32":
-			return 4
-		case "S64", "U64", "Size":
-			return 8
-		case "S128", "U128":
-			return 16
+		if info, ok := LookupBuiltinType(t.Name); ok && info.Kind == BuiltinInteger {
+			size := info.Bits / 8
+			align := size
+			if align > 8 {
+				align = 8
+			}
+			layout = Layout{Size: size, Align: align}
 		}
 	case TypeKindFloat:
-		switch t.Name {
-		case "F32":
-			return 4
-		case "F64":
-			return 8
+		if info, ok := LookupBuiltinType(t.Name); ok && info.Kind == BuiltinFloat {
+			size := info.Bits / 8
+			layout = Layout{Size: size, Align: size}
 		}
 	case TypeKindString:
-		return 16
+		layout = Layout{Size: 16, Align: 8}
 	case TypeKindArray:
-		// Array values are a pointer to the element data and a length pair.
-		return 16
+		layout = Layout{Size: 16, Align: 8}
 	case TypeKindError:
-		// Error values are nominal but backed by a 16-bit ordinal.
-		return 2
+		layout = Layout{Size: 2, Align: 2}
 	case TypeKindEnum:
-		// Enum values are backed by their underlying integer type.
-		return fb.sizeOf(fb.prog.Types.Lookup(t.Underlying))
-	case TypeKindStruct:
-		size := 0
-		for _, f := range t.Fields {
-			ft := fb.prog.Types.Lookup(f.Type)
-			size = align(size, fb.sizeOf(ft))
-			size += fb.sizeOf(ft)
+		layout = fb.layoutOf(fb.prog.Types.Lookup(t.Underlying))
+	case TypeKindStruct, TypeKindTuple:
+		layout.FieldOffsets = make([]int, len(t.Fields))
+		offset, maxAlign := 0, 1
+		for i, field := range t.Fields {
+			fieldLayout := fb.layoutOf(fb.prog.Types.Lookup(field.Type))
+			offset = align(offset, fieldLayout.Align)
+			layout.FieldOffsets[i] = offset
+			offset += fieldLayout.Size
+			if fieldLayout.Align > maxAlign {
+				maxAlign = fieldLayout.Align
+			}
 		}
-		return size
+		if offset == 0 {
+			offset = 1
+		}
+		layout.Size, layout.Align = align(offset, maxAlign), maxAlign
 	}
-	return 8
+	fb.layouts[t.ID] = layout
+	return layout
 }
+
+func (fb *fasmEmitter) sizeOf(t IRType) int { return fb.layoutOf(t).Size }
 
 // structFieldOffsets returns the byte offset of each field in a struct type.
 func (fb *fasmEmitter) structFieldOffsets(t IRType) []int {
-	offsets := make([]int, len(t.Fields))
-	off := 0
-	for i, f := range t.Fields {
-		ft := fb.prog.Types.Lookup(f.Type)
-		off = align(off, fb.sizeOf(ft))
-		offsets[i] = off
-		off += fb.sizeOf(ft)
-	}
-	return offsets
+	return fb.layoutOf(t).FieldOffsets
 }
 
 // storageType resolves a nominal enum to the fixed-width integer type that
@@ -1313,13 +1784,15 @@ func (fb *fasmEmitter) isAggregate(t IRType) bool {
 		return true
 	case t.Kind == TypeKindArray:
 		return true
-	case t.Kind == TypeKindStruct:
+	case isRecordKind(t.Kind):
 		return true
 	case fb.isInt128Storage(t):
 		return true
 	}
 	return false
 }
+
+func isRecordKind(kind TypeKind) bool { return kind == TypeKindStruct || kind == TypeKindTuple }
 
 // isInt128 reports whether a type name is a 128-bit integer.
 func isInt128(name string) bool {
@@ -1356,7 +1829,7 @@ func (fb *fasmEmitter) intRegCount(t IRType) int {
 		return 2
 	case t.Kind == TypeKindArray:
 		return 2
-	case t.Kind == TypeKindStruct:
+	case isRecordKind(t.Kind):
 		return 1 // passed by address
 	case fb.isInt128Storage(t):
 		return 2
@@ -1663,38 +2136,21 @@ func (fb *fasmEmitter) emitStore(t IRType, offset int) {
 	fmt.Fprintf(&fb.out, "    mov %s [rbp-%d], %s\n", memSize(size), offset, widthReg(size))
 }
 
-func (fb *fasmEmitter) funcLabel(name string) string {
-	return "f_" + name
+func (fb *fasmEmitter) funcLabel(sym SymbolID) string {
+	return "chaos_fn_" + strconv.FormatUint(uint64(sym), 10)
 }
 
 func (fb *fasmEmitter) globalLabel(sym SymbolID) string {
 	if label, ok := fb.globalLabels[sym]; ok {
 		return label
 	}
-	return "g_" + fb.prog.Symbols.Lookup(sym)
+	return "chaos_global_" + strconv.FormatUint(uint64(sym), 10)
 }
 
 func (fb *fasmEmitter) prepareGlobalLabels() {
-	counts := make(map[string]int)
-	reserved := make(map[string]bool)
-	for _, global := range fb.prog.Globals {
-		name := fb.prog.Symbols.Lookup(global.Symbol)
-		counts[name]++
-		reserved["g_"+name] = true
-	}
 	fb.globalLabels = make(map[SymbolID]string, len(fb.prog.Globals))
-	used := make(map[string]bool)
 	for _, global := range fb.prog.Globals {
-		name := fb.prog.Symbols.Lookup(global.Symbol)
-		label := "g_" + name
-		if counts[name] > 1 {
-			label += "__shadow_" + strconv.Itoa(int(global.Symbol))
-			for reserved[label] || used[label] {
-				label += "_"
-			}
-		}
-		fb.globalLabels[global.Symbol] = label
-		used[label] = true
+		fb.globalLabels[global.Symbol] = "chaos_global_" + strconv.FormatUint(uint64(global.Symbol), 10)
 	}
 }
 
@@ -1708,11 +2164,8 @@ func (fb *fasmEmitter) findFunction(sym SymbolID) *MIRFunction {
 }
 
 func isSignedInt(name string) bool {
-	switch name {
-	case "S8", "S16", "S32", "S64", "S128":
-		return true
-	}
-	return false
+	info, ok := LookupBuiltinType(name)
+	return ok && info.Kind == BuiltinInteger && info.Signed
 }
 
 func memSize(size int) string {
@@ -1756,7 +2209,7 @@ func intArgReg(i int) string {
 	case 5:
 		return "r9"
 	}
-	return "rdi"
+	return ""
 }
 
 func align(n, a int) int {

@@ -5,117 +5,127 @@ segment readable executable
 entry _start
 
 _start:
-    call f_main
+    call chaos_fn_0
     mov rdi, rax
     mov rax, 60
     syscall
 
-f_main:
+chaos_fn_0:
     push rbp
     mov rbp, rsp
     sub rsp, 320
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
 L0:
     mov rax, 1
-    mov qword [rbp-72], rax
+    mov qword [rbp-104], rax
     mov rax, 2
-    mov qword [rbp-80], rax
-    mov rax, 3
-    mov qword [rbp-88], rax
-    mov rax, qword [rbp-72]
-    mov qword [rbp-144], rax
-    mov rax, qword [rbp-80]
-    mov qword [rbp-136], rax
-    mov rax, qword [rbp-88]
-    mov qword [rbp-128], rax
-    lea rax, [rbp-144]
     mov qword [rbp-112], rax
     mov rax, 3
-    mov qword [rbp-112+8], rax
-    lea rsi, [rbp-112]
-    lea rdi, [rbp-16]
+    mov qword [rbp-120], rax
+    mov rax, qword [rbp-104]
+    mov qword [rbp-160], rax
+    mov rax, qword [rbp-112]
+    mov qword [rbp-152], rax
+    mov rax, qword [rbp-120]
+    mov qword [rbp-144], rax
+    lea rax, [rbp-160]
+    mov qword [rbp-136], rax
+    mov rax, 3
+    mov qword [rbp-136+8], rax
+    lea rsi, [rbp-136]
+    lea rdi, [rbp-56]
     mov rcx, 16
     cld
     rep movsb
     mov rax, 40
-    mov qword [rbp-152], rax
-    mov rax, qword [rbp-152]
-    mov qword [rbp-24], rax
-    lea rsi, [rbp-16]
-    lea rdi, [rbp-176]
+    mov qword [rbp-168], rax
+    mov rax, qword [rbp-168]
+    mov qword [rbp-64], rax
+    lea rsi, [rbp-56]
+    lea rdi, [rbp-184]
     mov rcx, 16
     cld
     rep movsb
-    lea rsi, [rbp-176]
-    lea rdi, [rbp-48]
+    lea rsi, [rbp-184]
+    lea rdi, [rbp-80]
     mov rcx, 16
     cld
     rep movsb
     mov rax, 0
-    mov qword [rbp-184], rax
-    mov rax, qword [rbp-184]
-    mov qword [rbp-56], rax
+    mov qword [rbp-192], rax
+    mov rax, qword [rbp-192]
+    mov qword [rbp-88], rax
     jmp L1
 L1:
-    mov rax, qword [rbp-56]
-    mov qword [rbp-192], rax
-    lea rsi, [rbp-48]
-    lea rdi, [rbp-208]
+    mov rax, qword [rbp-88]
+    mov qword [rbp-200], rax
+    lea rsi, [rbp-80]
+    lea rdi, [rbp-216]
     mov rcx, 16
     cld
     rep movsb
-    mov rax, qword [rbp-208+8]
-    mov qword [rbp-216], rax
-    mov rax, qword [rbp-192]
-    cmp rax, qword [rbp-216]
+    mov rax, qword [rbp-216+8]
+    mov qword [rbp-224], rax
+    mov rax, qword [rbp-200]
+    cmp rax, qword [rbp-224]
     setl al
-    mov byte [rbp-217], al
-    movzx rax, byte [rbp-217]
+    mov byte [rbp-225], al
+    movzx rax, byte [rbp-225]
     test al, al
     jnz L2
     jmp L4
 L2:
-    lea rsi, [rbp-48]
-    lea rdi, [rbp-240]
+    lea rsi, [rbp-80]
+    lea rdi, [rbp-248]
     mov rcx, 16
     cld
     rep movsb
-    mov rax, qword [rbp-56]
-    mov qword [rbp-248], rax
-    mov rax, qword [rbp-240]
-    mov rcx, qword [rbp-248]
+    mov rax, qword [rbp-88]
+    mov qword [rbp-256], rax
+    mov rax, qword [rbp-248]
+    mov rcx, qword [rbp-256]
     imul rcx, 8
     add rax, rcx
     mov rax, qword [rax]
-    mov qword [rbp-256], rax
-    mov rax, qword [rbp-256]
-    mov qword [rbp-64], rax
-    mov rax, qword [rbp-64]
     mov qword [rbp-264], rax
-    mov rax, 2
-    mov qword [rbp-272], rax
     mov rax, qword [rbp-264]
-    cmp rax, qword [rbp-272]
+    mov qword [rbp-96], rax
+    mov rax, qword [rbp-96]
+    mov qword [rbp-272], rax
+    mov rax, 2
+    mov qword [rbp-280], rax
+    mov rax, qword [rbp-272]
+    cmp rax, qword [rbp-280]
     sete al
-    mov byte [rbp-273], al
-    movzx rax, byte [rbp-273]
+    mov byte [rbp-281], al
+    movzx rax, byte [rbp-281]
     test al, al
     jnz L5
     jmp L6
 L3:
-    mov rax, qword [rbp-56]
-    mov qword [rbp-288], rax
-    mov rax, 1
+    mov rax, qword [rbp-88]
     mov qword [rbp-296], rax
-    mov rax, qword [rbp-288]
-    add rax, qword [rbp-296]
+    mov rax, 1
     mov qword [rbp-304], rax
-    mov rax, qword [rbp-304]
-    mov qword [rbp-56], rax
-    jmp L1
-L4:
-    mov rax, qword [rbp-24]
+    mov rax, qword [rbp-296]
+    add rax, qword [rbp-304]
     mov qword [rbp-312], rax
     mov rax, qword [rbp-312]
+    mov qword [rbp-88], rax
+    jmp L1
+L4:
+    mov rax, qword [rbp-64]
+    mov qword [rbp-320], rax
+    mov rax, qword [rbp-320]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 L5:

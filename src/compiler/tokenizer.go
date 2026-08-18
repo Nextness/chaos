@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"unicode"
 	"unicode/utf8"
+
+	"golang.org/x/text/unicode/norm"
 )
 
 // Tokenizer converts a source buffer into a TokenList. It is a stateful
@@ -20,6 +22,7 @@ type Tokenizer struct {
 	// pendingDirec is set when a '#' is immediately followed by an identifier
 	// start; the next token is then scanned as a TkDirec directive name.
 	pendingDirec bool
+	invalidUTF8  map[int]int
 }
 
 // NewTokenizer creates a tokenizer for the given source buffer.
@@ -37,6 +40,7 @@ func (t *Tokenizer) Tokenize() (TokenList, DiagnosticList) {
 	t.tokens = nil
 	t.diags = nil
 	t.pos = 0
+	t.validateUTF8()
 
 	for {
 		tok := t.next()
@@ -51,6 +55,42 @@ func (t *Tokenizer) Tokenize() (TokenList, DiagnosticList) {
 		}
 	}
 	return t.tokens, t.diags
+}
+
+// validateUTF8 records one diagnostic for each malformed encoding. The main
+// scanner can then keep byte-accurate spans without accidentally reporting
+// every byte of one truncated sequence as a separate character.
+func (t *Tokenizer) validateUTF8() {
+	t.invalidUTF8 = make(map[int]int)
+	for pos := 0; pos < len(t.source); {
+		_, size := utf8.DecodeRune(t.source[pos:])
+		if size > 1 || t.source[pos] < utf8.RuneSelf {
+			pos += size
+			continue
+		}
+		start := pos
+		pos++
+		if t.source[start] >= 0x80 && t.source[start] <= 0xBF {
+			for pos < len(t.source) && t.source[pos] >= 0x80 && t.source[pos] <= 0xBF {
+				pos++
+			}
+		} else {
+			expected := 1
+			switch b := t.source[start]; {
+			case b >= 0xC2 && b <= 0xDF:
+				expected = 2
+			case b >= 0xE0 && b <= 0xEF:
+				expected = 3
+			case b >= 0xF0 && b <= 0xF4:
+				expected = 4
+			}
+			for pos-start < expected && pos < len(t.source) && t.source[pos] >= 0x80 && t.source[pos] <= 0xBF {
+				pos++
+			}
+		}
+		t.invalidUTF8[start] = pos
+		t.diags.Error(Span{File: t.file, Start: start, End: pos}, "source is not valid UTF-8", "replace the malformed byte sequence with valid UTF-8 text")
+	}
 }
 
 // peek returns the byte at the current position, or 0 if at EOF.
@@ -168,6 +208,10 @@ func (t *Tokenizer) next() Token {
 			Kind: TkEOF,
 			Span: Span{File: t.file, Start: start, End: start},
 		}
+	}
+	if end, malformed := t.invalidUTF8[start]; malformed {
+		t.pos = end
+		return t.makeToken(TkError, start)
 	}
 
 	// A directive name follows a '#' with no intervening whitespace. Scan it
@@ -370,36 +414,51 @@ func (t *Tokenizer) isIdentStartAt(pos int) bool {
 		return true
 	}
 	if b >= 0x80 {
-		r, _ := utf8.DecodeRune(t.source[pos:])
+		r, size := utf8.DecodeRune(t.source[pos:])
+		if r == utf8.RuneError && size == 1 {
+			return false
+		}
 		return unicode.IsLetter(r)
 	}
 	return false
 }
 
-// isIdentCont returns true if the byte at the current position can continue
-// an identifier (letters, digits, underscore, or UTF-8 continuation bytes).
+// isIdentCont reports the Unicode identifier continuation policy: letters,
+// digits, combining marks, and underscore. Identifiers are normalized to NFC
+// before keyword lookup and before their token value enters the AST.
 func (t *Tokenizer) isIdentCont() bool {
 	if t.pos >= len(t.source) {
 		return false
 	}
 	b := t.source[t.pos]
-	// UTF-8 continuation bytes are always part of the current rune.
-	if b >= 0x80 && b <= 0xBF {
-		return true
-	}
 	if b >= '0' && b <= '9' {
 		return true
 	}
-	return t.isIdentStart()
+	if b < utf8.RuneSelf {
+		return t.isIdentStart()
+	}
+	r, size := utf8.DecodeRune(t.source[t.pos:])
+	if r == utf8.RuneError && size == 1 {
+		return false
+	}
+	return unicode.IsLetter(r) || unicode.IsDigit(r) || unicode.IsMark(r)
+}
+
+func (t *Tokenizer) advanceRune() {
+	_, size := t.peekRune()
+	if size < 1 {
+		size = 1
+	}
+	t.pos += size
 }
 
 func (t *Tokenizer) scanIdentOrKeyword() Token {
 	start := t.pos
 	for t.pos < len(t.source) && t.isIdentCont() {
-		t.advance()
+		t.advanceRune()
 	}
 	raw := t.source[start:t.pos]
-	text := string(raw)
+	text := norm.NFC.String(string(raw))
 
 	if kind, ok := LookupKeyword(text); ok {
 		if kind == TkTrue {
@@ -410,7 +469,7 @@ func (t *Tokenizer) scanIdentOrKeyword() Token {
 		}
 		return t.makeToken(kind, start)
 	}
-	return t.makeToken(TkIdent, start)
+	return t.makeTokenValue(TkIdent, start, text)
 }
 
 // scanDirec scans a compile-time directive name after '#'. The name is scanned
@@ -419,10 +478,10 @@ func (t *Tokenizer) scanIdentOrKeyword() Token {
 func (t *Tokenizer) scanDirec() Token {
 	start := t.pos
 	for t.pos < len(t.source) && t.isIdentCont() {
-		t.advance()
+		t.advanceRune()
 	}
 	raw := t.source[start:t.pos]
-	return t.makeTokenValue(TkDirec, start, string(raw))
+	return t.makeTokenValue(TkDirec, start, norm.NFC.String(string(raw)))
 }
 
 func isDigit(b byte) bool {

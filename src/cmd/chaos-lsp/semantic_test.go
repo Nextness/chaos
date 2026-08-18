@@ -2,7 +2,9 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+	"unicode/utf16"
 
 	"chaos_new/compiler"
 )
@@ -18,6 +20,38 @@ func semanticData(t *testing.T, source string) []int {
 	result := compiler.ParseProgramTolerant(tokens)
 	all := append(tokenSemanticTokens(tokens, sf), astSemanticTokens(result.Program, sf)...)
 	return encodeSemanticTokens(all)
+}
+
+func TestSemanticTokenEncodingInvariants(t *testing.T) {
+	source := "Thing :: struct {\n\tlabel: String = «😀»;\n}\n#entry main :: proc -> S64 {\n\tvalue :: Thing.{}; // comment\n\treturn value.label == «😀»;\n}"
+	data := semanticData(t, source)
+	if len(data)%5 != 0 {
+		t.Fatalf("semantic token data length = %d, want a multiple of 5", len(data))
+	}
+	lines := strings.Split(source, "\n")
+	tokens := decodeSemanticData(data)
+	for i, tok := range tokens {
+		if tok.length <= 0 {
+			t.Errorf("token %d has non-positive length: %+v", i, tok)
+		}
+		if tok.typeIndex < 0 || tok.typeIndex >= len(semanticTokenTypes) {
+			t.Errorf("token %d has invalid type index: %+v", i, tok)
+		}
+		if tok.line < 0 || tok.line >= len(lines) {
+			t.Errorf("token %d is outside source lines: %+v", i, tok)
+			continue
+		}
+		lineLength := len(utf16.Encode([]rune(strings.TrimSuffix(lines[tok.line], "\r"))))
+		if tok.startChar < 0 || tok.startChar+tok.length > lineLength {
+			t.Errorf("token %d is outside UTF-16 line length %d: %+v", i, lineLength, tok)
+		}
+		if i > 0 {
+			prev := tokens[i-1]
+			if tok.line < prev.line || (tok.line == prev.line && tok.startChar < prev.startChar+prev.length) {
+				t.Errorf("tokens are unsorted or overlapping: previous=%+v current=%+v", prev, tok)
+			}
+		}
+	}
 }
 
 func TestSemanticTokensBasic(t *testing.T) {
@@ -166,7 +200,7 @@ func TestSemanticTokensUndeclaredTypeNotHighlighted(t *testing.T) {
 
 func TestSemanticTokensStructInitTypeHighlighted(t *testing.T) {
 	// The type name in an explicit struct literal (TypeName.{...}) must be
-	// highlighted as a type. Field names are not highlighted; field values are.
+	// highlighted as a type. Field labels and field values are highlighted too.
 	source := "Something_New :: struct {\n    field1: String;\n    field2: U64;\n    field3: Bool;\n}\nmain :: proc {\n    x := Something_New.{field1=«hello», field2=10, field3=true};\n}"
 	want := []int{
 		0, 0, 13, semTypeType, 0, // Something_New (struct decl)
@@ -185,9 +219,12 @@ func TestSemanticTokensStructInitTypeHighlighted(t *testing.T) {
 		1, 4, 1, semTypeVariable, 0, // x
 		0, 5, 13, semTypeType, 0, // Something_New (struct literal type)
 		0, 14, 1, semTypeDelimiter, 0, // {
-		0, 8, 7, semTypeString, 0, // «hello»
-		0, 16, 2, semTypeNumber, 0, // 10
-		0, 11, 4, semTypeKeyword, 0, // true
+		0, 1, 6, semTypeVariable, 0, // field1
+		0, 7, 7, semTypeString, 0, // «hello»
+		0, 9, 6, semTypeVariable, 0, // field2
+		0, 7, 2, semTypeNumber, 0, // 10
+		0, 4, 6, semTypeVariable, 0, // field3
+		0, 7, 4, semTypeKeyword, 0, // true
 		0, 4, 1, semTypeDelimiter, 0, // }
 		1, 0, 1, semTypeDelimiter, 0, // }
 	}
@@ -272,18 +309,14 @@ func tokenAt(tokens []semanticToken, line, start int) (semanticToken, bool) {
 	return semanticToken{}, false
 }
 
-func TestSemanticTokensGenericProcs(t *testing.T) {
-	// Every procedure form must highlight the function name as a function,
-	// including generic type parameters before '::'.
+func TestSemanticTokensDoNotInventGenericProcedures(t *testing.T) {
 	source := "function1 :: proc (input1: String) { }\n" +
 		"function2 :: proc (input1: String) -> String { }\n" +
 		"function3 :: proc -> String { }\n" +
 		"function4 :: proc { }\n" +
-		"function5 <T: String | S64> :: proc (input1: T) { }\n" +
-		"function6 <T: String | S64> :: proc (input: String) -> T { }\n" +
-		"function7 <T: String | S64> :: proc -> T { }\n"
+		"function5 <T: String | S64> :: proc (input1: T) { }\n"
 	tokens := decodeSemanticData(semanticData(t, source))
-	for line := 0; line < 7; line++ {
+	for line := 0; line < 4; line++ {
 		tok, ok := tokenAt(tokens, line, 0)
 		if !ok {
 			t.Errorf("no token at line %d col 0", line)
@@ -296,22 +329,16 @@ func TestSemanticTokensGenericProcs(t *testing.T) {
 			t.Errorf("token at line %d col 0 has length %d, want 9", line, tok.length)
 		}
 	}
+	if tok, ok := tokenAt(tokens, 4, 0); ok && tok.typeIndex == semTypeFunction {
+		t.Fatalf("unsupported generic declaration was highlighted as a function: %+v", tok)
+	}
 }
 
-func TestSemanticTokensGenericEntryProc(t *testing.T) {
-	// '#entry name <T: ...> :: proc {...}' must highlight the name as a
-	// function even though the directive precedes it.
+func TestSemanticTokensDoNotInventGenericEntryProc(t *testing.T) {
 	source := "#entry function5 <T: String | S64> :: proc (input1: T) { }"
 	tokens := decodeSemanticData(semanticData(t, source))
-	tok, ok := tokenAt(tokens, 0, 7)
-	if !ok {
-		t.Fatalf("no token at line 0 col 7 (function name)")
-	}
-	if tok.typeIndex != semTypeFunction {
-		t.Errorf("token at line 0 col 7 has type %d, want %d (function)", tok.typeIndex, semTypeFunction)
-	}
-	if tok.length != 9 {
-		t.Errorf("token at line 0 col 7 has length %d, want 9", tok.length)
+	if tok, ok := tokenAt(tokens, 0, 7); ok && tok.typeIndex == semTypeFunction {
+		t.Fatalf("unsupported generic entry was highlighted as a function: %+v", tok)
 	}
 }
 
@@ -344,9 +371,8 @@ func TestSemanticTokensErrorDecl(t *testing.T) {
 }
 
 func TestSemanticTokensErrorMemberUsage(t *testing.T) {
-	// 'Type.MEMBER!' highlights the type name as a type and the member (with
-	// its '!') as a constant; the bare '.MEMBER!' highlights the member as a
-	// constant.
+	// 'Type.MEMBER!' highlights the type name as a type and the member name as
+	// a constant. The punctuation is deliberately outside the identifier span.
 	source := "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n}\nmain :: proc {\n    err: Hash_Table_Error = .OUT_OF_MEMORY!;\n    if err == Hash_Table_Error.OUT_OF_MEMORY! { }\n}"
 	tokens := decodeSemanticData(semanticData(t, source))
 	checks := []struct {
@@ -356,9 +382,9 @@ func TestSemanticTokensErrorMemberUsage(t *testing.T) {
 		{4, 0, 4, semTypeFunction},   // main
 		{5, 4, 3, semTypeVariable},   // err
 		{5, 9, 16, semTypeType},      // Hash_Table_Error (decl type)
-		{5, 29, 14, semTypeConstant}, // OUT_OF_MEMORY! (bare member)
+		{5, 29, 13, semTypeConstant}, // OUT_OF_MEMORY (bare member)
 		{6, 14, 16, semTypeType},     // Hash_Table_Error (member type)
-		{6, 31, 14, semTypeConstant}, // OUT_OF_MEMORY! (explicit member)
+		{6, 31, 13, semTypeConstant}, // OUT_OF_MEMORY (explicit member)
 	}
 	for _, c := range checks {
 		tok, ok := tokenAt(tokens, c.line, c.start)
@@ -404,29 +430,18 @@ func TestSemanticTokensErrorReturnSpec(t *testing.T) {
 }
 
 func TestSemanticTokensErrorBlockWithoutKeyword(t *testing.T) {
-	// 'Hash_Table_Error :: { ... }' without the 'error' keyword still
-	// registers the name as a type and highlights the members and uses, so
-	// the editor stays useful while the declaration is incomplete.
+	// An incomplete 'Name :: { ... }' is skipped in tolerant mode, but it must
+	// not fabricate an error type or error members. The following declaration
+	// remains parseable and receives its normal tokens.
 	source := "Hash_Table_Error :: {\n    GENERIC;\n}\nsomething :: proc -> (String <> Hash_Table_Error) {\n    return .GENERIC!;\n}"
 	tokens := decodeSemanticData(semanticData(t, source))
-	checks := []struct {
-		line, start int
-		want        int
-	}{
-		{0, 0, semTypeType},      // Hash_Table_Error (decl)
-		{1, 4, semTypeConstant},  // GENERIC (member)
-		{3, 32, semTypeType},     // Hash_Table_Error (error return spec)
-		{4, 12, semTypeConstant}, // GENERIC! (error literal)
+	for _, pos := range [][2]int{{0, 0}, {1, 4}, {3, 32}} {
+		if _, ok := tokenAt(tokens, pos[0], pos[1]); ok {
+			t.Errorf("unexpected fabricated semantic token at line %d col %d", pos[0], pos[1])
+		}
 	}
-	for _, c := range checks {
-		tok, ok := tokenAt(tokens, c.line, c.start)
-		if !ok {
-			t.Errorf("no token at line %d col %d", c.line, c.start)
-			continue
-		}
-		if tok.typeIndex != c.want {
-			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
-		}
+	if tok, ok := tokenAt(tokens, 3, 0); !ok || tok.typeIndex != semTypeFunction {
+		t.Errorf("following procedure was not highlighted: token=%+v, ok=%v", tok, ok)
 	}
 }
 

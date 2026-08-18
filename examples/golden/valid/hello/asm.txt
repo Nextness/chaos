@@ -5,19 +5,29 @@ segment readable executable
 entry _start
 
 _start:
-    call f_main
+    call chaos_fn_0
     mov rdi, rax
     mov rax, 60
     syscall
 
-f_main:
+chaos_fn_0:
     push rbp
     mov rbp, rsp
-    sub rsp, 16
+    sub rsp, 48
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
 L0:
     mov rax, 42
-    mov qword [rbp-8], rax
-    mov rax, qword [rbp-8]
+    mov qword [rbp-48], rax
+    mov rax, qword [rbp-48]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 

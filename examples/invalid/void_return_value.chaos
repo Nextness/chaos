@@ -1,6 +1,11 @@
 // expect-stage: type
 // expect-error: return with a value in a void procedure
 // A value-returning return statement in a void procedure is a type error.
-#entry main :: proc {
+invalid_return :: proc {
     return 5;
+}
+
+#entry main :: proc -> S64 {
+    invalid_return();
+    return 0;
 }

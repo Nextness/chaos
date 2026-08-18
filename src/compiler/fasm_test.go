@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -14,11 +15,14 @@ import (
 // the test on any front-end error.
 func emitSource(t *testing.T, source string) (string, DiagnosticList) {
 	t.Helper()
-	tokens, _ := Tokenize([]byte(source), 0)
+	sm := &SourceManager{}
+	fileID := sm.Register("test.chaos", []byte(source))
+	tokens, _ := Tokenize([]byte(source), fileID)
 	result := ParseProgram(tokens)
 	if result.Diags.HasErrors() {
 		t.Fatalf("parse errors in %q: %v", source, result.Diags)
 	}
+	result.Program.Sources = map[FileID]SourceFile{fileID: *sm.Lookup(fileID)}
 	if diags := CheckProgram(result.Program); diags.HasErrors() {
 		t.Fatalf("type errors in %q: %v", source, diags)
 	}
@@ -38,6 +42,52 @@ func emitSource(t *testing.T, source string) (string, DiagnosticList) {
 	return asm, diags
 }
 
+func TestFasmRuntimeDivisionByZeroLocation(t *testing.T) {
+	fasmPath, err := exec.LookPath("fasm")
+	if err != nil {
+		t.Skip("fasm not available")
+	}
+	for _, tt := range []struct {
+		name, expression string
+	}{
+		{"integer", "1 / 0"},
+		{"float", "1.0 / 0.0"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			source := "#entry main :: proc -> S64 {\n    value := " + tt.expression + ";\n    return 0;\n}"
+			asm, diags := emitSource(t, source)
+			if diags.HasErrors() {
+				t.Fatalf("emit errors: %v", diags)
+			}
+			dir := t.TempDir()
+			asmPath := filepath.Join(dir, "out.asm")
+			binPath := filepath.Join(dir, "out.bin")
+			if err := os.WriteFile(asmPath, []byte(asm), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if out, err := exec.Command(fasmPath, asmPath, binPath).CombinedOutput(); err != nil {
+				t.Fatalf("fasm failed: %v\n%s", err, out)
+			}
+			if err := os.Chmod(binPath, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			var stderr bytes.Buffer
+			cmd := exec.Command(binPath)
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+				t.Fatalf("run error = %v, want exit status 1", err)
+			}
+			line := "    value := " + tt.expression + ";"
+			want := "division by zero at test.chaos:2:" + strconv.Itoa(strings.Index(line, "/")+1) + "\n"
+			if got := stderr.String(); got != want {
+				t.Fatalf("stderr = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestFasmEmitSimple(t *testing.T) {
 	asm, diags := emitSource(t, "#entry main :: proc -> S64 {\n    return 42;\n}")
 	if diags.HasErrors() {
@@ -46,11 +96,11 @@ func TestFasmEmitSimple(t *testing.T) {
 	for _, want := range []string{
 		"format ELF64 executable 3",
 		"entry _start",
-		"call f_main",
+		"call chaos_fn_0",
 		"mov rdi, rax",
 		"mov rax, 60",
 		"syscall",
-		"f_main:",
+		"chaos_fn_0:",
 		"mov rax, 42",
 	} {
 		if !strings.Contains(asm, want) {
@@ -76,25 +126,22 @@ func TestFasmEntrySelection(t *testing.T) {
 	if diags.HasErrors() {
 		t.Fatalf("unexpected emit errors: %v", diags)
 	}
-	if !strings.Contains(asm, "call f_main") {
-		t.Errorf("entry wrapper should call f_main:\n%s", asm)
+	if !strings.Contains(asm, "call chaos_fn_1") {
+		t.Errorf("entry wrapper should call the selected symbol:\n%s", asm)
 	}
-	if strings.Contains(asm, "call f_other") {
-		t.Errorf("entry wrapper should not call f_other:\n%s", asm)
+	if strings.Contains(asm, "_start:\n    call chaos_fn_0") {
+		t.Errorf("entry wrapper should not call the other procedure:\n%s", asm)
 	}
 }
 
 func TestFasmNoEntry(t *testing.T) {
-	// A program without '#entry' still emits a wrapper that exits 0.
+	// Backend emission is executable production and therefore requires entry.
 	asm, diags := emitSource(t, "helper :: proc -> S64 { return 1; }")
-	if diags.HasErrors() {
-		t.Fatalf("unexpected emit errors: %v", diags)
+	if !diags.HasErrors() {
+		t.Fatalf("expected missing-entry error, got assembly:\n%s", asm)
 	}
-	if !strings.Contains(asm, "entry _start") {
-		t.Errorf("assembly missing entry wrapper:\n%s", asm)
-	}
-	if strings.Contains(asm, "call f_") {
-		t.Errorf("no-entry wrapper should not call a procedure:\n%s", asm)
+	if asm != "" {
+		t.Errorf("backend returned partial assembly after an error:\n%s", asm)
 	}
 }
 
@@ -104,7 +151,7 @@ func TestFasmExitMessage(t *testing.T) {
 	if err != nil {
 		t.Skip("fasm not available")
 	}
-	asm, diags := emitSource(t, "#entry main :: proc {\n    exit 1, «boom»;\n}")
+	asm, diags := emitSource(t, "#entry main :: proc -> S64 {\n    exit 1, «boom»;\n}")
 	if diags.HasErrors() {
 		t.Fatalf("emit errors: %v", diags)
 	}
@@ -152,9 +199,41 @@ func TestFasmRejectsUnsupportedFloatTypes(t *testing.T) {
 	}
 }
 
+func TestFasmRejectsInvalidRecursiveAndPrimitiveLayoutsWithoutPanicking(t *testing.T) {
+	for _, makeType := range []func(*TypeTable, *SymbolTable) TypeID{
+		func(types *TypeTable, symbols *SymbolTable) TypeID {
+			record := types.InternStruct("Recursive")
+			types.SetStructFields(record, []TypeField{{Symbol: symbols.Declare("next"), Name: "next", Type: record}})
+			return record
+		},
+		func(types *TypeTable, _ *SymbolTable) TypeID {
+			return types.intern("BogusInt", TypeKindInt)
+		},
+	} {
+		types := NewTypeTable()
+		symbols := NewSymbolTable()
+		entry := symbols.Declare("main")
+		invalid := makeType(types, symbols)
+		fn := &MIRFunction{
+			Symbol: entry, Name: "main", Locals: []LocalID{0}, LocalTypes: []TypeID{invalid}, LocalMutable: []bool{true},
+			Results: []TypeID{types.S64()}, ResultType: types.S64(),
+			Blocks: []*MIRBlock{{ID: 0, Instrs: []*MIRInstr{{Result: 0, Op: MIRConst, Type: types.S64(), Imm: MIRImmediate{Kind: MIRImmInt}}}, Term: MIRTerminator{Kind: MIRReturn, Value: 0}}},
+		}
+		program := &MIRProgram{Symbols: symbols, Types: types, Functions: []*MIRFunction{fn}, Entry: entry}
+		assembly, diags := NewBackend("fasm").Emit(program)
+		if !diags.HasErrors() {
+			t.Fatalf("invalid layout type %s reached emission", types.Lookup(invalid).Name)
+		}
+		if assembly != "" {
+			t.Fatalf("backend returned partial assembly for %s", types.Lookup(invalid).Name)
+		}
+	}
+}
+
 func TestFasmEmitNegativeLiteral(t *testing.T) {
-	// A negated literal adapts to the declared type in lowering.
-	asm, diags := emitSource(t, "#entry main :: proc -> S64 {\n    x: S128 = -100;\n    if x == -100 { return 1; }\n    return 0;\n}")
+	// Runtime 128-bit negation must still propagate the borrow across halves;
+	// signed literals themselves lower directly as exact constants.
+	asm, diags := emitSource(t, "#entry main :: proc -> S64 {\n    magnitude: S128 = 100;\n    x := -magnitude;\n    if x == -100 { return 1; }\n    return 0;\n}")
 	if diags.HasErrors() {
 		t.Fatalf("unexpected emit errors: %v", diags)
 	}
@@ -185,17 +264,26 @@ func TestFasmRuntime(t *testing.T) {
 		{"elif", "#entry main :: proc -> S64 {\n    x := 2;\n    r: S64 = 0;\n    if x == 1 { r = 10; } elif x == 2 { r = 20; } else { r = 30; }\n    return r;\n}", 20},
 		{"call", "add :: proc (a: S64, b: S64) -> S64 { return a + b; }\n#entry main :: proc -> S64 {\n    return add(2, 3);\n}", 5},
 		{"call3", "add3 :: proc (a: S64, b: S64, c: S64) -> S64 { return a + b + c; }\n#entry main :: proc -> S64 {\n    return add3(1, 2, 3);\n}", 6},
+		{"stack integer args", "sum7 :: proc (a: S64, b: S64, c: S64, d: S64, e: S64, f: S64, g: S64) -> S64 { return a+b+c+d+e+f+g; }\n#entry main :: proc -> S64 { return sum7(1,2,3,4,5,6,21); }", 42},
+		{"stack float args", "sum9 :: proc (a: F64, b: F64, c: F64, d: F64, e: F64, f: F64, g: F64, h: F64, i: F64) -> F64 { return a+b+c+d+e+f+g+h+i; }\n#entry main :: proc -> S64 { if sum9(1.0,2.0,3.0,4.0,5.0,6.0,7.0,8.0,6.0) == 42.0 { return 42; } return 0; }", 42},
+		{"multiple returns", "pair :: proc (x: S64) -> (S64, Bool) { return x + 1, true; }\n#entry main :: proc -> S64 { value, ok := pair(40); if ok { return value + 1; } return 0; }", 42},
+		{"multiple returns with error", "E :: error { BAD; }\npair :: proc (x: S64) -> (S64, Bool <> E) { if x < 0 { return .BAD!; } return x + 1, true; }\n#entry main :: proc -> S64 { value, ok := pair(40) unless catch { return 0; } if ok { return value + 1; } return 0; }", 42},
+		{"nested procedure", "#entry main :: proc -> S64 { C :: 1; add :: proc (x: S64) -> S64 { return x + C; } return add(41); }", 42},
+		{"normalized unicode symbol", "cafe\u0301 :: proc -> S64 { return 42; }\n#entry main :: proc -> S64 { return café(); }", 42},
+		{"compile time type aliases", "Number :: Later;\nLater :: S64;\nidentity :: proc (x: Number) -> Number { return x; }\n#entry main :: proc -> S64 { Local :: Number; x: Local = identity(42); return x; }", 42},
+		{"nested nominal type", "#entry main :: proc -> S64 { Item :: struct { a: S64 = 42; b: String; } x: Item = .{}; y: Item = .{a=42, b=«»}; if x == y { return 42; } return 0; }", 42},
+		{"global default dependency", "Item :: struct { a: S64 = LATER; }\nFIRST :: Item.{};\nLATER :: 42;\n#entry main :: proc -> S64 { if FIRST == Item.{a=42} { return 42; } return 0; }", 42},
 		{"recursion", "fact :: proc (n: S64) -> S64 {\n    if n <= 1 { return 1; }\n    return n * fact(n - 1);\n}\n#entry main :: proc -> S64 {\n    return fact(5);\n}", 120},
 		{"logical", "#entry main :: proc -> S64 {\n    a := true;\n    b := false;\n    if a && !b { return 7; }\n    return 0;\n}", 7},
 		{"neg", "#entry main :: proc -> S64 {\n    x := -5;\n    y := -x;\n    return y;\n}", 5},
 		{"unsigned compare", "#entry main :: proc -> S64 {\n    x: U64 = 5;\n    r: S64 = 0;\n    if x < 3 { r = 1; } else { r = 2; }\n    return r;\n}", 2},
-		{"s32", "#entry main :: proc -> S32 {\n    x: S32 = 7;\n    y: S32 = 3;\n    z := x - y;\n    return z;\n}", 4},
-		{"s32 div", "#entry main :: proc -> S32 {\n    x: S32 = 10;\n    y: S32 = 3;\n    return x / y;\n}", 3},
+		{"s32", "#entry main :: proc -> S64 {\n    x: S32 = 7;\n    y: S32 = 3;\n    z := x - y;\n    if z == 4 { return 4; }\n    return 0;\n}", 4},
+		{"s32 div", "#entry main :: proc -> S64 {\n    x: S32 = 10;\n    y: S32 = 3;\n    if x / y == 3 { return 3; }\n    return 0;\n}", 3},
 		{"cmp ge neq", "#entry main :: proc -> S64 {\n    x := 5;\n    r: S64 = 0;\n    if x >= 5 && x != 6 { r = 3; }\n    return r;\n}", 3},
 		{"float", "#entry main :: proc -> S64 {\n    x := 2.5;\n    y := 1.5;\n    z := x + y;\n    if z > 3.0 { return 4; }\n    return 0;\n}", 4},
 		{"float compare", "#entry main :: proc -> S64 {\n    x := 10.0;\n    y := 4.0;\n    z := x / y;\n    if z > 2.0 && z < 3.0 { return 6; }\n    return 0;\n}", 6},
 		{"float call", "scale :: proc (v: F64, f: F64) -> F64 { return v * f; }\n#entry main :: proc -> S64 {\n    r := scale(2.0, 3.0);\n    if r == 6.0 { return 8; }\n    return 0;\n}", 8},
-		{"float return", "#entry main :: proc -> F64 {\n    return 3.5;\n}", 3},
+		{"float return", "value :: proc -> F64 { return 3.5; }\n#entry main :: proc -> S64 {\n    if value() == 3.5 { return 3; }\n    return 0;\n}", 3},
 		{"global", "G: S64;\n#entry main :: proc -> S64 {\n    G = 42;\n    return G;\n}", 42},
 		{"global init", "G :: 5;\n#entry main :: proc -> S64 {\n    return G;\n}", 5},
 		{"global init chain", "A :: 3;\nB :: A + 4;\n#entry main :: proc -> S64 {\n    return B;\n}", 7},
@@ -214,6 +302,7 @@ func TestFasmRuntime(t *testing.T) {
 		{"struct return", "Point :: struct { x: S64; y: S64; }\nmake_p :: proc (a: S64) -> Point {\n    return Point.{x=a, y=a};\n}\n#entry main :: proc -> S64 {\n    p := make_p(7);\n    q := p;\n    return 12;\n}", 12},
 		{"struct param", "Point :: struct { x: S64; y: S64; }\nread_p :: proc (p: Point) -> S64 {\n    q := p;\n    return 13;\n}\n#entry main :: proc -> S64 {\n    p: Point = .{x=1, y=2};\n    return read_p(p);\n}", 13},
 		{"struct string field", "Rec :: struct { name: String; val: S64; }\n#entry main :: proc -> S64 {\n    a: Rec = .{name=«x», val=1};\n    b: Rec = .{name=«x», val=1};\n    if a == b { return 31; }\n    return 0;\n}", 31},
+		{"struct padding equality", "Rec :: struct { small: U8; wide: U64; tail: U8; }\n#entry main :: proc -> S64 { a: Rec = .{small=1, wide=2, tail=3}; b: Rec = .{small=1, wide=2, tail=3}; if a == b { return 42; } return 0; }", 42},
 		{"string eq", "#entry main :: proc -> S64 {\n    s := «hello»;\n    if s == «hello» { return 6; }\n    return 0;\n}", 6},
 		{"string neq", "#entry main :: proc -> S64 {\n    s := «abc»;\n    if s != «abd» { return 7; }\n    return 0;\n}", 7},
 		{"string param return", "ident :: proc (s: String) -> String {\n    return s;\n}\n#entry main :: proc -> S64 {\n    s := ident(«hello»);\n    if s == «hello» { return 14; }\n    return 0;\n}", 14},
@@ -237,7 +326,7 @@ func TestFasmRuntime(t *testing.T) {
 		{"error eq", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\n#entry main :: proc -> S64 {\n    err: Hash_Table_Error = .OUT_OF_MEMORY!;\n    if err == Hash_Table_Error.OUT_OF_MEMORY! { return 43; }\n    return 0;\n}", 43},
 		{"error neq", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\n#entry main :: proc -> S64 {\n    err: Hash_Table_Error = .GENERIC!;\n    if err != Hash_Table_Error.NOT_FOUND! { return 44; }\n    return 0;\n}", 44},
 		{"error const global", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\nDEFAULT :: Hash_Table_Error.NOT_FOUND!;\n#entry main :: proc -> S64 {\n    if DEFAULT == Hash_Table_Error.NOT_FOUND! { return 45; }\n    return 0;\n}", 45},
-		{"error exit status", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\n#entry main :: proc {\n    exit Hash_Table_Error.NOT_FOUND!;\n}", 2},
+		{"error exit status", "Hash_Table_Error :: error {\n    GENERIC;\n    OUT_OF_MEMORY;\n    NOT_FOUND;\n    OUT_OF_BOUNDS;\n}\n#entry main :: proc -> S64 {\n    exit Hash_Table_Error.NOT_FOUND!;\n}", 2},
 		{"unless catch success", "Some_Error :: error {\n    GENERIC;\n    SOMETHING_ELSE;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\n#entry main :: proc -> S64 {\n    r := f(5) unless catch {\n        return -1;\n    }\n    return r;\n}", 10},
 		{"unless catch error", "Some_Error :: error {\n    GENERIC;\n    SOMETHING_ELSE;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\n#entry main :: proc -> S64 {\n    r := f(-1) unless catch {\n        return 99;\n    }\n    return r;\n}", 99},
 		{"unless catch binding", "Some_Error :: error {\n    GENERIC;\n    SOMETHING_ELSE;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\n#entry main :: proc -> S64 {\n    r := f(-1) unless catch err {\n        if err == .GENERIC! {\n            return 7;\n        }\n        return 8;\n    }\n    return r;\n}", 7},
@@ -246,7 +335,7 @@ func TestFasmRuntime(t *testing.T) {
 		{"bare unless catch", "Some_Error :: error {\n    GENERIC;\n    SOMETHING_ELSE;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\n#entry main :: proc -> S64 {\n    f(-1) unless catch {\n        return 42;\n    }\n    return 0;\n}", 42},
 		{"error re-raise", "Some_Error :: error {\n    GENERIC;\n    SOMETHING_ELSE;\n}\nf :: proc (x: S64) -> (S64 <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return x * 2;\n}\ng :: proc -> (S64 <> Some_Error) {\n    r := f(-1);\n    if r catch {\n        return r;\n    }\n    return r;\n}\n#entry main :: proc -> S64 {\n    r := g() unless catch {\n        return 5;\n    }\n    return r;\n}", 5},
 		{"error string value", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (x: S64) -> (String <> Some_Error) {\n    if x < 0 {\n        return .GENERIC!;\n    }\n    return «hello»;\n}\n#entry main :: proc -> S64 {\n    s := f(1) unless catch {\n        return -1;\n    }\n    if s == «hello» {\n        return 11;\n    }\n    return 0;\n}", 11},
-		{"exit", "#entry main :: proc {\n    exit 9;\n}", 9},
+		{"exit", "#entry main :: proc -> S64 {\n    exit 9;\n}", 9},
 		{"while break", "#entry main :: proc -> S64 {\n    a := 0;\n    for true {\n        a += 1;\n        if a == 10 then break;\n    }\n    return a;\n}", 10},
 		{"c-for += after", "#entry main :: proc -> S64 {\n    sum: S64 = 0;\n    for i := 1; i <= 10; i += 1 {\n        sum += i;\n    }\n    return sum;\n}", 55},
 		{"c-for ++ after", "#entry main :: proc -> S64 {\n    for a := 0; a != 10; a++ {\n    }\n    return a;\n}", 10},
@@ -259,6 +348,11 @@ func TestFasmRuntime(t *testing.T) {
 		{"range string array", "count_a :: proc (s: String) -> S64 {\n    if s == «apple» then return 1;\n    return 0;\n}\n#entry main :: proc -> S64 {\n    arr := []String.{«apple», «banana», «apple»};\n    n: S64 = 0;\n    for elem: arr {\n        n += count_a(elem);\n    }\n    return n;\n}", 2},
 		{"array param", "total :: proc (items: []S64) -> S64 {\n    sum: S64 = 0;\n    for elem: items {\n        sum += elem;\n    }\n    return sum;\n}\n#entry main :: proc -> S64 {\n    arr := []S64.{5, 6, 7};\n    return total(arr);\n}", 18},
 		{"array index", "#entry main :: proc -> S64 {\n    arr := []S64.{7, 8, 9};\n    return arr[1];\n}", 8},
+		{"array element equality", "#entry main :: proc -> S64 { a := []S64.{1,2,3}; b := []S64.{1,2,3}; if a == b { return 42; } return 0; }", 42},
+		{"array nested equality", "#entry main :: proc -> S64 { a := [][]S64.{[]S64.{1,2}, []S64.{3}}; b := [][]S64.{[]S64.{1,2}, []S64.{3}}; if a == b { return 42; } return 0; }", 42},
+		{"array string inequality", "#entry main :: proc -> S64 { a := []String.{«a»,«b»}; b := []String.{«a»,«c»}; if a != b { return 42; } return 0; }", 42},
+		{"runtime narrow wrap", "#entry main :: proc -> S64 { x: S8 = 127; x += 1; if x == -128 { return 42; } return 0; }", 42},
+		{"signed min division wraps", "#entry main :: proc -> S64 { x: S64 = -9223372036854775808; y: S64 = -1; if x / y == x { return 42; } return 0; }", 42},
 		{"prefix inc dec", "#entry main :: proc -> S64 {\n    a := 5;\n    ++a;\n    ++a;\n    --a;\n    return a;\n}", 6},
 		{"empty array", "#entry main :: proc -> S64 {\n    arr := []S64.{};\n    n: S64 = 0;\n    for elem: arr {\n        n += 1;\n    }\n    return n;\n}", 0},
 		{"void union success", "Some_Error :: error {\n    GENERIC;\n}\nf :: proc (input1: String) -> (Void <> Some_Error) {\n    if input1 == «» {\n        return;\n    }\n    return .GENERIC!;\n}\n#entry main :: proc -> S64 {\n    f(«») unless catch {\n        return -1;\n    }\n    return 7;\n}", 7},

@@ -4,12 +4,12 @@ HIR
       VarDecl arr: []S64 = ArrayInit(Int(1), Int(2), Int(3)) [mutable=true compileTime=false]
       VarDecl idx: S64 = Int(40) [mutable=true compileTime=false]
       Block
-        VarDecl __arr: []S64 = Ident(arr) [mutable=false compileTime=false]
+        VarDecl __chaos_range_array: []S64 = Ident(arr) [mutable=false compileTime=false]
         For init=          VarDecl i: S64 = Int() [mutable=true compileTime=false]
- cond=Binary(< Ident(i) ArrayLen(Ident(__arr))) after=          Assign i = Binary(+ Ident(i) Int())
+ cond=Binary(< Ident(i) ArrayLen(Ident(__chaos_range_array))) after=          Assign i = Binary(+ Ident(i) Int())
 
           Block
-            VarDecl elem: S64 = Index(Ident(__arr), Ident(i)) [mutable=false compileTime=false]
+            VarDecl elem: S64 = Index(Ident(__chaos_range_array), Ident(i)) [mutable=false compileTime=false]
             If condition=Binary(== Ident(elem) Int(2))
               Block
                 Continue

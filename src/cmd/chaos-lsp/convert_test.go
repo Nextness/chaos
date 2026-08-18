@@ -51,7 +51,7 @@ func TestConvertDiagnostics(t *testing.T) {
 	}
 }
 
-func TestConvertDiagnosticsDropsOutOfRange(t *testing.T) {
+func TestConvertDiagnosticsClampsOutOfRange(t *testing.T) {
 	source := []byte("x :: 42;")
 	sf := &compiler.SourceFile{
 		Path:        "test.chaos",
@@ -62,8 +62,12 @@ func TestConvertDiagnosticsDropsOutOfRange(t *testing.T) {
 		{Severity: compiler.SeverityError, Span: compiler.Span{Start: 100, End: 101}, Message: "out of range"},
 	}
 	out := convertDiagnostics(diags, sf)
-	if len(out) != 0 {
-		t.Errorf("got %d diagnostics, want 0", len(out))
+	if len(out) != 1 {
+		t.Fatalf("got %d diagnostics, want 1", len(out))
+	}
+	want := Position{Line: 0, Character: 8}
+	if out[0].Range.Start != want || out[0].Range.End != want {
+		t.Errorf("clamped range = %+v, want EOF %+v", out[0].Range, want)
 	}
 }
 

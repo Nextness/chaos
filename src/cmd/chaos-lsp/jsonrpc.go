@@ -12,6 +12,7 @@ import (
 const (
 	maxHeaderBytes = 64 * 1024
 	maxHeaderLine  = 4096
+	maxBodyBytes   = 16 * 1024 * 1024
 )
 
 // message is the common JSON-RPC 2.0 envelope. ID is present for requests and
@@ -82,9 +83,15 @@ func readMessage(r *bufio.Reader) ([]byte, error) {
 		name := strings.ToLower(strings.TrimSpace(line[:idx]))
 		value := strings.TrimSpace(line[idx+1:])
 		if name == "content-length" {
+			if contentLength >= 0 {
+				return nil, fmt.Errorf("duplicate content-length header")
+			}
 			n, err := strconv.Atoi(value)
 			if err != nil || n < 0 {
 				return nil, fmt.Errorf("invalid content-length %q", value)
+			}
+			if n > maxBodyBytes {
+				return nil, fmt.Errorf("content-length %d exceeds %d byte limit", n, maxBodyBytes)
 			}
 			contentLength = n
 		}

@@ -5,64 +5,74 @@ segment readable executable
 entry _start
 
 _start:
-    call f_main
+    call chaos_fn_0
     mov rdi, rax
     mov rax, 60
     syscall
 
-f_main:
+chaos_fn_0:
     push rbp
     mov rbp, rsp
-    sub rsp, 112
+    sub rsp, 160
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
 L0:
     mov rax, 0
-    mov qword [rbp-24], rax
-    mov rax, qword [rbp-24]
-    mov qword [rbp-8], rax
+    mov qword [rbp-64], rax
+    mov rax, qword [rbp-64]
+    mov qword [rbp-48], rax
     mov rax, 1
-    mov qword [rbp-32], rax
-    mov rax, qword [rbp-32]
-    mov qword [rbp-16], rax
+    mov qword [rbp-72], rax
+    mov rax, qword [rbp-72]
+    mov qword [rbp-56], rax
     jmp L1
 L1:
-    mov rax, qword [rbp-16]
-    mov qword [rbp-40], rax
+    mov rax, qword [rbp-56]
+    mov qword [rbp-80], rax
     mov rax, 10
-    mov qword [rbp-48], rax
-    mov rax, qword [rbp-40]
-    cmp rax, qword [rbp-48]
+    mov qword [rbp-88], rax
+    mov rax, qword [rbp-80]
+    cmp rax, qword [rbp-88]
     setle al
-    mov byte [rbp-49], al
-    movzx rax, byte [rbp-49]
+    mov byte [rbp-89], al
+    movzx rax, byte [rbp-89]
     test al, al
     jnz L2
     jmp L4
 L2:
-    mov rax, qword [rbp-8]
-    mov qword [rbp-64], rax
-    mov rax, qword [rbp-16]
-    mov qword [rbp-72], rax
-    mov rax, qword [rbp-64]
-    add rax, qword [rbp-72]
-    mov qword [rbp-80], rax
-    mov rax, qword [rbp-80]
-    mov qword [rbp-8], rax
+    mov rax, qword [rbp-48]
+    mov qword [rbp-104], rax
+    mov rax, qword [rbp-56]
+    mov qword [rbp-112], rax
+    mov rax, qword [rbp-104]
+    add rax, qword [rbp-112]
+    mov qword [rbp-120], rax
+    mov rax, qword [rbp-120]
+    mov qword [rbp-48], rax
     jmp L3
 L3:
-    mov rax, qword [rbp-16]
-    mov qword [rbp-88], rax
+    mov rax, qword [rbp-56]
+    mov qword [rbp-128], rax
     mov rax, 1
-    mov qword [rbp-96], rax
-    mov rax, qword [rbp-88]
-    add rax, qword [rbp-96]
-    mov qword [rbp-104], rax
-    mov rax, qword [rbp-104]
-    mov qword [rbp-16], rax
+    mov qword [rbp-136], rax
+    mov rax, qword [rbp-128]
+    add rax, qword [rbp-136]
+    mov qword [rbp-144], rax
+    mov rax, qword [rbp-144]
+    mov qword [rbp-56], rax
     jmp L1
 L4:
-    mov rax, qword [rbp-8]
-    mov qword [rbp-112], rax
-    mov rax, qword [rbp-112]
+    mov rax, qword [rbp-48]
+    mov qword [rbp-152], rax
+    mov rax, qword [rbp-152]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
     leave
     ret
 

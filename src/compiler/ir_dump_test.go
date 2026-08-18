@@ -65,7 +65,6 @@ func TestDumpMIRBroad(t *testing.T) {
 	_, mir := lowerSource(t, "G :: 1;\nmain :: proc {\n    x := 1;\n    x = 2;\n    y := -x;\n    exit 1, «boom»;\n}")
 	out := DumpMIR(mir)
 	for _, want := range []string{
-		"Global G: S64",
 		"store.local",
 		"neg",
 		"exit status=v",

@@ -1,5 +1,5 @@
 // expect-stage: type
-// expect-error: cannot order error values
+// expect-error: ordering is not defined for A
 // Error values support only == and !=; ordering is rejected.
 A :: error { X; Y; }
 

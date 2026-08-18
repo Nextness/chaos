@@ -1,5 +1,5 @@
 // expect-stage: type
-// expect-error: cannot apply + to error values
+// expect-error: operator + is not defined for A
 // Error values support only == and !=; arithmetic is rejected.
 A :: error { X; Y; }
 

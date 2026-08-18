@@ -1,6 +1,6 @@
 HIR
   Global A: S64 = Int(3) [mutable=false compileTime=true]
-  Global B: S64 = Binary(+ Ident(A) Int(4)) [mutable=false compileTime=true]
+  Global B: S64 = Int(7) [mutable=false compileTime=true]
   Proc main() -> S64
     Block
-      Return Ident(B)
+      Return Int(7)

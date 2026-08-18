@@ -3,12 +3,12 @@ HIR
     Block
       If condition=Binary(< Ident(x) Int(0))
         Block
-          Return StructInit(value, value=Unknown, error=Error(GENERIC), hasError=Bool(true))
-      Return StructInit(value, value=Binary(* Ident(x) Int(2)), error=Unknown, hasError=Bool(false))
+          Return StructInit(value, value=Int(0), error=Error(GENERIC), hasError=Bool(true))
+      Return StructInit(value, value=Binary(* Ident(x) Int(2)), error=Error(0), hasError=Bool(false))
   Proc main() -> S64
     Block
       VarDecl r: S64<>Some_Error = Call(f, Int(5)) [mutable=true compileTime=false]
       IfCatch Ident(r)
         Block
-          Return Unary(- Int(1))
+          Return Int(-1)
       Return FieldLoad(Ident(r), 0)

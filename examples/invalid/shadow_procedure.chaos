@@ -1,6 +1,6 @@
 // expect-stage: type
-// expect-error: declaration of 'helper' shadows an existing procedure
-// Procedure names are visible values and require explicit variable shadowing.
+// expect-error: declaration of 'helper' shadows an existing name
+// Procedure names share the lexical declaration namespace.
 helper :: proc -> S64 {
     return 1;
 }

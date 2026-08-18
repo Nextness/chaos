@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"unicode/utf8"
 )
 
 type Severity uint8
@@ -69,28 +70,31 @@ func (d *DiagnosticList) HasErrors() bool {
 // is omitted when the span is empty or falls outside the source buffer; the
 // suggestion is still emitted in that case.
 func (d Diagnostic) Render(w io.Writer, sf *SourceFile) {
-	line, col := OffsetToLineCol(d.Span.Start, sf.LineOffsets)
+	d.Span, sf = ClampSpan(d.Span, sf)
+	line, _ := OffsetToLineCol(d.Span.Start, sf.LineOffsets)
+	lineStart := sf.LineOffsets[line-1]
+	col := utf8.RuneCount(sf.Source[lineStart:d.Span.Start]) + 1
 	fmt.Fprintf(w, "[%s] %d:%d:%s - %s\n", strings.ToUpper(d.Severity.String()), line, col, sf.Path, d.Message)
 
 	// Span is half-open [Start, End); End may equal len(source).
 	if d.Span.Start < len(sf.Source) && d.Span.End <= len(sf.Source) && d.Span.Start < d.Span.End {
 		// Find the line boundaries around the span start.
-		lineStart := d.Span.Start
-		for lineStart > 0 && sf.Source[lineStart-1] != '\n' {
-			lineStart--
+		contextStart := d.Span.Start
+		for contextStart > 0 && sf.Source[contextStart-1] != '\n' {
+			contextStart--
 		}
 		lineEnd := d.Span.Start
 		for lineEnd < len(sf.Source) && sf.Source[lineEnd] != '\n' {
 			lineEnd++
 		}
-		if lineStart < lineEnd {
-			fmt.Fprintf(w, " %s\n", string(sf.Source[lineStart:lineEnd]))
+		if contextStart < lineEnd {
+			fmt.Fprintf(w, " %s\n", string(sf.Source[contextStart:lineEnd]))
 
 			// Caret underline: half-open [caretStart, caretEnd)
-			caretStart := d.Span.Start - lineStart
-			caretEnd := d.Span.End - lineStart
-			if caretEnd > lineEnd-lineStart {
-				caretEnd = lineEnd - lineStart
+			caretStart := d.Span.Start - contextStart
+			caretEnd := d.Span.End - contextStart
+			if caretEnd > lineEnd-contextStart {
+				caretEnd = lineEnd - contextStart
 			}
 			if caretEnd <= caretStart {
 				caretEnd = caretStart + 1
@@ -98,14 +102,18 @@ func (d Diagnostic) Render(w io.Writer, sf *SourceFile) {
 
 			var underline strings.Builder
 			underline.WriteByte(' ')
-			for i := 0; i < caretStart; i++ {
-				if sf.Source[lineStart+i] == '\t' {
+			for _, r := range string(sf.Source[contextStart : contextStart+caretStart]) {
+				if r == '\t' {
 					underline.WriteByte('\t')
 				} else {
 					underline.WriteByte(' ')
 				}
 			}
-			for i := caretStart; i < caretEnd; i++ {
+			width := utf8.RuneCount(sf.Source[contextStart+caretStart : contextStart+caretEnd])
+			if width < 1 {
+				width = 1
+			}
+			for i := 0; i < width; i++ {
 				underline.WriteByte('^')
 			}
 			if d.Suggestion != "" {

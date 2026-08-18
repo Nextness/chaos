@@ -40,6 +40,7 @@ func TestInitializeReturnsCapabilities(t *testing.T) {
 
 func TestDidChangePublishesDiagnostics(t *testing.T) {
 	s, buf := newTestServer()
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
 	// Open a valid document.
 	s.handleNotification(message{
 		Method: "textDocument/didOpen",
@@ -60,8 +61,61 @@ func TestDidChangePublishesDiagnostics(t *testing.T) {
 	}
 }
 
+func TestDidChangeRejectsStaleAndInvalidVersionsWithoutMutatingSnapshot(t *testing.T) {
+	s, buf := newTestServer()
+	var logs bytes.Buffer
+	s.logger = &logs
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
+	s.handleNotification(message{
+		Method: "textDocument/didOpen",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///versions.chaos","languageId":"chaos","version":2,"text":"x :: «😀»;"}}`),
+	})
+	buf.Reset()
+
+	// Equal and lower versions are stale, even if their edits would otherwise
+	// be valid.
+	s.handleNotification(message{
+		Method: "textDocument/didChange",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///versions.chaos","version":2},"contentChanges":[{"text":"corrupt"}]}`),
+	})
+	if got := s.documents["file:///versions.chaos"]; got.Version != 2 || got.Text != "x :: «😀»;" {
+		t.Fatalf("stale update mutated document: version=%d text=%q", got.Version, got.Text)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("stale update published diagnostics: %q", buf.String())
+	}
+
+	// UTF-16 character 7 lies in the middle of the emoji surrogate pair.
+	s.handleNotification(message{
+		Method: "textDocument/didChange",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///versions.chaos","version":3},"contentChanges":[{"range":{"start":{"line":0,"character":7},"end":{"line":0,"character":7}},"text":"!"}]}`),
+	})
+	if got := s.documents["file:///versions.chaos"]; got.Version != 2 || got.Text != "x :: «😀»;" {
+		t.Fatalf("invalid edit mutated document: version=%d text=%q", got.Version, got.Text)
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("invalid edit published diagnostics: %q", buf.String())
+	}
+
+	// A later full-document update recovers from an invalid incremental edit.
+	s.handleNotification(message{
+		Method: "textDocument/didChange",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///versions.chaos","version":4},"contentChanges":[{"text":"answer :: 42;"}]}`),
+	})
+	if got := s.documents["file:///versions.chaos"]; got.Version != 4 || got.Text != "answer :: 42;" {
+		t.Fatalf("full update did not recover document: version=%d text=%q", got.Version, got.Text)
+	}
+	if !strings.Contains(buf.String(), "textDocument/publishDiagnostics") {
+		t.Fatalf("valid recovery did not publish diagnostics: %q", buf.String())
+	}
+	if log := logs.String(); !strings.Contains(log, "ignored stale") || !strings.Contains(log, "rejected invalid incremental edit") {
+		t.Fatalf("missing version/edit logs: %q", log)
+	}
+}
+
 func TestDidOpenPublishesTypeDiagnostics(t *testing.T) {
 	s, buf := newTestServer()
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
 	s.handleNotification(message{
 		Method: "textDocument/didOpen",
 		Params: json.RawMessage(`{"textDocument":{"uri":"file:///type.chaos","languageId":"chaos","version":1,"text":"main :: proc { value: Bool = 1; }"}}`),
@@ -73,6 +127,7 @@ func TestDidOpenPublishesTypeDiagnostics(t *testing.T) {
 
 func TestDidOpenPublishesShadowingDiagnostic(t *testing.T) {
 	s, buf := newTestServer()
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
 	s.handleNotification(message{
 		Method: "textDocument/didOpen",
 		Params: json.RawMessage(`{"textDocument":{"uri":"file:///shadow.chaos","languageId":"chaos","version":1,"text":"main :: proc { x := 1; x := 2; }"}}`),
@@ -92,7 +147,7 @@ func TestReferencesHonorsIncludeDeclaration(t *testing.T) {
 
 	request := func(include bool) []Location {
 		params, err := json.Marshal(ReferenceParams{
-			TextDocument: VersionedTextDocumentIdentifier{URI: "file:///refs.chaos"},
+			TextDocument: TextDocumentIdentifier{URI: "file:///refs.chaos"},
 			Position:     Position{Line: 0, Character: 28},
 			Context:      ReferenceContext{IncludeDeclaration: include},
 		})
@@ -119,6 +174,7 @@ func TestReferencesHonorsIncludeDeclaration(t *testing.T) {
 
 func TestDidCloseClearsDiagnostics(t *testing.T) {
 	s, buf := newTestServer()
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
 	s.handleNotification(message{
 		Method: "textDocument/didOpen",
 		Params: json.RawMessage(`{"textDocument":{"uri":"file:///a.chaos","languageId":"chaos","version":1,"text":"x :: 42;"}}`),
@@ -141,6 +197,22 @@ func TestRequestAfterShutdownRejected(t *testing.T) {
 	resp := s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`3`), Method: "textDocument/documentSymbol"})
 	if resp.Error == nil || resp.Error.Code != -32600 {
 		t.Errorf("expected -32600 after shutdown, got %+v", resp.Error)
+	}
+}
+
+func TestLifecycleRejectsDuplicateInitializeAndShutdownBeforeInitialize(t *testing.T) {
+	s, _ := newTestServer()
+	resp := s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`1`), Method: "shutdown"})
+	if resp.Error == nil || resp.Error.Code != -32002 {
+		t.Fatalf("shutdown before initialize = %+v, want -32002", resp.Error)
+	}
+	resp = s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`2`), Method: "initialize"})
+	if resp.Error != nil {
+		t.Fatalf("first initialize failed: %+v", resp.Error)
+	}
+	resp = s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`3`), Method: "initialize"})
+	if resp.Error == nil || resp.Error.Code != -32600 {
+		t.Fatalf("duplicate initialize = %+v, want -32600", resp.Error)
 	}
 }
 

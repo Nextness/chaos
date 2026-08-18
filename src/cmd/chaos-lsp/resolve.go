@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"chaos_new/compiler"
+	"golang.org/x/text/unicode/norm"
 )
 
 // LSP CompletionItemKind values used by the server.
@@ -21,21 +22,24 @@ const (
 // symbol is a declared name (proc, var, const, struct, error type, error
 // member, param, local).
 type symbol struct {
-	name        string
-	kind        int           // LSP CompletionItemKind
-	span        compiler.Span // name span
-	proc        *compiler.ProcDecl
-	varDecl     *compiler.VarDecl
-	structDecl  *compiler.StructDecl
-	errorDecl   *compiler.ErrorDecl
-	errorMember *compiler.ErrorMember
-	errorType   string // owning error type name for an error member
-	enumDecl    *compiler.EnumDecl
-	enumMember  *compiler.EnumMember
-	enumType    string // owning enum type name for an enum member
-	param       *compiler.Param
-	scope       *scope
-	visibleFrom int // byte offset where a local binding becomes usable
+	name         string
+	kind         int           // LSP CompletionItemKind
+	span         compiler.Span // name span
+	proc         *compiler.ProcDecl
+	varDecl      *compiler.VarDecl
+	structDecl   *compiler.StructDecl
+	errorDecl    *compiler.ErrorDecl
+	errorMember  *compiler.ErrorMember
+	errorType    string // owning error type name for an error member
+	enumDecl     *compiler.EnumDecl
+	enumMember   *compiler.EnumMember
+	enumType     string // owning enum type name for an enum member
+	param        *compiler.Param
+	structField  *compiler.StructField
+	structType   string
+	scope        *scope
+	visibleFrom  int // byte offset where a local binding becomes usable
+	semanticType string
 }
 
 // scope is a lexical scope with a parent and nested children.
@@ -60,24 +64,26 @@ type resolver struct {
 	sf           *compiler.SourceFile
 	uri          string
 	program      *compiler.Program
+	analysis     *compiler.SemanticAnalysis
 	tokens       []compiler.Token
 	decls        []*symbol
 	global       *scope
 	occurrences  []*occurrence
 	errorMembers map[string]map[string]*symbol // error type name -> member name -> symbol
 	enumMembers  map[string]map[string]*symbol // enum type name -> member name -> symbol
+	structFields map[*compiler.StructDecl]map[string]*symbol
+	errorByDecl  map[*compiler.ErrorDecl]map[string]*symbol
+	enumByDecl   map[*compiler.EnumDecl]map[string]*symbol
 }
 
-// buildResolver tokenizes and parses a document in tolerant mode and builds
-// its symbol index.
-func buildResolver(doc *Document) *resolver {
-	tokens, _ := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
-	result := compiler.ParseProgramTolerant(tokens)
-	r := &resolver{sf: doc.sf, uri: doc.URI, program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol)}
+func newResolver(doc *Document) *resolver {
+	r := &resolver{sf: doc.sf, uri: doc.URI, program: doc.program, analysis: doc.analysis, tokens: doc.tokens, errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol), structFields: make(map[*compiler.StructDecl]map[string]*symbol), errorByDecl: make(map[*compiler.ErrorDecl]map[string]*symbol), enumByDecl: make(map[*compiler.EnumDecl]map[string]*symbol)}
 	r.buildScopes()
 	r.collectOccurrences()
 	return r
 }
+
+func buildResolver(doc *Document) *resolver { return doc.resolver }
 
 // buildScopes builds the lexical scope tree and the top-level symbol list.
 func (r *resolver) buildScopes() {
@@ -85,15 +91,15 @@ func (r *resolver) buildScopes() {
 	for _, decl := range r.program.Decls {
 		switch d := decl.(type) {
 		case *compiler.ProcDecl:
-			sym := &symbol{name: d.Name, kind: completionKindFunction, span: nameSpan(d.Span_, d.Name), proc: d, scope: r.global}
+			sym := &symbol{name: d.Name, kind: completionKindFunction, span: d.NameSpan, proc: d, scope: r.global}
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
 			procScope := &scope{parent: r.global, start: d.Span_.Start, end: d.Span_.End}
 			r.global.children = append(r.global.children, procScope)
 			for i := range d.Params {
 				p := &d.Params[i]
-				span := nameSpan(p.Span_, p.Name)
-				psym := &symbol{name: p.Name, kind: completionKindVariable, span: span, param: p, scope: procScope, visibleFrom: span.End}
+				span := p.NameSpan
+				psym := &symbol{name: p.Name, kind: completionKindVariable, span: span, param: p, scope: procScope, visibleFrom: span.End, semanticType: exprText(p.Type)}
 				procScope.symbols = append(procScope.symbols, psym)
 				r.decls = append(r.decls, psym)
 			}
@@ -105,20 +111,21 @@ func (r *resolver) buildScopes() {
 			if d.CompileTime {
 				kind = completionKindConstant
 			}
-			sym := &symbol{name: d.Name, kind: kind, span: nameSpan(d.Span_, d.Name), varDecl: d, scope: r.global}
+			sym := &symbol{name: d.Name, kind: kind, span: d.NameSpan, varDecl: d, scope: r.global, semanticType: r.declType(d)}
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
 		case *compiler.StructDecl:
-			sym := &symbol{name: d.Name, kind: completionKindStruct, span: nameSpan(d.Span_, d.Name), structDecl: d, scope: r.global}
+			sym := &symbol{name: d.Name, kind: completionKindStruct, span: d.NameSpan, structDecl: d, scope: r.global}
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
+			r.collectStructFields(d)
 		case *compiler.ErrorDecl:
-			sym := &symbol{name: d.Name, kind: completionKindEnum, span: nameSpan(d.Span_, d.Name), errorDecl: d, scope: r.global}
+			sym := &symbol{name: d.Name, kind: completionKindEnum, span: d.NameSpan, errorDecl: d, scope: r.global}
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectErrorMembers(d)
 		case *compiler.EnumDecl:
-			sym := &symbol{name: d.Name, kind: completionKindEnum, span: nameSpan(d.Span_, d.Name), enumDecl: d, scope: r.global}
+			sym := &symbol{name: d.Name, kind: completionKindEnum, span: d.NameSpan, enumDecl: d, scope: r.global}
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectEnumMembers(d)
@@ -131,25 +138,47 @@ func (r *resolver) buildScopes() {
 // resolve to their declaration. Members are not added to any scope's symbol
 // list: they are not accessible by bare name in expressions.
 func (r *resolver) collectErrorMembers(ed *compiler.ErrorDecl) {
+	if r.errorByDecl == nil {
+		r.errorByDecl = make(map[*compiler.ErrorDecl]map[string]*symbol)
+	}
+	if r.errorMembers == nil {
+		r.errorMembers = make(map[string]map[string]*symbol)
+	}
+	if _, exists := r.errorByDecl[ed]; exists {
+		return
+	}
+	r.errorByDecl[ed] = make(map[string]*symbol, len(ed.Members))
 	if r.errorMembers[ed.Name] == nil {
 		r.errorMembers[ed.Name] = make(map[string]*symbol)
 	}
 	for i := range ed.Members {
 		m := &ed.Members[i]
-		msym := &symbol{name: m.Name, kind: completionKindEnumMember, span: nameSpan(m.Span_, m.Name), errorMember: m, errorType: ed.Name, scope: r.global}
+		msym := &symbol{name: m.Name, kind: completionKindEnumMember, span: m.NameSpan, errorMember: m, errorType: ed.Name, scope: r.global}
 		r.errorMembers[ed.Name][m.Name] = msym
+		r.errorByDecl[ed][m.Name] = msym
 		r.occurrences = append(r.occurrences, &occurrence{name: m.Name, span: msym.span, sym: msym})
 	}
 }
 
 func (r *resolver) collectEnumMembers(ed *compiler.EnumDecl) {
+	if r.enumByDecl == nil {
+		r.enumByDecl = make(map[*compiler.EnumDecl]map[string]*symbol)
+	}
+	if r.enumMembers == nil {
+		r.enumMembers = make(map[string]map[string]*symbol)
+	}
+	if _, exists := r.enumByDecl[ed]; exists {
+		return
+	}
+	r.enumByDecl[ed] = make(map[string]*symbol, len(ed.Members))
 	if r.enumMembers[ed.Name] == nil {
 		r.enumMembers[ed.Name] = make(map[string]*symbol)
 	}
 	for i := range ed.Members {
 		m := &ed.Members[i]
-		msym := &symbol{name: m.Name, kind: completionKindEnumMember, span: nameSpan(m.Span_, m.Name), enumMember: m, enumType: ed.Name, scope: r.global}
+		msym := &symbol{name: m.Name, kind: completionKindEnumMember, span: m.NameSpan, enumMember: m, enumType: ed.Name, scope: r.global}
 		r.enumMembers[ed.Name][m.Name] = msym
+		r.enumByDecl[ed][m.Name] = msym
 		r.occurrences = append(r.occurrences, &occurrence{name: m.Name, span: msym.span, sym: msym})
 	}
 }
@@ -162,6 +191,12 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 		switch st := stmt.(type) {
 		case *compiler.VarDecl:
 			r.addVarDecl(s, st)
+		case *compiler.MultiVarDecl:
+			for i, name := range st.Names {
+				if i < len(st.NameSpans) {
+					r.addBinding(s, name, st.NameSpans[i], st.Span_.End)
+				}
+			}
 		case *compiler.IfStmt:
 			r.buildBlockScope(st.Body, s)
 			for _, elif := range st.Elif {
@@ -171,8 +206,10 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 				r.buildBlockScope(st.ElseBody, s)
 			}
 		case *compiler.UnlessCatchStmt:
-			if st.Target != "" {
-				r.addBinding(s, st.Target, st.TargetSpan, st.CatchBody.Span_.Start)
+			for i, name := range st.Targets {
+				if i < len(st.TargetSpans) {
+					r.addBinding(s, name, st.TargetSpans[i], st.CatchBody.Span_.Start)
+				}
 			}
 			r.buildCatchScope(st.CatchBody, st.CatchName, st.CatchNameSpan, s)
 		case *compiler.IfCatchStmt:
@@ -180,12 +217,15 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 		case *compiler.BlockStmt:
 			r.buildBlockScope(st, s)
 		case *compiler.ProcDecl:
+			procSym := &symbol{name: st.Name, kind: completionKindFunction, span: st.NameSpan, proc: st, scope: s, visibleFrom: st.NameSpan.End}
+			s.symbols = append(s.symbols, procSym)
+			r.decls = append(r.decls, procSym)
 			procScope := &scope{parent: s, start: st.Span_.Start, end: st.Span_.End}
 			s.children = append(s.children, procScope)
 			for i := range st.Params {
 				p := &st.Params[i]
-				span := nameSpan(p.Span_, p.Name)
-				psym := &symbol{name: p.Name, kind: completionKindVariable, span: span, param: p, scope: procScope, visibleFrom: span.End}
+				span := p.NameSpan
+				psym := &symbol{name: p.Name, kind: completionKindVariable, span: span, param: p, scope: procScope, visibleFrom: span.End, semanticType: exprText(p.Type)}
 				procScope.symbols = append(procScope.symbols, psym)
 				r.decls = append(r.decls, psym)
 			}
@@ -193,16 +233,17 @@ func (r *resolver) buildBlockScope(block *compiler.BlockStmt, parent *scope) {
 				r.buildBlockScope(st.Body, procScope)
 			}
 		case *compiler.StructDecl:
-			sym := &symbol{name: st.Name, kind: completionKindStruct, span: nameSpan(st.Span_, st.Name), structDecl: st, scope: s}
+			sym := &symbol{name: st.Name, kind: completionKindStruct, span: st.NameSpan, structDecl: st, scope: s, visibleFrom: st.NameSpan.End}
 			s.symbols = append(s.symbols, sym)
 			r.decls = append(r.decls, sym)
+			r.collectStructFields(st)
 		case *compiler.ErrorDecl:
-			sym := &symbol{name: st.Name, kind: completionKindEnum, span: nameSpan(st.Span_, st.Name), errorDecl: st, scope: s}
+			sym := &symbol{name: st.Name, kind: completionKindEnum, span: st.NameSpan, errorDecl: st, scope: s, visibleFrom: st.NameSpan.End}
 			s.symbols = append(s.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectErrorMembers(st)
 		case *compiler.EnumDecl:
-			sym := &symbol{name: st.Name, kind: completionKindEnum, span: nameSpan(st.Span_, st.Name), enumDecl: st, scope: s}
+			sym := &symbol{name: st.Name, kind: completionKindEnum, span: st.NameSpan, enumDecl: st, scope: s, visibleFrom: st.NameSpan.End}
 			s.symbols = append(s.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectEnumMembers(st)
@@ -217,10 +258,20 @@ func (r *resolver) addVarDecl(sc *scope, decl *compiler.VarDecl) {
 	if decl.CompileTime {
 		kind = completionKindConstant
 	}
-	span := nameSpan(decl.Span_, decl.Name)
-	sym := &symbol{name: decl.Name, kind: kind, span: span, varDecl: decl, scope: sc, visibleFrom: decl.Span_.End}
+	span := decl.NameSpan
+	sym := &symbol{name: decl.Name, kind: kind, span: span, varDecl: decl, scope: sc, visibleFrom: decl.Span_.End, semanticType: r.declType(decl)}
 	sc.symbols = append(sc.symbols, sym)
 	r.decls = append(r.decls, sym)
+}
+
+func (r *resolver) declType(decl compiler.Decl) string {
+	if r.analysis == nil {
+		return ""
+	}
+	if typ, ok := r.analysis.DeclTypes[decl]; ok {
+		return r.analysis.FormatType(typ)
+	}
+	return ""
 }
 
 func (r *resolver) addBinding(sc *scope, name string, span compiler.Span, visibleFrom int) {
@@ -301,8 +352,17 @@ func (r *resolver) buildCatchScope(body *compiler.BlockStmt, catchName string, c
 // are not added to any scope's symbol list: they are not accessible by bare
 // name in expressions.
 func (r *resolver) collectStructFields(st *compiler.StructDecl) {
-	for _, field := range st.Fields {
-		fsym := &symbol{name: field.Name, kind: completionKindVariable, span: nameSpan(field.Span_, field.Name), scope: r.global}
+	if r.structFields == nil {
+		r.structFields = make(map[*compiler.StructDecl]map[string]*symbol)
+	}
+	if _, exists := r.structFields[st]; exists {
+		return
+	}
+	r.structFields[st] = make(map[string]*symbol, len(st.Fields))
+	for i := range st.Fields {
+		field := &st.Fields[i]
+		fsym := &symbol{name: field.Name, kind: completionKindVariable, span: field.NameSpan, structField: field, structType: st.Name, scope: r.global}
+		r.structFields[st][field.Name] = fsym
 		r.occurrences = append(r.occurrences, &occurrence{name: field.Name, span: fsym.span, sym: fsym})
 	}
 }
@@ -318,6 +378,8 @@ func (r *resolver) collectOccurrences() {
 	var walkExpr func(expr compiler.Expr)
 	var walkStmt func(stmt compiler.Stmt)
 	var walkBlock func(block *compiler.BlockStmt)
+	var expectedType string
+	var currentProc *compiler.ProcDecl
 
 	walkExpr = func(expr compiler.Expr) {
 		switch e := expr.(type) {
@@ -330,53 +392,98 @@ func (r *resolver) collectOccurrences() {
 			walkExpr(e.Operand)
 		case *compiler.CallExpr:
 			walkExpr(e.Func)
-			for _, arg := range e.Args {
+			var proc *compiler.ProcDecl
+			if ident, ok := e.Func.(*compiler.IdentExpr); ok {
+				if callee := r.resolveName(ident.Name, ident.Span_.Start); callee != nil {
+					proc = callee.proc
+				}
+			}
+			for i, arg := range e.Args {
+				previous := expectedType
+				if proc != nil && i < len(proc.Params) {
+					expectedType = exprText(proc.Params[i].Type)
+				}
 				walkExpr(arg)
+				expectedType = previous
 			}
 		case *compiler.ParenExpr:
 			walkExpr(e.Inner)
 		case *compiler.StructInitExpr:
+			var fields map[string]*symbol
+			if decl, ok := r.semanticNominalDecl(e).(*compiler.StructDecl); ok {
+				fields = r.structFields[decl]
+			}
 			if e.Type != nil {
 				walkExpr(e.Type)
+				if fields == nil {
+					if ident, ok := e.Type.(*compiler.IdentExpr); ok {
+						if owner := r.resolveName(ident.Name, ident.Span_.Start); owner != nil && owner.structDecl != nil {
+							fields = r.structFields[owner.structDecl]
+						}
+					}
+				}
 			}
 			for _, field := range e.Fields {
+				if field.Name != "" {
+					r.occurrences = append(r.occurrences, &occurrence{name: field.Name, span: field.NameSpan, sym: fields[field.Name]})
+				}
 				if field.Value != nil {
+					previous := expectedType
+					if fsym := fields[field.Name]; fsym != nil && fsym.structField != nil {
+						expectedType = exprText(fsym.structField.Type)
+					}
 					walkExpr(field.Value)
+					expectedType = previous
 				}
 			}
 		case *compiler.ErrorMemberExpr:
 			if e.TypeName != "" {
-				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
-				r.occurrences = append(r.occurrences, &occurrence{name: e.TypeName, span: typeSpan})
+				r.occurrences = append(r.occurrences, &occurrence{name: e.TypeName, span: e.TypeNameSpan})
 			}
-			bangLen := 0
-			if e.Bang {
-				bangLen = 1
-			}
-			// The occurrence covers the member name only, not its '!'.
-			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name) - bangLen, End: e.Span_.End - bangLen}
 			var msym *symbol
-			if e.TypeName != "" {
-				msym = r.errorMembers[e.TypeName][e.Name]
-			} else {
-				msym = r.uniqueErrorMember(e.Name)
+			if decl, ok := r.semanticNominalDecl(e).(*compiler.ErrorDecl); ok {
+				msym = r.errorByDecl[decl][e.Name]
 			}
-			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: memberSpan, sym: msym})
-		case *compiler.EnumMemberExpr:
 			if e.TypeName != "" {
-				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
-				r.occurrences = append(r.occurrences, &occurrence{name: e.TypeName, span: typeSpan})
-			}
-			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name), End: e.Span_.End}
-			var msym *symbol
-			if e.TypeName != "" {
-				if inner, ok := r.enumMembers[e.TypeName]; ok {
-					msym = inner[e.Name]
+				if msym == nil {
+					if owner := r.resolveName(e.TypeName, e.TypeNameSpan.Start); owner != nil && owner.errorDecl != nil {
+						msym = r.errorByDecl[owner.errorDecl][e.Name]
+					}
 				}
 			} else {
-				msym = r.uniqueEnumMember(e.Name)
+				if msym == nil {
+					if owner := r.resolveName(expectedType, e.NameSpan.Start); owner != nil && owner.errorDecl != nil {
+						msym = r.errorByDecl[owner.errorDecl][e.Name]
+					} else {
+						msym = r.uniqueErrorMember(e.Name)
+					}
+				}
 			}
-			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: memberSpan, sym: msym})
+			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: e.NameSpan, sym: msym})
+		case *compiler.EnumMemberExpr:
+			if e.TypeName != "" {
+				r.occurrences = append(r.occurrences, &occurrence{name: e.TypeName, span: e.TypeNameSpan})
+			}
+			var msym *symbol
+			if decl, ok := r.semanticNominalDecl(e).(*compiler.EnumDecl); ok {
+				msym = r.enumByDecl[decl][e.Name]
+			}
+			if e.TypeName != "" {
+				if msym == nil {
+					if owner := r.resolveName(e.TypeName, e.TypeNameSpan.Start); owner != nil && owner.enumDecl != nil {
+						msym = r.enumByDecl[owner.enumDecl][e.Name]
+					}
+				}
+			} else {
+				if msym == nil {
+					if owner := r.resolveName(expectedType, e.NameSpan.Start); owner != nil && owner.enumDecl != nil {
+						msym = r.enumByDecl[owner.enumDecl][e.Name]
+					} else {
+						msym = r.uniqueEnumMember(e.Name)
+					}
+				}
+			}
+			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: e.NameSpan, sym: msym})
 		case *compiler.ArrayInitExpr:
 			if e.Elem != nil {
 				walkExpr(e.Elem)
@@ -389,23 +496,43 @@ func (r *resolver) collectOccurrences() {
 			walkExpr(e.Index)
 		case *compiler.LoopBuiltinExpr:
 			// Builtin directive; no symbol.
+		case *compiler.ArrayTypeExpr:
+			walkExpr(e.Elem)
+		case *compiler.ErrorExpr:
+			// Parser recovery placeholder.
 		}
 	}
 
 	walkStmt = func(stmt compiler.Stmt) {
 		switch s := stmt.(type) {
 		case *compiler.VarDecl:
+			if s.DeclType != nil {
+				walkExpr(s.DeclType)
+			}
 			if s.Init != nil {
+				previous := expectedType
+				expectedType = exprText(s.DeclType)
 				walkExpr(s.Init)
+				expectedType = previous
 			}
 		case *compiler.AssignStmt:
-			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: nameSpan(s.Span_, s.Name)})
+			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
 			if s.Value != nil {
+				previous := expectedType
+				if target := r.resolveName(s.Name, s.NameSpan.Start); target != nil && target.varDecl != nil {
+					expectedType = exprText(target.varDecl.DeclType)
+				}
 				walkExpr(s.Value)
+				expectedType = previous
 			}
 		case *compiler.ReturnStmt:
-			if s.Value != nil {
-				walkExpr(s.Value)
+			for i, value := range s.Values {
+				previous := expectedType
+				if currentProc != nil && i < len(currentProc.Results) {
+					expectedType = exprText(currentProc.Results[i])
+				}
+				walkExpr(value)
+				expectedType = previous
 			}
 		case *compiler.ExitStmt:
 			if s.Status != nil {
@@ -429,11 +556,40 @@ func (r *resolver) collectOccurrences() {
 		case *compiler.ExprStmt:
 			walkExpr(s.Expr)
 		case *compiler.ProcDecl:
+			previousProc := currentProc
+			currentProc = s
+			for i := range s.Params {
+				walkExpr(s.Params[i].Type)
+			}
+			for _, result := range s.Results {
+				walkExpr(result)
+			}
+			if s.ErrorResult != nil {
+				walkExpr(s.ErrorResult)
+			}
 			if s.Body != nil {
 				walkBlock(s.Body)
 			}
+			currentProc = previousProc
 		case *compiler.StructDecl:
 			r.collectStructFields(s)
+			for _, field := range s.Fields {
+				walkExpr(field.Type)
+				if field.Default != nil {
+					walkExpr(field.Default)
+				}
+			}
+		case *compiler.EnumDecl:
+			for _, member := range s.Members {
+				if member.Type != nil {
+					walkExpr(member.Type)
+				}
+				if member.Value != nil {
+					walkExpr(member.Value)
+				}
+			}
+		case *compiler.ErrorDecl:
+			// Members were indexed with the declaration.
 		case *compiler.UnlessCatchStmt:
 			walkExpr(s.Init)
 			walkBlock(s.CatchBody)
@@ -457,12 +613,14 @@ func (r *resolver) collectOccurrences() {
 		case *compiler.BreakStmt, *compiler.ContinueStmt:
 			// No operands.
 		case *compiler.CompoundAssignStmt:
-			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: nameSpan(s.Span_, s.Name)})
+			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
 			if s.Value != nil {
 				walkExpr(s.Value)
 			}
 		case *compiler.IncDecStmt:
-			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: nameSpan(s.Span_, s.Name)})
+			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
+		case *compiler.MultiVarDecl:
+			walkExpr(s.Init)
 		}
 	}
 
@@ -473,17 +631,19 @@ func (r *resolver) collectOccurrences() {
 	}
 
 	for _, decl := range r.program.Decls {
-		switch d := decl.(type) {
-		case *compiler.ProcDecl:
-			if d.Body != nil {
-				walkBlock(d.Body)
-			}
-		case *compiler.VarDecl:
-			walkStmt(d)
-		case *compiler.StructDecl:
-			r.collectStructFields(d)
-		}
+		walkStmt(decl)
 	}
+}
+
+func (r *resolver) semanticNominalDecl(expr compiler.Expr) compiler.Decl {
+	if r.analysis == nil || expr == nil {
+		return nil
+	}
+	typ, ok := r.analysis.ExprTypes[expr]
+	if !ok {
+		return nil
+	}
+	return r.analysis.NominalDecls[typ]
 }
 
 // scopeAt returns the deepest scope containing the byte offset.
@@ -591,10 +751,10 @@ func (r *resolver) hoverAt(offset int) string {
 	occ := r.occurrenceAt(offset)
 	if occ != nil {
 		if occ.sym != nil {
-			return symbolHover(occ.sym)
+			return r.symbolHover(occ.sym)
 		}
 		if sym := r.resolveName(occ.name, offset); sym != nil {
-			return symbolHover(sym)
+			return r.symbolHover(sym)
 		}
 	}
 	// Literal: return the raw token source text.
@@ -637,14 +797,17 @@ func (r *resolver) completionAt(offset int) []CompletionItem {
 	return out
 }
 
-// memberCompletion returns the members of the error or enum type named before a
-// trailing '.' at the offset, or nil when the cursor is not after 'TypeName.'.
+// memberCompletion accepts both "Type." and a partially typed "Type.PRE".
 func (r *resolver) memberCompletion(offset int) []CompletionItem {
-	if offset <= 0 {
+	if offset <= 0 || offset > len(r.sf.Source) {
 		return nil
 	}
 	src := r.sf.Source
 	i := offset - 1
+	for i >= 0 && !isIdentStop(src[i]) {
+		i--
+	}
+	prefix := norm.NFC.String(string(src[i+1 : offset]))
 	for i >= 0 && (src[i] == ' ' || src[i] == '\t') {
 		i--
 	}
@@ -655,20 +818,71 @@ func (r *resolver) memberCompletion(offset int) []CompletionItem {
 	for j >= 0 && !isIdentStop(src[j]) {
 		j--
 	}
-	name := string(src[j+1 : i])
-	members, ok := r.errorMembers[name]
-	if !ok {
-		members, ok = r.enumMembers[name]
-		if !ok {
-			return nil
+	name := norm.NFC.String(string(src[j+1 : i]))
+	var members map[string]*symbol
+	owner := r.resolveName(name, j+1)
+	if owner != nil {
+		switch {
+		case owner.errorDecl != nil:
+			members = r.errorByDecl[owner.errorDecl]
+		case owner.enumDecl != nil:
+			members = r.enumByDecl[owner.enumDecl]
+		case owner.structDecl != nil:
+			members = r.structFields[owner.structDecl]
+		case owner.semanticType != "":
+			if typeOwner := r.resolveName(owner.semanticType, owner.span.Start); typeOwner != nil {
+				if typeOwner.structDecl != nil {
+					members = r.structFields[typeOwner.structDecl]
+				} else if typeOwner.enumDecl != nil {
+					members = r.enumByDecl[typeOwner.enumDecl]
+				} else if typeOwner.errorDecl != nil {
+					members = r.errorByDecl[typeOwner.errorDecl]
+				}
+			}
 		}
+	}
+	if members == nil {
+		members = r.semanticMembersAt(i)
+	}
+	if members == nil {
+		return nil
 	}
 	out := []CompletionItem{}
 	for _, msym := range members {
+		if !strings.HasPrefix(msym.name, prefix) {
+			continue
+		}
 		out = append(out, CompletionItem{Label: msym.name, Kind: msym.kind})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
+}
+
+func (r *resolver) semanticMembersAt(offset int) map[string]*symbol {
+	if r.analysis == nil || r.program == nil {
+		return nil
+	}
+	var result map[string]*symbol
+	compiler.WalkAST(r.program, func(node compiler.Node) bool {
+		expr, ok := node.(compiler.Expr)
+		if !ok {
+			return true
+		}
+		span := compiler.NodeSpan(expr)
+		if offset < span.Start || offset > span.End {
+			return true
+		}
+		switch decl := r.semanticNominalDecl(expr).(type) {
+		case *compiler.StructDecl:
+			result = r.structFields[decl]
+		case *compiler.EnumDecl:
+			result = r.enumByDecl[decl]
+		case *compiler.ErrorDecl:
+			result = r.errorByDecl[decl]
+		}
+		return result == nil
+	})
+	return result
 }
 
 // isIdentStop reports whether a byte cannot appear inside an identifier.
@@ -683,8 +897,11 @@ func isIdentStop(b byte) bool {
 
 // exprText returns the source text of an identifier type expression.
 func exprText(e compiler.Expr) string {
-	if ident, ok := e.(*compiler.IdentExpr); ok {
-		return ident.Name
+	switch value := e.(type) {
+	case *compiler.IdentExpr:
+		return value.Name
+	case *compiler.ArrayTypeExpr:
+		return "[]" + exprText(value.Elem)
 	}
 	return ""
 }
@@ -707,17 +924,28 @@ func procSignature(proc *compiler.ProcDecl) string {
 		b.WriteString(" -> void")
 	} else if proc.ErrorResult != nil {
 		b.WriteString(" -> (")
-		b.WriteString(exprText(proc.Results[0]))
+		for i, result := range proc.Results {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(exprText(result))
+		}
 		b.WriteString(" <> ")
 		b.WriteString(exprText(proc.ErrorResult))
 		b.WriteString(")")
 	} else {
 		b.WriteString(" -> ")
+		if len(proc.Results) > 1 {
+			b.WriteString("(")
+		}
 		for i, res := range proc.Results {
 			if i > 0 {
 				b.WriteString(", ")
 			}
 			b.WriteString(exprText(res))
+		}
+		if len(proc.Results) > 1 {
+			b.WriteString(")")
 		}
 	}
 	return b.String()
@@ -734,6 +962,10 @@ func structSignature(st *compiler.StructDecl) string {
 		b.WriteString(field.Name)
 		b.WriteString(": ")
 		b.WriteString(exprText(field.Type))
+		if field.Default != nil {
+			b.WriteString(" = ")
+			b.WriteString(enumExprText(field.Default))
+		}
 		b.WriteString(";\n")
 	}
 	b.WriteString("}")
@@ -789,7 +1021,7 @@ func enumSignature(ed *compiler.EnumDecl) string {
 }
 
 // symbolHover renders markdown content for a symbol.
-func symbolHover(sym *symbol) string {
+func (r *resolver) symbolHover(sym *symbol) string {
 	switch {
 	case sym.proc != nil:
 		return "```chaos\n" + procSignature(sym.proc) + "\n```"
@@ -804,17 +1036,44 @@ func symbolHover(sym *symbol) string {
 	case sym.enumMember != nil:
 		return "```chaos\n" + sym.enumType + "." + sym.name + " : " + sym.enumType + "\n```"
 	case sym.varDecl != nil:
+		if sym.semanticType != "" {
+			return "```chaos\n" + sym.name + " : " + sym.semanticType + "\n```"
+		}
 		if sym.varDecl.DeclType != nil {
 			return "```chaos\n" + sym.name + " : " + exprText(sym.varDecl.DeclType) + "\n```"
 		}
-		return "```chaos\n" + sym.name + " : inferred\n```"
+		return "```chaos\n" + sym.name + " : " + inferredExprType(sym.varDecl.Init) + "\n```"
 	case sym.param != nil:
 		if sym.param.Type != nil {
 			return "```chaos\n" + sym.name + " : " + exprText(sym.param.Type) + "\n```"
 		}
 		return "```chaos\n" + sym.name + " : inferred\n```"
+	case sym.structField != nil:
+		return "```chaos\n" + sym.structType + "." + sym.name + " : " + exprText(sym.structField.Type) + "\n```"
 	}
 	return ""
+}
+
+func inferredExprType(expr compiler.Expr) string {
+	switch e := expr.(type) {
+	case *compiler.IntExpr:
+		return "S64"
+	case *compiler.FloatExpr:
+		return "F64"
+	case *compiler.StringExpr:
+		return "String"
+	case *compiler.BoolExpr:
+		return "Bool"
+	case *compiler.StructInitExpr:
+		if e.Type != nil {
+			return exprText(e.Type)
+		}
+	case *compiler.ArrayInitExpr:
+		return "[]" + exprText(e.Elem)
+	case *compiler.ParenExpr:
+		return inferredExprType(e.Inner)
+	}
+	return "inferred"
 }
 
 // handleDefinition handles textDocument/definition.
@@ -829,7 +1088,10 @@ func (s *Server) handleDefinition(msg message) Response {
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
 	}
-	offset := positionToByteOffset(doc.Text, params.Position)
+	offset, ok := positionToByteOffsetChecked(doc.Text, params.Position)
+	if !ok {
+		return errorResponse(msg.ID, -32602, "position is outside the document or splits a UTF-16 character")
+	}
 	sym := buildResolver(doc).definitionAt(offset)
 	if sym == nil {
 		return Response{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage("null")}
@@ -853,7 +1115,10 @@ func (s *Server) handleReferences(msg message) Response {
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
 	}
-	offset := positionToByteOffset(doc.Text, params.Position)
+	offset, ok := positionToByteOffsetChecked(doc.Text, params.Position)
+	if !ok {
+		return errorResponse(msg.ID, -32602, "position is outside the document or splits a UTF-16 character")
+	}
 	occs := buildResolver(doc).referencesAt(offset)
 	var locs []Location
 	for _, occ := range occs {
@@ -881,7 +1146,10 @@ func (s *Server) handleDocumentHighlight(msg message) Response {
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
 	}
-	offset := positionToByteOffset(doc.Text, params.Position)
+	offset, ok := positionToByteOffsetChecked(doc.Text, params.Position)
+	if !ok {
+		return errorResponse(msg.ID, -32602, "position is outside the document or splits a UTF-16 character")
+	}
 	occs := buildResolver(doc).referencesAt(offset)
 	var highlights []DocumentHighlight
 	for _, occ := range occs {
@@ -906,7 +1174,10 @@ func (s *Server) handleHover(msg message) Response {
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
 	}
-	offset := positionToByteOffset(doc.Text, params.Position)
+	offset, ok := positionToByteOffsetChecked(doc.Text, params.Position)
+	if !ok {
+		return errorResponse(msg.ID, -32602, "position is outside the document or splits a UTF-16 character")
+	}
 	content := buildResolver(doc).hoverAt(offset)
 	if content == "" {
 		return Response{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage("null")}
@@ -930,7 +1201,10 @@ func (s *Server) handleCompletion(msg message) Response {
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
 	}
-	offset := positionToByteOffset(doc.Text, params.Position)
+	offset, ok := positionToByteOffsetChecked(doc.Text, params.Position)
+	if !ok {
+		return errorResponse(msg.ID, -32602, "position is outside the document or splits a UTF-16 character")
+	}
 	items := buildResolver(doc).completionAt(offset)
 	out, err := json.Marshal(CompletionList{IsIncomplete: false, Items: items})
 	if err != nil {

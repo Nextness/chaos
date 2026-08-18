@@ -29,6 +29,14 @@ func lowerSource(t *testing.T, source string) (*HIR, *MIRProgram) {
 	return hir, mir
 }
 
+func TestLowerAnalyzedProgramRequiresAnalysis(t *testing.T) {
+	program := &Program{}
+	hir, diags := LowerAnalyzedProgram(program, nil)
+	if hir == nil || !hasError(diags, "requires semantic analysis facts") {
+		t.Fatalf("result = %#v, %v; want a safe diagnostic", hir, diags)
+	}
+}
+
 func findHIRProc(hir *HIR, name string) *HIRProc {
 	for _, p := range hir.Procs {
 		if p.Name == name {
@@ -171,8 +179,8 @@ func TestLowerBinaryLiteralAdaptation(t *testing.T) {
 }
 
 func TestLowerNegativeLiteralAdaptation(t *testing.T) {
-	// A negated literal adapts to the declared type: the inner constant and
-	// the unary node both carry the target type.
+	// A negated literal adapts to the declared type and is materialized as one
+	// exact signed constant, avoiding an out-of-range positive magnitude in MIR.
 	hir, _ := lowerSource(t, "main :: proc {\n    a: S128 = -100;\n}")
 	p := findHIRProc(hir, "main")
 	if p == nil {
@@ -182,18 +190,15 @@ func TestLowerNegativeLiteralAdaptation(t *testing.T) {
 	if !ok {
 		t.Fatalf("first statement = %T, want *HIRVarDecl", p.Body.Stmts[0])
 	}
-	un, ok := vd.Init.(*HIRUnary)
+	constant, ok := vd.Init.(*HIRConst)
 	if !ok {
-		t.Fatalf("a init = %T, want *HIRUnary", vd.Init)
+		t.Fatalf("a init = %T, want *HIRConst", vd.Init)
 	}
-	if un.Op != UnaryOpNeg {
-		t.Errorf("unary op = %v, want neg", un.Op)
+	if constant.Str != "-100" {
+		t.Errorf("constant spelling = %q, want -100", constant.Str)
 	}
-	if typeName(hir, un.Type) != "S128" {
-		t.Errorf("negated literal type = %s, want S128 (literal adaptation)", typeName(hir, un.Type))
-	}
-	if c, ok := un.Operand.(*HIRConst); !ok || typeName(hir, c.Type) != "S128" {
-		t.Errorf("negated literal operand = %#v, want S128-typed constant", un.Operand)
+	if typeName(hir, constant.Type) != "S128" {
+		t.Errorf("negated literal type = %s, want S128 (literal adaptation)", typeName(hir, constant.Type))
 	}
 }
 
@@ -208,12 +213,12 @@ func TestLowerReturnLiteralAdaptation(t *testing.T) {
 	if !ok {
 		t.Fatalf("first statement = %T, want *HIRReturn", p.Body.Stmts[0])
 	}
-	un, ok := rs.Value.(*HIRUnary)
+	constant, ok := rs.Value.(*HIRConst)
 	if !ok {
-		t.Fatalf("return value = %T, want *HIRUnary", rs.Value)
+		t.Fatalf("return value = %T, want *HIRConst", rs.Value)
 	}
-	if typeName(hir, un.Type) != "S128" {
-		t.Errorf("return literal type = %s, want S128 (result adaptation)", typeName(hir, un.Type))
+	if typeName(hir, constant.Type) != "S128" || constant.Str != "-100" {
+		t.Errorf("return literal = %#v, want exact S128 -100", constant)
 	}
 }
 
@@ -382,25 +387,43 @@ func TestLowerTopLevelShadowInitializerUsesPreviousBinding(t *testing.T) {
 	if outer.Symbol == inner.Symbol {
 		t.Fatalf("shadowed globals share SymbolID %d", outer.Symbol)
 	}
-	init, ok := inner.Init.(*HIRBinary)
+	init, ok := inner.Init.(*HIRConst)
 	if !ok {
-		t.Fatalf("shadow initializer = %T, want *HIRBinary", inner.Init)
+		t.Fatalf("shadow initializer = %T, want folded *HIRConst", inner.Init)
 	}
-	ref, ok := init.Left.(*HIRRef)
-	if !ok || ref.Symbol != outer.Symbol {
-		t.Fatalf("shadow initializer left = %#v, want outer symbol %d", init.Left, outer.Symbol)
+	if init.Int != 15 || init.Str != "15" {
+		t.Fatalf("compile-time shadow initializer = %#v, want folded constant 15", init)
+	}
+}
+
+func TestLowerCompileTimeArithmeticHasNoRuntimeStorage(t *testing.T) {
+	hir, _ := lowerSource(t, "#entry main :: proc -> S64 { answer :: 40 + 2; return answer; }")
+	proc := findHIRProc(hir, "main")
+	if proc == nil {
+		t.Fatal("main procedure not found")
+	}
+	if len(proc.Body.Stmts) != 1 {
+		t.Fatalf("HIR statements = %d, want only the return after constant substitution", len(proc.Body.Stmts))
+	}
+	ret, ok := proc.Body.Stmts[0].(*HIRReturn)
+	if !ok {
+		t.Fatalf("statement = %T, want *HIRReturn", proc.Body.Stmts[0])
+	}
+	constant, ok := ret.Value.(*HIRConst)
+	if !ok || constant.Int != 42 || constant.Str != "42" {
+		t.Fatalf("return value = %#v, want folded constant 42", ret.Value)
 	}
 }
 
 func TestLowerUnary(t *testing.T) {
-	hir, _ := lowerSource(t, "main :: proc {\n    flag := false;\n    x := -5;\n    y := !flag;\n}")
+	hir, _ := lowerSource(t, "main :: proc {\n    flag := false;\n    magnitude := 5;\n    x := -magnitude;\n    y := !flag;\n}")
 	p := findHIRProc(hir, "main")
 	if p == nil {
 		t.Fatal("proc main not found")
 	}
-	neg, ok := p.Body.Stmts[1].(*HIRVarDecl)
+	neg, ok := p.Body.Stmts[2].(*HIRVarDecl)
 	if !ok {
-		t.Fatalf("second statement = %T, want *HIRVarDecl", p.Body.Stmts[1])
+		t.Fatalf("third statement = %T, want *HIRVarDecl", p.Body.Stmts[2])
 	}
 	un, ok := neg.Init.(*HIRUnary)
 	if !ok {
@@ -409,9 +432,9 @@ func TestLowerUnary(t *testing.T) {
 	if un.Op != UnaryOpNeg || typeName(hir, un.Type) != "S64" {
 		t.Errorf("neg = op %v type %s, want - S64", un.Op, typeName(hir, un.Type))
 	}
-	not, ok := p.Body.Stmts[2].(*HIRVarDecl)
+	not, ok := p.Body.Stmts[3].(*HIRVarDecl)
 	if !ok {
-		t.Fatalf("third statement = %T, want *HIRVarDecl", p.Body.Stmts[2])
+		t.Fatalf("fourth statement = %T, want *HIRVarDecl", p.Body.Stmts[3])
 	}
 	un2, ok := not.Init.(*HIRUnary)
 	if !ok {

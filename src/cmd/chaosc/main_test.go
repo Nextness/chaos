@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,7 +24,7 @@ func TestRunSuccessfulParse(t *testing.T) {
 		t.Fatalf("write test source: %v", err)
 	}
 
-	code, diagOut, out := runCLI([]string{sourcePath})
+	code, diagOut, out := runCLI([]string{"-check", sourcePath})
 	if code != 0 {
 		t.Fatalf("run exit code = %d, want 0; diagnostics: %s", code, diagOut.String())
 	}
@@ -83,10 +85,89 @@ func TestRunAsmFlag(t *testing.T) {
 		t.Fatalf("run exit code = %d, want 0; diagnostics: %s", code, diagOut.String())
 	}
 	text := out.String()
-	for _, want := range []string{"format ELF64 executable 3", "entry _start", "call f_main", "mov rdi, rax", "syscall"} {
+	for _, want := range []string{"format ELF64 executable 3", "entry _start", "call chaos_fn_0", "mov rdi, rax", "syscall"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("output missing %q:\n%s", want, text)
 		}
+	}
+}
+
+func TestRunDefaultBuildsExecutable(t *testing.T) {
+	temporaryDirectory := t.TempDir()
+	sourcePath := filepath.Join(temporaryDirectory, "input.chaos")
+	outputPath := filepath.Join(temporaryDirectory, "program")
+	if err := os.WriteFile(sourcePath, []byte("#entry main :: proc -> S64 { return 37; }"), 0o600); err != nil {
+		t.Fatalf("write test source: %v", err)
+	}
+	code, diagOut, out := runCLI([]string{"-o", outputPath, sourcePath})
+	if code != 0 {
+		t.Fatalf("run exit code = %d, want 0; diagnostics: %s", code, diagOut.String())
+	}
+	if out.Len() != 0 {
+		t.Fatalf("default compile wrote stdout: %q", out.String())
+	}
+	command := exec.Command(outputPath)
+	err := command.Run()
+	var exitError *exec.ExitError
+	if !errors.As(err, &exitError) || exitError.ExitCode() != 37 {
+		t.Fatalf("executable result = %v, want exit status 37", err)
+	}
+}
+
+func TestRunRejectsUnknownBackendBeforeCreatingArtifact(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "input.chaos")
+	outputPath := filepath.Join(dir, "program")
+	if err := os.WriteFile(sourcePath, []byte("#entry main :: proc -> S64 { return 0; }"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, diagOut, _ := runCLI([]string{"-backend", "missing", "-o", outputPath, sourcePath})
+	if code != 2 || !strings.Contains(diagOut.String(), "unknown backend") || !strings.Contains(diagOut.String(), "fasm") {
+		t.Fatalf("unknown backend: code=%d diagnostics=%q", code, diagOut.String())
+	}
+	if _, err := os.Stat(outputPath); !os.IsNotExist(err) {
+		t.Fatalf("unknown backend left an artifact: %v", err)
+	}
+}
+
+func TestRunTargetFailurePreservesExistingArtifact(t *testing.T) {
+	dir := t.TempDir()
+	sourcePath := filepath.Join(dir, "input.chaos")
+	outputPath := filepath.Join(dir, "output.asm")
+	if err := os.WriteFile(sourcePath, []byte("#entry main :: proc -> S64 { x: F16 = 1.5; return 0; }"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outputPath, []byte("previous artifact"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, diagOut, _ := runCLI([]string{"-asm", "-o", outputPath, sourcePath})
+	if code != 1 || !strings.Contains(diagOut.String(), "F16 is not yet supported") {
+		t.Fatalf("target failure: code=%d diagnostics=%q", code, diagOut.String())
+	}
+	contents, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != "previous artifact" {
+		t.Fatalf("failed compile replaced artifact with %q", contents)
+	}
+}
+
+func TestWriteSelectedOutputAtomicallyReplacesFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dump.txt")
+	if err := os.WriteFile(path, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diagnostics bytes.Buffer
+	if code := writeSelectedOutput(path, "new", &out, &diagnostics); code != 0 {
+		t.Fatalf("writeSelectedOutput = %d: %s", code, diagnostics.String())
+	}
+	contents, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(contents) != "new" {
+		t.Fatalf("output = %q, want new", contents)
 	}
 }
 

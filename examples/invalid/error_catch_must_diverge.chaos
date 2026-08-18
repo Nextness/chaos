@@ -1,5 +1,5 @@
 // expect-stage: type
-// expect-error: the catch block must return or exit
+// expect-error: the catch block must diverge
 // A catch block that falls through would leave the value undefined.
 Some_Error :: error { GENERIC; }
 

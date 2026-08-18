@@ -3,24 +3,26 @@ HIR
     Block
       If condition=Binary(< Ident(x) Int(0))
         Block
-          Return StructInit(value, value=Unknown, error=Error(GENERIC), hasError=Bool(true))
-      Return StructInit(value, value=Binary(* Ident(x) Int(2)), error=Unknown, hasError=Bool(false))
+          Return StructInit(value, value=Int(0), error=Error(GENERIC), hasError=Bool(true))
+      Return StructInit(value, value=Binary(* Ident(x) Int(2)), error=Error(0), hasError=Bool(false))
   Proc triple() -> S64<>Some_Error
     Block
-      Return StructInit(value, value=Int(3), error=Unknown, hasError=Bool(false))
+      Return StructInit(value, value=Int(3), error=Error(0), hasError=Bool(false))
   Proc main() -> S64
     Block
       Block
-        VarDecl a: S64<>Some_Error = Call(double, Int(5)) [mutable=true compileTime=false]
-        IfCatch Ident(a)
+        VarDecl : S64<>Some_Error = Call(double, Int(5)) [mutable=false compileTime=false]
+        IfCatch Ident(__chaos_union)
           Block
-            Return Unary(- Int(1))
+            Return Int(-1)
+        VarDecl a: S64 = FieldLoad(Ident(__chaos_union), 0) [mutable=true compileTime=false]
       Block
-        VarDecl b: S64<>Some_Error = Call(triple) [mutable=true compileTime=false]
-        IfCatch Ident(b)
+        VarDecl : S64<>Some_Error = Call(triple) [mutable=false compileTime=false]
+        IfCatch Ident(__chaos_union)
           Block
-            Return Unary(- Int(2))
-      If condition=Binary(&& Binary(== FieldLoad(Ident(a), 0) Int(10)) Binary(== FieldLoad(Ident(b), 0) Int(3)))
+            Return Int(-2)
+        VarDecl b: S64 = FieldLoad(Ident(__chaos_union), 0) [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(== Ident(a) Int(10)) Binary(== Ident(b) Int(3)))
         Block
           Return Int(10)
       Return Int(0)

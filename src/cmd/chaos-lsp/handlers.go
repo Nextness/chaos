@@ -2,8 +2,6 @@ package main
 
 import (
 	"encoding/json"
-
-	"chaos_new/compiler"
 )
 
 // semanticTokenTypes is the legend declared in initialize and used by
@@ -17,18 +15,25 @@ func (s *Server) handleRequest(msg message) Response {
 		return s.handleInitialize(msg)
 	case "shutdown":
 		s.mu.Lock()
-		s.shutdown = true
+		if s.state == serverPreInitialize {
+			s.mu.Unlock()
+			return errorResponse(msg.ID, -32002, "server not initialized")
+		}
+		if s.state == serverShutdown {
+			s.mu.Unlock()
+			return errorResponse(msg.ID, -32600, "server is already shutting down")
+		}
+		s.state = serverShutdown
 		s.mu.Unlock()
 		return Response{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage("null")}
 	default:
 		s.mu.Lock()
-		initialized := s.initialized
-		shutdown := s.shutdown
+		state := s.state
 		s.mu.Unlock()
-		if !initialized {
+		if state == serverPreInitialize {
 			return errorResponse(msg.ID, -32002, "server not initialized")
 		}
-		if shutdown {
+		if state == serverShutdown {
 			return errorResponse(msg.ID, -32600, "server is shutting down")
 		}
 		switch msg.Method {
@@ -54,6 +59,12 @@ func (s *Server) handleRequest(msg message) Response {
 
 // handleNotification dispatches a JSON-RPC notification.
 func (s *Server) handleNotification(msg message) {
+	s.mu.Lock()
+	state := s.state
+	s.mu.Unlock()
+	if state != serverRunning {
+		return
+	}
 	switch msg.Method {
 	case "initialized":
 		// The client is ready; nothing to do.
@@ -71,7 +82,11 @@ func (s *Server) handleNotification(msg message) {
 // handleInitialize responds with the server capabilities.
 func (s *Server) handleInitialize(msg message) Response {
 	s.mu.Lock()
-	s.initialized = true
+	if s.state != serverPreInitialize {
+		s.mu.Unlock()
+		return errorResponse(msg.ID, -32600, "initialize may only be requested once")
+	}
+	s.state = serverRunning
 	s.mu.Unlock()
 	result := InitializeResult{
 		Capabilities: ServerCapabilities{
@@ -85,7 +100,7 @@ func (s *Server) handleInitialize(msg message) Response {
 			ReferencesProvider:        true,
 			DocumentHighlightProvider: true,
 			HoverProvider:             true,
-			CompletionProvider:        &CompletionOptions{},
+			CompletionProvider:        &CompletionOptions{TriggerCharacters: []string{"."}},
 		},
 		ServerInfo: ServerInfo{Name: "chaos-lsp", Version: "0.1.0"},
 	}
@@ -102,8 +117,7 @@ func (s *Server) handleDidOpen(msg message) {
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return
 	}
-	doc := &Document{URI: params.TextDocument.URI, Text: params.TextDocument.Text}
-	doc.refresh()
+	doc := newDocument(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
 	s.mu.Lock()
 	s.documents[doc.URI] = doc
 	s.mu.Unlock()
@@ -118,13 +132,23 @@ func (s *Server) handleDidChange(msg message) {
 		return
 	}
 	s.mu.Lock()
-	doc := s.documents[params.TextDocument.URI]
-	s.mu.Unlock()
-	if doc == nil {
+	old := s.documents[params.TextDocument.URI]
+	if old == nil || params.TextDocument.Version <= old.Version {
+		s.mu.Unlock()
+		if old != nil {
+			s.logf("chaos-lsp: ignored stale document version %d for %s (current %d)\n", params.TextDocument.Version, params.TextDocument.URI, old.Version)
+		}
 		return
 	}
-	doc.Text = applyEdits(doc.Text, params.ContentChanges)
-	doc.refresh()
+	text, ok := applyEditsChecked(old.Text, params.ContentChanges)
+	if !ok {
+		s.mu.Unlock()
+		s.logf("chaos-lsp: rejected invalid incremental edit for %s; waiting for a full valid update\n", params.TextDocument.URI)
+		return
+	}
+	doc := newDocument(old.URI, params.TextDocument.Version, text)
+	s.documents[doc.URI] = doc
+	s.mu.Unlock()
 	s.publishDiagnostics(doc)
 }
 
@@ -146,15 +170,9 @@ func (s *Server) handleDidClose(msg message) {
 // publishDiagnostics tokenizes and parses the document in tolerant mode and
 // pushes the resulting diagnostics.
 func (s *Server) publishDiagnostics(doc *Document) {
-	tokens, diags := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
-	result := compiler.ParseProgramTolerant(tokens)
-	all := append(diags, result.Diags...)
-	if !all.HasErrors() {
-		all = append(all, compiler.CheckProgram(result.Program)...)
-	}
 	s.sendNotification("textDocument/publishDiagnostics", PublishDiagnosticsParams{
 		URI:         doc.URI,
-		Diagnostics: convertDiagnostics(all, doc.sf),
+		Diagnostics: convertDiagnostics(doc.diags, doc.sf),
 	})
 }
 
@@ -168,5 +186,5 @@ func (s *Server) sendNotification(method string, params any) {
 	if err != nil {
 		return
 	}
-	writeMessage(s.writer, body)
+	s.setWriteError(writeMessage(s.writer, body))
 }

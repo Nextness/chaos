@@ -1,3 +1,6 @@
 [ERROR] 5:10:error_unless_not_union.chaos - unless catch requires an error-returning expression, got S64
      r := 5 unless catch {
           ^ -> use an expression that can return an error
+[ERROR] 8:12:error_unless_not_union.chaos - use of undeclared variable r
+     return r;
+            ^ -> declare it before using it in this scope

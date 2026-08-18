@@ -6,7 +6,7 @@ HIR
       If condition=Binary(== Ident(err) Error(OUT_OF_MEMORY))
         Block
           Return Int(1)
-      If condition=Binary(== Ident(default_error) Error(NOT_FOUND))
+      If condition=Binary(== Error(NOT_FOUND) Error(NOT_FOUND))
         Block
           Return Int(2)
       VarDecl other: Other_Error = Error(GENERIC) [mutable=true compileTime=false]

@@ -43,17 +43,29 @@ func utf16LineLength(source []byte, lineStart int) int {
 // spanToTokenRows converts a span to one or more semantic token rows. A
 // multiline span is split into per-line rows so each row stays on one line.
 func spanToTokenRows(span compiler.Span, sf *compiler.SourceFile, typeIndex int) []semanticToken {
+	if sf == nil {
+		return nil
+	}
 	r := compiler.SpanToRange(span, sf)
 	if r.Start.Line == r.End.Line {
+		if r.End.Character <= r.Start.Character {
+			return nil
+		}
 		return []semanticToken{{line: r.Start.Line, startChar: r.Start.Character, length: r.End.Character - r.Start.Character, typeIndex: typeIndex}}
 	}
 	var out []semanticToken
 	firstLineEnd := utf16LineLength(sf.Source, sf.LineOffsets[r.Start.Line])
-	out = append(out, semanticToken{line: r.Start.Line, startChar: r.Start.Character, length: firstLineEnd - r.Start.Character, typeIndex: typeIndex})
-	for line := r.Start.Line + 1; line < r.End.Line; line++ {
-		out = append(out, semanticToken{line: line, startChar: 0, length: utf16LineLength(sf.Source, sf.LineOffsets[line]), typeIndex: typeIndex})
+	if firstLineEnd > r.Start.Character {
+		out = append(out, semanticToken{line: r.Start.Line, startChar: r.Start.Character, length: firstLineEnd - r.Start.Character, typeIndex: typeIndex})
 	}
-	out = append(out, semanticToken{line: r.End.Line, startChar: 0, length: r.End.Character, typeIndex: typeIndex})
+	for line := r.Start.Line + 1; line < r.End.Line; line++ {
+		if length := utf16LineLength(sf.Source, sf.LineOffsets[line]); length > 0 {
+			out = append(out, semanticToken{line: line, startChar: 0, length: length, typeIndex: typeIndex})
+		}
+	}
+	if r.End.Character > 0 {
+		out = append(out, semanticToken{line: r.End.Line, startChar: 0, length: r.End.Character, typeIndex: typeIndex})
+	}
 	return out
 }
 
@@ -67,6 +79,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 		case compiler.TkExit, compiler.TkIf, compiler.TkElif, compiler.TkElse,
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
 			compiler.TkStruct, compiler.TkErrorKw, compiler.TkEnum, compiler.TkUnless, compiler.TkCatch,
+			compiler.TkFor, compiler.TkBreak, compiler.TkContinue,
 			compiler.TkTrue, compiler.TkFalse,
 			compiler.TkHash, compiler.TkDirec:
 			idx = semTypeKeyword
@@ -90,26 +103,12 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 	return out
 }
 
-// builtinTypes are the primitive type names that exist in the language. Only
-// these and declared struct names are highlighted as types; undeclared
-// identifiers in type position are left unhighlighted. Array and Map are
-// intentionally absent (handled later).
-var builtinTypes = map[string]bool{
-	"S8": true, "S16": true, "S32": true, "S64": true, "S128": true,
-	"U8": true, "U16": true, "U32": true, "U64": true, "U128": true,
-	"Size": true,
-	"F16":  true, "F32": true, "F64": true, "F128": true,
-	"C64": true, "C128": true,
-	"Q128": true, "Q256": true,
-	"String": true, "Byte": true, "Void": true, "Addr": true, "Bool": true,
-	"Error": true, "Any": true, "Self": true, "Type": true, "Named_Scope": true,
-}
-
 // knownTypeNames returns the set of type names that exist in the program:
 // built-in primitive types plus declared struct and error type names.
 func knownTypeNames(program *compiler.Program) map[string]bool {
-	types := make(map[string]bool, len(builtinTypes))
-	for name := range builtinTypes {
+	builtins := compiler.BuiltinTypeNames()
+	types := make(map[string]bool, len(builtins))
+	for _, name := range builtins {
 		types[name] = true
 	}
 	for _, decl := range program.Decls {
@@ -129,8 +128,13 @@ func knownTypeNames(program *compiler.Program) map[string]bool {
 // the name is a known type (built-in or declared struct). Undeclared
 // identifiers in type position are not highlighted.
 func typeToken(expr compiler.Expr, sf *compiler.SourceFile, known map[string]bool, out *[]semanticToken) {
-	if ident, ok := expr.(*compiler.IdentExpr); ok && known[ident.Name] {
-		*out = append(*out, spanToTokenRows(ident.Span_, sf, semTypeType)...)
+	switch e := expr.(type) {
+	case *compiler.IdentExpr:
+		if known[e.Name] {
+			*out = append(*out, spanToTokenRows(e.Span_, sf, semTypeType)...)
+		}
+	case *compiler.ArrayTypeExpr:
+		typeToken(e.Elem, sf, known, out)
 	}
 }
 
@@ -173,29 +177,23 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				typeToken(e.Type, sf, known, &out)
 			}
 			for _, field := range e.Fields {
+				if field.Name != "" {
+					out = append(out, spanToTokenRows(field.NameSpan, sf, semTypeVariable)...)
+				}
 				if field.Value != nil {
 					walkExpr(field.Value)
 				}
 			}
 		case *compiler.ErrorMemberExpr:
 			if e.TypeName != "" {
-				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
-				out = append(out, spanToTokenRows(typeSpan, sf, semTypeType)...)
+				out = append(out, spanToTokenRows(e.TypeNameSpan, sf, semTypeType)...)
 			}
-			bangLen := 0
-			if e.Bang {
-				bangLen = 1
-			}
-			// The constant highlight covers the member name and its '!'.
-			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name) - bangLen, End: e.Span_.End}
-			out = append(out, spanToTokenRows(memberSpan, sf, semTypeConstant)...)
+			out = append(out, spanToTokenRows(e.NameSpan, sf, semTypeConstant)...)
 		case *compiler.EnumMemberExpr:
 			if e.TypeName != "" {
-				typeSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: e.Span_.Start + len(e.TypeName)}
-				out = append(out, spanToTokenRows(typeSpan, sf, semTypeType)...)
+				out = append(out, spanToTokenRows(e.TypeNameSpan, sf, semTypeType)...)
 			}
-			memberSpan := compiler.Span{File: e.Span_.File, Start: e.Span_.End - len(e.Name), End: e.Span_.End}
-			out = append(out, spanToTokenRows(memberSpan, sf, semTypeConstant)...)
+			out = append(out, spanToTokenRows(e.NameSpan, sf, semTypeConstant)...)
 		case *compiler.ArrayInitExpr:
 			typeToken(e.Elem, sf, known, &out)
 			for _, item := range e.Items {
@@ -206,6 +204,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkExpr(e.Index)
 		case *compiler.LoopBuiltinExpr:
 			// Builtin directive; no highlight.
+		case *compiler.ArrayTypeExpr:
+			typeToken(e, sf, known, &out)
+		case *compiler.ErrorExpr:
+			// Parser recovery placeholder.
 		}
 	}
 
@@ -215,19 +217,19 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			// A '::' declaration is a variable (compile-time constant), not a
 			// type. Type names are highlighted only when they are known
 			// (built-in or declared struct), via typeToken.
-			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
+			out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
 			typeToken(s.DeclType, sf, known, &out)
 			if s.Init != nil {
 				walkExpr(s.Init)
 			}
 		case *compiler.AssignStmt:
-			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
+			out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
 			if s.Value != nil {
 				walkExpr(s.Value)
 			}
 		case *compiler.ReturnStmt:
-			if s.Value != nil {
-				walkExpr(s.Value)
+			for _, value := range s.Values {
+				walkExpr(value)
 			}
 		case *compiler.ExitStmt:
 			if s.Status != nil {
@@ -259,8 +261,8 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		case *compiler.EnumDecl:
 			walkEnum(s)
 		case *compiler.UnlessCatchStmt:
-			if s.Target != "" {
-				out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Target), sf, semTypeVariable)...)
+			for _, span := range s.TargetSpans {
+				out = append(out, spanToTokenRows(span, sf, semTypeVariable)...)
 			}
 			walkExpr(s.Init)
 			if s.CatchName != "" {
@@ -296,12 +298,17 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		case *compiler.BreakStmt, *compiler.ContinueStmt:
 			// No operands to highlight.
 		case *compiler.CompoundAssignStmt:
-			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
+			out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
 			if s.Value != nil {
 				walkExpr(s.Value)
 			}
 		case *compiler.IncDecStmt:
-			out = append(out, spanToTokenRows(nameSpan(s.Span_, s.Name), sf, semTypeVariable)...)
+			out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
+		case *compiler.MultiVarDecl:
+			for _, span := range s.NameSpans {
+				out = append(out, spanToTokenRows(span, sf, semTypeVariable)...)
+			}
+			walkExpr(s.Init)
 		}
 	}
 
@@ -312,9 +319,9 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 	}
 
 	walkProc = func(proc *compiler.ProcDecl) {
-		out = append(out, spanToTokenRows(nameSpan(proc.Span_, proc.Name), sf, semTypeFunction)...)
+		out = append(out, spanToTokenRows(proc.NameSpan, sf, semTypeFunction)...)
 		for _, param := range proc.Params {
-			out = append(out, spanToTokenRows(nameSpan(param.Span_, param.Name), sf, semTypeParameter)...)
+			out = append(out, spanToTokenRows(param.NameSpan, sf, semTypeParameter)...)
 			typeToken(param.Type, sf, known, &out)
 		}
 		for _, res := range proc.Results {
@@ -329,25 +336,31 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 	}
 
 	walkStruct = func(st *compiler.StructDecl) {
-		out = append(out, spanToTokenRows(nameSpan(st.Span_, st.Name), sf, semTypeType)...)
+		out = append(out, spanToTokenRows(st.NameSpan, sf, semTypeType)...)
 		for _, field := range st.Fields {
-			out = append(out, spanToTokenRows(nameSpan(field.Span_, field.Name), sf, semTypeVariable)...)
+			out = append(out, spanToTokenRows(field.NameSpan, sf, semTypeVariable)...)
 			typeToken(field.Type, sf, known, &out)
+			if field.Default != nil {
+				walkExpr(field.Default)
+			}
 		}
 	}
 
 	walkError = func(ed *compiler.ErrorDecl) {
-		out = append(out, spanToTokenRows(nameSpan(ed.Span_, ed.Name), sf, semTypeType)...)
+		out = append(out, spanToTokenRows(ed.NameSpan, sf, semTypeType)...)
 		for _, m := range ed.Members {
-			out = append(out, spanToTokenRows(nameSpan(m.Span_, m.Name), sf, semTypeConstant)...)
+			out = append(out, spanToTokenRows(m.NameSpan, sf, semTypeConstant)...)
 		}
 	}
 
 	walkEnum = func(ed *compiler.EnumDecl) {
-		out = append(out, spanToTokenRows(nameSpan(ed.Span_, ed.Name), sf, semTypeType)...)
+		out = append(out, spanToTokenRows(ed.NameSpan, sf, semTypeType)...)
 		for _, m := range ed.Members {
-			out = append(out, spanToTokenRows(nameSpan(m.Span_, m.Name), sf, semTypeConstant)...)
+			out = append(out, spanToTokenRows(m.NameSpan, sf, semTypeConstant)...)
 			typeToken(m.Type, sf, known, &out)
+			if m.Value != nil {
+				walkExpr(m.Value)
+			}
 		}
 	}
 
@@ -381,7 +394,14 @@ func encodeSemanticTokens(tokens []semanticToken) []int {
 	})
 	var out []int
 	prevLine, prevStart := 0, 0
+	lastLine, lastEnd := -1, 0
 	for _, tok := range tokens {
+		if tok.line < 0 || tok.startChar < 0 || tok.length <= 0 {
+			continue
+		}
+		if tok.line == lastLine && tok.startChar < lastEnd {
+			continue
+		}
 		deltaLine := tok.line - prevLine
 		deltaStart := tok.startChar
 		if deltaLine == 0 {
@@ -390,6 +410,8 @@ func encodeSemanticTokens(tokens []semanticToken) []int {
 		out = append(out, deltaLine, deltaStart, tok.length, tok.typeIndex, 0)
 		prevLine = tok.line
 		prevStart = tok.startChar
+		lastLine = tok.line
+		lastEnd = tok.startChar + tok.length
 	}
 	if out == nil {
 		out = []int{}
@@ -409,10 +431,7 @@ func (s *Server) handleSemanticTokens(msg message) Response {
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
 	}
-	tokens, _ := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
-	result := compiler.ParseProgramTolerant(tokens)
-	all := append(tokenSemanticTokens(tokens, doc.sf), astSemanticTokens(result.Program, doc.sf)...)
-	out, err := json.Marshal(SemanticTokens{Data: encodeSemanticTokens(all)})
+	out, err := json.Marshal(SemanticTokens{Data: doc.semantic})
 	if err != nil {
 		return errorResponse(msg.ID, -32603, "internal error")
 	}

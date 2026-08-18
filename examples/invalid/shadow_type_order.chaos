@@ -1,6 +1,6 @@
 // expect-stage: type
-// expect-error: declaration of 'Point' shadows a struct type
-// Type names cannot be shadowed even when the variable appears first.
+// expect-error: declaration of 'Point' shadows an existing name
+// Top-level declarations are forward visible and share one namespace.
 Point := 1;
 Point :: struct {
     x: S64;

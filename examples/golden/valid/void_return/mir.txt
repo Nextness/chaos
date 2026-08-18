@@ -7,15 +7,15 @@ MIR
       v2:Bool = cmp.eq v0 v1
       branch v2, bb1, bb2
     bb1:
-      v3:Void = const
-      v4:Some_Error = const
+      v3:Void = zero
+      v4:Some_Error = const 0
       v5:Bool = const false
       v6:Void<>Some_Error = struct.init v3 v4 v5
       return v6
     bb2:
       jump bb3
     bb3:
-      v7:Void = const
+      v7:Void = zero
       v8:Some_Error = const 0
       v9:Bool = const true
       v10:Void<>Some_Error = struct.init v7 v8 v9
@@ -25,8 +25,8 @@ MIR
     bb0:
       v0:S64 = const 1
       store.local v0 l0
-      v1:Void = const
-      v2:Some_Error = const
+      v1:Void = zero
+      v2:Some_Error = const 0
       v3:Bool = const false
       v4:Void<>Some_Error = struct.init v1 v2 v3
       return v4
@@ -36,22 +36,20 @@ MIR
       v1:Bool = field.load v0 field2
       branch v1, bb1, bb2
     bb1:
-      v2:S64 = const 1
-      v3:S64 = neg v2
-      return v3
+      v2:S64 = const -1
+      return v2
     bb2:
       jump bb3
     bb3:
-      v4:String = const ""
-      v5:Void<>Some_Error = call v4 something
-      v6:Bool = field.load v5 field2
-      branch v6, bb4, bb5
+      v3:String = const ""
+      v4:Void<>Some_Error = call v3 something
+      v5:Bool = field.load v4 field2
+      branch v5, bb4, bb5
     bb4:
-      v7:S64 = const 1
-      v8:S64 = neg v7
-      return v8
+      v6:S64 = const -1
+      return v6
     bb5:
       jump bb6
     bb6:
-      v9:S64 = const 7
-      return v9
+      v7:S64 = const 7
+      return v7

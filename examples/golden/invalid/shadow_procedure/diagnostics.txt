@@ -1,3 +1,3 @@
-[ERROR] 9:5:shadow_procedure.chaos - declaration of 'helper' shadows an existing procedure; use '#shadow' or rename
+[ERROR] 9:5:shadow_procedure.chaos - declaration of 'helper' shadows an existing name; use '#shadow' or rename
      helper := 2;
-     ^^^^^^^^^^^ -> add '#shadow' before the declaration or choose a new name
+     ^^^^^^ -> add '#shadow' before the declaration or choose a new name

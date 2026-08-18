@@ -6,16 +6,16 @@
 // structured (blocks, if/elif/else) and every node keeps its source Span.
 package compiler
 
-// HIR is the root of the typed, source-close IR. Entry is the name of the
-// procedure selected by a '#entry' directive, or "" when the source declares
-// no entry point.
+// HIR is the root of the typed, source-close IR. Entry is the stable symbol of
+// the selected procedure, never a spelling-based lookup.
 type HIR struct {
 	Symbols *SymbolTable
 	Types   *TypeTable
 	Structs []*HIRStruct
 	Globals []*HIRGlobal
 	Procs   []*HIRProc
-	Entry   string
+	Entry   SymbolID
+	Sources map[FileID]SourceFile
 }
 
 // HIRStruct is a resolved struct type declaration.
@@ -29,10 +29,11 @@ type HIRStruct struct {
 
 // HIRField is a resolved struct field.
 type HIRField struct {
-	Symbol SymbolID
-	Name   string
-	Type   TypeID
-	Span   Span
+	Symbol  SymbolID
+	Name    string
+	Type    TypeID
+	Default HIRExpr
+	Span    Span
 }
 
 // HIRGlobal is a top-level variable or constant declaration.
@@ -48,12 +49,13 @@ type HIRGlobal struct {
 
 // HIRProc is a resolved procedure declaration.
 type HIRProc struct {
-	Symbol  SymbolID
-	Name    string
-	Params  []HIRParam
-	Results []TypeID
-	Body    *HIRBlock
-	Span    Span
+	Symbol     SymbolID
+	Name       string
+	Params     []HIRParam
+	Results    []TypeID
+	ResultType TypeID
+	Body       *HIRBlock
+	Span       Span
 }
 
 // HIRParam is a resolved procedure parameter.
@@ -255,8 +257,28 @@ const (
 	ConstString
 	ConstBool
 	ConstError
-	ConstUnknown
 )
+
+// HIRZero is the recursive zero value of a resolved type.
+type HIRZero struct {
+	Span_ Span
+	Type  TypeID
+}
+
+func (e *HIRZero) hirExprNode()    {}
+func (e *HIRZero) hirSpan() Span   { return e.Span_ }
+func (e *HIRZero) hirType() TypeID { return e.Type }
+
+// HIRPoison represents an internal lowering failure. It permits diagnostics to
+// accumulate, but MIR lowering rejects it so poison can never be emitted.
+type HIRPoison struct {
+	Span_ Span
+	Type  TypeID
+}
+
+func (e *HIRPoison) hirExprNode()    {}
+func (e *HIRPoison) hirSpan() Span   { return e.Span_ }
+func (e *HIRPoison) hirType() TypeID { return e.Type }
 
 // HIRConst is a literal constant. Int, Float, Str, and Bool hold the value
 // for the matching Kind; Str also keeps the raw source text for integer and
@@ -288,11 +310,12 @@ func (e *HIRRef) hirType() TypeID { return e.Type }
 
 // HIRBinary is a binary operation.
 type HIRBinary struct {
-	Span_ Span
-	Op    BinaryOp
-	Left  HIRExpr
-	Right HIRExpr
-	Type  TypeID
+	Span_  Span
+	OpSpan Span
+	Op     BinaryOp
+	Left   HIRExpr
+	Right  HIRExpr
+	Type   TypeID
 }
 
 func (e *HIRBinary) hirExprNode()    {}

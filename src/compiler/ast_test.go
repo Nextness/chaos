@@ -169,10 +169,10 @@ func TestSpanUnion(t *testing.T) {
 			want: Span{File: 0, Start: 5, End: 10},
 		},
 		{
-			name: "different files uses a's file",
+			name: "different files keeps the left span",
 			a:    Span{File: 1, Start: 5, End: 10},
 			b:    Span{File: 2, Start: 0, End: 20},
-			want: Span{File: 1, Start: 0, End: 20},
+			want: Span{File: 1, Start: 5, End: 10},
 		},
 	}
 

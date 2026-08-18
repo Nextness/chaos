@@ -13,26 +13,25 @@ func LowerToMIR(hir *HIR) (*MIRProgram, DiagnosticList) {
 		types:   hir.Types,
 	}
 	for _, g := range hir.Globals {
+		if g.CompileTime {
+			continue
+		}
 		ml.globals = append(ml.globals, MIRGlobal{
-			Symbol:  g.Symbol,
-			Name:    g.Name,
-			Type:    g.Type,
-			Mutable: g.Mutable,
-			Span:    g.Span,
+			Symbol:      g.Symbol,
+			Name:        g.Name,
+			Type:        g.Type,
+			Mutable:     g.Mutable,
+			CompileTime: g.CompileTime,
+			Span:        g.Span,
 		})
 	}
 	for _, p := range hir.Procs {
 		ml.lowerFunction(p)
 	}
-	entry := NoSymbol
-	if hir.Entry != "" {
-		if sym, ok := hir.Symbols.ByName(hir.Entry); ok {
-			entry = sym
-		}
-	}
+	entry := hir.Entry
 	var globalInit *MIRFunction
 	for _, g := range hir.Globals {
-		if g.Init != nil {
+		if g.Init != nil && !g.CompileTime {
 			globalInit = ml.lowerGlobalInit(hir)
 			break
 		}
@@ -44,6 +43,7 @@ func LowerToMIR(hir *HIR) (*MIRProgram, DiagnosticList) {
 		Globals:    ml.globals,
 		Entry:      entry,
 		GlobalInit: globalInit,
+		Sources:    hir.Sources,
 	}, ml.diags
 }
 
@@ -52,8 +52,8 @@ func LowerToMIR(hir *HIR) (*MIRProgram, DiagnosticList) {
 // function has no parameters and returns void.
 func (ml *MIRLowerer) lowerGlobalInit(hir *HIR) *MIRFunction {
 	ml.cur = &MIRFunction{
-		Symbol: ml.symbols.Declare("__global_init"),
-		Name:   "__global_init",
+		Symbol: ml.symbols.Declare("__chaos_global_init"),
+		Name:   "__chaos_global_init",
 		Span:   Span{},
 	}
 	ml.localIDs = make(map[SymbolID]LocalID)
@@ -61,11 +61,11 @@ func (ml *MIRLowerer) lowerGlobalInit(hir *HIR) *MIRFunction {
 	ml.valueCount = 0
 	ml.curBlock = ml.newBlock()
 	for _, g := range hir.Globals {
-		if g.Init == nil {
+		if g.Init == nil || g.CompileTime {
 			continue
 		}
 		v := ml.lowerExpr(g.Init)
-		ml.emitVoid(MIRStoreGlobal, g.Type, []ValueID{v}, MIRImmediate{Kind: MIRImmSymbol, Symbol: g.Symbol}, g.Span)
+		ml.emitInit(MIRStoreGlobal, g.Type, []ValueID{v}, MIRImmediate{Kind: MIRImmSymbol, Symbol: g.Symbol}, g.Span)
 	}
 	ml.setTerminator(MIRTerminator{Kind: MIRReturn, Value: NoValue, Span: Span{}})
 	ml.functions = append(ml.functions, ml.cur)
@@ -138,6 +138,11 @@ func (ml *MIRLowerer) emitVoid(op MIROpcode, t TypeID, args []ValueID, imm MIRIm
 	})
 }
 
+func (ml *MIRLowerer) emitInit(op MIROpcode, t TypeID, args []ValueID, imm MIRImmediate, span Span) {
+	ml.emitVoid(op, t, args, imm, span)
+	ml.curBlock.Instrs[len(ml.curBlock.Instrs)-1].Initializing = true
+}
+
 // setTerminator sets the terminator of the current block unless it already
 // has one (a block that ended in return or exit keeps that terminator).
 func (ml *MIRLowerer) setTerminator(t MIRTerminator) {
@@ -148,10 +153,11 @@ func (ml *MIRLowerer) setTerminator(t MIRTerminator) {
 
 func (ml *MIRLowerer) lowerFunction(p *HIRProc) {
 	ml.cur = &MIRFunction{
-		Symbol:  p.Symbol,
-		Name:    p.Name,
-		Results: p.Results,
-		Span:    p.Span,
+		Symbol:     p.Symbol,
+		Name:       p.Name,
+		Results:    p.Results,
+		ResultType: p.ResultType,
+		Span:       p.Span,
 	}
 	ml.localIDs = make(map[SymbolID]LocalID)
 	ml.localTypes = make(map[SymbolID]TypeID)
@@ -161,6 +167,7 @@ func (ml *MIRLowerer) lowerFunction(p *HIRProc) {
 		lid := LocalID(len(ml.cur.Locals))
 		ml.cur.Locals = append(ml.cur.Locals, lid)
 		ml.cur.LocalTypes = append(ml.cur.LocalTypes, param.Type)
+		ml.cur.LocalMutable = append(ml.cur.LocalMutable, true)
 		ml.cur.Params = append(ml.cur.Params, lid)
 		ml.localIDs[param.Symbol] = lid
 		ml.localTypes[param.Symbol] = param.Type
@@ -188,6 +195,9 @@ func (ml *MIRLowerer) lowerFunction(p *HIRProc) {
 
 func (ml *MIRLowerer) lowerBlock(b *HIRBlock) {
 	for _, stmt := range b.Stmts {
+		if ml.curBlock.Term.Kind != MIRNoTerm {
+			break
+		}
 		ml.lowerStmt(stmt)
 	}
 }
@@ -237,9 +247,10 @@ func (ml *MIRLowerer) lowerIfCatch(n *HIRIfCatch) {
 		lid := LocalID(len(ml.cur.Locals))
 		ml.cur.Locals = append(ml.cur.Locals, lid)
 		ml.cur.LocalTypes = append(ml.cur.LocalTypes, st.Fields[1].Type)
+		ml.cur.LocalMutable = append(ml.cur.LocalMutable, false)
 		ml.localIDs[n.CatchSym] = lid
 		ml.localTypes[n.CatchSym] = st.Fields[1].Type
-		ml.emitVoid(MIRStoreLocal, st.Fields[1].Type, []ValueID{errVal}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
+		ml.emitInit(MIRStoreLocal, st.Fields[1].Type, []ValueID{errVal}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
 	}
 	ml.lowerBlock(n.CatchBody)
 	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: joinBlock.ID, Span: n.Span_})
@@ -253,11 +264,12 @@ func (ml *MIRLowerer) lowerVarDecl(n *HIRVarDecl) {
 	lid := LocalID(len(ml.cur.Locals))
 	ml.cur.Locals = append(ml.cur.Locals, lid)
 	ml.cur.LocalTypes = append(ml.cur.LocalTypes, n.Type)
+	ml.cur.LocalMutable = append(ml.cur.LocalMutable, n.Mutable)
 	ml.localIDs[n.Symbol] = lid
 	ml.localTypes[n.Symbol] = n.Type
 	if n.Init != nil {
 		v := ml.lowerExpr(n.Init)
-		ml.emitVoid(MIRStoreLocal, n.Type, []ValueID{v}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
+		ml.emitInit(MIRStoreLocal, n.Type, []ValueID{v}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
 	}
 }
 
@@ -373,6 +385,11 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 	switch n := e.(type) {
 	case *HIRConst:
 		return ml.emit(MIRConst, n.Type, nil, constImmediate(n), n.Span_)
+	case *HIRZero:
+		return ml.emit(MIRZero, n.Type, nil, MIRImmediate{}, n.Span_)
+	case *HIRPoison:
+		ml.diags.Error(n.Span_, "poison value reached MIR lowering", "fix the earlier lowering error")
+		return NoValue
 	case *HIRRef:
 		if lid, ok := ml.localIDs[n.Symbol]; ok {
 			return ml.emit(MIRLoadLocal, n.Type, nil, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
@@ -381,7 +398,16 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 	case *HIRBinary:
 		l := ml.lowerExpr(n.Left)
 		r := ml.lowerExpr(n.Right)
-		return ml.emit(binaryOpcode(n.Op), n.Type, []ValueID{l, r}, MIRImmediate{}, n.Span_)
+		op, ok := binaryOpcode(n.Op)
+		if !ok {
+			ml.diags.Error(n.Span_, "unsupported binary operator in MIR lowering", "report this compiler bug")
+			return NoValue
+		}
+		span := n.OpSpan
+		if span.End <= span.Start {
+			span = n.Span_
+		}
+		return ml.emit(op, n.Type, []ValueID{l, r}, MIRImmediate{}, span)
 	case *HIRUnary:
 		v := ml.lowerExpr(n.Operand)
 		op := MIRNot
@@ -393,6 +419,10 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 		args := make([]ValueID, len(n.Args))
 		for i, a := range n.Args {
 			args[i] = ml.lowerExpr(a)
+		}
+		if n.Type == ml.types.Void() {
+			ml.emitVoid(MIRCall, n.Type, args, MIRImmediate{Kind: MIRImmSymbol, Symbol: n.Func}, n.Span_)
+			return NoValue
 		}
 		return ml.emit(MIRCall, n.Type, args, MIRImmediate{Kind: MIRImmSymbol, Symbol: n.Func}, n.Span_)
 	case *HIRStructInit:
@@ -414,7 +444,8 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 		idx := ml.lowerExpr(n.Index)
 		return ml.emit(MIRArrayIndex, n.Type, []ValueID{base, idx}, MIRImmediate{}, n.Span_)
 	}
-	return ml.emit(MIRConst, ml.types.Unknown(), nil, MIRImmediate{}, e.hirSpan())
+	ml.diags.Error(e.hirSpan(), "unsupported HIR expression reached MIR lowering", "report this compiler bug")
+	return NoValue
 }
 
 // lowerStructInit lowers a struct literal into a struct.init instruction whose
@@ -431,7 +462,7 @@ func (ml *MIRLowerer) lowerStructInit(n *HIRStructInit) ValueID {
 		if v, ok := byField[f.Symbol]; ok {
 			args = append(args, ml.lowerExpr(v))
 		} else {
-			args = append(args, ml.emit(MIRConst, f.Type, nil, MIRImmediate{}, n.Span_))
+			args = append(args, ml.emit(MIRZero, f.Type, nil, MIRImmediate{}, n.Span_))
 		}
 	}
 	return ml.emit(MIRStructInit, n.Type, args, MIRImmediate{}, n.Span_)
@@ -455,34 +486,34 @@ func constImmediate(c *HIRConst) MIRImmediate {
 	return MIRImmediate{}
 }
 
-func binaryOpcode(op BinaryOp) MIROpcode {
+func binaryOpcode(op BinaryOp) (MIROpcode, bool) {
 	switch op {
 	case BinaryOpAdd:
-		return MIRAdd
+		return MIRAdd, true
 	case BinaryOpSub:
-		return MIRSub
+		return MIRSub, true
 	case BinaryOpMul:
-		return MIRMul
+		return MIRMul, true
 	case BinaryOpDiv:
-		return MIRDiv
+		return MIRDiv, true
 	case BinaryOpMod:
-		return MIRMod
+		return MIRMod, true
 	case BinaryOpLt:
-		return MIRCmpLt
+		return MIRCmpLt, true
 	case BinaryOpGt:
-		return MIRCmpGt
+		return MIRCmpGt, true
 	case BinaryOpLe:
-		return MIRCmpLe
+		return MIRCmpLe, true
 	case BinaryOpGe:
-		return MIRCmpGe
+		return MIRCmpGe, true
 	case BinaryOpEq:
-		return MIRCmpEq
+		return MIRCmpEq, true
 	case BinaryOpNeq:
-		return MIRCmpNeq
+		return MIRCmpNeq, true
 	case BinaryOpAnd:
-		return MIRAnd
+		return MIRAnd, true
 	case BinaryOpOr:
-		return MIROr
+		return MIROr, true
 	}
-	return MIRConst
+	return 0, false
 }

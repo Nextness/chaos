@@ -8,7 +8,8 @@
 //     files, and the emitted binary is assembled and executed to check the
 //     exit status and stderr output.
 //   - examples/invalid/ must fail. Each file declares the stage where the
-//     failure must occur (tokenize, parse, type, lower, mir, verify, emit)
+//     failure must occur (tokenize, parse, type, target, lower, mir, verify,
+//     emit)
 //     and a substring that must appear in the diagnostic message. The first
 //     stage with errors must match the declared stage, and the rendered
 //     diagnostics are compared against golden files.
@@ -17,7 +18,7 @@
 //
 //	// expect-exit: 42        (valid) expected exit status of the binary
 //	// expect-stderr: boom    (valid) optional exact stderr content
-//	// expect-stage: emit     (invalid) stage that must fail
+//	// expect-stage: target   (invalid) stage that must fail
 //	// expect-error: substring (invalid) substring of the diagnostic message
 //
 // Run with -update to regenerate the golden files, for example:
@@ -47,7 +48,7 @@ import (
 var update = flag.Bool("update", false, "regenerate golden dump files")
 
 // stage names in pipeline order.
-var stageNames = []string{"tokenize", "parse", "type", "lower", "mir", "verify", "emit"}
+var stageNames = []string{"tokenize", "parse", "type", "target", "lower", "mir", "verify", "emit"}
 
 // pipeline holds the output of every compilation stage.
 type pipeline struct {
@@ -85,13 +86,20 @@ func runPipeline(t *testing.T, name string, source []byte) *pipeline {
 		return p
 	}
 
-	if diags := compiler.CheckProgram(result.Program); diags.HasErrors() {
+	analysis, diags := compiler.AnalyzeProgram(result.Program)
+	if diags.HasErrors() {
 		p.diags["type"] = diags
 		p.failed = "type"
 		return p
 	}
 
-	hir, diags := compiler.LowerProgram(result.Program)
+	if diags := compiler.ValidateTarget(result.Program, analysis, "fasm"); diags.HasErrors() {
+		p.diags["target"] = diags
+		p.failed = "target"
+		return p
+	}
+
+	hir, diags := compiler.LowerAnalyzedProgram(result.Program, analysis)
 	p.hir = hir
 	p.diags["lower"] = diags
 	if diags.HasErrors() {

@@ -3,23 +3,27 @@ package compiler
 // Parser is a hand-written recursive-descent parser with a correct Pratt
 // expression parser.
 //
-// Grammar (supported subset):
+// Grammar overview. Focused parser tests are authoritative for recovery and
+// diagnostic details; this summary documents the accepted forms without
+// duplicating every optional delimiter rule.
 //
 //	program        = decl*
-//	decl           = var_decl | proc_decl | struct_decl
-//	var_decl       = ident ( "::" ( "proc" ... | "struct" ... | expr ) | ":=" expr | ":" ident ("=" expr)? ) ";"
+//	decl           = var_decl | proc_decl | struct_decl | enum_decl | error_decl
+//	var_decl       = ident ( "::" expr | ":=" expr | ":" type ("=" | ":") expr? ) ";"
 //	proc_decl      = ident "::" "proc" param_list? result_spec? block
-//	struct_decl    = ident "::" "struct" "{" (ident ":" ident ";")* "}"
+//	struct_decl    = ident "::" "struct" "{" struct_field* "}"
+//	enum_decl      = ident "::" "enum" "{" enum_member* "}"
+//	error_decl     = ident "::" "error" "{" error_member* "}"
 //	param_list     = "(" (param ("," param)*)? ")"
 //	param          = ident ":" ident
-//	result_spec    = "->" ident ("," ident)*
+//	result_spec    = "->" (type | "(" type ("," type)* ("<>" type)? ")")
 //	block          = "{" stmt* "}"
 //	stmt           = var_decl | proc_decl | struct_decl | assign_stmt | compound_assign_stmt | inc_dec_stmt | return_stmt | exit_stmt | if_stmt | for_stmt | break_stmt | continue_stmt | block | call_stmt | ";"
 //	call_stmt      = ident "(" arg_list? ")" ("(" arg_list? ")")* ";"
 //	assign_stmt    = ident "=" expr ";"
 //	compound_assign_stmt = ident ("+=" | "-=") expr ";"
 //	inc_dec_stmt   = ident ("++" | "--") ";" | ("++" | "--") ident ";"
-//	return_stmt    = "return" expr? ";"
+//	return_stmt    = "return" (expr ("," expr)*)? ";"
 //	exit_stmt      = "exit" expr ("," expr)? ";"
 //	if_stmt        = "if" expr if_body ("elif" expr if_body)* ("else" else_body)?
 //	if_body        = block | "then"? stmt
@@ -36,7 +40,7 @@ package compiler
 //	add_expr       = mul_expr (add_op mul_expr)*
 //	mul_expr       = unary_expr (mul_op unary_expr)*
 //	unary_expr     = unary_op unary_expr | postfix_expr
-//	postfix_expr   = primary_expr ("(" arg_list? ")")*
+//	postfix_expr   = primary_expr (("(" arg_list? ")") | ("[" expr "]"))*
 //	arg_list       = expr ("," expr)*
 //	primary_expr   = ident | int | float | string | "true" | "false" | "(" expr ")" | struct_init
 //	struct_init    = (ident ".")? "{" struct_init_field ("," struct_init_field)* "}"
@@ -47,10 +51,25 @@ type Parser struct {
 	diags   DiagnosticList
 	program *Program
 
-	// tolerant enables editor-friendly parsing: unknown top-level forms
-	// (directives, structs, enums) and unknown statement keywords are skipped
-	// without diagnostics instead of erroring.
+	// tolerant enables editor-friendly recovery for genuinely unknown forms.
+	// Every implemented language construct still produces its real AST node.
 	tolerant bool
+}
+
+const maxProcedureItems = 100
+
+func tooManyProcedureItems(kind string) string {
+	return "Why do you need so many " + kind + "? Have you ever considered another profession? Use a struct, or rewrite your code like a sane person. Dumb bitch"
+}
+
+func (p *Parser) setEntry(name string, span Span, decl *ProcDecl) {
+	if p.program.EntryDecl != nil {
+		p.diags.Error(span, "more than one #entry procedure is declared", "keep exactly one #entry procedure")
+		return
+	}
+	p.program.Entry = name
+	p.program.EntrySpan = span
+	p.program.EntryDecl = decl
 }
 
 // ParseResult holds the results of parsing a token list.
@@ -81,8 +100,8 @@ func ParseProgram(tokens TokenList) ParseResult {
 }
 
 // ParseProgramTolerant parses a complete token list into a Program, skipping
-// language forms the strict parser does not understand (directives, structs,
-// enums, unknown statement keywords). It is intended for editor use where
+// language forms the strict parser does not understand (such as future
+// directives). It is intended for editor use where
 // real-world files may use newer syntax. It uses its own loop so tolerant
 // skips that consume their terminator do not lose the next declaration: after
 // a failed parseDecl, a token is bumped only if no progress was made.
@@ -276,11 +295,11 @@ func (p *Parser) skipToMatchedBrace() {
 	}
 }
 
-// parseGenericClause consumes a generic type parameter list "<T: String | S64>"
-// in tolerant mode. Nested '<' '>' pairs (e.g. Array<S64>) are tracked so the
-// matching '>' ends the clause. Returns true when a complete clause was
-// consumed; otherwise the parser has consumed tokens up to EOF and the caller
-// falls back to its normal error handling.
+// parseGenericClause consumes an unsupported generic parameter list while
+// tolerant recovery skips the enclosing declaration. Nested '<' '>' pairs
+// (for example Array<S64>) are tracked so recovery finds the matching '>'. It
+// deliberately does not return generic parameters that could be mistaken for
+// implemented semantic declarations.
 func (p *Parser) parseGenericClause() bool {
 	if !p.at(TkLt) {
 		return false
@@ -320,8 +339,6 @@ func (p *Parser) parseDecl() (Decl, bool) {
 
 	// Top-level '#entry name :: proc {...}' is the canonical entry point.
 	// Handle it in both strict and tolerant modes so the CLI accepts it.
-	// Tolerant mode also accepts generic type parameters before '::'
-	// ('#entry name <T: ...> :: proc {...}').
 	if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "entry" &&
 		p.peekN(2).Kind == TkIdent &&
 		(p.peekN(3).Kind == TkColon && p.peekN(4).Kind == TkColon && p.peekN(5).Kind == TkProc ||
@@ -332,13 +349,18 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		name := nameTok.Text()
 		if p.tolerant && p.at(TkLt) {
 			p.parseGenericClause()
+			p.skipToMatchedBraces()
+			return nil, false
 		}
 		if p.atCompTimeAssign() && p.peekN(2).Kind == TkProc {
 			p.bump() // consume first ':' of '::'
 			p.bump() // consume second ':' of '::'
 			p.bump() // consume "proc"
-			p.program.Entry = name
-			return p.parseProcDecl(nameTok, name)
+			decl, ok := p.parseProcDecl(nameTok, name)
+			if ok {
+				p.setEntry(name, nameTok.Span, decl.(*ProcDecl))
+			}
+			return decl, ok
 		}
 		p.skipToMatchedBraces()
 		return nil, false
@@ -362,12 +384,13 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	nameTok := p.bump()
 	name := nameTok.Text()
 
-	// Tolerant mode: generic type parameters before '::'
-	// (ident <T: String | S64> :: proc {...}). The clause is consumed so the
-	// procedure declaration parses normally; the type parameters themselves
-	// are not represented in the AST.
+	// Generics are not part of the implemented language. Tolerant mode skips
+	// the whole declaration instead of discarding the generic parameters and
+	// inventing a non-generic semantic declaration for editor features.
 	if p.tolerant && p.at(TkLt) {
 		p.parseGenericClause()
+		p.skipToMatchedBraces()
+		return nil, false
 	}
 
 	// Must be followed by ::, :, or := to be a declaration
@@ -384,8 +407,11 @@ func (p *Parser) parseDecl() (Decl, bool) {
 				p.bump() // consume TkDirec("entry")
 				if p.at(TkProc) {
 					p.bump() // consume "proc"
-					p.program.Entry = name
-					return p.parseProcDecl(nameTok, name)
+					decl, ok := p.parseProcDecl(nameTok, name)
+					if ok {
+						p.setEntry(name, nameTok.Span, decl.(*ProcDecl))
+					}
+					return decl, ok
 				}
 				p.skipToMatchedBraces()
 				return nil, false
@@ -438,12 +464,11 @@ func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool
 		p.bump() // consume "enum"
 		return p.parseEnumDecl(nameTok, name)
 	}
-	// Tolerant mode: 'ident :: { ... }' with an unknown body (for example an
-	// error type written without the 'error' keyword) is parsed as an error
-	// declaration so the editor registers the name as a type and highlights
-	// its members. Strict mode rejects the unknown form.
+	// Do not invent a semantic declaration for an unknown braced form. The
+	// editor may recover past it, but it must not expose fake types/members.
 	if p.tolerant && p.at(TkLBrace) {
-		return p.parseErrorDecl(nameTok, name)
+		p.skipToMatchedBraces()
+		return nil, false
 	}
 	// Compile-time variable: ident "::" expr ";"
 	init := p.parseExpr(0)
@@ -455,6 +480,7 @@ func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool
 	decl := &VarDecl{
 		Span_:       spanUnion(nameTok.Span, init.nodeSpan()),
 		Name:        name,
+		NameSpan:    nameTok.Span,
 		Init:        init,
 		Mutable:     false,
 		CompileTime: true,
@@ -476,6 +502,7 @@ func (p *Parser) parseInferVarDecl(nameTok Token, name string) (Decl, bool) {
 		decl := &VarDecl{
 			Span_:       nameTok.Span,
 			Name:        name,
+			NameSpan:    nameTok.Span,
 			Mutable:     true,
 			CompileTime: false,
 		}
@@ -485,6 +512,7 @@ func (p *Parser) parseInferVarDecl(nameTok Token, name string) (Decl, bool) {
 	decl := &VarDecl{
 		Span_:       spanUnion(nameTok.Span, init.nodeSpan()),
 		Name:        name,
+		NameSpan:    nameTok.Span,
 		Init:        init,
 		Mutable:     true,
 		CompileTime: false,
@@ -504,6 +532,7 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 		decl := &VarDecl{
 			Span_:       nameTok.Span,
 			Name:        name,
+			NameSpan:    nameTok.Span,
 			Mutable:     true,
 			CompileTime: false,
 		}
@@ -560,6 +589,7 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 	decl := &VarDecl{
 		Span_:       Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: end},
 		Name:        name,
+		NameSpan:    nameTok.Span,
 		DeclType:    typeExpr,
 		Init:        init,
 		Mutable:     !compileTime,
@@ -604,6 +634,9 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 				break
 			}
 			params = append(params, param)
+			if len(params) == maxProcedureItems+1 {
+				p.diags.Error(param.NameSpan, tooManyProcedureItems("arguments"), "use a struct to group related inputs")
+			}
 			if !p.at(TkComma) {
 				break
 			}
@@ -618,56 +651,42 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 		// No params: empty param list
 	}
 
-	// Results: -> type ... or -> Type <> ErrorType or -> (Type <> ErrorType)
+	// Results: -> Type or -> (Type, Type <> ErrorType). The error
+	// applies to the complete result tuple rather than only the preceding type.
 	var results []Expr
 	var errorResult Expr
 	if p.at(TkArrow) {
 		p.bump() // consume "->"
-		// Parenthesized error-return spec: (Type <> ErrorType)
-		if p.at(TkLParen) {
-			p.bump() // consume "("
-			first := p.parseTypeExpr()
-			if first == nil {
-				p.diags.Error(p.peek().Span, "expected return type after '('", "add a return type after '('")
-			} else if p.at(TkErrorReturn) {
-				p.bump() // consume "<>"
-				errType := p.parseTypeExpr()
-				if errType == nil {
-					p.diags.Error(p.peek().Span, "expected error type after '<>'", "add an error type after '<>'")
-				} else {
-					results = append(results, first)
-					errorResult = errType
-				}
-			} else {
-				p.diags.Error(p.peek().Span, "expected '<>' in parenthesized return type", "use 'Type <> ErrorType' inside the parentheses")
-			}
-			p.expect(TkRParen)
+		parenthesized := p.match(TkLParen)
+		first := p.parseTypeExpr()
+		if first == nil {
+			p.diags.Error(p.peek().Span, "expected return type after '->'", "add a return type")
 		} else {
-			// At least one result type
-			first := p.parseTypeExpr()
-			if first == nil {
-				p.diags.Error(p.peek().Span, "expected return type after '->'", "add a return type after '->'")
-			} else {
-				results = append(results, first)
-				if p.at(TkErrorReturn) {
-					p.bump() // consume "<>"
-					errType := p.parseTypeExpr()
-					if errType == nil {
-						p.diags.Error(p.peek().Span, "expected error type after '<>'", "add an error type after '<>'")
-					} else {
-						errorResult = errType
-					}
-				} else {
-					for p.match(TkComma) {
-						next := p.parseTypeExpr()
-						if next == nil {
-							p.diags.Error(p.peek().Span, "expected return type after ','", "add a return type after ','")
-							break
-						}
-						results = append(results, next)
-					}
+			results = append(results, first)
+			for p.at(TkComma) {
+				comma := p.bump()
+				if !parenthesized && len(results) == 1 {
+					p.diags.Error(comma.Span, "multiple procedure results must be parenthesized", "write '-> (Type1, Type2)'")
+				}
+				next := p.parseTypeExpr()
+				if next == nil {
+					p.diags.Error(p.peek().Span, "expected return type after ','", "add a return type after ','")
+					break
+				}
+				results = append(results, next)
+				if len(results) == maxProcedureItems+1 {
+					p.diags.Error(next.nodeSpan(), tooManyProcedureItems("things to be returned"), "use a struct to group related results")
 				}
 			}
+			if p.match(TkErrorReturn) {
+				errorResult = p.parseTypeExpr()
+				if errorResult == nil {
+					p.diags.Error(p.peek().Span, "expected error type after '<>'", "add an error type after '<>'")
+				}
+			}
+		}
+		if parenthesized {
+			p.expect(TkRParen)
 		}
 	}
 
@@ -681,6 +700,7 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 	decl := &ProcDecl{
 		Span_:       spanUnion(nameTok.Span, body.Span_),
 		Name:        name,
+		NameSpan:    nameTok.Span,
 		Params:      params,
 		Results:     results,
 		ErrorResult: errorResult,
@@ -714,9 +734,10 @@ func (p *Parser) parseStructDecl(nameTok Token, name string) (Decl, bool) {
 	closeTok := p.expect(TkRBrace)
 
 	decl := &StructDecl{
-		Span_:  Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
-		Name:   name,
-		Fields: fields,
+		Span_:    Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
+		Name:     name,
+		NameSpan: nameTok.Span,
+		Fields:   fields,
 	}
 	return decl, true
 }
@@ -732,22 +753,34 @@ func (p *Parser) parseStructField() (StructField, bool) {
 
 	if !p.at(TkColon) {
 		p.diags.Error(p.peek().Span, "expected ':' after field name", "add ':' after the field name")
-		return StructField{Span_: nameTok.Span, Name: name}, true
+		return StructField{Span_: nameTok.Span, Name: name, NameSpan: nameTok.Span}, true
 	}
 	p.bump() // consume ":"
 
 	typeExpr := p.parseTypeExpr()
 	if typeExpr == nil {
 		p.diags.Error(p.peek().Span, "expected field type after ':'", "add a type after ':'")
-		return StructField{Span_: nameTok.Span, Name: name}, true
+		return StructField{Span_: nameTok.Span, Name: name, NameSpan: nameTok.Span}, true
+	}
+	var defaultValue Expr
+	if p.match(TkAssign) {
+		defaultValue = p.parseExpr(0)
+		if defaultValue == nil {
+			p.diags.Error(p.peek().Span, "expected default value after '='", "add a compile-time field default")
+		}
+	}
+	p.expect(TkSemicolon)
+	end := typeExpr.nodeSpan().End
+	if defaultValue != nil {
+		end = defaultValue.nodeSpan().End
 	}
 
-	p.expect(TkSemicolon)
-
 	return StructField{
-		Span_: spanUnion(nameTok.Span, typeExpr.nodeSpan()),
-		Name:  name,
-		Type:  typeExpr,
+		Span_:    Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: end},
+		Name:     name,
+		NameSpan: nameTok.Span,
+		Type:     typeExpr,
+		Default:  defaultValue,
 	}, true
 }
 
@@ -776,9 +809,10 @@ func (p *Parser) parseErrorDecl(nameTok Token, name string) (Decl, bool) {
 	closeTok := p.expect(TkRBrace)
 
 	decl := &ErrorDecl{
-		Span_:   Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
-		Name:    name,
-		Members: members,
+		Span_:    Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
+		Name:     name,
+		NameSpan: nameTok.Span,
+		Members:  members,
 	}
 	return decl, true
 }
@@ -806,7 +840,7 @@ func (p *Parser) parseErrorMember() (ErrorMember, bool) {
 	}
 
 	p.expect(TkSemicolon)
-	return ErrorMember{Span_: nameTok.Span, Name: name}, true
+	return ErrorMember{Span_: nameTok.Span, Name: name, NameSpan: nameTok.Span}, true
 }
 
 // parseEnumDecl parses the rest of an enum type definition after "enum" has
@@ -835,9 +869,10 @@ func (p *Parser) parseEnumDecl(nameTok Token, name string) (Decl, bool) {
 	closeTok := p.expect(TkRBrace)
 
 	decl := &EnumDecl{
-		Span_:   Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
-		Name:    name,
-		Members: members,
+		Span_:    Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
+		Name:     name,
+		NameSpan: nameTok.Span,
+		Members:  members,
 	}
 	return decl, true
 }
@@ -880,10 +915,11 @@ func (p *Parser) parseEnumMember() (EnumMember, bool) {
 		end = value.nodeSpan().End
 	}
 	return EnumMember{
-		Span_: Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: end},
-		Name:  name,
-		Type:  typeExpr,
-		Value: value,
+		Span_:    Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: end},
+		Name:     name,
+		NameSpan: nameTok.Span,
+		Type:     typeExpr,
+		Value:    value,
 	}, true
 }
 
@@ -916,20 +952,21 @@ func (p *Parser) parseParam() (Param, bool) {
 
 	if !p.at(TkColon) {
 		p.diags.Error(p.peek().Span, "expected ':' after parameter name", "add ':' after the parameter name")
-		return Param{Span_: nameTok.Span, Name: name}, true
+		return Param{Span_: nameTok.Span, Name: name, NameSpan: nameTok.Span}, true
 	}
 	p.bump() // consume ":"
 
 	typeExpr := p.parseTypeExpr()
 	if typeExpr == nil {
 		p.diags.Error(p.peek().Span, "expected parameter type after ':'", "add a type after ':'")
-		return Param{Span_: nameTok.Span, Name: name}, true
+		return Param{Span_: nameTok.Span, Name: name, NameSpan: nameTok.Span}, true
 	}
 
 	return Param{
-		Span_: spanUnion(nameTok.Span, typeExpr.nodeSpan()),
-		Name:  name,
-		Type:  typeExpr,
+		Span_:    spanUnion(nameTok.Span, typeExpr.nodeSpan()),
+		Name:     name,
+		NameSpan: nameTok.Span,
+		Type:     typeExpr,
 	}, true
 }
 
@@ -984,10 +1021,11 @@ func (p *Parser) parseStmt() Stmt {
 			op = BinaryOpSub
 		}
 		return &IncDecStmt{
-			Span_:  spanUnion(opTok.Span, nameTok.Span),
-			Name:   nameTok.Text(),
-			Op:     op,
-			Prefix: true,
+			Span_:    spanUnion(opTok.Span, nameTok.Span),
+			Name:     nameTok.Text(),
+			NameSpan: nameTok.Span,
+			Op:       op,
+			Prefix:   true,
 		}
 
 	case TkIdent:
@@ -1048,11 +1086,21 @@ func (p *Parser) parseShadowVarDecl() Stmt {
 	switch s := stmt.(type) {
 	case *VarDecl:
 		s.Shadow = true
+	case *MultiVarDecl:
+		s.Shadow = true
 	case *UnlessCatchStmt:
+		s.Shadow = true
+	case *ProcDecl:
+		s.Shadow = true
+	case *StructDecl:
+		s.Shadow = true
+	case *ErrorDecl:
+		s.Shadow = true
+	case *EnumDecl:
 		s.Shadow = true
 	default:
 		if stmt != nil {
-			p.diags.Error(stmt.nodeSpan(), "'#shadow' can only be used with a variable declaration", "remove '#shadow' or declare a variable")
+			p.diags.Error(stmt.nodeSpan(), "'#shadow' must precede a declaration", "remove '#shadow' or declare a name")
 		}
 	}
 	return stmt
@@ -1090,10 +1138,17 @@ func (p *Parser) parseShadowDecl() (Decl, bool) {
 	if !ok {
 		return decl, false
 	}
-	if vd, isVar := decl.(*VarDecl); isVar {
-		vd.Shadow = true
-	} else {
-		p.diags.Error(decl.nodeSpan(), "'#shadow' can only be used with a variable declaration", "remove '#shadow' or declare a variable")
+	switch d := decl.(type) {
+	case *VarDecl:
+		d.Shadow = true
+	case *ProcDecl:
+		d.Shadow = true
+	case *StructDecl:
+		d.Shadow = true
+	case *ErrorDecl:
+		d.Shadow = true
+	case *EnumDecl:
+		d.Shadow = true
 	}
 	return decl, true
 }
@@ -1105,11 +1160,62 @@ func (p *Parser) parseIdentStmt() Stmt {
 	nameTok := p.bump()
 	name := nameTok.Text()
 
-	// Tolerant mode: generic type parameters before '::'
-	// (ident <T: String | S64> :: proc {...}). The clause is consumed so the
-	// procedure declaration parses normally.
+	// See parseDecl: unsupported generic declarations are recovery-only and do
+	// not become ordinary declarations in the tolerant AST.
 	if p.tolerant && p.at(TkLt) {
 		p.parseGenericClause()
+		p.skipToMatchedBraces()
+		return nil
+	}
+
+	// Multiple-result destructuring: "a, b := call();" or compile-time
+	// "a, b :: call();". Typed destructuring is deliberately not implicit;
+	// each result type comes from the procedure signature.
+	if p.at(TkComma) {
+		names := []string{name}
+		spans := []Span{nameTok.Span}
+		for p.match(TkComma) {
+			if !p.at(TkIdent) {
+				p.diags.Error(p.peek().Span, "expected a binding name after ','", "add a name for the next returned value")
+				return nil
+			}
+			n := p.bump()
+			names = append(names, n.Text())
+			spans = append(spans, n.Span)
+			if len(names) == maxProcedureItems+1 {
+				p.diags.Error(n.Span, tooManyProcedureItems("things to be returned"), "use a struct to group related results")
+			}
+		}
+		compileTime := false
+		switch {
+		case p.atInfer():
+			p.bump()
+			p.bump()
+		case p.atCompTimeAssign():
+			p.bump()
+			p.bump()
+			compileTime = true
+		default:
+			p.diags.Error(p.peek().Span, "expected ':=' or '::' after multiple binding names", "bind the returned values with ':=' or '::'")
+			return nil
+		}
+		init := p.parseExpr(0)
+		if init == nil {
+			p.diags.Error(p.peek().Span, "expected a multiple-result expression", "call a procedure returning multiple values")
+			return nil
+		}
+		if p.at(TkUnless) {
+			return p.parseUnlessCatchTargets(nameTok, names, spans, init)
+		}
+		p.expect(TkSemicolon)
+		return &MultiVarDecl{
+			Span_:       spanUnion(nameTok.Span, init.nodeSpan()),
+			Names:       names,
+			NameSpans:   spans,
+			Init:        init,
+			Mutable:     !compileTime,
+			CompileTime: compileTime,
+		}
 	}
 
 	switch {
@@ -1146,6 +1252,7 @@ func (p *Parser) parseIdentStmt() Stmt {
 			return &VarDecl{
 				Span_:       nameTok.Span,
 				Name:        name,
+				NameSpan:    nameTok.Span,
 				Mutable:     true,
 				CompileTime: false,
 			}
@@ -1158,6 +1265,7 @@ func (p *Parser) parseIdentStmt() Stmt {
 		return &VarDecl{
 			Span_:       spanUnion(nameTok.Span, init.nodeSpan()),
 			Name:        name,
+			NameSpan:    nameTok.Span,
 			Init:        init,
 			Mutable:     true,
 			CompileTime: false,
@@ -1184,7 +1292,7 @@ func (p *Parser) parseIdentStmt() Stmt {
 			if p.at(TkSemicolon) {
 				p.bump()
 			}
-			return &CompoundAssignStmt{Span_: nameTok.Span, Name: name, Op: BinaryOpAdd}
+			return &CompoundAssignStmt{Span_: nameTok.Span, Name: name, NameSpan: nameTok.Span, Op: BinaryOpAdd}
 		}
 		p.expect(TkSemicolon)
 		op := BinaryOpAdd
@@ -1192,10 +1300,11 @@ func (p *Parser) parseIdentStmt() Stmt {
 			op = BinaryOpSub
 		}
 		return &CompoundAssignStmt{
-			Span_: spanUnion(nameTok.Span, value.nodeSpan()),
-			Name:  name,
-			Op:    op,
-			Value: value,
+			Span_:    spanUnion(nameTok.Span, value.nodeSpan()),
+			Name:     name,
+			NameSpan: nameTok.Span,
+			Op:       op,
+			Value:    value,
 		}
 
 	case p.at(TkInc), p.at(TkDec):
@@ -1207,20 +1316,15 @@ func (p *Parser) parseIdentStmt() Stmt {
 			op = BinaryOpSub
 		}
 		return &IncDecStmt{
-			Span_: spanUnion(nameTok.Span, opTok.Span),
-			Name:  name,
-			Op:    op,
+			Span_:    spanUnion(nameTok.Span, opTok.Span),
+			Name:     name,
+			NameSpan: nameTok.Span,
+			Op:       op,
 		}
 
 	case p.at(TkLParen):
 		// Call expression used as a statement: f(args);
-		p.bump() // consume "("
-		expr := p.parseCallArgs(&IdentExpr{Span_: nameTok.Span, Name: name}, nameTok.Span)
-		// Handle chained calls: f()()
-		for p.at(TkLParen) {
-			p.bump() // consume "("
-			expr = p.parseCallArgs(expr, expr.nodeSpan())
-		}
+		expr := p.parseExprRest(&IdentExpr{Span_: nameTok.Span, Name: name}, 0)
 		// Error handling: 'expr unless catch [err] { body }' with the value
 		// discarded.
 		if p.at(TkUnless) {
@@ -1229,7 +1333,7 @@ func (p *Parser) parseIdentStmt() Stmt {
 		p.expect(TkSemicolon)
 		// Wrap in an expression statement.
 		return &ExprStmt{
-			Span_: expr.Span_,
+			Span_: expr.nodeSpan(),
 			Expr:  expr,
 		}
 
@@ -1259,6 +1363,16 @@ func (p *Parser) parseIdentStmt() Stmt {
 // "target := expr unless catch" form, or "" for the bare form that discards
 // the value.
 func (p *Parser) parseUnlessCatch(nameTok Token, target string, init Expr) Stmt {
+	targets := []string{}
+	spans := []Span{}
+	if target != "" {
+		targets = append(targets, target)
+		spans = append(spans, nameTok.Span)
+	}
+	return p.parseUnlessCatchTargets(nameTok, targets, spans, init)
+}
+
+func (p *Parser) parseUnlessCatchTargets(nameTok Token, targets []string, targetSpans []Span, init Expr) Stmt {
 	p.bump() // consume "unless"
 	if !p.at(TkCatch) {
 		p.diags.Error(p.peek().Span, "expected 'catch' after 'unless'", "add 'catch' after 'unless'")
@@ -1278,9 +1392,10 @@ func (p *Parser) parseUnlessCatch(nameTok Token, target string, init Expr) Stmt 
 		p.diags.Error(p.peek().Span, "expected '{' block after 'catch'", "add a '{' block for the catch body")
 		return nil
 	}
-	var targetSpan Span
-	if target != "" {
-		targetSpan = nameTok.Span
+	var target, targetSpan = "", Span{}
+	if len(targets) > 0 {
+		target = targets[0]
+		targetSpan = targetSpans[0]
 	}
 	return &UnlessCatchStmt{
 		Span_:         spanUnion(nameTok.Span, body.Span_),
@@ -1290,6 +1405,8 @@ func (p *Parser) parseUnlessCatch(nameTok Token, target string, init Expr) Stmt 
 		CatchName:     catchName,
 		CatchNameSpan: catchNameSpan,
 		CatchBody:     body,
+		Targets:       targets,
+		TargetSpans:   targetSpans,
 	}
 }
 
@@ -1303,19 +1420,21 @@ func (p *Parser) parseAssignStmt(nameTok Token, name string) Stmt {
 			p.bump()
 		}
 		return &AssignStmt{
-			Span_: nameTok.Span,
-			Name:  name,
+			Span_:    nameTok.Span,
+			Name:     name,
+			NameSpan: nameTok.Span,
 		}
 	}
 	p.expect(TkSemicolon)
 	return &AssignStmt{
-		Span_: spanUnion(nameTok.Span, value.nodeSpan()),
-		Name:  name,
-		Value: value,
+		Span_:    spanUnion(nameTok.Span, value.nodeSpan()),
+		Name:     name,
+		NameSpan: nameTok.Span,
+		Value:    value,
 	}
 }
 
-// parseReturnStmt parses: "return" expr? ";"
+// parseReturnStmt parses: "return" (expr ("," expr)*)? ";"
 func (p *Parser) parseReturnStmt() Stmt {
 	tok := p.bump() // consume "return"
 
@@ -1338,10 +1457,23 @@ func (p *Parser) parseReturnStmt() Stmt {
 			Span_: tok.Span,
 		}
 	}
+	values := []Expr{value}
+	for p.match(TkComma) {
+		next := p.parseExpr(0)
+		if next == nil {
+			p.diags.Error(p.peek().Span, "expected returned value after ','", "add the next returned value")
+			break
+		}
+		values = append(values, next)
+		if len(values) == maxProcedureItems+1 {
+			p.diags.Error(next.nodeSpan(), tooManyProcedureItems("things to be returned"), "use a struct to group related results")
+		}
+	}
 	p.expect(TkSemicolon)
 	return &ReturnStmt{
-		Span_: spanUnion(tok.Span, value.nodeSpan()),
-		Value: value,
+		Span_:  spanUnion(tok.Span, values[len(values)-1].nodeSpan()),
+		Value:  value,
+		Values: values,
 	}
 }
 
@@ -1536,11 +1668,11 @@ func (p *Parser) parseElseBody() *BlockStmt {
 func (p *Parser) parseForStmt() Stmt {
 	tok := p.bump() // consume "for"
 
-	if p.atRangeFor() {
-		return p.parseRangeFor(tok)
-	}
 	if p.atCFor() {
 		return p.parseCFor(tok)
+	}
+	if p.atRangeFor() {
+		return p.parseRangeFor(tok)
 	}
 
 	// Single-expression form: while or implicit range.
@@ -1571,7 +1703,7 @@ func (p *Parser) atRangeFor() bool {
 	}
 	n1 := p.peekN(1)
 	if n1.Kind == TkComma {
-		return true
+		return p.peekN(2).Kind == TkIdent && p.peekN(3).Kind == TkColon
 	}
 	if n1.Kind != TkColon {
 		return false
@@ -1585,18 +1717,46 @@ func (p *Parser) atRangeFor() bool {
 	return true
 }
 
-// atCFor reports whether the tokens after 'for' start a c-style header: a
-// statement that can serve as the init (a declaration, assignment, compound
-// assignment, or increment/decrement).
+// atCFor classifies by the grammar's top-level separators rather than the
+// shape of the first few tokens. This handles typed declarations containing
+// structured types and complex initializer expressions without guessing.
 func (p *Parser) atCFor() bool {
-	if p.at(TkIdent) {
-		switch p.peekN(1).Kind {
-		case TkColon, TkAssign, TkPlusAssign, TkMinusAssign, TkInc, TkDec:
-			return true
+	parenDepth, bracketDepth, structDepth := 0, 0, 0
+	for n := 0; ; n++ {
+		tok := p.peekN(n)
+		switch tok.Kind {
+		case TkEOF:
+			return false
+		case TkLParen:
+			parenDepth++
+		case TkRParen:
+			if parenDepth > 0 {
+				parenDepth--
+			}
+		case TkLBracket:
+			bracketDepth++
+		case TkRBracket:
+			if bracketDepth > 0 {
+				bracketDepth--
+			}
+		case TkLBrace:
+			if n > 0 && p.peekN(n-1).Kind == TkDot {
+				structDepth++
+			} else if structDepth == 0 && parenDepth == 0 && bracketDepth == 0 {
+				return false
+			} else {
+				structDepth++
+			}
+		case TkRBrace:
+			if structDepth > 0 {
+				structDepth--
+			}
+		case TkSemicolon:
+			if parenDepth == 0 && bracketDepth == 0 && structDepth == 0 {
+				return true
+			}
 		}
-		return false
 	}
-	return p.at(TkInc) || p.at(TkDec)
 }
 
 // parseRangeFor parses "for [idx,] elem: expr { body }" after 'for' has been
@@ -1637,7 +1797,16 @@ func (p *Parser) parseRangeFor(tok Token) Stmt {
 // parseCFor parses "for init; cond; after { body }" after 'for' has been
 // consumed.
 func (p *Parser) parseCFor(tok Token) Stmt {
+	if p.at(TkSemicolon) {
+		p.diags.Error(p.peek().Span, "c-style for loops require an initializer", "add an initializer before the first ';'")
+	}
 	init := p.parseStmt()
+	if init == nil {
+		p.diags.Error(p.peek().Span, "c-style for loops require an initializer", "add a declaration or assignment before the first ';'")
+	}
+	if p.at(TkSemicolon) {
+		p.diags.Error(p.peek().Span, "c-style for loops require a condition", "add a Bool condition between the semicolons")
+	}
 	cond := p.parseExpr(0)
 	if cond == nil {
 		p.diags.Error(p.peek().Span, "expected condition after ';' in for", "add a condition after ';'")
@@ -1645,6 +1814,9 @@ func (p *Parser) parseCFor(tok Token) Stmt {
 	}
 	p.expect(TkSemicolon)
 	after := p.parseCForAfter()
+	if after == nil {
+		p.diags.Error(p.peek().Span, "c-style for loops require an after clause", "add an assignment, call, increment, or decrement before the body")
+	}
 	body := p.parseBlock()
 	if body == nil {
 		p.diags.Error(p.peek().Span, "expected block after 'for' header", "add a '{' block for the loop body")
@@ -1677,7 +1849,7 @@ func (p *Parser) parseCForAfter() Stmt {
 		if opTok.Kind == TkDec {
 			op = BinaryOpSub
 		}
-		return &IncDecStmt{Span_: spanUnion(opTok.Span, nameTok.Span), Name: nameTok.Text(), Op: op, Prefix: true}
+		return &IncDecStmt{Span_: spanUnion(opTok.Span, nameTok.Span), Name: nameTok.Text(), NameSpan: nameTok.Span, Op: op, Prefix: true}
 	}
 	if !p.at(TkIdent) {
 		return nil // empty after clause
@@ -1690,9 +1862,9 @@ func (p *Parser) parseCForAfter() Stmt {
 		value := p.parseExpr(0)
 		if value == nil {
 			p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
-			return &AssignStmt{Span_: nameTok.Span, Name: name}
+			return &AssignStmt{Span_: nameTok.Span, Name: name, NameSpan: nameTok.Span}
 		}
-		return &AssignStmt{Span_: spanUnion(nameTok.Span, value.nodeSpan()), Name: name, Value: value}
+		return &AssignStmt{Span_: spanUnion(nameTok.Span, value.nodeSpan()), Name: name, NameSpan: nameTok.Span, Value: value}
 	case TkPlusAssign, TkMinusAssign:
 		opTok := p.bump()
 		value := p.parseExpr(0)
@@ -1704,19 +1876,18 @@ func (p *Parser) parseCForAfter() Stmt {
 		if opTok.Kind == TkMinusAssign {
 			op = BinaryOpSub
 		}
-		return &CompoundAssignStmt{Span_: spanUnion(nameTok.Span, value.nodeSpan()), Name: name, Op: op, Value: value}
+		return &CompoundAssignStmt{Span_: spanUnion(nameTok.Span, value.nodeSpan()), Name: name, NameSpan: nameTok.Span, Op: op, Value: value}
 	case TkInc, TkDec:
 		opTok := p.bump()
 		op := BinaryOpAdd
 		if opTok.Kind == TkDec {
 			op = BinaryOpSub
 		}
-		return &IncDecStmt{Span_: spanUnion(nameTok.Span, opTok.Span), Name: name, Op: op}
+		return &IncDecStmt{Span_: spanUnion(nameTok.Span, opTok.Span), Name: name, NameSpan: nameTok.Span, Op: op}
 	case TkLParen:
 		// Call expression used as the after clause: "do_something()"
-		p.bump() // consume "("
-		expr := p.parseCallArgs(&IdentExpr{Span_: nameTok.Span, Name: name}, nameTok.Span)
-		return &ExprStmt{Span_: expr.Span_, Expr: expr}
+		expr := p.parseExprRest(&IdentExpr{Span_: nameTok.Span, Name: name}, 0)
+		return &ExprStmt{Span_: expr.nodeSpan(), Expr: expr}
 	}
 	p.diags.Error(p.peek().Span, "unexpected token after identifier '"+name+"' in for after clause", "use an assignment, increment, decrement, or call")
 	return nil
@@ -1797,7 +1968,13 @@ func (p *Parser) parseExpr(minBp int) Expr {
 	if left == nil {
 		return nil
 	}
+	return p.parseExprRest(left, minBp)
+}
 
+// parseExprRest is the single postfix/binary continuation loop. Statement
+// parsers that already consumed an identifier use it too, preventing calls
+// and indexing from acquiring different chaining behavior.
+func (p *Parser) parseExprRest(left Expr, minBp int) Expr {
 	for {
 		tok := p.peek()
 		if tok.Kind == TkEOF || tok.Kind == TkSemicolon || tok.Kind == TkRBrace ||
@@ -1839,10 +2016,11 @@ func (p *Parser) parseExpr(minBp int) Expr {
 		}
 
 		left = &BinaryExpr{
-			Span_: spanUnion(left.nodeSpan(), right.nodeSpan()),
-			Op:    BinaryOp(op),
-			Left:  left,
-			Right: right,
+			Span_:  spanUnion(left.nodeSpan(), right.nodeSpan()),
+			OpSpan: tok.Span,
+			Op:     BinaryOp(op),
+			Left:   left,
+			Right:  right,
 		}
 	}
 
@@ -1903,11 +2081,6 @@ func (p *Parser) parseAtom() Expr {
 	case TkIdent:
 		p.bump()
 		ident := &IdentExpr{Span_: tok.Span, Name: tok.Text()}
-		// Check for call: f(...)
-		if p.at(TkLParen) {
-			p.bump() // consume "("
-			return p.parseCallArgs(ident, tok.Span)
-		}
 		// Struct literal with explicit type: TypeName.{...}
 		if p.at(TkDot) && p.peekN(1).Kind == TkLBrace {
 			p.bump() // consume "."
@@ -1920,16 +2093,20 @@ func (p *Parser) parseAtom() Expr {
 			bang, end := p.parseErrorBang(memberTok.Span.End)
 			if bang {
 				return &ErrorMemberExpr{
-					Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
-					TypeName: tok.Text(),
-					Name:     memberTok.Text(),
-					Bang:     true,
+					Span_:        Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
+					TypeName:     tok.Text(),
+					TypeNameSpan: tok.Span,
+					Name:         memberTok.Text(),
+					NameSpan:     memberTok.Span,
+					Bang:         true,
 				}
 			}
 			return &EnumMemberExpr{
-				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
-				TypeName: tok.Text(),
-				Name:     memberTok.Text(),
+				Span_:        Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
+				TypeName:     tok.Text(),
+				TypeNameSpan: tok.Span,
+				Name:         memberTok.Text(),
+				NameSpan:     memberTok.Span,
 			}
 		}
 		return ident
@@ -1948,15 +2125,15 @@ func (p *Parser) parseAtom() Expr {
 			if bang {
 				return &ErrorMemberExpr{
 					Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
-					TypeName: "",
 					Name:     memberTok.Text(),
+					NameSpan: memberTok.Span,
 					Bang:     true,
 				}
 			}
 			return &EnumMemberExpr{
 				Span_:    Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
-				TypeName: "",
 				Name:     memberTok.Text(),
+				NameSpan: memberTok.Span,
 			}
 		}
 		return nil
@@ -2063,6 +2240,9 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 			break
 		}
 		args = append(args, arg)
+		if len(args) == maxProcedureItems+1 {
+			p.diags.Error(arg.nodeSpan(), tooManyProcedureItems("arguments"), "use a struct to group related inputs")
+		}
 		if !p.at(TkComma) {
 			break
 		}
@@ -2108,10 +2288,16 @@ func (p *Parser) parseStructInit(typeName Expr, dotSpan Span) Expr {
 	openTok := p.bump() // consume "{"
 
 	var fields []StructInitField
+	namedSeen := false
 	for !p.at(TkRBrace) && !p.at(TkEOF) {
 		before := p.pos
 		field, ok := p.parseStructInitField()
 		if ok {
+			if field.Name != "" {
+				namedSeen = true
+			} else if namedSeen {
+				p.diags.Error(field.Span_, "a positional struct field cannot follow a named field", "move positional fields before named fields")
+			}
 			fields = append(fields, field)
 		}
 		// Guarantee forward motion on malformed fields.
@@ -2150,12 +2336,13 @@ func (p *Parser) parseStructInitField() (StructInitField, bool) {
 		value := p.parseExpr(0)
 		if value == nil {
 			p.diags.Error(p.peek().Span, "expected value after '=' in struct literal", "add a value after '='")
-			return StructInitField{Span_: nameTok.Span, Name: nameTok.Text()}, true
+			return StructInitField{Span_: nameTok.Span, Name: nameTok.Text(), NameSpan: nameTok.Span}, true
 		}
 		return StructInitField{
-			Span_: spanUnion(nameTok.Span, value.nodeSpan()),
-			Name:  nameTok.Text(),
-			Value: value,
+			Span_:    spanUnion(nameTok.Span, value.nodeSpan()),
+			Name:     nameTok.Text(),
+			NameSpan: nameTok.Span,
+			Value:    value,
 		}, true
 	}
 
@@ -2206,6 +2393,11 @@ func tokToBinaryOp(kind TokenKind) int {
 
 // spanUnion returns a Span that covers both spans.
 func spanUnion(a, b Span) Span {
+	if a.File != b.File {
+		// Parser nodes must never cross source files. Keep the left span as a
+		// safe production fallback; tests exercise this invariant explicitly.
+		return a
+	}
 	start := a.Start
 	if b.Start < start {
 		start = b.Start

@@ -19,6 +19,7 @@ type MIRProgram struct {
 	Globals    []MIRGlobal
 	Entry      SymbolID
 	GlobalInit *MIRFunction
+	Sources    map[FileID]SourceFile
 }
 
 // NoSymbol is the sentinel SymbolID used where no symbol is present (for
@@ -27,24 +28,27 @@ const NoSymbol SymbolID = ^SymbolID(0)
 
 // MIRGlobal is a top-level variable or constant.
 type MIRGlobal struct {
-	Symbol  SymbolID
-	Name    string
-	Type    TypeID
-	Mutable bool
-	Span    Span
+	Symbol      SymbolID
+	Name        string
+	Type        TypeID
+	Mutable     bool
+	CompileTime bool
+	Span        Span
 }
 
 // MIRFunction is a lowered procedure. Locals holds every local slot (params
 // first, then declared locals); LocalTypes is indexed by LocalID.
 type MIRFunction struct {
-	Symbol     SymbolID
-	Name       string
-	Params     []LocalID
-	Locals     []LocalID
-	LocalTypes []TypeID
-	Results    []TypeID
-	Blocks     []*MIRBlock
-	Span       Span
+	Symbol       SymbolID
+	Name         string
+	Params       []LocalID
+	Locals       []LocalID
+	LocalTypes   []TypeID
+	LocalMutable []bool
+	Results      []TypeID
+	ResultType   TypeID
+	Blocks       []*MIRBlock
+	Span         Span
 }
 
 // MIRBlock is a basic block: a sequence of instructions and one terminator.
@@ -60,6 +64,7 @@ type MIROpcode uint8
 
 const (
 	MIRConst MIROpcode = iota
+	MIRZero
 	MIRLoadLocal
 	MIRStoreLocal
 	MIRLoadGlobal
@@ -85,7 +90,6 @@ const (
 	MIRArrayInit
 	MIRArrayLen
 	MIRArrayIndex
-	MIRExit
 )
 
 // String returns the textual name of an opcode.
@@ -93,6 +97,8 @@ func (op MIROpcode) String() string {
 	switch op {
 	case MIRConst:
 		return "const"
+	case MIRZero:
+		return "zero"
 	case MIRLoadLocal:
 		return "load.local"
 	case MIRStoreLocal:
@@ -143,8 +149,6 @@ func (op MIROpcode) String() string {
 		return "array.len"
 	case MIRArrayIndex:
 		return "array.index"
-	case MIRExit:
-		return "exit"
 	}
 	return "?"
 }
@@ -177,12 +181,13 @@ type MIRImmediate struct {
 // MIRInstr is a single three-address instruction. Result is NoValue for
 // instructions that produce no value (for example store.local).
 type MIRInstr struct {
-	Result ValueID
-	Op     MIROpcode
-	Type   TypeID
-	Args   []ValueID
-	Imm    MIRImmediate
-	Span   Span
+	Result       ValueID
+	Op           MIROpcode
+	Type         TypeID
+	Args         []ValueID
+	Imm          MIRImmediate
+	Initializing bool
+	Span         Span
 }
 
 // MIRTermKind enumerates block terminators.

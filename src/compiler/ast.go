@@ -135,10 +135,11 @@ func (op BinaryOp) String() string {
 
 // BinaryExpr is a binary operation: left op right.
 type BinaryExpr struct {
-	Span_ Span
-	Op    BinaryOp
-	Left  Expr
-	Right Expr
+	Span_  Span
+	OpSpan Span
+	Op     BinaryOp
+	Left   Expr
+	Right  Expr
 }
 
 func (e *BinaryExpr) nodeSpan() Span {
@@ -221,9 +222,10 @@ func (e *StructInitExpr) exprNode() {}
 // StructInitField is one entry in a struct literal. Name is empty for
 // positional values.
 type StructInitField struct {
-	Span_ Span
-	Name  string // field name (empty for positional)
-	Value Expr
+	Span_    Span
+	Name     string // field name (empty for positional)
+	NameSpan Span
+	Value    Expr
 }
 
 func (f StructInitField) nodeSpan() Span {
@@ -307,6 +309,7 @@ func (e *ErrorExpr) exprNode() {}
 type VarDecl struct {
 	Span_       Span
 	Name        string
+	NameSpan    Span
 	DeclType    Expr // type annotation (nil for inferred)
 	Init        Expr // initializer (nil for uninitialized)
 	Mutable     bool // can be reassigned
@@ -324,9 +327,10 @@ func (d *VarDecl) declNode() {}
 
 // AssignStmt is a reassignment: name = expr.
 type AssignStmt struct {
-	Span_ Span
-	Name  string
-	Value Expr
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Value    Expr
 }
 
 func (s *AssignStmt) nodeSpan() Span {
@@ -335,10 +339,13 @@ func (s *AssignStmt) nodeSpan() Span {
 
 func (s *AssignStmt) stmtNode() {}
 
-// ReturnStmt is a return statement. Value is nil for void returns.
+// ReturnStmt is a return statement. Values is empty for a void return. Value
+// mirrors Values[0] for compatibility with consumers that only need the first
+// result; new code must use Values.
 type ReturnStmt struct {
-	Span_ Span
-	Value Expr // nil for bare "return;"
+	Span_  Span
+	Value  Expr   // deprecated compatibility field
+	Values []Expr // empty for bare "return;"
 }
 
 func (s *ReturnStmt) nodeSpan() Span {
@@ -410,6 +417,8 @@ type UnlessCatchStmt struct {
 	CatchNameSpan Span   // span of the binding name (zero when unnamed)
 	CatchBody     *BlockStmt
 	Shadow        bool // explicit '#shadow' directive allows reusing an outer name
+	Targets       []string
+	TargetSpans   []Span
 }
 
 func (s *UnlessCatchStmt) nodeSpan() Span {
@@ -475,10 +484,11 @@ func (s *ContinueStmt) stmtNode() {}
 // CompoundAssignStmt is a compound assignment: "name += expr" or
 // "name -= expr". Op is BinaryOpAdd or BinaryOpSub.
 type CompoundAssignStmt struct {
-	Span_ Span
-	Name  string
-	Op    BinaryOp
-	Value Expr
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Op       BinaryOp
+	Value    Expr
 }
 
 func (s *CompoundAssignStmt) nodeSpan() Span {
@@ -492,10 +502,11 @@ func (s *CompoundAssignStmt) stmtNode() {}
 // whether the operator precedes the name; it has no semantic effect because
 // the statement produces no value.
 type IncDecStmt struct {
-	Span_  Span
-	Name   string
-	Op     BinaryOp
-	Prefix bool
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Op       BinaryOp
+	Prefix   bool
 }
 
 func (s *IncDecStmt) nodeSpan() Span {
@@ -527,10 +538,12 @@ func (s *BlockStmt) stmtNode() {}
 type ProcDecl struct {
 	Span_       Span
 	Name        string
+	NameSpan    Span
 	Params      []Param
 	Results     []Expr // type expressions (empty for void)
 	ErrorResult Expr   // error type expression (nil when no '<>')
 	Body        *BlockStmt
+	Shadow      bool
 }
 
 func (d *ProcDecl) nodeSpan() Span {
@@ -550,9 +563,11 @@ func (d *ProcDecl) declNode() {}
 // The declaration itself does not require a trailing semicolon; each field
 // ends with its own semicolon.
 type StructDecl struct {
-	Span_  Span
-	Name   string
-	Fields []StructField
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Fields   []StructField
+	Shadow   bool
 }
 
 func (d *StructDecl) nodeSpan() Span {
@@ -564,9 +579,11 @@ func (d *StructDecl) declNode() {}
 
 // StructField is a single field in a struct definition: "name: type;".
 type StructField struct {
-	Span_ Span
-	Name  string
-	Type  Expr // type expression
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Type     Expr // type expression
+	Default  Expr // compile-time default (nil means recursive zero value)
 }
 
 func (f StructField) nodeSpan() Span {
@@ -587,9 +604,11 @@ func (f StructField) nodeSpan() Span {
 // The declaration itself does not require a trailing semicolon; each member
 // ends with its own semicolon.
 type ErrorDecl struct {
-	Span_   Span
-	Name    string
-	Members []ErrorMember
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Members  []ErrorMember
+	Shadow   bool
 }
 
 func (d *ErrorDecl) nodeSpan() Span {
@@ -601,8 +620,9 @@ func (d *ErrorDecl) declNode() {}
 
 // ErrorMember is a single error value in an error type definition: "NAME;".
 type ErrorMember struct {
-	Span_ Span
-	Name  string
+	Span_    Span
+	Name     string
+	NameSpan Span
 }
 
 func (m ErrorMember) nodeSpan() Span {
@@ -615,10 +635,12 @@ func (m ErrorMember) nodeSpan() Span {
 // is an error literal, which requires the trailing '!' (for example
 // "Some_Error.GENERIC!"); variables holding error values do not use the bang.
 type ErrorMemberExpr struct {
-	Span_    Span
-	TypeName string // error type name (empty for the bare ".MEMBER!" form)
-	Name     string // member name
-	Bang     bool   // error literal instantiation ('!' suffix)
+	Span_        Span
+	TypeName     string // error type name (empty for the bare ".MEMBER!" form)
+	TypeNameSpan Span
+	Name         string // member name
+	NameSpan     Span
+	Bang         bool // error literal instantiation ('!' suffix)
 }
 
 func (e *ErrorMemberExpr) nodeSpan() Span {
@@ -641,9 +663,11 @@ func (e *ErrorMemberExpr) exprNode() {}
 // itself does not require a trailing semicolon; each member ends with its own
 // semicolon.
 type EnumDecl struct {
-	Span_   Span
-	Name    string
-	Members []EnumMember
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Members  []EnumMember
+	Shadow   bool
 }
 
 func (d *EnumDecl) nodeSpan() Span {
@@ -657,10 +681,11 @@ func (d *EnumDecl) declNode() {}
 // (on the first member only) "NAME: Type = value;". Type is nil for members
 // after the first; Value is nil when the member takes the sequential value.
 type EnumMember struct {
-	Span_ Span
-	Name  string
-	Type  Expr // underlying type annotation (first member only)
-	Value Expr // explicit value (nil when sequential)
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Type     Expr // underlying type annotation (first member only)
+	Value    Expr // explicit value (nil when sequential)
 }
 
 func (m EnumMember) nodeSpan() Span {
@@ -671,9 +696,11 @@ func (m EnumMember) nodeSpan() Span {
 // ".MEMBER" form. TypeName is empty for the bare form, whose type is inferred
 // from the surrounding context.
 type EnumMemberExpr struct {
-	Span_    Span
-	TypeName string // enum type name (empty for the bare ".MEMBER" form)
-	Name     string // member name
+	Span_        Span
+	TypeName     string // enum type name (empty for the bare ".MEMBER" form)
+	TypeNameSpan Span
+	Name         string // member name
+	NameSpan     Span
 }
 
 func (e *EnumMemberExpr) nodeSpan() Span {
@@ -684,9 +711,10 @@ func (e *EnumMemberExpr) exprNode() {}
 
 // Param is a single procedure parameter.
 type Param struct {
-	Span_ Span
-	Name  string
-	Type  Expr // type expression
+	Span_    Span
+	Name     string
+	NameSpan Span
+	Type     Expr // type expression
 }
 
 func (p Param) nodeSpan() Span {
@@ -697,8 +725,11 @@ func (p Param) nodeSpan() Span {
 // Entry is the name of the procedure selected by a '#entry' directive, or ""
 // when the source declares no entry point.
 type Program struct {
-	Decls []Decl
-	Entry string
+	Decls     []Decl
+	Entry     string
+	EntrySpan Span
+	EntryDecl *ProcDecl
+	Sources   map[FileID]SourceFile
 }
 
 func (p *Program) nodeSpan() Span {
@@ -720,3 +751,18 @@ func (s *ExprStmt) nodeSpan() Span {
 }
 
 func (s *ExprStmt) stmtNode() {}
+
+// MultiVarDecl destructures a procedure's multiple result tuple. The source
+// form is "a, b := call();" (or "::" for compile-time bindings).
+type MultiVarDecl struct {
+	Span_       Span
+	Names       []string
+	NameSpans   []Span
+	Init        Expr
+	Mutable     bool
+	CompileTime bool
+	Shadow      bool
+}
+
+func (d *MultiVarDecl) nodeSpan() Span { return d.Span_ }
+func (d *MultiVarDecl) stmtNode()      {}

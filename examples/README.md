@@ -43,8 +43,8 @@ cd examples && go test -count=1 -update ./...
 The `expect-exit` header declares the expected exit status. `expect-stderr`
 (optional) declares the exact expected stderr content. The harness then:
 
-1. Tokenizes, parses, type-checks, lowers to HIR and MIR, verifies, and emits
-   fasm assembly, failing the test if any stage reports an error.
+1. Tokenizes, parses, type-checks, target-validates, lowers to HIR and MIR,
+   verifies, and emits fasm assembly, failing if any stage reports an error.
 2. Compares the dump of each step (tokens, AST, HIR, MIR, asm) against the
    golden files.
 3. Assembles the emitted assembly with fasm, runs the binary, and checks the
@@ -62,7 +62,8 @@ The `expect-exit` header declares the expected exit status. `expect-stderr`
 ```
 
 The `expect-stage` header declares the first pipeline stage that must report
-errors (`tokenize`, `parse`, `type`, `lower`, `mir`, `verify`, `emit`).
+errors (`tokenize`, `parse`, `type`, `target`, `lower`, `mir`, `verify`,
+`emit`).
 `expect-error` is a substring that must appear in the rendered diagnostics.
 The harness verifies both, and compares the rendered diagnostics against the
 golden file.

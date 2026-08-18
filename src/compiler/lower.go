@@ -8,6 +8,7 @@
 package compiler
 
 import (
+	"maps"
 	"math/big"
 	"strconv"
 	"strings"
@@ -15,24 +16,49 @@ import (
 
 // LowerProgram lowers a parsed AST into the typed HIR.
 func LowerProgram(program *Program) (*HIR, DiagnosticList) {
+	analysis, semanticDiags := AnalyzeProgram(program)
+	hir, lowerDiags := LowerAnalyzedProgram(program, analysis)
+	return hir, append(semanticDiags, lowerDiags...)
+}
+
+// LowerAnalyzedProgram lowers with the exact semantic facts produced by
+// AnalyzeProgram. Pipeline drivers should prefer this over re-analysis.
+func LowerAnalyzedProgram(program *Program, analysis *SemanticAnalysis) (*HIR, DiagnosticList) {
+	if program == nil {
+		var diags DiagnosticList
+		diags.Error(Span{}, "cannot lower a nil program", "parse and analyze a source program before lowering")
+		return &HIR{Symbols: NewSymbolTable(), Types: NewTypeTable(), Entry: NoSymbol}, diags
+	}
+	if analysis == nil {
+		var diags DiagnosticList
+		diags.Error(Span{}, "lowering requires semantic analysis facts", "run AnalyzeProgram before LowerAnalyzedProgram")
+		return &HIR{Symbols: NewSymbolTable(), Types: NewTypeTable(), Entry: NoSymbol, Sources: program.Sources}, diags
+	}
 	l := &Lowerer{
-		symbols:        NewSymbolTable(),
-		types:          NewTypeTable(),
-		varTypes:       make(map[SymbolID]TypeID),
-		procs:          make(map[string]*ProcDecl),
-		structs:        make(map[string]*StructDecl),
-		errors:         make(map[string]*ErrorDecl),
-		errorOrdinal:   make(map[string]map[string]int),
-		enumValues:     make(map[string]map[string]string),
-		hirStructs:     make(map[string]*HIRStruct),
-		globalSymbols:  make(map[*VarDecl]SymbolID),
-		globalPrevious: make(map[*VarDecl]SymbolID),
-		unwrapped:      make(map[SymbolID]bool),
-		hir:            &HIR{},
+		symbols:           NewSymbolTable(),
+		types:             NewTypeTable(),
+		varTypes:          make(map[SymbolID]TypeID),
+		procSymbols:       make(map[*ProcDecl]SymbolID),
+		structTypes:       make(map[*StructDecl]TypeID),
+		errorTypes:        make(map[*ErrorDecl]TypeID),
+		enumTypes:         make(map[*EnumDecl]TypeID),
+		structDecls:       make(map[TypeID]*StructDecl),
+		errorOrdinal:      make(map[TypeID]map[string]int),
+		enumValues:        make(map[TypeID]map[string]string),
+		hirStructs:        make(map[TypeID]*HIRStruct),
+		globalSymbols:     make(map[*VarDecl]SymbolID),
+		globalPrevious:    make(map[*VarDecl]SymbolID),
+		symbolCompileTime: make(map[SymbolID]bool),
+		constValues:       make(map[SymbolID]HIRExpr),
+		procAliases:       make(map[SymbolID]*ProcDecl),
+		unwrapped:         make(map[SymbolID]bool),
+		analysis:          analysis,
+		hir:               &HIR{},
 	}
 	l.hir.Symbols = l.symbols
 	l.hir.Types = l.types
-	l.hir.Entry = program.Entry
+	l.hir.Entry = NoSymbol
+	l.hir.Sources = program.Sources
 	l.lowerProgram(program)
 	return l.hir, l.diags
 }
@@ -40,32 +66,46 @@ func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 // Lowerer lowers an AST into the HIR. It maintains a stack of lexical scopes
 // mapping names to SymbolIDs and a map from each declared symbol to its type.
 type Lowerer struct {
-	symbols        *SymbolTable
-	types          *TypeTable
-	scopes         []map[string]SymbolID
-	varTypes       map[SymbolID]TypeID
-	procs          map[string]*ProcDecl
-	structs        map[string]*StructDecl
-	errors         map[string]*ErrorDecl
-	errorOrdinal   map[string]map[string]int
-	enumValues     map[string]map[string]string
-	hirStructs     map[string]*HIRStruct
-	globalSymbols  map[*VarDecl]SymbolID
-	globalPrevious map[*VarDecl]SymbolID
-	unwrapped      map[SymbolID]bool // variables whose error was handled
-	hir            *HIR
-	diags          DiagnosticList
-	curResults     []TypeID // result types of the procedure being lowered
-	rangeThis      HIRExpr  // expression for '#this' in the innermost range loop
-	rangeIndex     SymbolID // symbol for '#index' in the innermost range loop
+	symbols           *SymbolTable
+	types             *TypeTable
+	scopes            []map[string]SymbolID
+	varTypes          map[SymbolID]TypeID
+	procScopes        []map[string]*ProcDecl
+	typeScopes        []map[string]TypeID
+	procSymbols       map[*ProcDecl]SymbolID
+	structTypes       map[*StructDecl]TypeID
+	errorTypes        map[*ErrorDecl]TypeID
+	enumTypes         map[*EnumDecl]TypeID
+	structDecls       map[TypeID]*StructDecl
+	errorOrdinal      map[TypeID]map[string]int
+	enumValues        map[TypeID]map[string]string
+	hirStructs        map[TypeID]*HIRStruct
+	globalSymbols     map[*VarDecl]SymbolID
+	globalPrevious    map[*VarDecl]SymbolID
+	symbolCompileTime map[SymbolID]bool
+	constValues       map[SymbolID]HIRExpr
+	procAliases       map[SymbolID]*ProcDecl
+	unwrapped         map[SymbolID]bool // variables whose error was handled
+	hir               *HIR
+	diags             DiagnosticList
+	curResults        []TypeID // result types of the procedure being lowered
+	rangeThis         HIRExpr  // expression for '#this' in the innermost range loop
+	rangeIndex        SymbolID // symbol for '#index' in the innermost range loop
+	procValueFloor    int
+	procDepth         int
+	analysis          *SemanticAnalysis
 }
 
 func (l *Lowerer) pushScope() {
 	l.scopes = append(l.scopes, map[string]SymbolID{})
+	l.procScopes = append(l.procScopes, map[string]*ProcDecl{})
+	l.typeScopes = append(l.typeScopes, map[string]TypeID{})
 }
 
 func (l *Lowerer) popScope() {
 	l.scopes = l.scopes[:len(l.scopes)-1]
+	l.procScopes = l.procScopes[:len(l.procScopes)-1]
+	l.typeScopes = l.typeScopes[:len(l.typeScopes)-1]
 }
 
 func (l *Lowerer) declare(name string, sym SymbolID) {
@@ -77,10 +117,36 @@ func (l *Lowerer) declare(name string, sym SymbolID) {
 func (l *Lowerer) lookup(name string) SymbolID {
 	for i := len(l.scopes) - 1; i >= 0; i-- {
 		if sym, ok := l.scopes[i][name]; ok {
+			if l.procDepth > 0 && i > 0 && i < l.procValueFloor && !l.symbolCompileTime[sym] {
+				continue
+			}
 			return sym
 		}
 	}
-	return l.symbols.Declare(name)
+	return NoSymbol
+}
+
+func (l *Lowerer) poison(span Span, message string) HIRExpr {
+	l.diags.Error(span, "internal lowering error: "+message, "report this compiler bug")
+	return &HIRPoison{Span_: span, Type: l.types.Unknown()}
+}
+
+func (l *Lowerer) lookupProc(name string) (*ProcDecl, bool) {
+	for i := len(l.procScopes) - 1; i >= 0; i-- {
+		if p, ok := l.procScopes[i][name]; ok {
+			return p, true
+		}
+	}
+	return nil, false
+}
+
+func (l *Lowerer) lookupType(name string) (TypeID, bool) {
+	for i := len(l.typeScopes) - 1; i >= 0; i-- {
+		if t, ok := l.typeScopes[i][name]; ok {
+			return t, true
+		}
+	}
+	return l.types.ByName(name)
 }
 
 // typeOfTypeExpr resolves a type expression (an identifier or an array type
@@ -88,7 +154,7 @@ func (l *Lowerer) lookup(name string) SymbolID {
 func (l *Lowerer) typeOfTypeExpr(e Expr) TypeID {
 	switch n := e.(type) {
 	case *IdentExpr:
-		if id, ok := l.types.ByName(n.Name); ok {
+		if id, ok := l.lookupType(n.Name); ok {
 			return id
 		}
 	case *ArrayTypeExpr:
@@ -106,48 +172,13 @@ func (l *Lowerer) lowerProgram(program *Program) {
 	for _, decl := range program.Decls {
 		switch d := decl.(type) {
 		case *StructDecl:
-			l.structs[d.Name] = d
-			tid := l.types.InternStruct(d.Name)
-			sym := l.symbols.Declare(d.Name)
-			l.declare(d.Name, sym)
-			hs := &HIRStruct{Symbol: sym, Name: d.Name, Type: tid, Span: d.Span_}
-			l.hirStructs[d.Name] = hs
-			l.hir.Structs = append(l.hir.Structs, hs)
+			l.registerStruct(d)
 		case *ProcDecl:
-			l.procs[d.Name] = d
-			sym := l.symbols.Declare(d.Name)
-			l.declare(d.Name, sym)
+			l.registerProc(d)
 		case *ErrorDecl:
-			l.errors[d.Name] = d
-			l.types.InternError(d.Name)
-			sym := l.symbols.Declare(d.Name)
-			l.declare(d.Name, sym)
-			ordinals := make(map[string]int, len(d.Members))
-			for i, m := range d.Members {
-				ordinals[m.Name] = i
-			}
-			l.errorOrdinal[d.Name] = ordinals
+			l.registerError(d)
 		case *EnumDecl:
-			underlying := l.typeOfTypeExpr(d.Members[0].Type)
-			l.types.InternEnum(d.Name, underlying)
-			sym := l.symbols.Declare(d.Name)
-			l.declare(d.Name, sym)
-			values := make(map[string]string, len(d.Members))
-			prev := big.NewInt(0)
-			for i, m := range d.Members {
-				val := new(big.Int).Add(prev, big.NewInt(1))
-				if i == 0 {
-					val.SetInt64(0)
-				}
-				if m.Value != nil {
-					if v, ok := evalEnumMemberValue(m.Value); ok {
-						val.Set(v)
-					}
-				}
-				values[m.Name] = val.String()
-				prev.Set(val)
-			}
-			l.enumValues[d.Name] = values
+			l.registerEnum(d)
 		case *VarDecl:
 			if previous, ok := latestGlobals[d.Name]; ok {
 				l.globalPrevious[d] = previous
@@ -156,30 +187,72 @@ func (l *Lowerer) lowerProgram(program *Program) {
 			l.globalSymbols[d] = sym
 			latestGlobals[d.Name] = sym
 			l.declare(d.Name, sym)
+			l.symbolCompileTime[sym] = d.CompileTime
 		}
+	}
+	// Resolve forward top-level type aliases before any annotated global,
+	// field, or signature is lowered. Local aliases remain source-ordered.
+	for pass := 0; pass < len(program.Decls); pass++ {
+		changed := false
+		for _, decl := range program.Decls {
+			d, ok := decl.(*VarDecl)
+			if !ok || !d.CompileTime {
+				continue
+			}
+			if _, exists := l.typeScopes[0][d.Name]; exists {
+				continue
+			}
+			if target, ok := l.typeAliasTarget(d.Init); ok {
+				l.typeScopes[0][d.Name] = target
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	// Every global receives its semantic type before any initializer/default is
+	// lowered. This removes source-order dependence from expression lowering.
+	for _, decl := range program.Decls {
+		if d, ok := decl.(*VarDecl); ok && d.DeclType != nil {
+			l.varTypes[l.globalSymbols[d]] = l.typeOfTypeExpr(d.DeclType)
+		}
+	}
+	for pass := 0; pass < len(program.Decls); pass++ {
+		changed := false
+		for _, decl := range program.Decls {
+			d, ok := decl.(*VarDecl)
+			if !ok {
+				continue
+			}
+			sym := l.globalSymbols[d]
+			if l.varTypes[sym] != 0 && l.varTypes[sym] != l.types.Unknown() {
+				continue
+			}
+			if typ := l.inferASTType(d.Init); typ != l.types.Unknown() {
+				l.varTypes[sym] = typ
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	if program.EntryDecl != nil {
+		l.hir.Entry = l.procSymbols[program.EntryDecl]
 	}
 
 	// Pass 2: resolve struct field types now that every type name is known.
-	for _, hs := range l.hir.Structs {
-		decl := l.structs[hs.Name]
-		fields := make([]TypeField, len(decl.Fields))
-		hirFields := make([]HIRField, len(decl.Fields))
-		for i, f := range decl.Fields {
-			ft := l.typeOfTypeExpr(f.Type)
-			fsym := l.symbols.Declare(f.Name)
-			fields[i] = TypeField{Symbol: fsym, Name: f.Name, Type: ft}
-			hirFields[i] = HIRField{Symbol: fsym, Name: f.Name, Type: ft, Span: f.Span_}
+	for _, decl := range program.Decls {
+		if d, ok := decl.(*StructDecl); ok {
+			l.finishStruct(d)
 		}
-		l.types.SetStructFields(hs.Type, fields)
-		hs.Fields = hirFields
 	}
 
-	// Pass 3: lower globals and procedure bodies.
+	// Pass 3: lower globals in stable dependency order, then procedures.
+	l.lowerGlobals(program)
 	for _, decl := range program.Decls {
-		switch d := decl.(type) {
-		case *VarDecl:
-			l.lowerGlobal(d)
-		case *ProcDecl:
+		if d, ok := decl.(*ProcDecl); ok {
 			l.lowerProc(d)
 		}
 	}
@@ -187,13 +260,222 @@ func (l *Lowerer) lowerProgram(program *Program) {
 	l.popScope()
 }
 
+func (l *Lowerer) lowerGlobals(program *Program) {
+	seen := make(map[*VarDecl]bool)
+	for _, decl := range l.analysis.GlobalOrder {
+		if _, belongsToProgram := l.globalSymbols[decl]; belongsToProgram && !seen[decl] {
+			l.lowerGlobal(decl)
+			seen[decl] = true
+		}
+	}
+	// Invalid/incomplete analyses do not normally reach lowering. Keep a
+	// deterministic recovery path so direct library use produces diagnostics
+	// rather than silently dropping a global.
+	for _, decl := range program.Decls {
+		if global, ok := decl.(*VarDecl); ok && !seen[global] {
+			l.diags.Error(global.NameSpan, "semantic analysis did not provide a global initialization order", "fix semantic errors before lowering")
+			l.lowerGlobal(global)
+		}
+	}
+}
+
+func (l *Lowerer) inferASTType(expr Expr) TypeID {
+	if l.analysis != nil {
+		if semanticType, ok := l.analysis.ExprTypes[expr]; ok && semanticType != TypeUnknown {
+			if id := l.semanticTypeID(semanticType); id != l.types.Unknown() {
+				return id
+			}
+		}
+	}
+	switch n := expr.(type) {
+	case nil:
+		return l.types.Unknown()
+	case *IntExpr:
+		return l.types.S64()
+	case *FloatExpr:
+		return l.types.F64()
+	case *StringExpr:
+		return l.types.String()
+	case *BoolExpr:
+		return l.types.Bool()
+	case *IdentExpr:
+		sym := l.lookup(n.Name)
+		if sym != NoSymbol {
+			return l.varTypes[sym]
+		}
+	case *ParenExpr:
+		return l.inferASTType(n.Inner)
+	case *UnaryExpr:
+		return l.inferASTType(n.Operand)
+	case *BinaryExpr:
+		if n.Op >= BinaryOpLt {
+			return l.types.Bool()
+		}
+		left := l.inferASTType(n.Left)
+		if left != l.types.Unknown() {
+			return left
+		}
+		return l.inferASTType(n.Right)
+	case *CallExpr:
+		if id, ok := n.Func.(*IdentExpr); ok {
+			if p, found := l.lookupProc(id.Name); found {
+				t := l.tupleTypeID(l.procValueTypes(p))
+				if p.ErrorResult != nil {
+					t = l.unionTypeID(t, l.procErrorType(p))
+				}
+				return t
+			}
+		}
+	case *StructInitExpr:
+		if n.Type != nil {
+			return l.typeOfTypeExpr(n.Type)
+		}
+	case *ArrayInitExpr:
+		return l.types.InternArray(l.typeOfTypeExpr(n.Elem))
+	case *IndexExpr:
+		base := l.types.Lookup(l.inferASTType(n.Base))
+		if base.Kind == TypeKindArray {
+			return base.Elem
+		}
+	case *ErrorMemberExpr:
+		if n.TypeName != "" {
+			if t, ok := l.lookupType(n.TypeName); ok {
+				return t
+			}
+		}
+	case *EnumMemberExpr:
+		if n.TypeName != "" {
+			if t, ok := l.lookupType(n.TypeName); ok {
+				return t
+			}
+		}
+	}
+	return l.types.Unknown()
+}
+
+func (l *Lowerer) semanticTypeID(t Type) TypeID {
+	if l.analysis != nil {
+		switch decl := l.analysis.NominalDecls[t].(type) {
+		case *StructDecl:
+			if id, ok := l.structTypes[decl]; ok {
+				return id
+			}
+		case *ErrorDecl:
+			if id, ok := l.errorTypes[decl]; ok {
+				return id
+			}
+		case *EnumDecl:
+			if id, ok := l.enumTypes[decl]; ok {
+				return id
+			}
+		}
+	}
+	name := string(t)
+	if strings.HasPrefix(name, "[]") {
+		return l.types.InternArray(l.semanticTypeID(Type(strings.TrimPrefix(name, "[]"))))
+	}
+	if id, ok := l.lookupType(name); ok {
+		return id
+	}
+	if id, ok := l.types.ByName(name); ok {
+		return id
+	}
+	return l.types.Unknown()
+}
+
+func (l *Lowerer) registerProc(d *ProcDecl) {
+	sym := l.symbols.Declare(d.Name)
+	l.procSymbols[d] = sym
+	l.procScopes[len(l.procScopes)-1][d.Name] = d
+}
+
+func (l *Lowerer) registerStruct(d *StructDecl) {
+	tid := l.types.InternScopedStruct(d.Name)
+	l.structTypes[d], l.structDecls[tid] = tid, d
+	l.typeScopes[len(l.typeScopes)-1][d.Name] = tid
+	hs := &HIRStruct{Symbol: l.symbols.Declare(d.Name), Name: d.Name, Type: tid, Span: d.Span_}
+	l.hirStructs[tid] = hs
+	l.hir.Structs = append(l.hir.Structs, hs)
+}
+
+func (l *Lowerer) finishStruct(d *StructDecl) {
+	tid := l.structTypes[d]
+	hs := l.hirStructs[tid]
+	fields := make([]TypeField, len(d.Fields))
+	hirFields := make([]HIRField, len(d.Fields))
+	for i, field := range d.Fields {
+		ft := l.typeOfTypeExpr(field.Type)
+		fsym := l.symbols.Declare(field.Name)
+		fields[i] = TypeField{Symbol: fsym, Name: field.Name, Type: ft}
+		hirFields[i] = HIRField{Symbol: fsym, Name: field.Name, Type: ft, Span: field.Span_}
+	}
+	l.types.SetStructFields(tid, fields)
+	hs.Fields = hirFields
+}
+
+func (l *Lowerer) registerError(d *ErrorDecl) {
+	tid := l.types.InternScopedError(d.Name)
+	l.errorTypes[d] = tid
+	l.typeScopes[len(l.typeScopes)-1][d.Name] = tid
+	ordinals := make(map[string]int, len(d.Members))
+	for i, member := range d.Members {
+		ordinals[member.Name] = i
+	}
+	l.errorOrdinal[tid] = ordinals
+}
+
+func (l *Lowerer) registerEnum(d *EnumDecl) {
+	if len(d.Members) == 0 || d.Members[0].Type == nil {
+		l.diags.Error(d.Span_, "cannot lower enum without a typed first member", "fix semantic errors before lowering")
+		return
+	}
+	underlying := l.typeOfTypeExpr(d.Members[0].Type)
+	tid := l.types.InternScopedEnum(d.Name, underlying)
+	l.enumTypes[d] = tid
+	l.typeScopes[len(l.typeScopes)-1][d.Name] = tid
+	values := make(map[string]string, len(d.Members))
+	prev := big.NewInt(0)
+	for i, member := range d.Members {
+		value := new(big.Int).Add(prev, big.NewInt(1))
+		if i == 0 {
+			value.SetInt64(0)
+		}
+		if member.Value != nil {
+			if explicit, ok := evalEnumMemberValue(member.Value); ok {
+				value.Set(explicit)
+			}
+		}
+		values[member.Name] = value.String()
+		prev.Set(value)
+	}
+	l.enumValues[tid] = values
+}
+
 func (l *Lowerer) lowerGlobal(d *VarDecl) {
 	sym := l.globalSymbols[d]
-	var t TypeID = l.types.Unknown()
+	t := l.varTypes[sym]
+	if t == 0 {
+		t = l.types.Unknown()
+	}
 	if d.DeclType != nil {
 		t = l.typeOfTypeExpr(d.DeclType)
 	}
 	var init HIRExpr
+	if d.CompileTime {
+		if _, found := l.typeAliasTarget(d.Init); found {
+			l.varTypes[sym] = l.types.Void()
+			l.hir.Globals = append(l.hir.Globals, &HIRGlobal{Symbol: sym, Name: d.Name, Type: l.types.Void(), CompileTime: true, Span: d.Span_})
+			return
+		}
+		if ident, ok := d.Init.(*IdentExpr); ok {
+			if proc, found := l.lookupProc(ident.Name); found {
+				l.procAliases[sym] = proc
+				l.varTypes[sym] = l.types.Void()
+				l.hir.Globals = append(l.hir.Globals, &HIRGlobal{Symbol: sym, Name: d.Name, Type: l.types.Void(), CompileTime: true, Span: d.Span_})
+				return
+			}
+		}
+	}
 	if d.Init != nil {
 		// A top-level shadow initializer references the previous global
 		// declaration. Other code continues to see the final global binding.
@@ -209,7 +491,14 @@ func (l *Lowerer) lowerGlobal(d *VarDecl) {
 			t = init.hirType()
 		}
 	}
+	if init == nil {
+		init = l.zeroValue(t, d.Span_)
+	}
 	l.varTypes[sym] = t
+	if d.CompileTime {
+		init = l.adaptLiteral(l.foldConstant(init), t)
+		l.constValues[sym] = init
+	}
 	l.hir.Globals = append(l.hir.Globals, &HIRGlobal{
 		Symbol:      sym,
 		Name:        d.Name,
@@ -221,8 +510,53 @@ func (l *Lowerer) lowerGlobal(d *VarDecl) {
 	})
 }
 
+func (l *Lowerer) procValueTypes(d *ProcDecl) []TypeID {
+	if d.ErrorResult != nil && len(d.Results) == 1 {
+		left, right := l.typeOfTypeExpr(d.Results[0]), l.typeOfTypeExpr(d.ErrorResult)
+		if l.types.Lookup(left).Kind == TypeKindError && l.types.Lookup(right).Kind != TypeKindError {
+			return []TypeID{right}
+		}
+	}
+	results := make([]TypeID, len(d.Results))
+	for i, result := range d.Results {
+		results[i] = l.typeOfTypeExpr(result)
+	}
+	return results
+}
+
+func (l *Lowerer) procErrorType(d *ProcDecl) TypeID {
+	left, right := l.typeOfTypeExpr(d.Results[0]), l.typeOfTypeExpr(d.ErrorResult)
+	if len(d.Results) == 1 && l.types.Lookup(left).Kind == TypeKindError && l.types.Lookup(right).Kind != TypeKindError {
+		return left
+	}
+	return right
+}
+
+func (l *Lowerer) tupleTypeID(types []TypeID) TypeID {
+	if len(types) == 0 {
+		return l.types.Void()
+	}
+	if len(types) == 1 {
+		return types[0]
+	}
+	parts := make([]string, len(types))
+	fields := make([]TypeField, len(types))
+	for i, typ := range types {
+		parts[i] = strconv.FormatUint(uint64(typ), 10)
+		name := strconv.Itoa(i)
+		fields[i] = TypeField{Symbol: l.symbols.Declare("__chaos_tuple_" + name), Name: name, Type: typ}
+	}
+	return l.types.InternTuple("("+strings.Join(parts, ",")+")", fields)
+}
+
 func (l *Lowerer) lowerProc(d *ProcDecl) {
-	sym := l.lookup(d.Name)
+	sym, ok := l.procSymbols[d]
+	if !ok {
+		l.diags.Error(d.NameSpan, "internal error: procedure has no registered symbol", "report this compiler bug")
+		return
+	}
+	previousFloor, previousDepth := l.procValueFloor, l.procDepth
+	l.procValueFloor, l.procDepth = len(l.scopes), l.procDepth+1
 	l.pushScope()
 	params := make([]HIRParam, len(d.Params))
 	for i, p := range d.Params {
@@ -230,21 +564,18 @@ func (l *Lowerer) lowerProc(d *ProcDecl) {
 		psym := l.symbols.Declare(p.Name)
 		l.declare(p.Name, psym)
 		l.varTypes[psym] = pt
+		l.symbolCompileTime[psym] = false
 		params[i] = HIRParam{Symbol: psym, Name: p.Name, Type: pt, Span: p.Span_}
 	}
-	results := make([]TypeID, len(d.Results))
-	for i, r := range d.Results {
-		results[i] = l.typeOfTypeExpr(r)
-	}
+	valueResults := l.procValueTypes(d)
+	resultType := l.tupleTypeID(valueResults)
 	if d.ErrorResult != nil {
-		// The result is a value-or-error pair; the value side is the
-		// non-error type regardless of the written order.
-		vt := results[0]
-		et := l.typeOfTypeExpr(d.ErrorResult)
-		if l.types.Lookup(vt).Kind == TypeKindError && l.types.Lookup(et).Kind != TypeKindError {
-			vt, et = et, vt
-		}
-		results[0] = l.unionTypeID(vt, et)
+		et := l.procErrorType(d)
+		resultType = l.unionTypeID(resultType, et)
+	}
+	var results []TypeID
+	if resultType != l.types.Void() {
+		results = []TypeID{resultType}
 	}
 	prevResults := l.curResults
 	l.curResults = results
@@ -260,13 +591,15 @@ func (l *Lowerer) lowerProc(d *ProcDecl) {
 	}
 	l.curResults = prevResults
 	l.popScope()
+	l.procValueFloor, l.procDepth = previousFloor, previousDepth
 	l.hir.Procs = append(l.hir.Procs, &HIRProc{
-		Symbol:  sym,
-		Name:    d.Name,
-		Params:  params,
-		Results: results,
-		Body:    body,
-		Span:    d.Span_,
+		Symbol:     sym,
+		Name:       d.Name,
+		Params:     params,
+		Results:    results,
+		ResultType: resultType,
+		Body:       body,
+		Span:       d.Span_,
 	})
 }
 
@@ -286,6 +619,8 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 	switch n := s.(type) {
 	case *VarDecl:
 		return l.lowerVarDecl(n)
+	case *MultiVarDecl:
+		return l.lowerMultiVarDecl(n)
 	case *AssignStmt:
 		sym := l.lookup(n.Name)
 		t := l.varTypes[sym]
@@ -333,8 +668,19 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 		return l.lowerCompoundAssign(n)
 	case *IncDecStmt:
 		return l.lowerIncDec(n)
-	case *ProcDecl, *StructDecl, *ErrorDecl, *EnumDecl:
-		// Nested declarations are not supported inside bodies.
+	case *ProcDecl:
+		l.registerProc(n)
+		l.lowerProc(n)
+		return nil
+	case *StructDecl:
+		l.registerStruct(n)
+		l.finishStruct(n)
+		return nil
+	case *ErrorDecl:
+		l.registerError(n)
+		return nil
+	case *EnumDecl:
+		l.registerEnum(n)
 		return nil
 	}
 	return nil
@@ -349,6 +695,34 @@ func (l *Lowerer) lowerVarDecl(d *VarDecl) HIRStmt {
 	// shadowing declaration ("#shadow x := x + 1") references the outer
 	// binding, matching the type checker's scoping.
 	var init HIRExpr
+	if d.CompileTime {
+		if target, ok := l.typeAliasTarget(d.Init); ok {
+			sym := l.symbols.Declare(d.Name)
+			l.declare(d.Name, sym)
+			l.typeScopes[len(l.typeScopes)-1][d.Name] = target
+			l.symbolCompileTime[sym] = true
+			return nil
+		}
+		if ident, ok := d.Init.(*IdentExpr); ok {
+			proc, found := l.lookupProc(ident.Name)
+			if source := l.lookup(ident.Name); source != NoSymbol && l.procAliases[source] != nil {
+				proc, found = l.procAliases[source], true
+			}
+			if found {
+				sym := l.symbols.Declare(d.Name)
+				l.declare(d.Name, sym)
+				l.procAliases[sym] = proc
+				l.symbolCompileTime[sym] = true
+				return nil
+			}
+			if _, found := l.lookupType(ident.Name); found {
+				sym := l.symbols.Declare(d.Name)
+				l.declare(d.Name, sym)
+				l.symbolCompileTime[sym] = true
+				return nil
+			}
+		}
+	}
 	if d.Init != nil {
 		init = l.lowerExprAs(d.Init, t)
 		if t == l.types.Unknown() {
@@ -358,6 +732,12 @@ func (l *Lowerer) lowerVarDecl(d *VarDecl) HIRStmt {
 	sym := l.symbols.Declare(d.Name)
 	l.declare(d.Name, sym)
 	l.varTypes[sym] = t
+	l.symbolCompileTime[sym] = d.CompileTime
+	if d.CompileTime {
+		init = l.adaptLiteral(l.foldConstant(init), t)
+		l.constValues[sym] = init
+		return nil
+	}
 	return &HIRVarDecl{
 		Span_:       d.Span_,
 		Symbol:      sym,
@@ -369,9 +749,43 @@ func (l *Lowerer) lowerVarDecl(d *VarDecl) HIRStmt {
 	}
 }
 
+func (l *Lowerer) typeAliasTarget(expr Expr) (TypeID, bool) {
+	switch n := expr.(type) {
+	case *ParenExpr:
+		return l.typeAliasTarget(n.Inner)
+	case *IdentExpr:
+		return l.lookupType(n.Name)
+	}
+	return l.types.Unknown(), false
+}
+
+func (l *Lowerer) lowerMultiVarDecl(d *MultiVarDecl) HIRStmt {
+	init := l.lowerExpr(d.Init)
+	tuple := l.types.Lookup(init.hirType())
+	temp := l.symbols.Declare("__chaos_multi")
+	l.varTypes[temp] = init.hirType()
+	stmts := []HIRStmt{&HIRVarDecl{Span_: d.Span_, Symbol: temp, Type: init.hirType(), Init: init}}
+	for i, name := range d.Names {
+		sym := l.symbols.Declare(name)
+		l.declare(name, sym)
+		fieldType := tuple.Fields[i].Type
+		l.varTypes[sym] = fieldType
+		l.symbolCompileTime[sym] = d.CompileTime
+		stmts = append(stmts, &HIRVarDecl{
+			Span_: d.NameSpans[i], Symbol: sym, Name: name, Type: fieldType,
+			Init:    &HIRFieldLoad{Span_: d.Span_, Base: &HIRRef{Span_: d.Span_, Symbol: temp, Type: init.hirType()}, Field: i, Type: fieldType},
+			Mutable: d.Mutable, CompileTime: d.CompileTime,
+		})
+	}
+	return &HIRBlock{Span_: d.Span_, Stmts: stmts}
+}
+
 func (l *Lowerer) lowerIf(n *IfStmt) HIRStmt {
 	cond := l.lowerExpr(n.Condition)
+	base := maps.Clone(l.unwrapped)
 	then := l.lowerBlock(n.Body)
+	branchStates := []map[SymbolID]bool{maps.Clone(l.unwrapped)}
+	l.unwrapped = maps.Clone(base)
 	var elifs []*HIRIf
 	for _, e := range n.Elif {
 		elifs = append(elifs, &HIRIf{
@@ -379,10 +793,24 @@ func (l *Lowerer) lowerIf(n *IfStmt) HIRStmt {
 			Condition: l.lowerExpr(e.Condition),
 			Then:      l.lowerBlock(e.Body),
 		})
+		branchStates = append(branchStates, maps.Clone(l.unwrapped))
+		l.unwrapped = maps.Clone(base)
 	}
 	var els *HIRBlock
 	if n.ElseBody != nil {
 		els = l.lowerBlock(n.ElseBody)
+		branchStates = append(branchStates, maps.Clone(l.unwrapped))
+	} else {
+		branchStates = append(branchStates, base)
+	}
+	l.unwrapped = maps.Clone(base)
+	for symbol := range l.unwrapped {
+		for _, state := range branchStates {
+			if !state[symbol] {
+				delete(l.unwrapped, symbol)
+				break
+			}
+		}
 	}
 	return &HIRIf{Span_: n.Span_, Condition: cond, Then: then, Elif: elifs, Else: els}
 }
@@ -424,18 +852,20 @@ func (l *Lowerer) lowerRangeFor(n *ForStmt, rangeExpr Expr, indexName, elemName 
 	l.pushScope()
 
 	// Bind the array once.
-	arrSym := l.symbols.Declare("__arr")
-	l.declare("__arr", arrSym)
+	const hiddenArrayName = "__chaos_range_array"
+	arrSym := l.symbols.Declare(hiddenArrayName)
 	l.varTypes[arrSym] = arrType
-	arrDecl := &HIRVarDecl{Span_: n.Span_, Symbol: arrSym, Name: "__arr", Type: arrType, Init: arrVal, Mutable: false, CompileTime: false}
+	arrDecl := &HIRVarDecl{Span_: n.Span_, Symbol: arrSym, Name: hiddenArrayName, Type: arrType, Init: arrVal, Mutable: false, CompileTime: false}
 
 	// Index variable: the named index (when given) is the loop counter.
-	idxName := "__idx"
+	idxName := "__chaos_range_index"
 	if indexName != "" {
 		idxName = indexName
 	}
 	idxSym := l.symbols.Declare(idxName)
-	l.declare(idxName, idxSym)
+	if indexName != "" {
+		l.declare(idxName, idxSym)
+	}
 	l.varTypes[idxSym] = l.types.S64()
 	idxDecl := &HIRVarDecl{
 		Span_:       n.Span_,
@@ -539,23 +969,27 @@ func (l *Lowerer) lowerIncDec(n *IncDecStmt) HIRStmt {
 // lowerReturn lowers a return statement, wrapping the value in the
 // value-or-error pair when the procedure has a '<>' result.
 func (l *Lowerer) lowerReturn(n *ReturnStmt) HIRStmt {
+	values := n.Values
+	if len(values) == 0 && n.Value != nil {
+		values = []Expr{n.Value}
+	}
 	var value HIRExpr
 	if len(l.curResults) > 0 && isUnionTypeID(l.types, l.curResults[0]) {
 		rt := l.types.Lookup(l.curResults[0])
 		vt, et := rt.Fields[0].Type, rt.Fields[1].Type
-		if n.Value == nil {
+		if len(values) == 0 {
 			// A bare return in a 'Void <> E' procedure is a successful
 			// return with no value.
 			if vt == l.types.Void() {
 				value = l.lowerUnion(l.curResults[0], l.emptyConst(vt, n.Span_), l.emptyConst(et, n.Span_), &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: false}, n.Span_)
 			}
-		} else {
+		} else if len(values) == 1 {
 			var lowered HIRExpr
-			if em, ok := n.Value.(*ErrorMemberExpr); ok && em.TypeName == "" {
+			if em, ok := values[0].(*ErrorMemberExpr); ok && em.TypeName == "" {
 				// A bare error literal resolves against the error side.
 				lowered = l.lowerErrorMember(em, l.types.Lookup(et).Name)
 			} else {
-				lowered = l.lowerExprAs(n.Value, vt)
+				lowered = l.lowerExprAs(values[0], vt)
 			}
 			switch {
 			case lowered.hirType() == l.curResults[0]:
@@ -568,15 +1002,30 @@ func (l *Lowerer) lowerReturn(n *ReturnStmt) HIRStmt {
 				// A value: mark the pair as a success.
 				value = l.lowerUnion(l.curResults[0], lowered, l.emptyConst(et, n.Span_), &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: false}, n.Span_)
 			}
-		}
-	} else if n.Value != nil {
-		if len(l.curResults) > 0 {
-			value = l.lowerExprAs(n.Value, l.curResults[0])
 		} else {
-			value = l.lowerExpr(n.Value)
+			lowered := l.lowerResultValues(values, vt, n.Span_)
+			value = l.lowerUnion(l.curResults[0], lowered, l.emptyConst(et, n.Span_), &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: false}, n.Span_)
+		}
+	} else if len(values) > 0 {
+		if len(l.curResults) > 0 {
+			value = l.lowerResultValues(values, l.curResults[0], n.Span_)
+		} else {
+			value = l.lowerExpr(values[0])
 		}
 	}
 	return &HIRReturn{Span_: n.Span_, Value: value}
+}
+
+func (l *Lowerer) lowerResultValues(values []Expr, resultType TypeID, span Span) HIRExpr {
+	if len(values) == 1 {
+		return l.lowerExprAs(values[0], resultType)
+	}
+	tuple := l.types.Lookup(resultType)
+	fields := make([]HIRStructInitField, len(values))
+	for i, expr := range values {
+		fields[i] = HIRStructInitField{Span_: expr.nodeSpan(), Field: tuple.Fields[i].Symbol, Value: l.lowerExprAs(expr, tuple.Fields[i].Type)}
+	}
+	return &HIRStructInit{Span_: span, Struct: NoSymbol, Type: resultType, Fields: fields}
 }
 
 // lowerUnlessCatch lowers "target := expr unless catch [err] { body }" (or
@@ -584,30 +1033,43 @@ func (l *Lowerer) lowerReturn(n *ReturnStmt) HIRStmt {
 // value-or-error pair followed by the catch check.
 func (l *Lowerer) lowerUnlessCatch(n *UnlessCatchStmt) HIRStmt {
 	init := l.lowerExpr(n.Init)
-	var decl HIRStmt
-	cond := init
-	if n.Target != "" {
-		sym := l.symbols.Declare(n.Target)
-		l.declare(n.Target, sym)
-		l.varTypes[sym] = init.hirType()
-		decl = &HIRVarDecl{
-			Span_:       n.Span_,
-			Symbol:      sym,
-			Name:        n.Target,
-			Type:        init.hirType(),
-			Init:        init,
-			Mutable:     true,
-			CompileTime: false,
-		}
-		cond = &HIRRef{Span_: n.Span_, Symbol: sym, Type: init.hirType()}
-		// After the check, the variable holds the unwrapped value.
-		l.unwrapped[sym] = true
+	targets := n.Targets
+	spans := n.TargetSpans
+	if len(targets) == 0 && n.Target != "" {
+		targets, spans = []string{n.Target}, []Span{n.TargetSpan}
+	}
+	var stmts []HIRStmt
+	cond := HIRExpr(init)
+	temp := NoSymbol
+	if len(targets) > 0 {
+		temp = l.symbols.Declare("__chaos_union")
+		l.varTypes[temp] = init.hirType()
+		stmts = append(stmts, &HIRVarDecl{Span_: n.Span_, Symbol: temp, Type: init.hirType(), Init: init})
+		cond = &HIRRef{Span_: n.Span_, Symbol: temp, Type: init.hirType()}
 	}
 	ifCatch := l.buildIfCatch(n.Span_, cond, n.CatchName, n.CatchBody)
-	if decl != nil {
-		return &HIRBlock{Span_: n.Span_, Stmts: []HIRStmt{decl, ifCatch}}
+	stmts = append(stmts, ifCatch)
+	if len(targets) > 0 {
+		union := l.types.Lookup(init.hirType())
+		valueType := union.Fields[0].Type
+		value := HIRExpr(&HIRFieldLoad{Span_: n.Span_, Base: &HIRRef{Span_: n.Span_, Symbol: temp, Type: init.hirType()}, Field: 0, Type: valueType})
+		for i, target := range targets {
+			fieldType, fieldValue := valueType, value
+			if len(targets) > 1 {
+				tuple := l.types.Lookup(valueType)
+				fieldType = tuple.Fields[i].Type
+				fieldValue = &HIRFieldLoad{Span_: n.Span_, Base: value, Field: i, Type: fieldType}
+			}
+			sym := l.symbols.Declare(target)
+			l.declare(target, sym)
+			l.varTypes[sym] = fieldType
+			stmts = append(stmts, &HIRVarDecl{Span_: spans[i], Symbol: sym, Name: target, Type: fieldType, Init: fieldValue, Mutable: true})
+		}
 	}
-	return ifCatch
+	if len(stmts) == 1 {
+		return stmts[0]
+	}
+	return &HIRBlock{Span_: n.Span_, Stmts: stmts}
 }
 
 // lowerIfCatch lowers "if expr catch [err] { body }".
@@ -627,16 +1089,19 @@ func (l *Lowerer) lowerIfCatch(n *IfCatchStmt) HIRStmt {
 func (l *Lowerer) buildIfCatch(span Span, cond HIRExpr, catchName string, catchBody *BlockStmt) HIRStmt {
 	ut := cond.hirType()
 	var catchSym SymbolID = NoSymbol
+	l.pushScope()
 	if catchName != "" {
 		catchSym = l.symbols.Declare(catchName)
 		l.declare(catchName, catchSym)
 		l.varTypes[catchSym] = l.types.Lookup(ut).Fields[1].Type
 	}
+	body := l.lowerBlock(catchBody)
+	l.popScope()
 	return &HIRIfCatch{
 		Span_:     span,
 		Cond:      cond,
 		CatchSym:  catchSym,
-		CatchBody: l.lowerBlock(catchBody),
+		CatchBody: body,
 		UnionType: ut,
 	}
 }
@@ -645,6 +1110,9 @@ func (l *Lowerer) buildIfCatch(span Span, cond HIRExpr, catchName string, catchB
 func (l *Lowerer) lookupSymbol(name string) (SymbolID, bool) {
 	for i := len(l.scopes) - 1; i >= 0; i-- {
 		if sym, ok := l.scopes[i][name]; ok {
+			if l.procDepth > 0 && i > 0 && i < l.procValueFloor && !l.symbolCompileTime[sym] {
+				continue
+			}
 			return sym, true
 		}
 	}
@@ -689,25 +1157,64 @@ func (l *Lowerer) lowerUnion(unionType TypeID, value, err, hasError HIRExpr, spa
 // emptyConst is a zero-filled constant of the given type, used for the
 // ignored side of a value-or-error pair.
 func (l *Lowerer) emptyConst(t TypeID, span Span) HIRExpr {
-	return &HIRConst{Span_: span, Type: t, Kind: ConstUnknown}
+	return l.zeroValue(t, span)
+}
+
+func (l *Lowerer) zeroValue(t TypeID, span Span) HIRExpr {
+	typ := l.types.Lookup(t)
+	switch typ.Kind {
+	case TypeKindBool:
+		return &HIRConst{Span_: span, Type: t, Kind: ConstBool, Bool: false}
+	case TypeKindString:
+		return &HIRConst{Span_: span, Type: t, Kind: ConstString, Str: ""}
+	case TypeKindFloat:
+		return &HIRConst{Span_: span, Type: t, Kind: ConstFloat, Float: 0, Str: "0.0"}
+	case TypeKindInt, TypeKindEnum:
+		return &HIRConst{Span_: span, Type: t, Kind: ConstInt, Int: 0, Str: "0"}
+	case TypeKindError:
+		return &HIRConst{Span_: span, Type: t, Kind: ConstError, Int: 0, Str: "0"}
+	case TypeKindArray:
+		return &HIRArrayInit{Span_: span, Type: t}
+	case TypeKindStruct, TypeKindTuple:
+		fields := make([]HIRStructInitField, len(typ.Fields))
+		for i, field := range typ.Fields {
+			value := l.zeroValue(field.Type, span)
+			if decl := l.structDecls[t]; decl != nil && decl.Fields[i].Default != nil {
+				value = l.lowerExprAs(decl.Fields[i].Default, field.Type)
+			}
+			fields[i] = HIRStructInitField{Span_: span, Field: field.Symbol, Value: value}
+		}
+		return &HIRStructInit{Span_: span, Struct: NoSymbol, Type: t, Fields: fields}
+	case TypeKindVoid:
+		return &HIRZero{Span_: span, Type: t}
+	}
+	return l.poison(span, "cannot construct zero value of unresolved type")
 }
 
 func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 	switch n := e.(type) {
 	case *IntExpr:
+		value, ok := parseIntLiteral(n.Value)
+		if !ok {
+			return l.poison(n.Span_, "invalid integer literal reached lowering")
+		}
 		return &HIRConst{
 			Span_: n.Span_,
 			Type:  l.types.S64(),
 			Kind:  ConstInt,
-			Int:   parseIntLiteral(n.Value),
+			Int:   value,
 			Str:   n.Value,
 		}
 	case *FloatExpr:
+		value, ok := parseFloatLiteral(n.Value)
+		if !ok {
+			return l.poison(n.Span_, "invalid or non-finite floating-point literal reached lowering")
+		}
 		return &HIRConst{
 			Span_: n.Span_,
 			Type:  l.types.F64(),
 			Kind:  ConstFloat,
-			Float: parseFloatLiteral(n.Value),
+			Float: value,
 			Str:   n.Value,
 		}
 	case *StringExpr:
@@ -716,6 +1223,12 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		return &HIRConst{Span_: n.Span_, Type: l.types.Bool(), Kind: ConstBool, Bool: n.Value}
 	case *IdentExpr:
 		sym := l.lookup(n.Name)
+		if sym == NoSymbol {
+			return l.poison(n.Span_, "unresolved value '"+n.Name+"'")
+		}
+		if value := l.constValues[sym]; value != nil {
+			return value
+		}
 		t := l.varTypes[sym]
 		// A variable whose error was handled holds the value-or-error pair;
 		// uses read the value part.
@@ -737,23 +1250,23 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		}
 		// Inferred struct literal: the type comes from context, so it is
 		// resolved by lowerExprAs.
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return &HIRPoison{Span_: n.Span_, Type: l.types.Unknown()}
 	case *ErrorMemberExpr:
 		if n.TypeName != "" {
 			return l.lowerErrorMember(n, n.TypeName)
 		}
 		// Bare error member: the type comes from context, so it is resolved
 		// by lowerExprAs.
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return &HIRPoison{Span_: n.Span_, Type: l.types.Unknown()}
 	case *EnumMemberExpr:
 		if n.TypeName != "" {
 			return l.lowerEnumMember(n, n.TypeName)
 		}
 		// Bare enum member: the type comes from context, so it is resolved
 		// by lowerExprAs.
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "bare enum member has no target type")
 	case *ErrorExpr:
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "parser recovery expression reached lowering")
 	case *ArrayInitExpr:
 		elemType := l.typeOfTypeExpr(n.Elem)
 		arrType := l.types.InternArray(elemType)
@@ -774,9 +1287,9 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		if n.Name == "index" && l.rangeIndex != NoSymbol {
 			return &HIRRef{Span_: n.Span_, Symbol: l.rangeIndex, Type: l.types.S64()}
 		}
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "loop builtin used outside a range loop")
 	}
-	return &HIRConst{Span_: e.nodeSpan(), Type: l.types.Unknown(), Kind: ConstUnknown}
+	return l.poison(e.nodeSpan(), "unsupported expression")
 }
 
 // lowerExprAs lowers an expression in a context with a known target type. An
@@ -799,17 +1312,17 @@ func (l *Lowerer) lowerExprAs(e Expr, target TypeID) HIRExpr {
 // The explicit "Type.MEMBER" form names the type; the bare ".MEMBER" form is
 // resolved against the target type name ("" when unknown).
 func (l *Lowerer) lowerErrorMember(n *ErrorMemberExpr, typeName string) HIRExpr {
-	ordinals, ok := l.errorOrdinal[typeName]
+	tid, typeOK := l.lookupType(typeName)
+	ordinals, ok := l.errorOrdinal[tid]
 	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "unresolved error type '"+typeName+"'")
 	}
 	ord, ok := ordinals[n.Name]
 	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "unresolved error member '"+n.Name+"'")
 	}
-	tid, ok := l.types.ByName(typeName)
-	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	if !typeOK {
+		return l.poison(n.Span_, "unresolved error type '"+typeName+"'")
 	}
 	return &HIRConst{Span_: n.Span_, Type: tid, Kind: ConstError, Int: int64(ord), Str: n.Name}
 }
@@ -817,17 +1330,17 @@ func (l *Lowerer) lowerErrorMember(n *ErrorMemberExpr, typeName string) HIRExpr 
 // lowerEnumMember lowers an enum member reference to its integer value as a
 // constant of the enum type.
 func (l *Lowerer) lowerEnumMember(n *EnumMemberExpr, typeName string) HIRExpr {
-	values, ok := l.enumValues[typeName]
+	tid, typeOK := l.lookupType(typeName)
+	values, ok := l.enumValues[tid]
 	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "unresolved enum type '"+typeName+"'")
 	}
 	value, ok := values[n.Name]
 	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "unresolved enum member '"+n.Name+"'")
 	}
-	tid, ok := l.types.ByName(typeName)
-	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+	if !typeOK {
+		return l.poison(n.Span_, "unresolved enum type '"+typeName+"'")
 	}
 	parsed, _ := new(big.Int).SetString(value, 10)
 	return &HIRConst{Span_: n.Span_, Type: tid, Kind: ConstInt, Int: parsed.Int64(), Str: value}
@@ -859,18 +1372,23 @@ func (l *Lowerer) lowerBinary(n *BinaryExpr) HIRExpr {
 	switch n.Op {
 	case BinaryOpAdd, BinaryOpSub, BinaryOpMul, BinaryOpDiv, BinaryOpMod:
 		left, right = l.adaptLiteralTypes(left, right)
-		t := left.hirType()
+		t := l.inferASTType(n)
+		if t == l.types.Unknown() {
+			t = left.hirType()
+		}
 		if t == l.types.Unknown() {
 			t = right.hirType()
 		}
-		return &HIRBinary{Span_: n.Span_, Op: n.Op, Left: left, Right: right, Type: t}
+		left = l.adaptLiteral(left, t)
+		right = l.adaptLiteral(right, t)
+		return &HIRBinary{Span_: n.Span_, OpSpan: n.OpSpan, Op: n.Op, Left: left, Right: right, Type: t}
 	case BinaryOpLt, BinaryOpGt, BinaryOpLe, BinaryOpGe, BinaryOpEq, BinaryOpNeq:
 		left, right = l.adaptLiteralTypes(left, right)
-		return &HIRBinary{Span_: n.Span_, Op: n.Op, Left: left, Right: right, Type: l.types.Bool()}
+		return &HIRBinary{Span_: n.Span_, OpSpan: n.OpSpan, Op: n.Op, Left: left, Right: right, Type: l.types.Bool()}
 	case BinaryOpAnd, BinaryOpOr:
-		return &HIRBinary{Span_: n.Span_, Op: n.Op, Left: left, Right: right, Type: l.types.Bool()}
+		return &HIRBinary{Span_: n.Span_, OpSpan: n.OpSpan, Op: n.Op, Left: left, Right: right, Type: l.types.Bool()}
 	}
-	return &HIRBinary{Span_: n.Span_, Op: n.Op, Left: left, Right: right, Type: l.types.Unknown()}
+	return &HIRBinary{Span_: n.Span_, OpSpan: n.OpSpan, Op: n.Op, Left: left, Right: right, Type: l.types.Unknown()}
 }
 
 func isBareMemberExpr(e Expr) bool {
@@ -885,23 +1403,41 @@ func isBareMemberExpr(e Expr) bool {
 
 func (l *Lowerer) lowerUnary(n *UnaryExpr) HIRExpr {
 	operand := l.lowerExpr(n.Operand)
-	t := operand.hirType()
+	t := l.inferASTType(n)
+	if t == l.types.Unknown() {
+		t = operand.hirType()
+	}
 	if n.Op == UnaryOpNot {
 		t = l.types.Bool()
 	}
-	return &HIRUnary{Span_: n.Span_, Op: n.Op, Operand: operand, Type: t}
+	operand = l.adaptLiteral(operand, t)
+	unary := &HIRUnary{Span_: n.Span_, Op: n.Op, Operand: operand, Type: t}
+	if _, constant := operand.(*HIRConst); constant {
+		// Materialize signed literal values directly. Keeping -128 as a
+		// target-typed +128 followed by neg would temporarily violate the
+		// fixed-width MIR constant contract even though -128 itself is valid.
+		return l.foldConstant(unary)
+	}
+	return unary
 }
 
 func (l *Lowerer) lowerCall(n *CallExpr) HIRExpr {
 	ident, ok := n.Func.(*IdentExpr)
 	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "non-identifier callable")
 	}
-	proc, ok := l.procs[ident.Name]
+	proc, ok := l.lookupProc(ident.Name)
+	if sym := l.lookup(ident.Name); sym != NoSymbol {
+		if alias := l.procAliases[sym]; alias != nil {
+			proc, ok = alias, true
+		} else {
+			ok = false
+		}
+	}
 	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "unresolved procedure '"+ident.Name+"'")
 	}
-	sym, _ := l.symbols.ByName(ident.Name)
+	sym := l.procSymbols[proc]
 	args := make([]HIRExpr, len(n.Args))
 	for i, arg := range n.Args {
 		var target TypeID
@@ -910,49 +1446,54 @@ func (l *Lowerer) lowerCall(n *CallExpr) HIRExpr {
 		}
 		args[i] = l.lowerExprAs(arg, target)
 	}
-	t := l.types.Void()
-	if len(proc.Results) > 0 {
-		t = l.typeOfTypeExpr(proc.Results[0])
-		if proc.ErrorResult != nil {
-			vt := t
-			et := l.typeOfTypeExpr(proc.ErrorResult)
-			if l.types.Lookup(vt).Kind == TypeKindError && l.types.Lookup(et).Kind != TypeKindError {
-				vt, et = et, vt
-			}
-			t = l.unionTypeID(vt, et)
-		}
+	t := l.tupleTypeID(l.procValueTypes(proc))
+	if proc.ErrorResult != nil {
+		t = l.unionTypeID(t, l.procErrorType(proc))
 	}
 	return &HIRCall{Span_: n.Span_, Func: sym, Args: args, Type: t}
 }
 
 func (l *Lowerer) lowerStructInit(n *StructInitExpr, structType TypeID) HIRExpr {
 	st := l.types.Lookup(structType)
-	hs, ok := l.hirStructs[st.Name]
+	hs, ok := l.hirStructs[structType]
 	if !ok {
-		return &HIRConst{Span_: n.Span_, Type: l.types.Unknown(), Kind: ConstUnknown}
+		return l.poison(n.Span_, "struct literal has unresolved type")
 	}
-	fieldTypes := make(map[string]TypeID, len(hs.Fields))
-	fieldSyms := make(map[string]SymbolID, len(hs.Fields))
-	for _, f := range hs.Fields {
-		fieldTypes[f.Name] = f.Type
-		fieldSyms[f.Name] = f.Symbol
+	indexes := make(map[string]int, len(hs.Fields))
+	for i, field := range hs.Fields {
+		indexes[field.Name] = i
 	}
-	fields := make([]HIRStructInitField, len(n.Fields))
-	for i, field := range n.Fields {
-		var ft TypeID
-		var fsym SymbolID
+	assigned := make(map[int]HIRExpr, len(n.Fields))
+	positional := 0
+	for _, field := range n.Fields {
+		index := positional
 		if field.Name != "" {
-			ft = fieldTypes[field.Name]
-			fsym = fieldSyms[field.Name]
-		} else if i < len(st.Fields) {
-			ft = st.Fields[i].Type
-			fsym = fieldSyms[st.Fields[i].Name]
+			var exists bool
+			index, exists = indexes[field.Name]
+			if !exists {
+				return l.poison(field.Span_, "unknown struct field reached lowering")
+			}
+		} else {
+			positional++
 		}
-		fields[i] = HIRStructInitField{
-			Span_: field.Span_,
-			Field: fsym,
-			Value: l.lowerExprAs(field.Value, ft),
+		if index < 0 || index >= len(st.Fields) {
+			return l.poison(field.Span_, "excess positional struct field reached lowering")
 		}
+		if _, duplicate := assigned[index]; duplicate {
+			return l.poison(field.Span_, "duplicate struct field reached lowering")
+		}
+		assigned[index] = l.lowerExprAs(field.Value, st.Fields[index].Type)
+	}
+	fields := make([]HIRStructInitField, len(st.Fields))
+	for i, field := range st.Fields {
+		value := assigned[i]
+		if value == nil {
+			value = l.zeroValue(field.Type, n.Span_)
+			if decl := l.structDecls[structType]; decl != nil && decl.Fields[i].Default != nil {
+				value = l.lowerExprAs(decl.Fields[i].Default, field.Type)
+			}
+		}
+		fields[i] = HIRStructInitField{Span_: n.Span_, Field: field.Symbol, Value: value}
 	}
 	return &HIRStructInit{
 		Span_:  n.Span_,
@@ -982,16 +1523,22 @@ func (l *Lowerer) adaptLiteral(e HIRExpr, target TypeID) HIRExpr {
 	}
 	switch n := e.(type) {
 	case *HIRConst:
-		if l.literalCompatible(n, target) {
-			n.Type = target
+		copy := *n
+		if l.literalCompatible(&copy, target) {
+			copy.Type = target
 		}
+		return &copy
 	case *HIRUnary:
+		copy := *n
 		if n.Op == UnaryOpNeg {
 			if c, ok := n.Operand.(*HIRConst); ok && l.literalCompatible(c, target) {
-				c.Type = target
-				n.Type = target
+				operand := *c
+				operand.Type = target
+				copy.Operand = &operand
+				copy.Type = target
 			}
 		}
+		return &copy
 	}
 	return e
 }
@@ -1022,23 +1569,22 @@ func isHIRLiteral(e HIRExpr) bool {
 	return false
 }
 
-// parseIntLiteral parses a decimal integer literal, ignoring underscore
-// separators. Values outside int64 range are clamped to 0; the raw text is
-// preserved on the HIRConst for wider types.
-func parseIntLiteral(s string) int64 {
-	v, err := strconv.ParseInt(strings.ReplaceAll(s, "_", ""), 10, 64)
-	if err != nil {
-		return 0
+// parseIntLiteral parses a decimal integer exactly. HIRConst retains the raw
+// text for 128-bit encoding; Int is the low 64-bit two's-complement fragment.
+func parseIntLiteral(s string) (int64, bool) {
+	v, ok := new(big.Int).SetString(strings.ReplaceAll(s, "_", ""), 10)
+	if !ok {
+		return 0, false
 	}
-	return v
+	return v.Int64(), true
 }
 
 // parseFloatLiteral parses a decimal float literal, ignoring underscore
 // separators.
-func parseFloatLiteral(s string) float64 {
+func parseFloatLiteral(s string) (float64, bool) {
 	v, err := strconv.ParseFloat(strings.ReplaceAll(s, "_", ""), 64)
-	if err != nil {
-		return 0
+	if err != nil || v != v || v > 1.7976931348623157e308 || v < -1.7976931348623157e308 {
+		return 0, false
 	}
-	return v
+	return v, true
 }

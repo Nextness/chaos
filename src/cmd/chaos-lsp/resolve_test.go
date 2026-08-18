@@ -16,7 +16,15 @@ func buildResolverFor(t *testing.T, source string) *resolver {
 	sf := sm.Lookup(fileID)
 	tokens, _ := compiler.Tokenize(sf.Source, fileID)
 	result := compiler.ParseProgramTolerant(tokens)
-	r := &resolver{sf: sf, uri: "file:///test.chaos", program: result.Program, tokens: tokens, errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol)}
+	result.Program.Sources = map[compiler.FileID]compiler.SourceFile{fileID: *sf}
+	analysis, _ := compiler.AnalyzeProgram(result.Program)
+	r := &resolver{
+		sf: sf, uri: "file:///test.chaos", program: result.Program, analysis: analysis, tokens: tokens,
+		errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol),
+		structFields: make(map[*compiler.StructDecl]map[string]*symbol),
+		errorByDecl:  make(map[*compiler.ErrorDecl]map[string]*symbol),
+		enumByDecl:   make(map[*compiler.EnumDecl]map[string]*symbol),
+	}
 	r.buildScopes()
 	r.collectOccurrences()
 	return r
@@ -203,8 +211,8 @@ func TestHoverReturnsSignature(t *testing.T) {
 
 	xDecl := offsetOf(t, resolveSource, "x := 42")
 	content = r.hoverAt(xDecl)
-	if !strings.Contains(content, "x : inferred") {
-		t.Errorf("hover = %q, want x : inferred", content)
+	if !strings.Contains(content, "x : S64") {
+		t.Errorf("hover = %q, want x : S64", content)
 	}
 
 	lit := offsetOf(t, resolveSource, "42")
@@ -437,6 +445,39 @@ func TestEnumDefinitionHoverAndCompletion(t *testing.T) {
 	if !names["RED"] || !names["GREEN"] {
 		t.Errorf("enum member completion = %+v", items)
 	}
+}
+
+func TestMemberCompletionUsesSemanticContextAndValueTypes(t *testing.T) {
+	source := "Color :: enum { RED: U8; GREEN; }\nmain :: proc (param: Color) {\n    contextual: Color = .GR;\n    value: Color = .RED;\n    value.GR;\n    param.RE;\n}"
+	r := buildResolverFor(t, source)
+	for _, test := range []struct {
+		marker string
+		want   string
+	}{{".GR;", "GREEN"}, {"value.GR", "GREEN"}, {"param.RE", "RED"}} {
+		marker := test.marker
+		position := offsetOf(t, source, marker) + len(strings.TrimSuffix(marker, ";"))
+		items := r.completionAt(position)
+		names := make(map[string]bool)
+		for _, item := range items {
+			names[item.Label] = true
+		}
+		if !names[test.want] {
+			t.Errorf("completion at %q = %+v, want %s", marker, items, test.want)
+		}
+	}
+}
+
+func TestMemberCompletionNormalizesUnicodePrefix(t *testing.T) {
+	source := "Couleur :: enum { ÉCLAIR: U8; ÉTOILE; }\nmain :: proc { value: Couleur = .ÉCLAIR; value.E\u0301C; }"
+	r := buildResolverFor(t, source)
+	position := offsetOf(t, source, "value.E\u0301C") + len("value.E\u0301C")
+	items := r.completionAt(position)
+	for _, item := range items {
+		if item.Label == "ÉCLAIR" {
+			return
+		}
+	}
+	t.Fatalf("completion = %+v, want NFC-normalized ÉCLAIR", items)
 }
 
 func TestCatchBindingDefinitionAndReferences(t *testing.T) {

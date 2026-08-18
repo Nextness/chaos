@@ -11,15 +11,21 @@ make build/chaosc     # compiler CLI
 make build/chaos-lsp  # language server
 make test             # go test -C src ./...
 make vet              # go vet -C src ./...
+make e2e              # go test -C examples ./...
+make check            # format check, vet, source tests, and e2e tests
 ```
 
 - `go build ./...` from `src/` is a compile-check; `make` produces the binaries.
 - `-C` must be the first flag: `go test -C src ./...` (not `go test -count=1 -C src ./...`).
-- No external deps, only stdlib. No `go.sum`.
-- `chaosc <file.chaos>` tokenizes and parses a file; diagnostics go to stderr in
+- The compiler depends on `golang.org/x/text` for NFC identifier
+  normalization; both Go modules have a `go.sum`.
+- `chaosc <file.chaos>` compiles through fasm to `a.out` by default. `-check`,
+  `-dump`, `-ir`, and `-asm` select non-executable modes, and `-o` selects an
+  output path. Diagnostics go to stderr in
   a compact rust-like format: `[ERROR] line:col:file - reason`, the source line,
   a caret underline, and a `-> suggestion` line. No `log/slog` is used.
-- A successful compile produces no output.
+- A successful `-check` produces no output; the default mode produces an ELF64
+  executable.
 - `chaos-lsp` speaks stdio JSON-RPC 2.0 and is wired into Neovim via the `chaos`
   module at `~/.config/nvim/lua/chaos/init.lua`, loaded from
   `~/.config/nvim/init.lua` with `require('chaos').setup()`.
@@ -28,8 +34,9 @@ make vet              # go vet -C src ./...
 
 ### Compiler library (`src/compiler/`)
 
-`token.go` → `tokenizer.go` → `parser.go` → `ast.go` → `diagnostic.go`, plus
-`position.go` (byte offset ↔ UTF-16 position helpers).
+`token.go` → `tokenizer.go` → `parser.go`/`ast.go` → `type_checker.go` →
+`lower.go`/`hir.go` → `lower_mir.go`/`mir.go` → `ir_verify.go` → `fasm.go`,
+plus `diagnostic.go` and `position.go`.
 
 - Tokenizer produces `[]Token` + `DiagnosticList` (error recovery continues past
   `TkError` tokens).
@@ -46,13 +53,10 @@ make vet              # go vet -C src ./...
   the parser skips them transparently in `peek()`.
 - `#<name>` tokenizes as `TkHash` + `TkDirec(name)` (directive names bypass
   keyword lookup, so `#proc` and `#true` stay directives).
-- `ParseProgram` is strict; `ParseProgramTolerant` skips unknown top-level forms
-  (directives, `enum`) and unknown statement keywords (`for`, `while`) without
-  diagnostics. The language server uses tolerant mode; the CLI stays strict.
-  `main :: #entry proc {...}` parses as a `ProcDecl` named `main` in tolerant
-  mode (the directive is skipped, then the proc is parsed normally). Struct
-  definitions (`Name :: struct { field: Type; ... }`) parse in both modes; the
-  struct declaration itself does not require a trailing semicolon.
+- `ParseProgram` is strict. `ParseProgramTolerant`, used by the LSP, builds real
+  nodes for every implemented construct, including enums and every loop form;
+  it recovers only genuinely unknown/incomplete editor input. Entry syntax is
+  `#entry name :: proc -> S64 { ... }`.
 
 ### Language server (`src/cmd/chaos-lsp/`)
 
@@ -76,6 +80,8 @@ make vet              # go vet -C src ./...
 - `src/compiler/` — compiler library (package `compiler`).
 - `src/cmd/chaosc/` — compiler CLI (package `main`).
 - `src/cmd/chaos-lsp/` — language server (package `main`).
+- `main.chaos` — the owner's personal/manual scratch file; it is not an
+  automated compiler fixture and agents must not rewrite it as part of tests.
 - `language_design/` — speculative design sketches. **Not implemented.**
   Features here (generics, async, C interop, modules, self-hosted compiler) do
   not exist in the compiler.
@@ -108,10 +114,11 @@ Binaries under `build/` are not tracked.
 
 ## Project state
 
-- Solo/experimental project, no CI, no linting, no formatting, no pre-commit.
+- Solo/experimental project, no CI or pre-commit. `make check` enforces Go
+  formatting, vet, compiler/LSP tests, and end-to-end tests.
 - Goal: eventually self-host the compiler in Chaos itself.
 - LICENSE: "Not to be used in any form" — closed source.
-- Full defect audit at `report.md` (P0-P2 defects, architectural
-  recommendations for the old compiler, which no longer exists in the repo).
+- The current remediation record is `PLAN.md`; the audit for the removed
+  compiler is archived under `docs/legacy-compiler-audit-2026-07-15.md`.
 - OpenCode agent config at `.opencode/agent/developer.md` (write/edit/bash
   require permission).

@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -81,5 +82,26 @@ func TestReadMessageInvalidContentLength(t *testing.T) {
 	input := "Content-Length: abc\r\n\r\n"
 	if _, err := readMessage(bufio.NewReader(strings.NewReader(input))); err == nil {
 		t.Error("expected error for invalid content-length, got nil")
+	}
+}
+
+func TestReadMessageRejectsDuplicateContentLength(t *testing.T) {
+	input := "Content-Length: 0\r\ncontent-length: 0\r\n\r\n"
+	if _, err := readMessage(bufio.NewReader(strings.NewReader(input))); err == nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate content-length error = %v", err)
+	}
+}
+
+func TestReadMessageRejectsOversizedBody(t *testing.T) {
+	input := "Content-Length: " + strconv.Itoa(maxBodyBytes+1) + "\r\n\r\n"
+	if _, err := readMessage(bufio.NewReader(strings.NewReader(input))); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized-body error = %v", err)
+	}
+}
+
+func TestReadMessageRejectsOversizedHeaderLine(t *testing.T) {
+	input := "X-Long: " + strings.Repeat("x", maxHeaderLine) + "\r\nContent-Length: 0\r\n\r\n"
+	if _, err := readMessage(bufio.NewReader(strings.NewReader(input))); err == nil || !strings.Contains(err.Error(), "header line") {
+		t.Fatalf("oversized-header error = %v", err)
 	}
 }

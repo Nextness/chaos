@@ -1,3 +1,7 @@
+> **Legacy audit:** this document describes the removed pre-rewrite compiler.
+> It is retained only as project history. See [`PLAN.md`](../PLAN.md) and the
+> repository [`README.md`](../README.md) for the active compiler.
+
 # Chaos compiler: implementation map, defect audit, and roadmap
 
 Audit date: 2026-07-15  

@@ -1,4 +1,4 @@
 HIR
-  Proc main()
+  Proc main() -> S64
     Block
       Exit status=Int(3) message=String("boom")

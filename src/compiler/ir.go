@@ -71,6 +71,10 @@ func (st *SymbolTable) ByName(name string) (SymbolID, bool) {
 	return id, ok
 }
 
+// Len returns the number of declared symbols. Verifiers use it to reject
+// invalid SymbolIDs without treating Lookup's empty-string fallback as real.
+func (st *SymbolTable) Len() int { return len(st.names) }
+
 // TypeKind classifies a resolved IR type.
 type TypeKind uint8
 
@@ -84,6 +88,7 @@ const (
 	TypeKindError
 	TypeKindArray
 	TypeKindEnum
+	TypeKindTuple
 	TypeKindUnknown
 )
 
@@ -99,6 +104,7 @@ type TypeField struct {
 // types carry their field list; array types carry their element type; enum
 // types carry their underlying integer type.
 type IRType struct {
+	ID         TypeID
 	Kind       TypeKind
 	Name       string
 	Fields     []TypeField
@@ -115,14 +121,21 @@ type TypeTable struct {
 // NewTypeTable returns a type table pre-populated with the built-in types.
 func NewTypeTable() *TypeTable {
 	tt := &TypeTable{byName: make(map[string]TypeID)}
-	tt.intern("Void", TypeKindVoid)
-	tt.intern("Bool", TypeKindBool)
-	tt.intern("String", TypeKindString)
-	for _, n := range []string{"S8", "S16", "S32", "S64", "S128", "U8", "U16", "U32", "U64", "U128", "Size", "Byte"} {
-		tt.intern(n, TypeKindInt)
-	}
-	for _, n := range []string{"F16", "F32", "F64", "F128"} {
-		tt.intern(n, TypeKindFloat)
+	for _, info := range BuiltinTypes() {
+		kind := TypeKindUnknown
+		switch info.Kind {
+		case BuiltinVoid:
+			kind = TypeKindVoid
+		case BuiltinBool:
+			kind = TypeKindBool
+		case BuiltinString:
+			kind = TypeKindString
+		case BuiltinInteger:
+			kind = TypeKindInt
+		case BuiltinFloat:
+			kind = TypeKindFloat
+		}
+		tt.intern(info.Name, kind)
 	}
 	tt.intern("", TypeKindUnknown)
 	return tt
@@ -130,7 +143,7 @@ func NewTypeTable() *TypeTable {
 
 func (tt *TypeTable) intern(name string, kind TypeKind) TypeID {
 	id := TypeID(len(tt.types))
-	tt.types = append(tt.types, IRType{Kind: kind, Name: name})
+	tt.types = append(tt.types, IRType{ID: id, Kind: kind, Name: name})
 	tt.byName[name] = id
 	return id
 }
@@ -138,15 +151,37 @@ func (tt *TypeTable) intern(name string, kind TypeKind) TypeID {
 // InternStruct interns a struct type name with no fields yet. Fields are set
 // later with SetStructFields once every type name is known.
 func (tt *TypeTable) InternStruct(name string) TypeID {
-	if id, ok := tt.byName[name]; ok {
-		return id
+	id, ok := tt.TryInternStruct(name)
+	if !ok {
+		return tt.Unknown()
 	}
-	return tt.intern(name, TypeKindStruct)
+	return id
+}
+
+// TryInternStruct reports a cross-kind name collision instead of returning an
+// unrelated existing type as though it were a struct.
+func (tt *TypeTable) TryInternStruct(name string) (TypeID, bool) {
+	if id, ok := tt.byName[name]; ok {
+		return id, tt.types[id].Kind == TypeKindStruct
+	}
+	return tt.intern(name, TypeKindStruct), true
+}
+
+// InternScopedStruct always creates a fresh nominal type. Lexically shadowed
+// declarations may share source spelling, but never type identity.
+func (tt *TypeTable) InternScopedStruct(name string) TypeID {
+	return tt.internUnindexed(name, TypeKindStruct)
+}
+
+func (tt *TypeTable) internUnindexed(name string, kind TypeKind) TypeID {
+	id := TypeID(len(tt.types))
+	tt.types = append(tt.types, IRType{ID: id, Kind: kind, Name: name})
+	return id
 }
 
 // SetStructFields sets the field list of a struct type.
 func (tt *TypeTable) SetStructFields(id TypeID, fields []TypeField) {
-	if int(id) < len(tt.types) {
+	if int(id) < len(tt.types) && (tt.types[id].Kind == TypeKindStruct || tt.types[id].Kind == TypeKindTuple) {
 		tt.types[id].Fields = fields
 	}
 }
@@ -154,17 +189,32 @@ func (tt *TypeTable) SetStructFields(id TypeID, fields []TypeField) {
 // InternError interns an error type name. Error values are nominal: each
 // declared error type is its own type, backed by a 16-bit ordinal.
 func (tt *TypeTable) InternError(name string) TypeID {
-	if id, ok := tt.byName[name]; ok {
-		return id
+	id, ok := tt.TryInternError(name)
+	if !ok {
+		return tt.Unknown()
 	}
-	return tt.intern(name, TypeKindError)
+	return id
+}
+
+func (tt *TypeTable) TryInternError(name string) (TypeID, bool) {
+	if id, ok := tt.byName[name]; ok {
+		return id, tt.types[id].Kind == TypeKindError
+	}
+	return tt.intern(name, TypeKindError), true
+}
+
+func (tt *TypeTable) InternScopedError(name string) TypeID {
+	return tt.internUnindexed(name, TypeKindError)
 }
 
 // InternArray interns an array type "[]Elem" for the given element type.
 func (tt *TypeTable) InternArray(elem TypeID) TypeID {
 	name := "[]" + tt.Lookup(elem).Name
 	if id, ok := tt.byName[name]; ok {
-		return id
+		if tt.types[id].Kind == TypeKindArray && tt.types[id].Elem == elem {
+			return id
+		}
+		return tt.Unknown()
 	}
 	id := tt.intern(name, TypeKindArray)
 	tt.types[id].Elem = elem
@@ -174,13 +224,51 @@ func (tt *TypeTable) InternArray(elem TypeID) TypeID {
 // InternEnum interns an enum type with the given name and underlying integer
 // type.
 func (tt *TypeTable) InternEnum(name string, underlying TypeID) TypeID {
+	id, ok := tt.TryInternEnum(name, underlying)
+	if !ok {
+		return tt.Unknown()
+	}
+	return id
+}
+
+func (tt *TypeTable) TryInternEnum(name string, underlying TypeID) (TypeID, bool) {
 	if id, ok := tt.byName[name]; ok {
-		return id
+		return id, tt.types[id].Kind == TypeKindEnum && tt.types[id].Underlying == underlying
 	}
 	id := tt.intern(name, TypeKindEnum)
 	tt.types[id].Underlying = underlying
+	return id, true
+}
+
+func (tt *TypeTable) InternScopedEnum(name string, underlying TypeID) TypeID {
+	id := tt.internUnindexed(name, TypeKindEnum)
+	tt.types[id].Underlying = underlying
 	return id
 }
+
+// InternTuple interns the structural product used to carry multiple results.
+// Field symbols are supplied by lowering so tuple construction and extraction
+// use the same declaration-order identity as structs.
+func (tt *TypeTable) InternTuple(name string, fields []TypeField) TypeID {
+	id, ok := tt.TryInternTuple(name, fields)
+	if !ok {
+		return tt.Unknown()
+	}
+	return id
+}
+
+func (tt *TypeTable) TryInternTuple(name string, fields []TypeField) (TypeID, bool) {
+	if id, ok := tt.byName[name]; ok {
+		return id, tt.types[id].Kind == TypeKindTuple
+	}
+	id := tt.intern(name, TypeKindTuple)
+	tt.types[id].Fields = fields
+	return id, true
+}
+
+// Len returns the number of interned types. It is used by MIR verification to
+// reject invalid TypeIDs without relying on Lookup's poison fallback.
+func (tt *TypeTable) Len() int { return len(tt.types) }
 
 // Lookup returns the IRType for a TypeID, or an unknown type for an
 // out-of-range ID.

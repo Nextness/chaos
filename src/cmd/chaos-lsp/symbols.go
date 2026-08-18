@@ -42,7 +42,7 @@ func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []Docum
 				Name:           d.Name,
 				Kind:           symbolKindFunction,
 				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
-				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(d.NameSpan, sf)),
 			})
 		case *compiler.VarDecl:
 			kind := symbolKindVariable
@@ -53,7 +53,7 @@ func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []Docum
 				Name:           d.Name,
 				Kind:           kind,
 				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
-				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(d.NameSpan, sf)),
 			})
 		case *compiler.StructDecl:
 			var children []DocumentSymbol
@@ -62,14 +62,14 @@ func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []Docum
 					Name:           field.Name,
 					Kind:           symbolKindVariable,
 					Range:          toLSPRange(compiler.SpanToRange(field.Span_, sf)),
-					SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(field.Span_, field.Name), sf)),
+					SelectionRange: toLSPRange(compiler.SpanToRange(field.NameSpan, sf)),
 				})
 			}
 			out = append(out, DocumentSymbol{
 				Name:           d.Name,
 				Kind:           symbolKindStruct,
 				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
-				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(d.NameSpan, sf)),
 				Children:       children,
 			})
 		case *compiler.ErrorDecl:
@@ -79,14 +79,14 @@ func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []Docum
 					Name:           member.Name,
 					Kind:           symbolKindEnumMember,
 					Range:          toLSPRange(compiler.SpanToRange(member.Span_, sf)),
-					SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(member.Span_, member.Name), sf)),
+					SelectionRange: toLSPRange(compiler.SpanToRange(member.NameSpan, sf)),
 				})
 			}
 			out = append(out, DocumentSymbol{
 				Name:           d.Name,
 				Kind:           symbolKindEnum,
 				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
-				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(d.NameSpan, sf)),
 				Children:       children,
 			})
 		case *compiler.EnumDecl:
@@ -96,14 +96,14 @@ func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []Docum
 					Name:           member.Name,
 					Kind:           symbolKindEnumMember,
 					Range:          toLSPRange(compiler.SpanToRange(member.Span_, sf)),
-					SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(member.Span_, member.Name), sf)),
+					SelectionRange: toLSPRange(compiler.SpanToRange(member.NameSpan, sf)),
 				})
 			}
 			out = append(out, DocumentSymbol{
 				Name:           d.Name,
 				Kind:           symbolKindEnum,
 				Range:          toLSPRange(compiler.SpanToRange(d.Span_, sf)),
-				SelectionRange: toLSPRange(compiler.SpanToRange(nameSpan(d.Span_, d.Name), sf)),
+				SelectionRange: toLSPRange(compiler.SpanToRange(d.NameSpan, sf)),
 				Children:       children,
 			})
 		}
@@ -123,10 +123,7 @@ func (s *Server) handleDocumentSymbol(msg message) Response {
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
 	}
-	tokens, _ := compiler.Tokenize(doc.sf.Source, doc.sf.ID)
-	result := compiler.ParseProgramTolerant(tokens)
-	symbols := documentSymbols(result.Program, doc.sf)
-	out, err := json.Marshal(symbols)
+	out, err := json.Marshal(doc.symbols)
 	if err != nil {
 		return errorResponse(msg.ID, -32603, "internal error")
 	}

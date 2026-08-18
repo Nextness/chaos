@@ -7,7 +7,7 @@ MIR
       v2:Bool = cmp.lt v0 v1
       branch v2, bb1, bb2
     bb1:
-      v3:S64 = const
+      v3:S64 = const 0
       v4:Some_Error = const 0
       v5:Bool = const true
       v6:S64<>Some_Error = struct.init v3 v4 v5
@@ -18,34 +18,34 @@ MIR
       v7:S64 = load.local l0
       v8:S64 = const 2
       v9:S64 = mul v7 v8
-      v10:Some_Error = const
+      v10:Some_Error = const 0
       v11:Bool = const false
       v12:S64<>Some_Error = struct.init v9 v10 v11
       return v12
   Function g() -> S64<>Some_Error
     Local l0: S64<>Some_Error
     bb0:
-      v0:S64 = const 1
-      v1:S64 = neg v0
-      v2:S64<>Some_Error = call v1 f
-      store.local v2 l0
-      v3:S64<>Some_Error = load.local l0
-      v4:Bool = field.load v3 field2
-      branch v4, bb1, bb2
+      v0:S64 = const -1
+      v1:S64<>Some_Error = call v0 f
+      store.local v1 l0
+      v2:S64<>Some_Error = load.local l0
+      v3:Bool = field.load v2 field2
+      branch v3, bb1, bb2
     bb1:
-      v5:S64<>Some_Error = load.local l0
-      return v5
+      v4:S64<>Some_Error = load.local l0
+      return v4
     bb2:
       jump bb3
     bb3:
-      v6:S64<>Some_Error = load.local l0
-      v7:S64 = field.load v6 field0
-      v8:Some_Error = const
-      v9:Bool = const false
-      v10:S64<>Some_Error = struct.init v7 v8 v9
-      return v10
+      v5:S64<>Some_Error = load.local l0
+      v6:S64 = field.load v5 field0
+      v7:Some_Error = const 0
+      v8:Bool = const false
+      v9:S64<>Some_Error = struct.init v6 v7 v8
+      return v9
   Function main() -> S64
     Local l0: S64<>Some_Error
+    Local l1: S64
     bb0:
       v0:S64<>Some_Error = call g
       store.local v0 l0
@@ -60,4 +60,6 @@ MIR
     bb3:
       v4:S64<>Some_Error = load.local l0
       v5:S64 = field.load v4 field0
-      return v5
+      store.local v5 l1
+      v6:S64 = load.local l1
+      return v6

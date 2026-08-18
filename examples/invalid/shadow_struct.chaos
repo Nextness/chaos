@@ -1,6 +1,6 @@
 // expect-stage: type
-// expect-error: declaration of 'Point' shadows a struct type
-// Shadowing a struct definition is never allowed, even with '#shadow'.
+// expect-error: declaration of 'Point' shadows an existing name
+// Reusing a visible type name requires '#shadow'.
 Point :: struct {
     x: S64;
 }

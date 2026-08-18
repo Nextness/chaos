@@ -1,8 +1,8 @@
 HIR
   Global BASE: S64 = Int(10) [mutable=false compileTime=true]
-  Global BASE: S64 = Binary(+ Ident(BASE) Int(5)) [mutable=false compileTime=true]
+  Global BASE: S64 = Int(15) [mutable=false compileTime=true]
   Proc main() -> S64
     Block
       VarDecl input1: S64 = Int(25) [mutable=true compileTime=false]
       VarDecl input1: S64 = Binary(+ Ident(input1) Int(2)) [mutable=true compileTime=false]
-      Return Binary(+ Ident(input1) Ident(BASE))
+      Return Binary(+ Ident(input1) Int(15))
