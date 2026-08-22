@@ -1,0 +1,30 @@
+// expect-exit: 0
+// Advanced pointer operations: double pointers with chained dereference,
+// integer-on-the-left arithmetic, ordering comparisons, and a null literal
+// on the left side of a comparison.
+#entry main :: proc -> S64 {
+    a := 5;
+    p: *S64 = *a;
+    pp: **S64 = *p;
+    if pp.*.* != 5 { return 1; }
+
+    arr := []S64.{10, 20, 30};
+    base: *S64 = *arr[0];
+    if (2 + base).* != 30 { return 2; }
+    if (base + 2).* != 30 { return 3; }
+
+    mid: *S64 = *arr[1];
+    if base <= mid && base < *arr[2] && !(base >= *arr[2]) {
+    } else {
+        return 4;
+    }
+
+    pn: *S64? = null;
+    if null == pn {
+    } else {
+        return 5;
+    }
+    if null != pn { return 6; }
+
+    return 0;
+}

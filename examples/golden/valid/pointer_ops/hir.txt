@@ -1,0 +1,33 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl a: S64 = Int(5) [mutable=true compileTime=false]
+      VarDecl p: *S64 = AddrOf(Ident(a)) [mutable=true compileTime=false]
+      VarDecl pp: **S64 = AddrOf(Ident(p)) [mutable=true compileTime=false]
+      If condition=Binary(!= Deref(Deref(Ident(pp))) Int(5))
+        Block
+          Return Int(1)
+      VarDecl arr: []S64 = ArrayInit(Int(10), Int(20), Int(30)) [mutable=true compileTime=false]
+      VarDecl base: *S64 = ArrayElemAddr(Ident(arr), Int(0)) [mutable=true compileTime=false]
+      If condition=Binary(!= Deref(Binary(+ Int(2) Ident(base))) Int(30))
+        Block
+          Return Int(2)
+      If condition=Binary(!= Deref(Binary(+ Ident(base) Int(2))) Int(30))
+        Block
+          Return Int(3)
+      VarDecl mid: *S64 = ArrayElemAddr(Ident(arr), Int(1)) [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(&& Binary(<= Ident(base) Ident(mid)) Binary(< Ident(base) ArrayElemAddr(Ident(arr), Int(2)))) Unary(! Binary(>= Ident(base) ArrayElemAddr(Ident(arr), Int(2)))))
+        Block
+      Else
+        Block
+          Return Int(4)
+      VarDecl pn: *S64? = Int() [mutable=true compileTime=false]
+      If condition=Binary(== Int() Ident(pn))
+        Block
+      Else
+        Block
+          Return Int(5)
+      If condition=Binary(!= Int() Ident(pn))
+        Block
+          Return Int(6)
+      Return Int(0)

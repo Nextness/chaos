@@ -1,0 +1,12 @@
+// expect-stage: type
+// expect-error: cannot compare *S64 and *S32
+#entry main :: proc -> S64 {
+    a := 1;
+    b: S32 = 2;
+    p: *S64 = *a;
+    q: *S32 = *b;
+    if p == q {
+        return 0;
+    }
+    return 1;
+}

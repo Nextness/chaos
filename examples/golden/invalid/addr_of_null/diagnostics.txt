@@ -1,0 +1,3 @@
+[ERROR] 4:10:addr_of_null.chaos - cannot take the address of null
+     p := *null;
+          ^^^^^ -> pointers come from address-of, null, or parameters

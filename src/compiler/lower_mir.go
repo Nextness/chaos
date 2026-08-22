@@ -420,6 +420,10 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 				op = MIRPtrSub
 			}
 			return ml.emit(op, n.Type, []ValueID{l, r}, MIRImmediate{}, n.OpSpan)
+		case n.Op == BinaryOpAdd && !leftIsPtr && rightIsPtr:
+			// Integer + pointer: the ptr.add opcodes expect the pointer first,
+			// so swap the operands for this commutative form.
+			return ml.emit(MIRPtrAdd, n.Type, []ValueID{r, l}, MIRImmediate{}, n.OpSpan)
 		case n.Op == BinaryOpSub && leftIsPtr && rightIsPtr:
 			return ml.emit(MIRPtrDiff, n.Type, []ValueID{l, r}, MIRImmediate{}, n.OpSpan)
 		}

@@ -1,0 +1,37 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl a = Int(5) [mutable=true compileTime=false]
+      VarDecl p: Pointer(*Ident(S64)) = Unary(* Ident(a)) [mutable=true compileTime=false]
+      VarDecl pp: Pointer(*Pointer(*Ident(S64))) = Unary(* Ident(p)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Deref(Deref(Ident(pp))) Int(5))
+        Block
+          ReturnStmt Int(1)
+      VarDecl arr = ArrayInit(Ident(S64), Int(10), Int(20), Int(30)) [mutable=true compileTime=false]
+      VarDecl base: Pointer(*Ident(S64)) = Unary(* Index(Ident(arr), Int(0))) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Deref(Paren(Binary(+ Int(2) Ident(base)))) Int(30))
+        Block
+          ReturnStmt Int(2)
+      IfStmt condition=Binary(!= Deref(Paren(Binary(+ Ident(base) Int(2)))) Int(30))
+        Block
+          ReturnStmt Int(3)
+      VarDecl mid: Pointer(*Ident(S64)) = Unary(* Index(Ident(arr), Int(1))) [mutable=true compileTime=false]
+      IfStmt condition=Binary(&& Binary(&& Binary(<= Ident(base) Ident(mid)) Binary(< Ident(base) Unary(* Index(Ident(arr), Int(2))))) Unary(! Paren(Binary(>= Ident(base) Unary(* Index(Ident(arr), Int(2)))))))
+        Block
+      Else
+        Block
+          ReturnStmt Int(4)
+      VarDecl pn: Pointer(*Ident(S64)?) = Null() [mutable=true compileTime=false]
+      IfStmt condition=Binary(== Null() Ident(pn))
+        Block
+      Else
+        Block
+          ReturnStmt Int(5)
+      IfStmt condition=Binary(!= Null() Ident(pn))
+        Block
+          ReturnStmt Int(6)
+      ReturnStmt Int(0)

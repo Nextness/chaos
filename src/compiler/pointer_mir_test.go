@@ -56,3 +56,27 @@ func TestMIRPointerFieldAddr(t *testing.T) {
 		t.Error("expected a deref.store instruction for the field write")
 	}
 }
+
+func TestMIRPointerIntegerLeftAdd(t *testing.T) {
+	// "2 + p" lowers to ptr.add with the pointer operand first, so the
+	// backend scales the address by the element size rather than adding the
+	// raw integer to the pointer value.
+	_, mir := lowerSource(t, "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    q := 2 + p;\n    return q.*;\n}")
+	fn := findMIRFunction(mir, "main")
+	if fn == nil {
+		t.Fatal("proc main not found")
+	}
+	add := findInstr(fn, MIRPtrAdd)
+	if add == nil {
+		t.Fatal("expected a ptr.add instruction for '2 + p'")
+	}
+	// The offset operand is the integer 2 literal; the address operand is the
+	// other one. A plain MIRAdd would put the integer first, so asserting that
+	// the 2 sits in the offset slot proves the swap happened.
+	if v, ok := constInt(fn, add.Args[0]); ok && v == 2 {
+		t.Error("ptr.add offset literal is the first argument; the pointer must be first so the backend scales it")
+	}
+	if v, ok := constInt(fn, add.Args[1]); !ok || v != 2 {
+		t.Errorf("ptr.add second argument = const %d, want the offset 2", v)
+	}
+}

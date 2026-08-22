@@ -1,0 +1,3 @@
+[ERROR] 6:10:pointer_arith_float.chaos - pointer arithmetic requires an integer offset, got F64
+     q := p + 1.5;
+          ^^^^^^^ -> add or subtract an integer: 'p + n'

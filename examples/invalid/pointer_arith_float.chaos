@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: pointer arithmetic requires an integer offset
+#entry main :: proc -> S64 {
+    a := 1;
+    p: *S64 = *a;
+    q := p + 1.5;
+    return 0;
+}

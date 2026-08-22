@@ -1,0 +1,3 @@
+[ERROR] 4:11:addr_of_non_lvalue.chaos - cannot take the address of this expression
+     p := *(1 + 2);
+           ^^^^^^^ -> take the address of a variable, array element, field, or dereferenced pointer

@@ -1,0 +1,3 @@
+[ERROR] 4:5:pointer_null_to_scalar.chaos - cannot assign null to S64
+     x: S64 = null;
+     ^^^^^^^^^^^^^ -> only nullable pointers can hold null

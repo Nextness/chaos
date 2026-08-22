@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: cannot add two pointers
+#entry main :: proc -> S64 {
+    a := 1;
+    b := 2;
+    p: *S64 = *a;
+    q: *S64 = *b;
+    sum := p + q;
+    return 0;
+}

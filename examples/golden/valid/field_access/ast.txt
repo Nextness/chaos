@@ -1,0 +1,39 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  StructDecl Point
+    Field x: Ident(S64)
+    Field y: Ident(S64)
+  StructDecl Outer
+    Field inner: Ident(Point)
+    Field label: Ident(String)
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl p = StructInit(Ident(Point), x=Int(1), y=Int(2)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(|| Binary(!= Field(Ident(p), x) Int(1)) Binary(!= Field(Ident(p), y) Int(2)))
+        Block
+          ReturnStmt Int(1)
+      AssignStmt Field(Ident(p), x) = Int(10)
+      CompoundAssignStmt Field(Ident(p), y) + Int(5)
+      IfStmt condition=Binary(|| Binary(!= Field(Ident(p), x) Int(10)) Binary(!= Field(Ident(p), y) Int(7)))
+        Block
+          ReturnStmt Int(2)
+      IncDecStmt Field(Ident(p), x) +
+      IncDecStmt Field(Ident(p), y) -
+      IfStmt condition=Binary(|| Binary(!= Field(Ident(p), x) Int(11)) Binary(!= Field(Ident(p), y) Int(6)))
+        Block
+          ReturnStmt Int(3)
+      VarDecl o = StructInit(Ident(Outer), inner=StructInit(Ident(Point), x=Int(3), y=Int(4)), label=String("hi")) [mutable=true compileTime=false]
+      AssignStmt Field(Field(Ident(o), inner), x) = Int(9)
+      AssignStmt Field(Ident(o), label) = String("bye")
+      IfStmt condition=Binary(|| Binary(!= Field(Field(Ident(o), inner), x) Int(9)) Binary(!= Field(Ident(o), label) String("bye")))
+        Block
+          ReturnStmt Int(4)
+      VarDecl arr = ArrayInit(Ident(Point), StructInit(Ident(Point), x=Int(1), y=Int(2))) [mutable=true compileTime=false]
+      AssignStmt Field(Index(Ident(arr), Int(0)), x) = Int(5)
+      IfStmt condition=Binary(!= Field(Index(Ident(arr), Int(0)), x) Int(5))
+        Block
+          ReturnStmt Int(5)
+      ReturnStmt Int(0)

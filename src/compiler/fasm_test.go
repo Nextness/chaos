@@ -383,6 +383,10 @@ func TestFasmRuntime(t *testing.T) {
 		{"pointer inc", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    p++;\n    if p.* == 20 { return 20; }\n    return 0;\n}", 20},
 		{"pointer dec", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[1];\n    p--;\n    if p.* == 10 { return 10; }\n    return 0;\n}", 10},
 		{"pointer compound add", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    p += 2;\n    if p.* == 30 { return 30; }\n    return 0;\n}", 30},
+		{"pointer integer left add", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    q := 2 + p;\n    if q.* == 30 { return 30; }\n    return 0;\n}", 30},
+		{"pointer order comparisons", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    q: *S64 = *arr[1];\n    if p <= q && q >= p && q > p && p < q { return 20; }\n    return 0;\n}", 20},
+		{"double pointer", "#entry main :: proc -> S64 {\n    a := 5;\n    p: *S64 = *a;\n    pp: **S64 = *p;\n    if pp.*.* == 5 && pp.* == p && pp == *p { return 5; }\n    return 0;\n}", 5},
+		{"null left comparison", "#entry main :: proc -> S64 {\n    a := 10;\n    p: *S64? = *a;\n    if null == p { return 1; }\n    if null != p { return 10; }\n    return 0;\n}", 10},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

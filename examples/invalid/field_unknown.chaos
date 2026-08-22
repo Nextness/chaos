@@ -1,0 +1,11 @@
+// expect-stage: type
+// expect-error: struct Person has no field 'agee'
+Person :: struct {
+    name: String;
+    age: S64;
+}
+
+#entry main :: proc -> S64 {
+    p := Person.{name=«ada», age=36};
+    return p.agee;
+}

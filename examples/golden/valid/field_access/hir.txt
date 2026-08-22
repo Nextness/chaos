@@ -1,0 +1,35 @@
+HIR
+  Struct Point
+    Field x: S64
+    Field y: S64
+  Struct Outer
+    Field inner: Point
+    Field label: String
+  Proc main() -> S64
+    Block
+      VarDecl p: Point = StructInit(Point, x=Int(1), y=Int(2)) [mutable=true compileTime=false]
+      If condition=Binary(|| Binary(!= FieldLoad(Ident(p), 0) Int(1)) Binary(!= FieldLoad(Ident(p), 1) Int(2)))
+        Block
+          Return Int(1)
+      AddrStore FieldAddr(AddrOf(Ident(p)), 0) = Int(10)
+      AddrStore FieldAddr(AddrOf(Ident(p)), 1) = Binary(+ FieldLoad(Ident(p), 1) Int(5))
+      If condition=Binary(|| Binary(!= FieldLoad(Ident(p), 0) Int(10)) Binary(!= FieldLoad(Ident(p), 1) Int(7)))
+        Block
+          Return Int(2)
+      AddrStore FieldAddr(AddrOf(Ident(p)), 0) = Binary(+ FieldLoad(Ident(p), 0) Int())
+      AddrStore FieldAddr(AddrOf(Ident(p)), 1) = Binary(- FieldLoad(Ident(p), 1) Int())
+      If condition=Binary(|| Binary(!= FieldLoad(Ident(p), 0) Int(11)) Binary(!= FieldLoad(Ident(p), 1) Int(6)))
+        Block
+          Return Int(3)
+      VarDecl o: Outer = StructInit(Outer, inner=StructInit(Point, x=Int(3), y=Int(4)), label=String("hi")) [mutable=true compileTime=false]
+      AddrStore FieldAddr(FieldAddr(AddrOf(Ident(o)), 0), 0) = Int(9)
+      AddrStore FieldAddr(AddrOf(Ident(o)), 1) = String("bye")
+      If condition=Binary(|| Binary(!= FieldLoad(FieldLoad(Ident(o), 0), 0) Int(9)) Binary(!= FieldLoad(Ident(o), 1) String("bye")))
+        Block
+          Return Int(4)
+      VarDecl arr: []Point = ArrayInit(StructInit(Point, x=Int(1), y=Int(2))) [mutable=true compileTime=false]
+      AddrStore FieldAddr(ArrayElemAddr(Ident(arr), Int(0)), 0) = Int(5)
+      If condition=Binary(!= FieldLoad(Index(Ident(arr), Int(0)), 0) Int(5))
+        Block
+          Return Int(5)
+      Return Int(0)

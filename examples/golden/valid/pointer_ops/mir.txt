@@ -1,0 +1,114 @@
+MIR
+  Function main() -> S64
+    Local l0: S64
+    Local l1: *S64
+    Local l2: **S64
+    Local l3: []S64
+    Local l4: *S64
+    Local l5: *S64
+    Local l6: *S64?
+    bb0:
+      v0:S64 = const 5
+      store.local v0 l0
+      v1:*S64 = addr.of l0
+      store.local v1 l1
+      v2:**S64 = addr.of l1
+      store.local v2 l2
+      v3:**S64 = load.local l2
+      v4:*S64 = deref.load v3
+      v5:S64 = deref.load v4
+      v6:S64 = const 5
+      v7:Bool = cmp.neq v5 v6
+      branch v7, bb1, bb2
+    bb1:
+      v8:S64 = const 1
+      return v8
+    bb2:
+      jump bb3
+    bb3:
+      v9:S64 = const 10
+      v10:S64 = const 20
+      v11:S64 = const 30
+      v12:[]S64 = array.init v9 v10 v11
+      store.local v12 l3
+      v13:[]S64 = load.local l3
+      v14:S64 = const 0
+      v15:*S64 = array.elem.addr v13 v14
+      store.local v15 l4
+      v16:S64 = const 2
+      v17:*S64 = load.local l4
+      v18:*S64 = ptr.add v17 v16
+      v19:S64 = deref.load v18
+      v20:S64 = const 30
+      v21:Bool = cmp.neq v19 v20
+      branch v21, bb4, bb5
+    bb4:
+      v22:S64 = const 2
+      return v22
+    bb5:
+      jump bb6
+    bb6:
+      v23:*S64 = load.local l4
+      v24:S64 = const 2
+      v25:*S64 = ptr.add v23 v24
+      v26:S64 = deref.load v25
+      v27:S64 = const 30
+      v28:Bool = cmp.neq v26 v27
+      branch v28, bb7, bb8
+    bb7:
+      v29:S64 = const 3
+      return v29
+    bb8:
+      jump bb9
+    bb9:
+      v30:[]S64 = load.local l3
+      v31:S64 = const 1
+      v32:*S64 = array.elem.addr v30 v31
+      store.local v32 l5
+      v33:*S64 = load.local l4
+      v34:*S64 = load.local l5
+      v35:Bool = cmp.le v33 v34
+      v36:*S64 = load.local l4
+      v37:[]S64 = load.local l3
+      v38:S64 = const 2
+      v39:*S64 = array.elem.addr v37 v38
+      v40:Bool = cmp.lt v36 v39
+      v41:Bool = and v35 v40
+      v42:*S64 = load.local l4
+      v43:[]S64 = load.local l3
+      v44:S64 = const 2
+      v45:*S64 = array.elem.addr v43 v44
+      v46:Bool = cmp.ge v42 v45
+      v47:Bool = not v46
+      v48:Bool = and v41 v47
+      branch v48, bb10, bb11
+    bb10:
+      jump bb12
+    bb11:
+      v49:S64 = const 4
+      return v49
+    bb12:
+      v50:*S64? = const 0
+      store.local v50 l6
+      v51:*S64? = const 0
+      v52:*S64? = load.local l6
+      v53:Bool = cmp.eq v51 v52
+      branch v53, bb13, bb14
+    bb13:
+      jump bb15
+    bb14:
+      v54:S64 = const 5
+      return v54
+    bb15:
+      v55:*S64? = const 0
+      v56:*S64? = load.local l6
+      v57:Bool = cmp.neq v55 v56
+      branch v57, bb16, bb17
+    bb16:
+      v58:S64 = const 6
+      return v58
+    bb17:
+      jump bb18
+    bb18:
+      v59:S64 = const 0
+      return v59

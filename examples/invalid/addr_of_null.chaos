@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: cannot take the address of null
+#entry main :: proc -> S64 {
+    p := *null;
+    return 0;
+}

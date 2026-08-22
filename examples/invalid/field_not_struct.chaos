@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: cannot access field 'age' on a value of type S64
+#entry main :: proc -> S64 {
+    a := 5;
+    return a.age;
+}

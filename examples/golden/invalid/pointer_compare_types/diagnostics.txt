@@ -1,0 +1,3 @@
+[ERROR] 8:8:pointer_compare_types.chaos - cannot compare *S64 and *S32
+     if p == q {
+        ^^^^^^ -> compare pointers of the same type

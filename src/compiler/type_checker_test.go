@@ -1243,3 +1243,78 @@ main :: proc { c: Color = Color.GREEN; }
 		t.Fatalf("enum member through field access failed: %v", diags)
 	}
 }
+
+func TestTypeCheckPointerAdvanced(t *testing.T) {
+	// Double pointers with chained dereference, integer-on-the-left arithmetic,
+	// order comparisons, and a null literal on the left of a comparison all
+	// type check.
+	valid := `
+#entry main :: proc -> S64 {
+	a := 5;
+	p: *S64 = *a;
+	pp: **S64 = *p;
+	deep := pp.*.*;
+	arr := []S64.{10, 20, 30};
+	base: *S64 = *arr[0];
+	right := base + 2;
+	left := 2 + base;
+	r: S64 = 0;
+	if deep == 5 && right == left { r += 1; }
+	if base <= *arr[0] && base >= *arr[0] { r += 1; }
+	if base < *arr[2] && *arr[2] > base { r += 1; }
+	pn: *S64? = null;
+	if null == pn { r += 1; }
+	if null != pn { r += 1; }
+	return r;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid advanced pointer program failed: %v", diags)
+	}
+}
+
+func TestTypeCheckPointerNoNullBranch(t *testing.T) {
+	// The then-branch of "p != null" sees p as non-null, so both dereference
+	// and passing to a non-nullable parameter are allowed inside it.
+	valid := `
+use :: proc (p: *S64) -> S64 { return p.*; }
+#entry main :: proc -> S64 {
+	p: *S64? = null;
+	if p != null {
+		return use(p) + p.*;
+	}
+	return 0;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid '!=' narrowing failed: %v", diags)
+	}
+}
+
+func TestTypeCheckPointerErrorsMore(t *testing.T) {
+	cases := []struct {
+		name, src, want string
+	}{
+		{"deref non-pointer", "#entry main :: proc -> S64 {\n    a := 5;\n    return a.*;\n}", "cannot dereference a value of type S64"},
+		{"field on scalar", "#entry main :: proc -> S64 {\n    a := 5;\n    return a.age;\n}", "cannot access field 'age' on a value of type S64"},
+		{"unknown field read", "Person :: struct { name: String; age: S64; }\n#entry main :: proc -> S64 {\n    p := Person.{name=«x», age=1};\n    return p.agee;\n}", "struct Person has no field 'agee'"},
+		{"field assign on scalar", "#entry main :: proc -> S64 {\n    a := 5;\n    a.age = 3;\n    return a;\n}", "cannot access a field on a value of type S64"},
+		{"unknown field assign", "Person :: struct { name: String; age: S64; }\n#entry main :: proc -> S64 {\n    p := Person.{name=«x», age=1};\n    p.agee = 3;\n    return p.age;\n}", "struct Person has no field 'agee'"},
+		{"address of null", "#entry main :: proc -> S64 {\n    x := *null;\n    return 0;\n}", "cannot take the address of null"},
+		{"address of non-lvalue", "#entry main :: proc -> S64 {\n    x := *(1 + 2);\n    return 0;\n}", "cannot take the address of this expression"},
+		{"null to scalar", "#entry main :: proc -> S64 {\n    x: S64 = null;\n    return 0;\n}", "cannot assign null to S64"},
+		{"add two pointers", "#entry main :: proc -> S64 {\n    a := 1;\n    b := 2;\n    p: *S64 = *a;\n    q: *S64 = *b;\n    x := p + q;\n    return 0;\n}", "cannot add two pointers"},
+		{"subtract pointer types", "#entry main :: proc -> S64 {\n    a := 1;\n    b: S32 = 2;\n    p: *S64 = *a;\n    q: *S32 = *b;\n    x := p - q;\n    return 0;\n}", "cannot subtract pointers of different types"},
+		{"compare pointer types", "#entry main :: proc -> S64 {\n    a := 1;\n    b: S32 = 2;\n    p: *S64 = *a;\n    q: *S32 = *b;\n    if p == q { return 0; }\n    return 1;\n}", "cannot compare *S64 and *S32"},
+		{"pointer float offset", "#entry main :: proc -> S64 {\n    a := 1;\n    p: *S64 = *a;\n    x := p + 1.5;\n    return 0;\n}", "pointer arithmetic requires an integer offset"},
+		{"compound pointer float offset", "#entry main :: proc -> S64 {\n    a := 1;\n    p: *S64 = *a;\n    p += 1.5;\n    return 0;\n}", "pointer arithmetic requires an integer offset"},
+		{"null compared with scalar", "#entry main :: proc -> S64 {\n    if null == 5 { return 0; }\n    return 1;\n}", "null can only be compared with a nullable pointer"},
+		{"ordering pointer null", "#entry main :: proc -> S64 {\n    p: *S64? = null;\n    if p < null { return 0; }\n    return 1;\n}", "ordering is not defined for pointers and null"},
+		{"incdec string", "#entry main :: proc -> S64 {\n    s := «abc»;\n    s++;\n    return 0;\n}", "cannot increment or decrement a value of type String"},
+	}
+	for _, tc := range cases {
+		if diags := typeCheckSource(t, tc.src); !hasError(diags, tc.want) {
+			t.Errorf("%s: did not report %q, got %v", tc.name, tc.want, diags)
+		}
+	}
+}

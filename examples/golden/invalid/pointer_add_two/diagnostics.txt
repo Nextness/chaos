@@ -1,0 +1,3 @@
+[ERROR] 8:12:pointer_add_two.chaos - cannot add two pointers
+     sum := p + q;
+            ^^^^^ -> add an integer offset: 'p + n'

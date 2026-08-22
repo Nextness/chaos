@@ -1231,6 +1231,20 @@ func TestParseNonPointerNullableType(t *testing.T) {
 	}
 }
 
+func TestParsePointerSyntaxErrors(t *testing.T) {
+	// A '*' with no element type and a '.' that is not followed by '*' or a
+	// field name are parse errors.
+	result := parseTestCase(t, "dummy :: proc { x: *; }")
+	if !hasError(result.Diags, "expected pointer element type after '*'") {
+		t.Errorf("expected missing element error, got %v", result.Diags)
+	}
+
+	result = parseTestCase(t, "dummy :: proc { x := p.; }")
+	if !hasError(result.Diags, "expected '*' or a field name after '.'") {
+		t.Errorf("expected dangling-dot error, got %v", result.Diags)
+	}
+}
+
 func TestParseAddressOfDerefAndField(t *testing.T) {
 	// Prefix '*' is address-of; postfix '.*' is dereference; '.field' reads a
 	// member. Chaining composes as expected.

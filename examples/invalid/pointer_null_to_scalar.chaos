@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: cannot assign null to S64
+#entry main :: proc -> S64 {
+    x: S64 = null;
+    return 0;
+}
