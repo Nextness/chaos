@@ -366,6 +366,23 @@ func TestFasmRuntime(t *testing.T) {
 		{"shadow top-level global", "SOME_VAR :: 10;\n#shadow SOME_VAR :: SOME_VAR + 5;\n#entry main :: proc -> S64 {\n    return SOME_VAR;\n}", 15},
 		{"shadow global label collision", "x :: 1;\n#shadow x :: x + 1;\nx_1 :: 40;\n#entry main :: proc -> S64 {\n    return x + x_1;\n}", 42},
 		{"shadow unless target", "Some_Error :: error { BAD; }\nf :: proc (value: S64) -> (S64 <> Some_Error) {\n    return value + 1;\n}\n#entry main :: proc -> S64 {\n    value := 40;\n    #shadow value := f(value) unless catch {\n        return -1;\n    }\n    return value + 1;\n}", 42},
+		{"pointer addr of deref", "#entry main :: proc -> S64 {\n    a := 10;\n    b: *S64 = *a;\n    c := b.*;\n    if c == 10 { return 0; }\n    return 1;\n}", 0},
+		{"pointer store through", "#entry main :: proc -> S64 {\n    a := 10;\n    b: *S64 = *a;\n    b.* = 42;\n    if a == 42 { return 42; }\n    return 0;\n}", 42},
+		{"pointer param", "read_v :: proc (p: *S64) -> S64 {\n    return p.*;\n}\n#entry main :: proc -> S64 {\n    a := 7;\n    return read_v(*a);\n}", 7},
+		{"pointer array element", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[1];\n    p.* = 21;\n    if arr[1] == 21 && p.* == 21 { return 21; }\n    return 0;\n}", 21},
+		{"pointer arithmetic", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    q := p + 2;\n    if q.* == 30 { return 30; }\n    return 0;\n}", 30},
+		{"pointer struct field read", "Person :: struct { name: String; age: S64; }\n#entry main :: proc -> S64 {\n    person := Person.{name=«x», age=7};\n    pp: *Person = *person;\n    if pp.*.age == 7 { return 7; }\n    return 0;\n}", 7},
+		{"pointer struct field write", "Person :: struct { name: String; age: S64; }\n#entry main :: proc -> S64 {\n    person := Person.{name=«x», age=7};\n    pp: *Person = *person;\n    pp.*.age = 9;\n    pp.*.name = «new»;\n    if person.age == 9 && person.name == «new» { return 9; }\n    return 0;\n}", 9},
+		{"nullable null check", "#entry main :: proc -> S64 {\n    p: *S64? = null;\n    if p == null { return 11; }\n    return 0;\n}", 11},
+		{"nullable non-null", "#entry main :: proc -> S64 {\n    a := 10;\n    p: *S64? = *a;\n    if p == null { return 1; }\n    return p.* + 1;\n}", 11},
+		{"nullable return", "make_ptr :: proc (x: S64) -> *S64? {\n    if x < 0 { return null; }\n    y := x;\n    return *y;\n}\n#entry main :: proc -> S64 {\n    p := make_ptr(5);\n    if p == null { return 2; }\n    return p.*;\n}", 5},
+		{"self-referential struct", "Node :: struct { value: S64; next: *Node?; }\n#entry main :: proc -> S64 {\n    n1 := Node.{value=1, next=null};\n    n2 := Node.{value=2, next=*n1};\n    next_p: *Node? = n2.next;\n    if next_p == null { return 2; }\n    return next_p.*.value;\n}", 1},
+		{"pointer err union", "Some_Error :: error { GENERIC; }\nmaybe :: proc (take: Bool) -> (*S64 <> Some_Error) {\n    if take { x: S64 = 42; return *x; }\n    return .GENERIC!;\n}\n#entry main :: proc -> S64 {\n    p := maybe(true) unless catch { return 3; };\n    return p.*;\n}", 42},
+		{"linked list loop", "Node :: struct { value: S64; next: *Node?; }\n#entry main :: proc -> S64 {\n    n1 := Node.{value=1, next=null};\n    n2 := Node.{value=2, next=*n1};\n    n3 := Node.{value=3, next=*n2};\n    cur: *Node? = *n3;\n    sum := 0;\n    for cur != null {\n        node := cur.*;\n        sum += node.value;\n        cur = node.next;\n    }\n    if sum == 6 { return 6; }\n    return 0;\n}", 6},
+		{"pointer diff", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    a: *S64 = *arr[0];\n    b: *S64 = *arr[2];\n    return b - a;\n}", 2},
+		{"pointer inc", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    p++;\n    if p.* == 20 { return 20; }\n    return 0;\n}", 20},
+		{"pointer dec", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[1];\n    p--;\n    if p.* == 10 { return 10; }\n    return 0;\n}", 10},
+		{"pointer compound add", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    p += 2;\n    if p.* == 30 { return 30; }\n    return 0;\n}", 30},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: cannot assign null to a non-nullable pointer
+#entry main :: proc -> S64 {
+    p: *S64 = null;
+    return 0;
+}

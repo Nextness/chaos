@@ -1,0 +1,214 @@
+MIR
+  Function peek(l0: *S64) -> S64
+    Local l0: *S64 (param)
+    bb0:
+      v0:*S64 = load.local l0
+      v1:S64 = deref.load v0
+      return v1
+  Function double(l0: *S64) -> S64
+    Local l0: *S64 (param)
+    bb0:
+      v0:*S64 = load.local l0
+      v1:S64 = deref.load v0
+      v2:S64 = const 2
+      v3:S64 = mul v1 v2
+      return v3
+  Function make_ptr(l0: Bool) -> *S64<>Some_Error
+    Local l0: Bool (param)
+    Local l1: S64
+    bb0:
+      v0:Bool = load.local l0
+      branch v0, bb1, bb2
+    bb1:
+      v1:S64 = const 42
+      store.local v1 l1
+      v2:*S64 = addr.of l1
+      v3:Some_Error = const 0
+      v4:Bool = const false
+      v5:*S64<>Some_Error = struct.init v2 v3 v4
+      return v5
+    bb2:
+      jump bb3
+    bb3:
+      v6:*S64 = const 0
+      v7:Some_Error = const 0
+      v8:Bool = const true
+      v9:*S64<>Some_Error = struct.init v6 v7 v8
+      return v9
+  Function main() -> S64
+    Local l0: S64
+    Local l1: *S64
+    Local l2: []S64
+    Local l3: *S64
+    Local l4: *S64
+    Local l5: Person
+    Local l6: *Person
+    Local l7: Node
+    Local l8: Node
+    Local l9: *Node?
+    Local l10: *S64<>Some_Error
+    Local l11: *S64
+    bb0:
+      v0:S64 = const 10
+      store.local v0 l0
+      v1:*S64 = addr.of l0
+      store.local v1 l1
+      v2:*S64 = load.local l1
+      v3:S64 = deref.load v2
+      v4:S64 = const 10
+      v5:Bool = cmp.neq v3 v4
+      branch v5, bb1, bb2
+    bb1:
+      v6:S64 = const 1
+      return v6
+    bb2:
+      jump bb3
+    bb3:
+      v7:*S64 = load.local l1
+      v8:S64 = const 12
+      deref.store v7 v8
+      v9:S64 = load.local l0
+      v10:S64 = const 12
+      v11:Bool = cmp.neq v9 v10
+      branch v11, bb4, bb5
+    bb4:
+      v12:S64 = const 2
+      return v12
+    bb5:
+      jump bb6
+    bb6:
+      v13:S64 = const 1
+      v14:S64 = const 2
+      v15:S64 = const 3
+      v16:[]S64 = array.init v13 v14 v15
+      store.local v16 l2
+      v17:[]S64 = load.local l2
+      v18:S64 = const 0
+      v19:*S64 = array.elem.addr v17 v18
+      store.local v19 l3
+      v20:*S64 = load.local l3
+      v21:S64 = const 2
+      v22:*S64 = ptr.add v20 v21
+      store.local v22 l4
+      v23:*S64 = load.local l4
+      v24:S64 = deref.load v23
+      v25:S64 = const 3
+      v26:Bool = cmp.neq v24 v25
+      v27:*S64 = load.local l4
+      v28:*S64 = load.local l3
+      v29:S64 = ptr.diff v27 v28
+      v30:S64 = const 2
+      v31:Bool = cmp.neq v29 v30
+      v32:Bool = or v26 v31
+      branch v32, bb7, bb8
+    bb7:
+      v33:S64 = const 3
+      return v33
+    bb8:
+      jump bb9
+    bb9:
+      v34:String = const "ada"
+      v35:S64 = const 36
+      v36:Person = struct.init v34 v35
+      store.local v36 l5
+      v37:*Person = addr.of l5
+      store.local v37 l6
+      v38:*Person = load.local l6
+      v39:*S64 = field.addr v38 field1
+      v40:S64 = const 37
+      deref.store v39 v40
+      v41:*Person = load.local l6
+      v42:Person = deref.load v41
+      v43:S64 = field.load v42 field1
+      v44:S64 = const 37
+      v45:Bool = cmp.neq v43 v44
+      branch v45, bb10, bb11
+    bb10:
+      v46:S64 = const 4
+      return v46
+    bb11:
+      jump bb12
+    bb12:
+      v47:S64 = const 1
+      v48:*Node? = const 0
+      v49:Node = struct.init v47 v48
+      store.local v49 l7
+      v50:S64 = const 2
+      v51:*Node = addr.of l7
+      v52:Node = struct.init v50 v51
+      store.local v52 l8
+      v53:Node = load.local l8
+      v54:*Node? = field.load v53 field1
+      store.local v54 l9
+      v55:*Node? = load.local l9
+      v56:*Node? = const 0
+      v57:Bool = cmp.eq v55 v56
+      branch v57, bb13, bb14
+    bb13:
+      v58:S64 = const 5
+      return v58
+    bb14:
+      jump bb15
+    bb15:
+      v59:*Node? = load.local l9
+      v60:Node = deref.load v59
+      v61:S64 = field.load v60 field0
+      v62:S64 = const 1
+      v63:Bool = cmp.neq v61 v62
+      branch v63, bb16, bb17
+    bb16:
+      v64:S64 = const 6
+      return v64
+    bb17:
+      jump bb18
+    bb18:
+      v65:Bool = const true
+      v66:*S64<>Some_Error = call v65 make_ptr
+      store.local v66 l10
+      v67:*S64<>Some_Error = load.local l10
+      v68:Bool = field.load v67 field2
+      branch v68, bb19, bb20
+    bb19:
+      v69:S64 = const 7
+      return v69
+    bb20:
+      jump bb21
+    bb21:
+      v70:*S64<>Some_Error = load.local l10
+      v71:*S64 = field.load v70 field0
+      store.local v71 l11
+      v72:*S64 = load.local l11
+      v73:S64 = deref.load v72
+      v74:S64 = const 42
+      v75:Bool = cmp.neq v73 v74
+      branch v75, bb22, bb23
+    bb22:
+      v76:S64 = const 8
+      return v76
+    bb23:
+      jump bb24
+    bb24:
+      v77:*S64 = addr.of l0
+      v78:S64 = call v77 peek
+      v79:S64 = const 12
+      v80:Bool = cmp.neq v78 v79
+      branch v80, bb25, bb26
+    bb25:
+      v81:S64 = const 9
+      return v81
+    bb26:
+      jump bb27
+    bb27:
+      v82:*S64 = addr.of l0
+      v83:S64 = call v82 double
+      v84:S64 = const 24
+      v85:Bool = cmp.neq v83 v84
+      branch v85, bb28, bb29
+    bb28:
+      v86:S64 = const 10
+      return v86
+    bb29:
+      jump bb30
+    bb30:
+      v87:S64 = const 0
+      return v87

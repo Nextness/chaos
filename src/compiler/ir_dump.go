@@ -92,6 +92,13 @@ func dumpHIRStmt(b *strings.Builder, hir *HIR, s HIRStmt, depth int) {
 		fmt.Fprintf(b, "Assign %s = ", hir.symbolName(n.Target))
 		dumpHIRExpr(b, hir, n.Value)
 		b.WriteString("\n")
+	case *HIRAddrStore:
+		dumpIndent(b, depth)
+		b.WriteString("AddrStore ")
+		dumpHIRExpr(b, hir, n.Addr)
+		b.WriteString(" = ")
+		dumpHIRExpr(b, hir, n.Value)
+		b.WriteString("\n")
 	case *HIRReturn:
 		dumpIndent(b, depth)
 		b.WriteString("Return")
@@ -223,6 +230,24 @@ func dumpHIRExpr(b *strings.Builder, hir *HIR, e HIRExpr) {
 		b.WriteString("FieldLoad(")
 		dumpHIRExpr(b, hir, n.Base)
 		fmt.Fprintf(b, ", %d)", n.Field)
+	case *HIRDeref:
+		b.WriteString("Deref(")
+		dumpHIRExpr(b, hir, n.Operand)
+		b.WriteString(")")
+	case *HIRAddrOf:
+		b.WriteString("AddrOf(")
+		dumpHIRExpr(b, hir, n.Operand)
+		b.WriteString(")")
+	case *HIRFieldAddr:
+		b.WriteString("FieldAddr(")
+		dumpHIRExpr(b, hir, n.Addr)
+		fmt.Fprintf(b, ", %d)", n.Field)
+	case *HIRArrayElemAddr:
+		b.WriteString("ArrayElemAddr(")
+		dumpHIRExpr(b, hir, n.Array)
+		b.WriteString(", ")
+		dumpHIRExpr(b, hir, n.Index)
+		b.WriteString(")")
 	case *HIRArrayInit:
 		b.WriteString("ArrayInit(")
 		for i, item := range n.Items {

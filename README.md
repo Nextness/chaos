@@ -85,6 +85,10 @@ The active single-file language includes:
   `return`, and `exit`;
 - `ifx` ternary expressions (`x := ifx cond then a else b;`), valid only as the
   complete value of an assignment or return;
+- pointers (`*T`, `**T`, `[]*T`) with prefix `*` address-of and `.*` dereference,
+  nullable `*T?` pointers with a `null` literal and flow-checked non-null use,
+  pointer arithmetic scaled by element size, and struct field access
+  (`p.*.field`, `s.field`);
 - element-wise array equality and field-wise struct equality;
 - Unicode identifiers normalized to NFC.
 

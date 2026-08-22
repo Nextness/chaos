@@ -79,7 +79,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 		case compiler.TkExit, compiler.TkIf, compiler.TkIfx, compiler.TkElif, compiler.TkElse,
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
 			compiler.TkStruct, compiler.TkErrorKw, compiler.TkEnum, compiler.TkUnless, compiler.TkCatch,
-			compiler.TkFor, compiler.TkBreak, compiler.TkContinue,
+			compiler.TkFor, compiler.TkBreak, compiler.TkContinue, compiler.TkNull,
 			compiler.TkTrue, compiler.TkFalse,
 			compiler.TkHash, compiler.TkDirec:
 			idx = semTypeKeyword
@@ -134,7 +134,28 @@ func typeToken(expr compiler.Expr, sf *compiler.SourceFile, known map[string]boo
 			*out = append(*out, spanToTokenRows(e.Span_, sf, semTypeType)...)
 		}
 	case *compiler.ArrayTypeExpr:
-		typeToken(e.Elem, sf, known, out)
+		// The '[]' bracket pair and the element type both read as type
+		// tokens so "[]String" renders as a unit.
+		if e.Elem != nil {
+			elemSpan := compiler.NodeSpan(e.Elem)
+			if e.Span_.Start < elemSpan.Start {
+				*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: elemSpan.Start}, sf, semTypeType)...)
+			}
+			typeToken(e.Elem, sf, known, out)
+		}
+	case *compiler.PointerTypeExpr:
+		// The '*' (and the '?' nullable marker) are part of the type; emit
+		// them as type tokens so "*String?" renders as a unit.
+		if e.Elem != nil {
+			elemSpan := compiler.NodeSpan(e.Elem)
+			if e.Span_.Start < elemSpan.Start {
+				*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: e.Span_.Start, End: elemSpan.Start}, sf, semTypeType)...)
+			}
+			typeToken(e.Elem, sf, known, out)
+			if e.Nullable && e.Span_.End > elemSpan.End {
+				*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: elemSpan.End, End: e.Span_.End}, sf, semTypeType)...)
+			}
+		}
 	}
 }
 
@@ -194,6 +215,30 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				out = append(out, spanToTokenRows(e.TypeNameSpan, sf, semTypeType)...)
 			}
 			out = append(out, spanToTokenRows(e.NameSpan, sf, semTypeConstant)...)
+		case *compiler.FieldAccessExpr:
+			// Base: a type token when it names a known type (enum or struct
+			// for a member reference), otherwise a variable. The field reads
+			// as a constant on an enum type and as a variable otherwise.
+			if e.Base != nil {
+				if ident, ok := e.Base.(*compiler.IdentExpr); ok {
+					if known[ident.Name] {
+						out = append(out, spanToTokenRows(ident.Span_, sf, semTypeType)...)
+						out = append(out, spanToTokenRows(e.FieldSpan, sf, semTypeConstant)...)
+					} else {
+						out = append(out, spanToTokenRows(ident.Span_, sf, semTypeVariable)...)
+						out = append(out, spanToTokenRows(e.FieldSpan, sf, semTypeVariable)...)
+					}
+				} else {
+					walkExpr(e.Base)
+					out = append(out, spanToTokenRows(e.FieldSpan, sf, semTypeVariable)...)
+				}
+			}
+		case *compiler.DerefExpr:
+			walkExpr(e.Operand)
+		case *compiler.NullLitExpr:
+			// Keyword literal; no highlight.
+		case *compiler.PointerTypeExpr:
+			typeToken(e, sf, known, &out)
 		case *compiler.ArrayInitExpr:
 			typeToken(e.Elem, sf, known, &out)
 			for _, item := range e.Items {

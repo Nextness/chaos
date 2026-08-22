@@ -110,6 +110,35 @@ func TestIfxBranchIdentifiersResolve(t *testing.T) {
 	}
 }
 
+func TestPointerFieldAccessResolves(t *testing.T) {
+	source := "Person :: struct {\n    name: String;\n    age: S64;\n}\nmain :: proc {\n    person := Person.{name=«x», age=1};\n    pp: *Person = *person;\n    v := pp.*.age;\n}"
+	r := buildResolverFor(t, source)
+
+	ageField := offsetOf(t, source, "pp.*.age") + len("pp.*.")
+	fieldSym := r.definitionAt(ageField)
+	if fieldSym == nil || fieldSym.name != "age" {
+		t.Fatalf("field definition = %+v, want the age field", fieldSym)
+	}
+
+	// The dereference base resolves to the pointer declaration.
+	ppRef := offsetOf(t, source, "pp.*")
+	ppSym := r.definitionAt(ppRef)
+	if ppSym == nil || ppSym.name != "pp" {
+		t.Fatalf("pointer base definition = %+v, want the pp declaration", ppSym)
+	}
+}
+
+func TestQualifiedEnumMemberResolves(t *testing.T) {
+	source := "Color :: enum {\n    RED: U8 = 1;\n    GREEN;\n}\nmain :: proc {\n    c: Color = Color.GREEN;\n}"
+	r := buildResolverFor(t, source)
+
+	memberRef := offsetOf(t, source, "Color.GREEN") + len("Color.")
+	sym := r.definitionAt(memberRef)
+	if sym == nil || sym.name != "GREEN" {
+		t.Fatalf("enum member definition = %+v, want the GREEN member", sym)
+	}
+}
+
 func TestReferencesRespectShadowedDeclarations(t *testing.T) {
 	source := "main :: proc {\n    x := 1;\n    {\n        x := 2;\n        inner := x;\n    }\n    outer := x;\n}"
 	r := buildResolverFor(t, source)

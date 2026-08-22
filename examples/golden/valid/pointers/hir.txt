@@ -1,0 +1,68 @@
+HIR
+  Struct Person
+    Field name: String
+    Field age: S64
+  Struct Node
+    Field value: S64
+    Field next: *Node?
+  Proc peek(p: *S64) -> S64
+    Block
+      Return Deref(Ident(p))
+  Proc double(v: *S64) -> S64
+    Block
+      Return Binary(* Deref(Ident(v)) Int(2))
+  Proc make_ptr(wanted: Bool) -> *S64<>Some_Error
+    Block
+      If condition=Ident(wanted)
+        Block
+          VarDecl v: S64 = Int(42) [mutable=true compileTime=false]
+          Return StructInit(value, value=AddrOf(Ident(v)), error=Error(0), hasError=Bool(false))
+      Return StructInit(value, value=Int(), error=Error(GENERIC), hasError=Bool(true))
+  Proc main() -> S64
+    Block
+      VarDecl a: S64 = Int(10) [mutable=true compileTime=false]
+      VarDecl a_ptr: *S64 = AddrOf(Ident(a)) [mutable=true compileTime=false]
+      If condition=Binary(!= Deref(Ident(a_ptr)) Int(10))
+        Block
+          Return Int(1)
+      AddrStore Ident(a_ptr) = Int(12)
+      If condition=Binary(!= Ident(a) Int(12))
+        Block
+          Return Int(2)
+      VarDecl arr: []S64 = ArrayInit(Int(1), Int(2), Int(3)) [mutable=true compileTime=false]
+      VarDecl head: *S64 = ArrayElemAddr(Ident(arr), Int(0)) [mutable=true compileTime=false]
+      VarDecl tail: *S64 = Binary(+ Ident(head) Int(2)) [mutable=true compileTime=false]
+      If condition=Binary(|| Binary(!= Deref(Ident(tail)) Int(3)) Binary(!= Binary(- Ident(tail) Ident(head)) Int(2)))
+        Block
+          Return Int(3)
+      VarDecl person: Person = StructInit(Person, name=String("ada"), age=Int(36)) [mutable=true compileTime=false]
+      VarDecl pp: *Person = AddrOf(Ident(person)) [mutable=true compileTime=false]
+      AddrStore FieldAddr(Ident(pp), 1) = Int(37)
+      If condition=Binary(!= FieldLoad(Deref(Ident(pp)), 1) Int(37))
+        Block
+          Return Int(4)
+      VarDecl n1: Node = StructInit(Node, value=Int(1), next=Int()) [mutable=true compileTime=false]
+      VarDecl n2: Node = StructInit(Node, value=Int(2), next=AddrOf(Ident(n1))) [mutable=true compileTime=false]
+      VarDecl next_p: *Node? = FieldLoad(Ident(n2), 1) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(next_p) Int())
+        Block
+          Return Int(5)
+      If condition=Binary(!= FieldLoad(Deref(Ident(next_p)), 0) Int(1))
+        Block
+          Return Int(6)
+      Block
+        VarDecl : *S64<>Some_Error = Call(make_ptr, Bool(true)) [mutable=false compileTime=false]
+        IfCatch Ident(__chaos_union)
+          Block
+            Return Int(7)
+        VarDecl p: *S64 = FieldLoad(Ident(__chaos_union), 0) [mutable=true compileTime=false]
+      If condition=Binary(!= Deref(Ident(p)) Int(42))
+        Block
+          Return Int(8)
+      If condition=Binary(!= Call(peek, AddrOf(Ident(a))) Int(12))
+        Block
+          Return Int(9)
+      If condition=Binary(!= Call(double, AddrOf(Ident(a))) Int(24))
+        Block
+          Return Int(10)
+      Return Int(0)

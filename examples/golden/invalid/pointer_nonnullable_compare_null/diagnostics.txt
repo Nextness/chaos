@@ -1,0 +1,3 @@
+[ERROR] 6:8:pointer_nonnullable_compare_null.chaos - cannot compare a non-nullable pointer with null
+     if p == null {
+        ^^^^^^^^^ -> non-nullable pointers can never be null

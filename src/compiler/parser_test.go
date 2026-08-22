@@ -598,18 +598,18 @@ func TestParseBareErrorMemberExpr(t *testing.T) {
 }
 
 func TestParseErrorMemberExprNoBang(t *testing.T) {
-	// A member reference without '!' now parses as an enum member reference;
-	// the type checker will report the missing '!' when the type is an error.
+	// A member reference without '!' parses as a field access; the type
+	// checker reports the missing '!' when the base names an error type.
 	expr := parseExpr(t, "Hash_Table_Error.NOT_FOUND")
-	e, ok := expr.(*EnumMemberExpr)
+	e, ok := expr.(*FieldAccessExpr)
 	if !ok {
-		t.Fatalf("expected *EnumMemberExpr, got %T", expr)
+		t.Fatalf("expected *FieldAccessExpr, got %T", expr)
 	}
-	if e.TypeName != "Hash_Table_Error" {
-		t.Errorf("TypeName = %q, want %q", e.TypeName, "Hash_Table_Error")
+	if ident, ok := e.Base.(*IdentExpr); !ok || ident.Name != "Hash_Table_Error" {
+		t.Errorf("Base = %v, want identifier Hash_Table_Error", e.Base)
 	}
-	if e.Name != "NOT_FOUND" {
-		t.Errorf("Name = %q, want %q", e.Name, "NOT_FOUND")
+	if e.Field != "NOT_FOUND" {
+		t.Errorf("Field = %q, want %q", e.Field, "NOT_FOUND")
 	}
 }
 
@@ -1176,6 +1176,105 @@ func TestParseIfxAsExprStmt(t *testing.T) {
 	}
 	if _, ok := exprStmt.Expr.(*IfxExpr); !ok {
 		t.Fatalf("Expr = %T, want *IfxExpr", exprStmt.Expr)
+	}
+}
+
+func TestParsePointerType(t *testing.T) {
+	// "*T" and the recursive forms parse; "?" binds to the nearest pointer.
+	decl := parseOneDecl(t, "p: *S64;")
+	v, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	pt, ok := v.DeclType.(*PointerTypeExpr)
+	if !ok {
+		t.Fatalf("DeclType = %T, want *PointerTypeExpr", v.DeclType)
+	}
+	if pt.Nullable {
+		t.Error("Nullable = true, want false for *S64")
+	}
+
+	decl = parseOneDecl(t, "p: *S64?;")
+	v, _ = decl.(*VarDecl)
+	pt, _ = v.DeclType.(*PointerTypeExpr)
+	if !pt.Nullable {
+		t.Error("Nullable = false, want true for *S64?")
+	}
+
+	decl = parseOneDecl(t, "p: **S64;")
+	v, _ = decl.(*VarDecl)
+	outer, ok := v.DeclType.(*PointerTypeExpr)
+	if !ok {
+		t.Fatalf("DeclType = %T, want *PointerTypeExpr", v.DeclType)
+	}
+	if _, ok := outer.Elem.(*PointerTypeExpr); !ok {
+		t.Fatalf("Elem = %T, want *PointerTypeExpr", outer.Elem)
+	}
+
+	decl = parseOneDecl(t, "items: []*S64;")
+	v, _ = decl.(*VarDecl)
+	arr, ok := v.DeclType.(*ArrayTypeExpr)
+	if !ok {
+		t.Fatalf("DeclType = %T, want *ArrayTypeExpr", v.DeclType)
+	}
+	if _, ok := arr.Elem.(*PointerTypeExpr); !ok {
+		t.Fatalf("Elem = %T, want *PointerTypeExpr", arr.Elem)
+	}
+}
+
+func TestParseNonPointerNullableType(t *testing.T) {
+	// 'T?' without a pointer is an error; 'null' is a keyword literal.
+	source := "dummy :: proc { x: S64?; }"
+	result := parseTestCase(t, source)
+	if !hasError(result.Diags, "only pointer types can be nullable") {
+		t.Errorf("expected nullable-error, got %v", result.Diags)
+	}
+}
+
+func TestParseAddressOfDerefAndField(t *testing.T) {
+	// Prefix '*' is address-of; postfix '.*' is dereference; '.field' reads a
+	// member. Chaining composes as expected.
+	expr := parseExpr(t, "a.*")
+	deref, ok := expr.(*DerefExpr)
+	if !ok {
+		t.Fatalf("expected *DerefExpr for a.*, got %T", expr)
+	}
+	if id, ok := deref.Operand.(*IdentExpr); !ok || id.Name != "a" {
+		t.Fatalf("Deref.Operand = %#v, want Ident(a)", deref.Operand)
+	}
+
+	expr = parseExpr(t, "*a")
+	unary, ok := expr.(*UnaryExpr)
+	if !ok || unary.Op != UnaryOpAddr {
+		t.Fatalf("expected Unary(*a), got %#v", expr)
+	}
+
+	expr = parseExpr(t, "p.*.field")
+	field, ok := expr.(*FieldAccessExpr)
+	if !ok {
+		t.Fatalf("expected *FieldAccessExpr, got %T", expr)
+	}
+	if field.Field != "field" {
+		t.Fatalf("Field = %q, want %q", field.Field, "field")
+	}
+	if _, ok := field.Base.(*DerefExpr); !ok {
+		t.Fatalf("Field.Base = %T, want *DerefExpr", field.Base)
+	}
+
+	// An identifier followed by a member parses as a field access; the type
+	// checker decides whether it is an enum member or a struct field.
+	expr = parseExpr(t, "Type.MEMBER")
+	field, ok = expr.(*FieldAccessExpr)
+	if !ok {
+		t.Fatalf("expected *FieldAccessExpr for Type.MEMBER, got %T", expr)
+	}
+	if id, ok := field.Base.(*IdentExpr); !ok || id.Name != "Type" {
+		t.Fatalf("Base = %#v, want Ident(Type)", field.Base)
+	}
+
+	expr = parseExpr(t, "null")
+	if _, ok := expr.(*NullLitExpr); !ok {
+		t.Fatalf("expected *NullLitExpr, got %T", expr)
 	}
 }
 

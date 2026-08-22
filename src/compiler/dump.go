@@ -141,7 +141,13 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 		dumpDecl(b, n.(Decl), depth)
 	case *AssignStmt:
 		dumpIndent(b, depth)
-		fmt.Fprintf(b, "AssignStmt %s = ", n.Name)
+		b.WriteString("AssignStmt ")
+		if n.Target != nil {
+			dumpExpr(b, n.Target)
+		} else {
+			fmt.Fprintf(b, "%s", n.Name)
+		}
+		b.WriteString(" = ")
 		dumpExpr(b, n.Value)
 		b.WriteString("\n")
 	case *ReturnStmt:
@@ -248,12 +254,24 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 		b.WriteString("ContinueStmt\n")
 	case *CompoundAssignStmt:
 		dumpIndent(b, depth)
-		fmt.Fprintf(b, "CompoundAssignStmt %s %s ", n.Name, n.Op)
+		b.WriteString("CompoundAssignStmt ")
+		if n.Target != nil {
+			dumpExpr(b, n.Target)
+		} else {
+			fmt.Fprintf(b, "%s", n.Name)
+		}
+		fmt.Fprintf(b, " %s ", n.Op)
 		dumpExpr(b, n.Value)
 		b.WriteString("\n")
 	case *IncDecStmt:
 		dumpIndent(b, depth)
-		fmt.Fprintf(b, "IncDecStmt %s %s\n", n.Name, n.Op)
+		b.WriteString("IncDecStmt ")
+		if n.Target != nil {
+			dumpExpr(b, n.Target)
+		} else {
+			fmt.Fprintf(b, "%s", n.Name)
+		}
+		fmt.Fprintf(b, " %s\n", n.Op)
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Stmt %T\n", s)
@@ -280,6 +298,23 @@ func dumpExpr(b *strings.Builder, e Expr) {
 		fmt.Fprintf(b, "String(%q)", n.Value)
 	case *BoolExpr:
 		fmt.Fprintf(b, "Bool(%v)", n.Value)
+	case *NullLitExpr:
+		b.WriteString("Null()")
+	case *PointerTypeExpr:
+		b.WriteString("Pointer(*")
+		dumpExpr(b, n.Elem)
+		if n.Nullable {
+			b.WriteString("?")
+		}
+		b.WriteString(")")
+	case *DerefExpr:
+		b.WriteString("Deref(")
+		dumpExpr(b, n.Operand)
+		b.WriteString(")")
+	case *FieldAccessExpr:
+		b.WriteString("Field(")
+		dumpExpr(b, n.Base)
+		fmt.Fprintf(b, ", %s)", n.Field)
 	case *BinaryExpr:
 		fmt.Fprintf(b, "Binary(%s ", n.Op)
 		dumpExpr(b, n.Left)

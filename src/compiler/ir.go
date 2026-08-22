@@ -89,6 +89,7 @@ const (
 	TypeKindArray
 	TypeKindEnum
 	TypeKindTuple
+	TypeKindPointer
 	TypeKindUnknown
 )
 
@@ -102,13 +103,14 @@ type TypeField struct {
 
 // IRType is a resolved type in the IR. Primitives carry only a name; struct
 // types carry their field list; array types carry their element type; enum
-// types carry their underlying integer type.
+// types carry their underlying integer type; pointer types carry their
+// pointed-to element type.
 type IRType struct {
 	ID         TypeID
 	Kind       TypeKind
 	Name       string
 	Fields     []TypeField
-	Elem       TypeID // element type for TypeKindArray
+	Elem       TypeID // element type for TypeKindArray; pointed-to type for TypeKindPointer
 	Underlying TypeID // underlying integer type for TypeKindEnum
 }
 
@@ -219,6 +221,29 @@ func (tt *TypeTable) InternArray(elem TypeID) TypeID {
 	id := tt.intern(name, TypeKindArray)
 	tt.types[id].Elem = elem
 	return id
+}
+
+// InternPointer interns a pointer type "*Elem" (or "*Elem?" for a nullable
+// pointer) for the given pointed-to element type.
+func (tt *TypeTable) InternPointer(elem TypeID, nullable bool) TypeID {
+	name := "*" + tt.Lookup(elem).Name
+	if nullable {
+		name += "?"
+	}
+	if id, ok := tt.byName[name]; ok {
+		if tt.types[id].Kind == TypeKindPointer && tt.types[id].Elem == elem {
+			return id
+		}
+		return tt.Unknown()
+	}
+	id := tt.intern(name, TypeKindPointer)
+	tt.types[id].Elem = elem
+	return id
+}
+
+// PointerElemType returns the pointed-to type of a pointer TypeID.
+func (tt *TypeTable) PointerElemType(id TypeID) TypeID {
+	return tt.Lookup(id).Elem
 }
 
 // InternEnum interns an enum type with the given name and underlying integer

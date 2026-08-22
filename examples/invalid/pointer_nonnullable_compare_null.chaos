@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: cannot compare a non-nullable pointer with null
+#entry main :: proc -> S64 {
+    a := 1;
+    p: *S64 = *a;
+    if p == null {
+        return 0;
+    }
+    return 1;
+}

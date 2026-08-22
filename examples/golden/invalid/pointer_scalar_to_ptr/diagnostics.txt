@@ -1,0 +1,3 @@
+[ERROR] 4:5:pointer_scalar_to_ptr.chaos - cannot assign S64 to *S64
+     p: *S64 = 10;
+     ^^^^^^^^^^^^ -> use a pointer value of type *S64

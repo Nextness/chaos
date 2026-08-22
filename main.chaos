@@ -17,6 +17,10 @@ Something_New :: struct {
     field3: Bool;
 }
 
+another_proc :: proc (param1: *String) -> *String {
+    return param1;
+}
+
 proc_that_fails :: proc (param1: Some_Enum, param2: String, param3: Bool) -> (String <> Some_Error) {
     if param1 == .OPTION1 {
         return «Hello world»;

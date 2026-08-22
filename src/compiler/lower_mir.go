@@ -208,6 +208,8 @@ func (ml *MIRLowerer) lowerStmt(s HIRStmt) {
 		ml.lowerVarDecl(n)
 	case *HIRAssign:
 		ml.lowerAssign(n)
+	case *HIRAddrStore:
+		ml.lowerAddrStore(n)
 	case *HIRReturn:
 		ml.lowerReturn(n)
 	case *HIRExit:
@@ -280,6 +282,13 @@ func (ml *MIRLowerer) lowerAssign(n *HIRAssign) {
 		return
 	}
 	ml.emitVoid(MIRStoreGlobal, n.Value.hirType(), []ValueID{v}, MIRImmediate{Kind: MIRImmSymbol, Symbol: n.Target}, n.Span_)
+}
+
+// lowerAddrStore lowers a store through an address expression.
+func (ml *MIRLowerer) lowerAddrStore(n *HIRAddrStore) {
+	addr := ml.lowerExpr(n.Addr)
+	value := ml.lowerExpr(n.Value)
+	ml.emitVoid(MIRDerefStore, n.Type, []ValueID{addr, value}, MIRImmediate{}, n.Span_)
 }
 
 func (ml *MIRLowerer) lowerReturn(n *HIRReturn) {
@@ -398,6 +407,22 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 	case *HIRBinary:
 		l := ml.lowerExpr(n.Left)
 		r := ml.lowerExpr(n.Right)
+		leftType := n.Left.hirType()
+		rightType := n.Right.hirType()
+		leftIsPtr := ml.types.Lookup(leftType).Kind == TypeKindPointer
+		rightIsPtr := ml.types.Lookup(rightType).Kind == TypeKindPointer
+		// Pointer arithmetic scales by the pointed-to element size via the
+		// ptr.* opcodes; pointer comparisons are plain integer comparisons.
+		switch {
+		case (n.Op == BinaryOpAdd || n.Op == BinaryOpSub) && leftIsPtr && !rightIsPtr:
+			op := MIRPtrAdd
+			if n.Op == BinaryOpSub {
+				op = MIRPtrSub
+			}
+			return ml.emit(op, n.Type, []ValueID{l, r}, MIRImmediate{}, n.OpSpan)
+		case n.Op == BinaryOpSub && leftIsPtr && rightIsPtr:
+			return ml.emit(MIRPtrDiff, n.Type, []ValueID{l, r}, MIRImmediate{}, n.OpSpan)
+		}
 		op, ok := binaryOpcode(n.Op)
 		if !ok {
 			ml.diags.Error(n.Span_, "unsupported binary operator in MIR lowering", "report this compiler bug")
@@ -430,6 +455,28 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 	case *HIRFieldLoad:
 		base := ml.lowerExpr(n.Base)
 		return ml.emit(MIRFieldLoad, n.Type, []ValueID{base}, MIRImmediate{Kind: MIRImmField, Int: int64(n.Field)}, n.Span_)
+	case *HIRDeref:
+		addr := ml.lowerExpr(n.Operand)
+		return ml.emit(MIRDerefLoad, n.Type, []ValueID{addr}, MIRImmediate{}, n.Span_)
+	case *HIRAddrOf:
+		// '*ident' and '*(p.*)' both produce the address value: of a symbol
+		// for an identifier, or the pointer itself for a dereference.
+		switch op := n.Operand.(type) {
+		case *HIRRef:
+			if lid, ok := ml.localIDs[op.Symbol]; ok {
+				return ml.emit(MIRAddrOf, n.Type, nil, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
+			}
+			return ml.emit(MIRAddrOf, n.Type, nil, MIRImmediate{Kind: MIRImmSymbol, Symbol: op.Symbol}, n.Span_)
+		default:
+			return ml.lowerExpr(n.Operand)
+		}
+	case *HIRFieldAddr:
+		base := ml.lowerExpr(n.Addr)
+		return ml.emit(MIRFieldAddr, n.Type, []ValueID{base}, MIRImmediate{Kind: MIRImmField, Int: int64(n.Field)}, n.Span_)
+	case *HIRArrayElemAddr:
+		arr := ml.lowerExpr(n.Array)
+		idx := ml.lowerExpr(n.Index)
+		return ml.emit(MIRArrayElemAddr, n.Type, []ValueID{arr, idx}, MIRImmediate{}, n.Span_)
 	case *HIRArrayInit:
 		args := make([]ValueID, len(n.Items))
 		for i, item := range n.Items {

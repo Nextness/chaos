@@ -1,0 +1,9 @@
+// expect-stage: type
+// expect-error: cannot assign the nullable pointer
+store :: proc (p: *S64?) {
+    q: *S64 = p;
+}
+
+#entry main :: proc -> S64 {
+    return 0;
+}

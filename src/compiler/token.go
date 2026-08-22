@@ -129,6 +129,7 @@ const (
 	TkFor
 	TkBreak
 	TkContinue
+	TkNull
 
 	// Compile-time directives and comments
 	TkDirec   // compile-time directive name after '#'
@@ -197,6 +198,7 @@ var tokenKindNames = [...]string{
 	TkFor:         "for",
 	TkBreak:       "break",
 	TkContinue:    "continue",
+	TkNull:        "null",
 	TkDirec:       "directive",
 	TkComment:     "comment",
 }
@@ -262,6 +264,7 @@ func init() {
 		{"for", TkFor},
 		{"break", TkBreak},
 		{"continue", TkContinue},
+		{"null", TkNull},
 	}
 	keywordTokens = make(map[string]TokenKind, 16)
 	for _, entry := range keywordEntries {

@@ -599,9 +599,55 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 	return decl, true
 }
 
-// parseTypeExpr parses a type expression: an identifier or an array type
-// "[]T".
+// parseTypeExpr parses a type expression: an identifier, an array type
+// "[]T", or a pointer type "*T" with an optional "?" nullable marker. The "?"
+// binds to the immediately preceding pointer, so "*String?" is a nullable
+// pointer and "S64?" is an error (only pointer types may be nullable).
 func (p *Parser) parseTypeExpr() Expr {
+	base := p.parseTypeBase()
+	if base == nil {
+		return nil
+	}
+	if p.at(TkQuestion) {
+		qTok := p.bump()
+		if ptr, ok := base.(*PointerTypeExpr); ok {
+			ptr.Nullable = true
+			ptr.Span_ = spanUnion(ptr.Span_, qTok.Span)
+		} else {
+			suggestion := "write '*T?' for a nullable pointer to the type"
+			if id, ok := base.(*IdentExpr); ok {
+				suggestion = "write '*" + id.Name + "?' for a nullable pointer"
+			} else if _, ok := base.(*ArrayTypeExpr); ok {
+				suggestion = "write '*[]T?' for a nullable pointer to the array"
+			}
+			p.diags.Error(qTok.Span, "only pointer types can be nullable", suggestion)
+		}
+	}
+	return base
+}
+
+// parseTypeBase parses the body of a type without consuming a trailing '?'
+// marker. Pointer types consume their own '?' here, so "*String?" parses as a
+// single nullable pointer.
+func (p *Parser) parseTypeBase() Expr {
+	if p.at(TkStar) {
+		starTok := p.bump() // consume "*"
+		elem := p.parseTypeBase()
+		if elem == nil {
+			p.diags.Error(p.peek().Span, "expected pointer element type after '*'", "add a type after '*'")
+			return &PointerTypeExpr{Span_: starTok.Span, Elem: &ErrorExpr{Span_: p.peek().Span}}
+		}
+		ptr := &PointerTypeExpr{
+			Span_: spanUnion(starTok.Span, elem.nodeSpan()),
+			Elem:  elem,
+		}
+		if p.at(TkQuestion) {
+			qTok := p.bump()
+			ptr.Nullable = true
+			ptr.Span_ = spanUnion(ptr.Span_, qTok.Span)
+		}
+		return ptr
+	}
 	if p.at(TkIdent) {
 		tok := p.bump()
 		return &IdentExpr{Span_: tok.Span, Name: tok.Text()}
@@ -1332,6 +1378,84 @@ func (p *Parser) parseIdentStmt() Stmt {
 			Op:       op,
 		}
 
+	case p.at(TkLBracket), p.at(TkDot):
+		// Index, deref, or field access target: "a[i] = v", "p.* = v",
+		// "p.*.field = v", "s.field = v", and the +=/-=/++/-- forms.
+		target := p.parseExprRest(&IdentExpr{Span_: nameTok.Span, Name: name}, 0)
+		if target == nil {
+			p.diags.Error(p.peek().Span, "expected an expression target after '"+name+"'", "add '=', ':=', or '(' after the identifier")
+			p.syncStmt()
+			if p.at(TkSemicolon) {
+				p.bump()
+			}
+			return nil
+		}
+		switch {
+		case p.at(TkAssign):
+			p.bump()
+			value := p.parseExpr(0)
+			if value == nil {
+				p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
+				p.syncStmt()
+				if p.at(TkSemicolon) {
+					p.bump()
+				}
+				return &AssignStmt{
+					Span_:    spanUnion(nameTok.Span, target.nodeSpan()),
+					Target:   target,
+					NameSpan: nameTok.Span,
+				}
+			}
+			p.expect(TkSemicolon)
+			return &AssignStmt{
+				Span_:    spanUnion(nameTok.Span, value.nodeSpan()),
+				Target:   target,
+				NameSpan: nameTok.Span,
+				Value:    value,
+			}
+		case p.at(TkPlusAssign), p.at(TkMinusAssign):
+			opTok := p.bump()
+			value := p.parseExpr(0)
+			if value == nil {
+				p.diags.Error(p.peek().Span, "expected expression after "+opTok.Kind.String(), "add an expression after the operator")
+				p.syncStmt()
+				if p.at(TkSemicolon) {
+					p.bump()
+				}
+				return &CompoundAssignStmt{Span_: spanUnion(nameTok.Span, target.nodeSpan()), Target: target, Op: BinaryOpAdd}
+			}
+			p.expect(TkSemicolon)
+			op := BinaryOpAdd
+			if opTok.Kind == TkMinusAssign {
+				op = BinaryOpSub
+			}
+			return &CompoundAssignStmt{
+				Span_:  spanUnion(nameTok.Span, value.nodeSpan()),
+				Target: target,
+				Op:     op,
+				Value:  value,
+			}
+		case p.at(TkInc), p.at(TkDec):
+			opTok := p.bump()
+			p.expect(TkSemicolon)
+			op := BinaryOpAdd
+			if opTok.Kind == TkDec {
+				op = BinaryOpSub
+			}
+			return &IncDecStmt{
+				Span_:  spanUnion(nameTok.Span, opTok.Span),
+				Target: target,
+				Op:     op,
+			}
+		default:
+			p.diags.Error(p.peek().Span, "unexpected token after expression '"+name+"'", "add '=', '+=', '-=', '++', or '--' after the expression")
+			p.syncStmt()
+			if p.at(TkSemicolon) {
+				p.bump()
+			}
+			return nil
+		}
+
 	case p.at(TkLParen):
 		// Call expression used as a statement: f(args);
 		expr := p.parseExprRest(&IdentExpr{Span_: nameTok.Span, Name: name}, 0)
@@ -1967,6 +2091,8 @@ func tokenPrecedence(kind TokenKind) int {
 		return precCall
 	case TkLBracket:
 		return precCall
+	case TkDot:
+		return precCall
 	}
 	return 0
 }
@@ -2012,6 +2138,28 @@ func (p *Parser) parseExprRest(left Expr, minBp int) Expr {
 			continue
 		}
 
+		// Handle dereference ".*" and field access ".field" (postfix)
+		if tok.Kind == TkDot {
+			switch {
+			case p.at(TkStar):
+				star := p.bump()
+				left = &DerefExpr{Span_: spanUnion(left.nodeSpan(), star.Span), Operand: left}
+				continue
+			case p.at(TkIdent):
+				field := p.bump()
+				left = &FieldAccessExpr{
+					Span_:     spanUnion(left.nodeSpan(), field.Span),
+					Base:      left,
+					Field:     field.Text(),
+					FieldSpan: field.Span,
+				}
+				continue
+			default:
+				p.diags.Error(tok.Span, "expected '*' or a field name after '.'", "write '.*' to dereference a pointer or '.field' to read a field")
+				break
+			}
+		}
+
 		// Binary operator
 		op := tokToBinaryOp(tok.Kind)
 		if op < 0 {
@@ -2042,11 +2190,14 @@ func (p *Parser) parsePrimaryExpr() Expr {
 	tok := p.peek()
 
 	// Unary prefix operators
-	if tok.Kind == TkMinus || tok.Kind == TkNot {
+	if tok.Kind == TkMinus || tok.Kind == TkNot || tok.Kind == TkStar {
 		p.bump()
 		op := UnaryOpNeg
-		if tok.Kind == TkNot {
+		switch tok.Kind {
+		case TkNot:
 			op = UnaryOpNot
+		case TkStar:
+			op = UnaryOpAddr
 		}
 		operand := p.parseExpr(precUnary)
 		if operand == nil {
@@ -2088,6 +2239,10 @@ func (p *Parser) parseAtom() Expr {
 		p.bump()
 		return &BoolExpr{Span_: tok.Span, Value: false}
 
+	case TkNull:
+		p.bump()
+		return &NullLitExpr{Span_: tok.Span}
+
 	case TkIdent:
 		p.bump()
 		ident := &IdentExpr{Span_: tok.Span, Name: tok.Text()}
@@ -2096,7 +2251,7 @@ func (p *Parser) parseAtom() Expr {
 			p.bump() // consume "."
 			return p.parseStructInit(ident, tok.Span)
 		}
-		// Member reference: TypeName.MEMBER! (error) or TypeName.MEMBER (enum).
+		// Member reference with explicit type: TypeName.MEMBER! (error).
 		if p.at(TkDot) && p.peekN(1).Kind == TkIdent {
 			p.bump() // consume "."
 			memberTok := p.bump()
@@ -2111,12 +2266,14 @@ func (p *Parser) parseAtom() Expr {
 					Bang:         true,
 				}
 			}
-			return &EnumMemberExpr{
-				Span_:        Span{File: tok.Span.File, Start: tok.Span.Start, End: end},
-				TypeName:     tok.Text(),
-				TypeNameSpan: tok.Span,
-				Name:         memberTok.Text(),
-				NameSpan:     memberTok.Span,
+			// "Type.MEMBER" and "value.field" share this shape; the type
+			// checker resolves the base binding (a value or an enum type) to
+			// decide whether this is a field access or an enum member.
+			return &FieldAccessExpr{
+				Span_:     Span{File: tok.Span.File, Start: tok.Span.Start, End: memberTok.Span.End},
+				Base:      &IdentExpr{Span_: tok.Span, Name: tok.Text()},
+				Field:     memberTok.Text(),
+				FieldSpan: memberTok.Span,
 			}
 		}
 		return ident

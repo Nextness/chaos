@@ -25,7 +25,16 @@ const (
 	TypeF64     Type = "F64"
 	TypeBool    Type = "Bool"
 	TypeVoid    Type = "Void"
+	TypeNull    Type = "null" // the null literal; only valid with nullable pointers
 	TypeUnknown Type = ""
+)
+
+// Null-state of a pointer binding during flow analysis. 0 is default
+// (Unknown) so zero-value Bindings behave conservatively.
+const (
+	nullStateUnknown uint8 = iota
+	nullStateNonNull       // proven non-null by flow (address-of or a null check)
+	nullStateNull          // proven null inside a 'p == null' branch
 )
 
 // TypeChecker validates the types of a parsed program. It maintains a stack of
@@ -86,6 +95,7 @@ type Binding struct {
 	CompileTime bool
 	ConstExpr   Expr
 	Span        Span
+	NullState   uint8 // pointer null-flow state (nullState*); 0 when not narrowed
 }
 
 // SemanticAnalysis is the reusable result of name/type analysis. Expression
@@ -128,6 +138,20 @@ func formatSemanticType(t Type, nominal func(Type) (string, bool)) string {
 	}
 	if i := strings.Index(s, "<>"); i >= 0 {
 		return formatSemanticType(Type(s[:i]), nominal) + " <> " + formatSemanticType(Type(s[i+2:]), nominal)
+	}
+	// Pointer types: "*" element ("?")?. The '<>' split above runs first so a
+	// pointer on the value side of an error union formats correctly.
+	if strings.HasPrefix(s, "*") {
+		nullable := strings.HasSuffix(s, "?")
+		elem := s[1:]
+		if nullable {
+			elem = elem[:len(elem)-1]
+		}
+		out := "*" + formatSemanticType(Type(elem), nominal)
+		if nullable {
+			out += "?"
+		}
+		return out
 	}
 	if len(s) >= 2 && s[0] == '(' && s[len(s)-1] == ')' {
 		parts := strings.Split(s[1:len(s)-1], ",")
@@ -209,6 +233,32 @@ func (tc *TypeChecker) declare(name string, t Type) {
 
 func (tc *TypeChecker) declareBinding(name string, binding Binding) {
 	tc.scopes[len(tc.scopes)-1][name] = binding
+}
+
+// setBindingNullState marks an existing binding with a null-flow state,
+// searching from the innermost scope outward like lookupBinding.
+func (tc *TypeChecker) setBindingNullState(name string, state uint8, fromDepth int) {
+	for i := len(tc.scopes) - 1; i >= 0 && i >= fromDepth; i-- {
+		if binding, ok := tc.scopes[i][name]; ok {
+			binding.NullState = state
+			tc.scopes[i][name] = binding
+			return
+		}
+	}
+}
+
+// resetPointerNullStates clears the narrowed non-null state of every pointer
+// binding at or above fromDepth. Used at loop boundaries where the analysis
+// cannot prove anything across an arbitrary number of iterations.
+func (tc *TypeChecker) resetPointerNullStates(fromDepth int) {
+	for i := fromDepth; i < len(tc.scopes); i++ {
+		for name, binding := range tc.scopes[i] {
+			if binding.NullState != 0 {
+				binding.NullState = 0
+				tc.scopes[i][name] = binding
+			}
+		}
+	}
 }
 
 // lookup returns the type of a name and whether it was declared, searching
@@ -505,6 +555,10 @@ func (tc *TypeChecker) collectInitializerIdentifiers(expr Expr, expected Type, n
 	case *IndexExpr:
 		tc.collectInitializerIdentifiers(n.Base, TypeUnknown, names, visiting)
 		tc.collectInitializerIdentifiers(n.Index, TypeUnknown, names, visiting)
+	case *DerefExpr:
+		tc.collectInitializerIdentifiers(n.Operand, TypeUnknown, names, visiting)
+	case *FieldAccessExpr:
+		tc.collectInitializerIdentifiers(n.Base, TypeUnknown, names, visiting)
 	case *StructInitExpr:
 		structType := expected
 		if n.Type != nil {
@@ -679,10 +733,18 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		tc.checkShadow(n.Name, n.NameSpan, n.Shadow)
 		t := tc.checkVarDecl(n)
 		tc.analysis.DeclTypes[n] = t
-		tc.declareBinding(n.Name, Binding{Type: t, TypeValue: tc.constTypeValue(n.Init), Mutable: n.Mutable, Initialized: n.Init != nil, CompileTime: n.CompileTime, ConstExpr: n.Init, Span: n.NameSpan})
+		binding := Binding{Type: t, TypeValue: tc.constTypeValue(n.Init), Mutable: n.Mutable, Initialized: n.Init != nil, CompileTime: n.CompileTime, ConstExpr: n.Init, Span: n.NameSpan}
+		if n.Init != nil {
+			binding.NullState = tc.exprNullState(n.Init)
+		}
+		tc.declareBinding(n.Name, binding)
 	case *MultiVarDecl:
 		tc.checkMultiVarDecl(n)
 	case *AssignStmt:
+		if n.Target != nil {
+			tc.checkExprAssign(n.Span_, n.Target, n.Value)
+			return
+		}
 		binding, _, ok := tc.lookupBinding(n.Name)
 		if !ok {
 			tc.diags.Error(n.Span_, "assignment to undeclared variable "+n.Name, "declare the variable before assigning to it")
@@ -696,6 +758,9 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 			tc.checkAssign(n.Span_, binding.Type, n.Value)
 		})
 		binding.Initialized = true
+		if isPointerType(binding.Type) {
+			binding.NullState = tc.exprNullState(n.Value)
+		}
 		tc.setBinding(n.Name, binding)
 	case *ReturnStmt:
 		tc.checkReturnStmt(n)
@@ -752,6 +817,10 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 			tc.diags.Error(n.Span_, "continue outside a loop", "use continue inside a for loop")
 		}
 	case *CompoundAssignStmt:
+		if n.Target != nil {
+			tc.checkExprCompound(n.Span_, n.Target, n.Op, n.Value)
+			return
+		}
 		binding, _, ok := tc.lookupBinding(n.Name)
 		if !ok {
 			tc.diags.Error(n.Span_, "assignment to undeclared variable "+n.Name, "declare the variable before assigning to it")
@@ -769,8 +838,16 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 			tc.diags.Error(n.Span_, "cannot apply "+n.Op.String()+" to enum values", "enum values support only == and !=")
 			return
 		}
-		tc.checkAssign(n.Span_, binding.Type, n.Value)
+		tc.checkCompoundOp(n.Span_, binding.Type, n.Op, n.Value)
+		if isPointerType(binding.Type) {
+			binding.NullState = 0
+			tc.setBinding(n.Name, binding)
+		}
 	case *IncDecStmt:
+		if n.Target != nil {
+			tc.checkExprIncDec(n.Span_, n.Target, n.Op)
+			return
+		}
 		binding, _, ok := tc.lookupBinding(n.Name)
 		if !ok {
 			tc.diags.Error(n.Span_, "cannot modify undeclared variable "+n.Name, "declare the variable before using it")
@@ -784,8 +861,12 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 			tc.diags.Error(n.NameSpan, "binding '"+n.Name+"' is not initialized", "assign it before incrementing or decrementing it")
 			return
 		}
-		if !isIntegerType(binding.Type) {
-			tc.diags.Error(n.Span_, "cannot increment or decrement a value of type "+tc.formatType(binding.Type), "use an integer variable")
+		if !isIntegerType(binding.Type) && !isPointerType(binding.Type) {
+			tc.diags.Error(n.Span_, "cannot increment or decrement a value of type "+tc.formatType(binding.Type), "use an integer or pointer variable")
+		}
+		if isPointerType(binding.Type) {
+			binding.NullState = 0
+			tc.setBinding(n.Name, binding)
 		}
 	}
 }
@@ -862,6 +943,41 @@ func cloneBindingScopes(scopes []map[string]Binding) []map[string]Binding {
 	return copyScopes
 }
 
+// nullConditionVar decodes a "var == null" / "var != null" test on a nullable
+// pointer binding, returning the variable, its state inside the then-branch,
+// its state on the else path, and whether the condition narrows at all.
+func (tc *TypeChecker) nullConditionVar(cond Expr) (string, uint8, uint8, bool) {
+	bin, ok := unwrapParens(cond).(*BinaryExpr)
+	if !ok {
+		return "", 0, 0, false
+	}
+	var side Expr
+	switch {
+	case bin.Op == BinaryOpEq && isNullLit(bin.Left):
+		side = bin.Right
+	case bin.Op == BinaryOpEq && isNullLit(bin.Right):
+		side = bin.Left
+	case bin.Op == BinaryOpNeq && isNullLit(bin.Left):
+		side = bin.Right
+	case bin.Op == BinaryOpNeq && isNullLit(bin.Right):
+		side = bin.Left
+	default:
+		return "", 0, 0, false
+	}
+	ident, ok := unwrapParens(side).(*IdentExpr)
+	if !ok {
+		return "", 0, 0, false
+	}
+	b, _, ok := tc.lookupBinding(ident.Name)
+	if !ok || !isPointerType(b.Type) || !pointerNullable(b.Type) {
+		return "", 0, 0, false
+	}
+	if bin.Op == BinaryOpEq {
+		return ident.Name, nullStateNull, nullStateNonNull, true
+	}
+	return ident.Name, nullStateNonNull, nullStateNull, true
+}
+
 func (tc *TypeChecker) checkIf(n *IfStmt) {
 	condType := tc.inferExpr(n.Condition)
 	if condType != TypeUnknown && condType != TypeBool {
@@ -869,24 +985,58 @@ func (tc *TypeChecker) checkIf(n *IfStmt) {
 	}
 	base := cloneBindingScopes(tc.scopes)
 	var branches [][]map[string]Binding
+	var diverges []bool
+
+	name, thenState, elseState, narrows := tc.nullConditionVar(n.Condition)
+	tc.scopes = cloneBindingScopes(base)
+	if narrows {
+		tc.setBindingNullState(name, thenState, 0)
+	}
 	tc.checkBlock(n.Body)
 	branches = append(branches, cloneBindingScopes(tc.scopes))
-	tc.scopes = cloneBindingScopes(base)
+	diverges = append(diverges, blockDiverges(n.Body))
+
+	lastName, lastElseState, lastNarrows := name, elseState, narrows
 	for _, elif := range n.Elif {
 		et := tc.inferExpr(elif.Condition)
 		if et != TypeUnknown && et != TypeBool {
 			tc.diags.Error(elif.Condition.nodeSpan(), "elif condition must be Bool, got "+tc.formatType(et), "use a boolean condition")
 		}
+		tc.scopes = cloneBindingScopes(base)
+		ename, ethen, eelse, eok := tc.nullConditionVar(elif.Condition)
+		if eok {
+			tc.setBindingNullState(ename, ethen, 0)
+		}
 		tc.checkBlock(elif.Body)
 		branches = append(branches, cloneBindingScopes(tc.scopes))
+		diverges = append(diverges, blockDiverges(elif.Body))
+		lastName, lastElseState, lastNarrows = ename, eelse, eok
 		tc.scopes = cloneBindingScopes(base)
 	}
+
 	if n.ElseBody != nil {
+		tc.scopes = cloneBindingScopes(base)
+		if lastNarrows {
+			tc.setBindingNullState(lastName, lastElseState, 0)
+		}
 		tc.checkBlock(n.ElseBody)
 		branches = append(branches, cloneBindingScopes(tc.scopes))
+		diverges = append(diverges, blockDiverges(n.ElseBody))
 	} else {
-		branches = append(branches, base)
+		// No else: the implicit else path is the inverted narrowing of the
+		// last condition (the condition did not hold).
+		els := cloneBindingScopes(base)
+		if lastNarrows {
+			saved := tc.scopes
+			tc.scopes = els
+			tc.setBindingNullState(lastName, lastElseState, 0)
+			els = cloneBindingScopes(tc.scopes)
+			tc.scopes = saved
+		}
+		branches = append(branches, els)
+		diverges = append(diverges, false)
 	}
+
 	tc.scopes = cloneBindingScopes(base)
 	for scopeIndex, scope := range tc.scopes {
 		for name, original := range scope {
@@ -894,9 +1044,18 @@ func (tc *TypeChecker) checkIf(n *IfStmt) {
 			joined.Initialized = true
 			var joinedType Type
 			typesAgree := true
-			for _, branch := range branches {
+			allNonNull := true
+			anyContributes := false
+			for i, branch := range branches {
+				if diverges[i] {
+					continue // a diverging branch never reaches the join
+				}
+				anyContributes = true
 				candidate := branch[scopeIndex][name]
 				joined.Initialized = joined.Initialized && candidate.Initialized
+				if !isPointerType(candidate.Type) || candidate.NullState != nullStateNonNull {
+					allNonNull = false
+				}
 				if joinedType == TypeUnknown {
 					joinedType = candidate.Type
 				} else if candidate.Type != joinedType {
@@ -907,6 +1066,13 @@ func (tc *TypeChecker) checkIf(n *IfStmt) {
 				joined.Type = joinedType
 			} else {
 				joined.Type = original.Type
+			}
+			if isPointerType(joined.Type) {
+				if anyContributes && allNonNull {
+					joined.NullState = nullStateNonNull
+				} else {
+					joined.NullState = 0
+				}
 			}
 			tc.scopes[scopeIndex][name] = joined
 		}
@@ -944,6 +1110,10 @@ func (tc *TypeChecker) checkFor(n *ForStmt) {
 	// clause may execute zero times, so their assignments cannot establish
 	// definite initialization after the loop.
 	postInit := cloneBindingScopes(tc.scopes)
+	// Null analysis cannot prove anything across an arbitrary number of
+	// iterations: narrowed states inherited from before the loop are dropped
+	// before the body is analyzed.
+	tc.resetPointerNullStates(0)
 	if n.Range != nil {
 		rt := tc.inferExpr(n.Range)
 		if !isArrayType(rt) {
@@ -980,11 +1150,32 @@ func (tc *TypeChecker) checkFor(n *ForStmt) {
 			if ct != TypeUnknown && ct != TypeBool {
 				tc.diags.Error(n.Cond.nodeSpan(), "for condition must be Bool, got "+tc.formatType(ct), "use a boolean condition")
 			}
+			// The exit condition holds at every entry to the body, so a
+			// "p != null" while-condition narrows inside the body.
+			if name, thenState, _, ok := tc.nullConditionVar(n.Cond); ok {
+				tc.setBindingNullState(name, thenState, 0)
+			}
 			tc.checkBlock(n.Body)
 		}
 	}
 	if n.After != nil {
 		tc.checkStmt(n.After)
+	}
+	// Post-loop null state: the loop may execute zero times, so a binding is
+	// only provably non-null afterwards if it was provably non-null both
+	// before the loop and at the exit of the body.
+	for scopeIndex, saved := range postInit {
+		for name, pre := range saved {
+			cur, _, ok := tc.lookupAnyBinding(name)
+			if !ok || !isPointerType(pre.Type) || !isPointerType(cur.Type) {
+				continue
+			}
+			if pre.NullState != nullStateNonNull || cur.NullState != nullStateNonNull {
+				joined := postInit[scopeIndex][name]
+				joined.NullState = 0
+				postInit[scopeIndex][name] = joined
+			}
+		}
 	}
 	tc.scopes = postInit
 	tc.loopDepth--
@@ -1207,8 +1398,19 @@ func (tc *TypeChecker) checkStructCycles() {
 		}
 		state[name] = 1
 		for _, field := range decl.Fields {
-			// Arrays are pointer/length values and therefore break by-value layout cycles.
+			// Arrays are pointer/length values and therefore break by-value
+			// layout cycles. A nullable pointer field also breaks the cycle:
+			// it is the only way a struct may reference itself.
 			if _, array := field.Type.(*ArrayTypeExpr); array {
+				continue
+			}
+			if ptr, ok := field.Type.(*PointerTypeExpr); ok {
+				if ptr.Nullable {
+					continue
+				}
+				if id, ok := ptr.Elem.(*IdentExpr); ok {
+					visit(id.Name, append(path, name))
+				}
 				continue
 			}
 			if id, ok := field.Type.(*IdentExpr); ok {
@@ -1618,6 +1820,21 @@ func (tc *TypeChecker) validateCompileTimeExpr(expr Expr, target Type) {
 	if expr == nil || target == TypeUnknown || isLiteral(expr) {
 		return
 	}
+	// Pointers are runtime-only: address-of, dereference, and null have no
+	// compile-time meaning.
+	switch e := expr.(type) {
+	case *UnaryExpr:
+		if e.Op == UnaryOpAddr {
+			tc.diags.Error(e.Span_, "pointers are only available at runtime", "use ':=' or a runtime assignment for pointer values")
+			return
+		}
+	case *DerefExpr:
+		tc.diags.Error(e.Span_, "pointers are only available at runtime", "use ':=' or a runtime assignment for pointer values")
+		return
+	case *NullLitExpr:
+		tc.diags.Error(e.Span_, "pointers are only available at runtime", "use ':=' or a runtime assignment for pointer values")
+		return
+	}
 	if ifx, ok := expr.(*IfxExpr); ok {
 		tc.validateCompileTimeExpr(ifx.Then, target)
 		tc.validateCompileTimeExpr(ifx.Else, target)
@@ -1763,6 +1980,9 @@ func (tc *TypeChecker) typeContainsArray(t Type, visiting map[Type]bool) bool {
 	if isArrayType(t) {
 		return true
 	}
+	if isPointerType(t) {
+		return false // indirection breaks the by-value storage restriction
+	}
 	if visiting[t] {
 		return false
 	}
@@ -1808,6 +2028,8 @@ func (tc *TypeChecker) resolveTypeExpr(e Expr) (resolved Type) {
 		return Type(n.Name)
 	case *ArrayTypeExpr:
 		return arrayType(tc.resolveTypeExpr(n.Elem))
+	case *PointerTypeExpr:
+		return pointerType(tc.resolveTypeExpr(n.Elem), n.Nullable)
 	}
 	return TypeUnknown
 }
@@ -1846,6 +2068,8 @@ func (tc *TypeChecker) checkTypeExprValid(e Expr) {
 			tc.diags.Error(n.Span_, "unknown type name '"+n.Name+"'", "declare the type before using it in this scope")
 		}
 	case *ArrayTypeExpr:
+		tc.checkTypeExprValid(n.Elem)
+	case *PointerTypeExpr:
 		tc.checkTypeExprValid(n.Elem)
 	}
 }
@@ -2014,6 +2238,12 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 			return TypeUnknown
 		}
 		return tc.rangeIndexType
+	case *NullLitExpr:
+		return TypeNull
+	case *DerefExpr:
+		return tc.checkDeref(n)
+	case *FieldAccessExpr:
+		return tc.checkFieldAccess(n)
 	case *IfxExpr:
 		if !tc.ifxContext {
 			tc.diags.Error(n.Span_, "ifx expressions are only supported as the value of an assignment or return", "use ifx directly as the assigned or returned value")
@@ -2022,6 +2252,255 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 		return tc.checkIfxExpr(n)
 	}
 	return TypeUnknown
+}
+
+// checkDeref checks "operand.*". The operand must be a pointer, and a
+// nullable pointer must be provably non-null at this point (either the type is
+// non-nullable or a flow-narrowing null check proved it).
+func (tc *TypeChecker) checkDeref(n *DerefExpr) Type {
+	ot := tc.inferExpr(n.Operand)
+	if !isPointerType(ot) {
+		if ot != TypeUnknown {
+			tc.diags.Error(n.Operand.nodeSpan(), "cannot dereference a value of type "+tc.formatType(ot), "use a pointer (write '*T' or '*T?')")
+		}
+		return TypeUnknown
+	}
+	if pointerNullable(ot) && !tc.exprIsNonNull(n.Operand) {
+		tc.diags.Error(n.Operand.nodeSpan(), "cannot dereference "+pointerName(n.Operand)+" because it may be null", "check the pointer against null before dereferencing (for example 'if p == null { return; }')")
+	}
+	return pointerElemType(ot)
+}
+
+// pointerName renders an operand for null-check diagnostics: the variable name
+// when the operand is a plain identifier, otherwise a generic description.
+func pointerName(e Expr) string {
+	if ident, ok := e.(*IdentExpr); ok {
+		return "'" + ident.Name + "'"
+	}
+	return "the pointer"
+}
+
+// isLvalue reports whether an expression refers to addressable storage.
+func (tc *TypeChecker) isLvalue(e Expr) bool {
+	switch n := e.(type) {
+	case *IdentExpr:
+		b, _, ok := tc.lookupBinding(n.Name)
+		return ok && !b.CompileTime
+	case *IndexExpr, *FieldAccessExpr, *DerefExpr:
+		return true
+	case *ParenExpr:
+		return tc.isLvalue(n.Inner)
+	}
+	return false
+}
+
+// exprIsNonNull reports whether an expression is provably non-null: an
+// address-of result, or a variable whose flow state has been narrowed.
+func (tc *TypeChecker) exprIsNonNull(e Expr) bool {
+	switch n := e.(type) {
+	case *ParenExpr:
+		return tc.exprIsNonNull(n.Inner)
+	case *UnaryExpr:
+		return n.Op == UnaryOpAddr
+	case *IdentExpr:
+		b, _, ok := tc.lookupBinding(n.Name)
+		return ok && b.NullState == nullStateNonNull
+	}
+	return false
+}
+
+// checkFieldAccess checks "base.field" for a struct or enum base. The field
+// type is returned for structs; an enum base resolves the member reference
+// (and returns the enum type). Assignment targets flow through
+// checkAssignableTarget instead.
+func (tc *TypeChecker) checkFieldAccess(n *FieldAccessExpr) Type {
+	// A base that names an enum type is an enum member reference. The enum
+	// name must be resolved directly: inferring the base as a value would
+	// yield the generic "Type" binding rather than the enum itself.
+	if name := enumBaseName(n.Base); name != "" {
+		if t := tc.resolveTypeExpr(&IdentExpr{Name: name}); tc.isEnumType(t) {
+			return tc.checkEnumMemberExpr(&EnumMemberExpr{
+				Span_:        n.Span_,
+				TypeName:     name,
+				TypeNameSpan: n.Base.nodeSpan(),
+				Name:         n.Field,
+				NameSpan:     n.FieldSpan,
+			})
+		}
+	}
+	bt := tc.inferExpr(n.Base)
+	st, ok := tc.structDeclForType(bt)
+	if !ok {
+		if name := enumBaseName(n.Base); name != "" {
+			if t := tc.resolveTypeExpr(&IdentExpr{Name: name}); tc.isErrorType(t) {
+				tc.diags.Error(n.Span_, "error values must be instantiated with '!'", "add '!' after the member name")
+				return TypeUnknown
+			}
+		}
+		if tc.isErrorType(bt) {
+			tc.diags.Error(n.Span_, "error values must be instantiated with '!'", "add '!' after the member name")
+			return TypeUnknown
+		}
+		tc.diags.Error(n.Base.nodeSpan(), "cannot access field '"+n.Field+"' on a value of type "+tc.formatType(bt), "use a struct value")
+		return TypeUnknown
+	}
+	for _, field := range st.Fields {
+		if field.Name == n.Field {
+			return tc.resolveTypeExpr(field.Type)
+		}
+	}
+	tc.diags.Error(n.FieldSpan, "struct "+tc.formatType(bt)+" has no field '"+n.Field+"'", "use a declared field name")
+	return TypeUnknown
+}
+
+// enumBaseName returns the enum type name behind a field-access base.
+func enumBaseName(base Expr) string {
+	if ident, ok := unwrapParens(base).(*IdentExpr); ok {
+		return ident.Name
+	}
+	return ""
+}
+
+// checkAssignableTarget checks an assignment target expression (index, field,
+// or deref) and returns the storage type the value must match.
+func (tc *TypeChecker) checkAssignableTarget(target Expr) (Type, bool) {
+	switch n := target.(type) {
+	case *IdentExpr:
+		b, _, ok := tc.lookupBinding(n.Name)
+		if !ok {
+			tc.diags.Error(n.Span_, "assignment to undeclared variable "+n.Name, "declare the variable before assigning to it")
+			return TypeUnknown, false
+		}
+		if !b.Mutable {
+			tc.diags.Error(n.Span_, "cannot assign to immutable binding '"+n.Name+"'", "declare it with ':=' if it must change")
+			return TypeUnknown, false
+		}
+		return b.Type, true
+	case *IndexExpr:
+		baseType := tc.inferExpr(n.Base)
+		if !isArrayType(baseType) {
+			tc.diags.Error(n.Base.nodeSpan(), "cannot index a value of type "+tc.formatType(baseType), "use an array value")
+			return TypeUnknown, false
+		}
+		idxType := tc.inferExpr(n.Index)
+		if idxType != TypeUnknown && !isIntegerType(idxType) {
+			tc.diags.Error(n.Index.nodeSpan(), "array index must be an integer, got "+tc.formatType(idxType), "use an integer index")
+		}
+		return arrayElemType(baseType), true
+	case *FieldAccessExpr:
+		bt := tc.inferExpr(n.Base)
+		st, ok := tc.structDeclForType(bt)
+		if !ok {
+			tc.diags.Error(n.Base.nodeSpan(), "cannot access a field on a value of type "+tc.formatType(bt), "use a struct value")
+			return TypeUnknown, false
+		}
+		for _, field := range st.Fields {
+			if field.Name == n.Field {
+				return tc.resolveTypeExpr(field.Type), true
+			}
+		}
+		tc.diags.Error(n.FieldSpan, "struct "+tc.formatType(bt)+" has no field '"+n.Field+"'", "use a declared field name")
+		return TypeUnknown, false
+	case *DerefExpr:
+		// The deref null-proof runs in checkDeref.
+		return tc.checkDeref(n), true
+	}
+	tc.diags.Error(target.nodeSpan(), "expression is not assignable", "assign to a variable, array element, field, or dereferenced pointer")
+	return TypeUnknown, false
+}
+
+// checkExprAssign validates "target = value" where target is an index, field,
+// or deref expression. The lvalue type is resolved and the value checked
+// against it.
+func (tc *TypeChecker) checkExprAssign(span Span, target Expr, value Expr) {
+	ty, ok := tc.checkAssignableTarget(target)
+	if !ok {
+		return
+	}
+	tc.withIfxContext(value, func() {
+		tc.checkAssign(span, ty, value)
+	})
+}
+
+// checkExprCompound validates "target += value" / "target -= value" for an
+// index, field, or deref target. Compound assignment is not an ifx context.
+func (tc *TypeChecker) checkExprCompound(span Span, target Expr, op BinaryOp, value Expr) {
+	ty, ok := tc.checkAssignableTarget(target)
+	if !ok {
+		return
+	}
+	tc.checkCompoundOp(span, ty, op, value)
+}
+
+// checkExprIncDec validates "target++" / "target--" on an index, field, or
+// deref target.
+func (tc *TypeChecker) checkExprIncDec(span Span, target Expr, op BinaryOp) {
+	ty, ok := tc.checkAssignableTarget(target)
+	if !ok {
+		return
+	}
+	if tc.isEnumType(ty) {
+		tc.diags.Error(span, "cannot apply "+op.String()+" to enum values", "enum values support only == and !=")
+		return
+	}
+	if !isIntegerType(ty) && !isPointerType(ty) {
+		tc.diags.Error(span, "cannot increment or decrement a value of type "+tc.formatType(ty), "use an integer or pointer target")
+	}
+}
+
+// checkCompoundOp validates a compound operation "+="/"-=" on a value type.
+// Compound statements only ever carry Add or Sub; pointer targets require an
+// integer offset (scaled by element size, as in C).
+func (tc *TypeChecker) checkCompoundOp(span Span, t Type, op BinaryOp, value Expr) {
+	if t == TypeUnknown {
+		return
+	}
+	if tc.isEnumType(t) {
+		tc.diags.Error(span, "cannot apply "+op.String()+" to enum values", "enum values support only == and !=")
+		return
+	}
+	if isPointerType(t) {
+		if value != nil {
+			vt := tc.inferExpr(value)
+			if vt != TypeUnknown && !isIntegerType(vt) {
+				tc.diags.Error(span, "pointer arithmetic requires an integer offset, got "+tc.formatType(vt), "add or subtract an integer: 'p += n'")
+			}
+		}
+		return
+	}
+	if !isIntegerType(t) && !isFloatType(t) {
+		tc.diags.Error(span, "operator "+op.String()+" is not defined for "+tc.formatType(t), "use a numeric target")
+		return
+	}
+	if value != nil {
+		tc.checkAssign(span, t, value)
+	}
+}
+
+// exprNullState returns the null-flow state an expression establishes for a
+// pointer binding it is assigned to: address-of results are non-null, null is
+// known-null, and identifier copies carry the source binding's state.
+func (tc *TypeChecker) exprNullState(e Expr) uint8 {
+	switch n := e.(type) {
+	case *ParenExpr:
+		return tc.exprNullState(n.Inner)
+	case *UnaryExpr:
+		if n.Op == UnaryOpAddr {
+			return nullStateNonNull
+		}
+	case *NullLitExpr:
+		return nullStateNull
+	case *IdentExpr:
+		b, _, ok := tc.lookupBinding(n.Name)
+		if !ok {
+			return 0
+		}
+		if isPointerType(b.Type) && !pointerNullable(b.Type) {
+			return nullStateNonNull
+		}
+		return b.NullState
+	}
+	return 0
 }
 
 // checkErrorMemberExpr infers the type of an error member reference. The
@@ -2310,6 +2789,11 @@ func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 		tc.diags.Error(n.Span_, "must handle the error before using the value", "use 'unless catch' or 'if ... catch' first")
 		return TypeUnknown
 	}
+	// Pointer-specific operator rules: + - scaled by element size, equality
+	// and ordering between pointers, and ==/!= against null.
+	if pt, handled := tc.checkPointerBinary(n, lt, rt); handled {
+		return pt
+	}
 	compatible := tc.operandsCompatible(n.Left, lt, n.Right, rt)
 	effective := lt
 	if isLiteral(n.Left) && !isLiteral(n.Right) {
@@ -2378,6 +2862,20 @@ func (tc *TypeChecker) checkUnaryExpr(n *UnaryExpr) Type {
 			tc.diags.Error(n.Span_, "operator ! requires a Bool operand, got "+tc.formatType(ot), "use a boolean operand")
 		}
 		return TypeBool
+	case UnaryOpAddr:
+		if ot == TypeUnknown {
+			return TypeUnknown
+		}
+		if ot == TypeNull {
+			tc.diags.Error(n.Span_, "cannot take the address of null", "pointers come from address-of, null, or parameters")
+			return TypeUnknown
+		}
+		if !tc.isLvalue(n.Operand) {
+			tc.diags.Error(n.Operand.nodeSpan(), "cannot take the address of this expression", "take the address of a variable, array element, field, or dereferenced pointer")
+			return TypeUnknown
+		}
+		// The result is the address of storage, which is never null.
+		return pointerType(ot, false)
 	}
 	return TypeUnknown
 }
@@ -2557,6 +3055,122 @@ func arrayElemType(t Type) Type {
 	return Type(strings.TrimPrefix(string(t), "[]"))
 }
 
+// pointerType is the type name of a pointer with the given element type.
+func pointerType(elem Type, nullable bool) Type {
+	if nullable {
+		return Type("*" + string(elem) + "?")
+	}
+	return Type("*" + string(elem))
+}
+
+// isPointerType reports whether t is a pointer type.
+func isPointerType(t Type) bool {
+	return strings.HasPrefix(string(t), "*")
+}
+
+// pointerElemType returns the pointed-to element type of a pointer type.
+func pointerElemType(t Type) Type {
+	s := string(t)
+	if strings.HasSuffix(s, "?") {
+		s = s[:len(s)-1]
+	}
+	return Type(strings.TrimPrefix(s, "*"))
+}
+
+// pointerNullable reports whether a pointer type is nullable.
+func pointerNullable(t Type) bool {
+	return strings.HasSuffix(string(t), "?")
+}
+
+// checkPointerBinary validates binary operators with pointer or null
+// operands. It returns (resultType, true) when the operator involves a
+// pointer or null; otherwise (TypeUnknown, false) leaves the general rules to
+// their ordinary path.
+func (tc *TypeChecker) checkPointerBinary(b *BinaryExpr, lt, rt Type) (Type, bool) {
+	leftPtr, rightPtr := isPointerType(lt), isPointerType(rt)
+	nullLT, nullRT := lt == TypeNull, rt == TypeNull
+
+	switch b.Op {
+	case BinaryOpAdd, BinaryOpSub:
+		if leftPtr && rightPtr {
+			if b.Op == BinaryOpAdd {
+				tc.diags.Error(b.Span_, "cannot add two pointers", "add an integer offset: 'p + n'")
+				return TypeUnknown, true
+			}
+			if lt != rt {
+				tc.diags.Error(b.Span_, "cannot subtract pointers of different types", "subtract pointers of the same type: 'p - q'")
+			}
+			return TypeS64, true // element difference
+		}
+		if leftPtr && isIntegerType(rt) {
+			return lt, true // scaled by sizeof(element)
+		}
+		if rightPtr && isIntegerType(lt) {
+			return rt, true
+		}
+		if leftPtr || rightPtr {
+			other := lt
+			if leftPtr {
+				other = rt
+			}
+			tc.diags.Error(b.Span_, "pointer arithmetic requires an integer offset, got "+tc.formatType(other), "add or subtract an integer: 'p + n'")
+			return TypeUnknown, true
+		}
+		return TypeUnknown, false
+
+	case BinaryOpEq, BinaryOpNeq:
+		if leftPtr && rightPtr {
+			if lt != rt {
+				tc.diags.Error(b.Span_, "cannot compare "+tc.formatType(lt)+" and "+tc.formatType(rt), "compare pointers of the same type")
+			}
+			return TypeBool, true
+		}
+		if (leftPtr && nullRT) || (rightPtr && nullLT) {
+			ptrType := lt
+			if rightPtr {
+				ptrType = rt
+			}
+			if !pointerNullable(ptrType) {
+				tc.diags.Error(b.Span_, "cannot compare a non-nullable pointer with null", "non-nullable pointers can never be null")
+			}
+			// Record the null operand's pointer type so lowering can
+			// materialize it as a zero address of the right type.
+			if tc.analysis != nil {
+				if b.Left != nil {
+					if _, isNull := b.Left.(*NullLitExpr); isNull {
+						tc.analysis.ExprTypes[b.Left] = ptrType
+					}
+				}
+				if b.Right != nil {
+					if _, isNull := b.Right.(*NullLitExpr); isNull {
+						tc.analysis.ExprTypes[b.Right] = ptrType
+					}
+				}
+			}
+			return TypeBool, true
+		}
+		if nullLT || nullRT {
+			tc.diags.Error(b.Span_, "null can only be compared with a nullable pointer", "compare null with a nullable pointer type like '*T?'")
+			return TypeBool, true
+		}
+		return TypeUnknown, false
+
+	case BinaryOpLt, BinaryOpGt, BinaryOpLe, BinaryOpGe:
+		if leftPtr && rightPtr {
+			if lt != rt {
+				tc.diags.Error(b.Span_, "cannot compare "+tc.formatType(lt)+" and "+tc.formatType(rt), "compare pointers of the same type")
+			}
+			return TypeBool, true
+		}
+		if leftPtr || rightPtr || nullLT || nullRT {
+			tc.diags.Error(b.Span_, "ordering is not defined for pointers and null", "use == or != to compare against null")
+			return TypeBool, true
+		}
+		return TypeUnknown, false
+	}
+	return TypeUnknown, false
+}
+
 // checkAssign validates that a value can be assigned to a target type. Literals
 // adapt to a compatible target type (an integer literal to any integer type, a
 // float literal to any float type); other expressions must match exactly. A
@@ -2571,6 +3185,50 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 			return
 		}
 		tc.checkIfxAssign(ifx, target)
+		tc.analysis.ExprTypes[value] = target
+		return
+	}
+	// The null literal and pointer targets follow dedicated rules.
+	if _, isNull := value.(*NullLitExpr); isNull {
+		if isPointerType(target) {
+			if pointerNullable(target) {
+				tc.analysis.ExprTypes[value] = target
+				return
+			}
+			tc.diags.Error(span, "cannot assign null to a non-nullable pointer of type "+tc.formatType(target), "declare the variable as a nullable pointer '"+tc.formatType(target)+"?' if it may hold null")
+		} else {
+			tc.diags.Error(span, "cannot assign null to "+tc.formatType(target), "only nullable pointers can hold null")
+		}
+		tc.analysis.ExprTypes[value] = target
+		return
+	}
+	if isPointerType(target) {
+		valType := tc.inferExpr(value)
+		if valType == target {
+			tc.analysis.ExprTypes[value] = target
+			return
+		}
+		if isPointerType(valType) {
+			sameBase := pointerType(pointerElemType(valType), false) == pointerType(pointerElemType(target), false)
+			switch {
+			case sameBase && pointerNullable(target):
+				// A nullable target accepts any same-base pointer, including
+				// values that are provably non-null.
+				tc.analysis.ExprTypes[value] = target
+				return
+			case sameBase && !pointerNullable(target) && pointerNullable(valType) && !tc.exprIsNonNull(value):
+				tc.diags.Error(span, "cannot assign the nullable pointer to "+tc.formatType(target), "prove the value is not null first (for example 'if p == null { return; }')")
+			case sameBase:
+				// Same-base non-nullable assignment, or a flow-narrowed
+				// nullable value assigned to a non-null target.
+				tc.analysis.ExprTypes[value] = target
+				return
+			default:
+				tc.diags.Error(span, "cannot assign "+tc.formatType(valType)+" to "+tc.formatType(target), "use a pointer value of type "+tc.formatType(target))
+			}
+		} else {
+			tc.diags.Error(span, "cannot assign "+tc.formatType(valType)+" to "+tc.formatType(target), "use a pointer value of type "+tc.formatType(target))
+		}
 		tc.analysis.ExprTypes[value] = target
 		return
 	}
@@ -2767,6 +3425,13 @@ func isLiteral(e Expr) bool {
 		return n.Op == UnaryOpNeg && isLiteral(n.Operand)
 	}
 	return false
+}
+
+// isNullLit reports whether an expression is the null literal, looking
+// through transparent parentheses.
+func isNullLit(e Expr) bool {
+	_, ok := unwrapParens(e).(*NullLitExpr)
+	return ok
 }
 
 // literalCompatible reports whether a literal can be assigned to a target type.

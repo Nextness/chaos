@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: cannot dereference
+#entry main :: proc -> S64 {
+    p: *S64? = null;
+    return p.*;
+}

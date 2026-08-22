@@ -60,15 +60,15 @@ func TestTokenize(t *testing.T) {
 		// ─── Keywords ─────────────────────────────────────────────────────
 		{
 			name:  "keywords",
-			input: "true false exit if ifx elif else proc then return as struct error enum unless catch for break continue",
+			input: "true false exit if ifx elif else proc then return as struct error enum unless catch for break continue null",
 			want: []TokenKind{
 				TkTrue, TkFalse, TkExit, TkIf, TkIfx, TkElif, TkElse,
 				TkProc, TkThen, TkReturn, TkAs, TkStruct, TkErrorKw,
 				TkEnum,
-				TkUnless, TkCatch, TkFor, TkBreak, TkContinue,
+				TkUnless, TkCatch, TkFor, TkBreak, TkContinue, TkNull,
 				TkEOF,
 			},
-			values: []any{"true", "false", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil},
+			values: []any{"true", "false", nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil},
 		},
 
 		// ─── Identifiers ──────────────────────────────────────────────────

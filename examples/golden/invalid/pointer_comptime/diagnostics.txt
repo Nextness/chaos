@@ -1,0 +1,6 @@
+[ERROR] 5:10:pointer_comptime.chaos - compile-time assignment requires a compile-time-known expression
+     x :: *a;
+          ^^ -> use ':=' or a constant expression
+[ERROR] 5:10:pointer_comptime.chaos - pointers are only available at runtime
+     x :: *a;
+          ^^ -> use ':=' or a runtime assignment for pointer values

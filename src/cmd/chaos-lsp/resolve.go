@@ -484,6 +484,37 @@ func (r *resolver) collectOccurrences() {
 				}
 			}
 			r.occurrences = append(r.occurrences, &occurrence{name: e.Name, span: e.NameSpan, sym: msym})
+		case *compiler.FieldAccessExpr:
+			// "Type.MEMBER" (enum), "Struct.field", and "p.*.field". A base
+			// that names an enum resolves the member; otherwise the base is a
+			// value and the field resolves through the struct declaration.
+			walkExpr(e.Base)
+			if ident, ok := e.Base.(*compiler.IdentExpr); ok {
+				if owner := r.resolveName(ident.Name, ident.Span_.Start); owner != nil && owner.enumDecl != nil {
+					r.occurrences = append(r.occurrences, &occurrence{name: e.Field, span: e.FieldSpan, sym: r.enumByDecl[owner.enumDecl][e.Field]})
+					break
+				}
+			}
+			var fsym *symbol
+			if decl, ok := r.semanticNominalDecl(e).(*compiler.StructDecl); ok {
+				fsym = r.structFields[decl][e.Field]
+			}
+			if fsym == nil {
+				// The field's own type is recorded, not the base struct type,
+				// so resolve the struct through the base expression.
+				if r.analysis != nil && e.Base != nil {
+					if baseType, ok := r.analysis.ExprTypes[e.Base]; ok {
+						if decl, ok := r.analysis.NominalDecls[baseType].(*compiler.StructDecl); ok {
+							fsym = r.structFields[decl][e.Field]
+						}
+					}
+				}
+			}
+			r.occurrences = append(r.occurrences, &occurrence{name: e.Field, span: e.FieldSpan, sym: fsym})
+		case *compiler.DerefExpr:
+			walkExpr(e.Operand)
+		case *compiler.NullLitExpr:
+			// Keyword literal; no symbol.
 		case *compiler.ArrayInitExpr:
 			if e.Elem != nil {
 				walkExpr(e.Elem)

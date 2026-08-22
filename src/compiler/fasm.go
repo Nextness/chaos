@@ -612,6 +612,22 @@ func (fb *fasmEmitter) emitInstr(ins *MIRInstr) {
 		fb.emitArrayLen(ins)
 	case MIRArrayIndex:
 		fb.emitArrayIndex(ins)
+	case MIRAddrOf:
+		fb.emitAddrOf(ins)
+	case MIRDerefLoad:
+		fb.emitDerefLoad(ins)
+	case MIRDerefStore:
+		fb.emitDerefStore(ins)
+	case MIRArrayElemAddr:
+		fb.emitArrayElemAddr(ins)
+	case MIRFieldAddr:
+		fb.emitFieldAddr(ins)
+	case MIRPtrAdd:
+		fb.emitPtrArith(ins, false, false)
+	case MIRPtrSub:
+		fb.emitPtrArith(ins, true, false)
+	case MIRPtrDiff:
+		fb.emitPtrArith(ins, true, true)
 	default:
 		fb.diags.Error(ins.Span, "unsupported MIR opcode reached the fasm backend", "verify MIR before code generation")
 	}
@@ -1727,6 +1743,8 @@ func (fb *fasmEmitter) layoutOf(t IRType) Layout {
 		layout = Layout{Size: 16, Align: 8}
 	case TypeKindArray:
 		layout = Layout{Size: 16, Align: 8}
+	case TypeKindPointer:
+		layout = Layout{Size: 8, Align: 8}
 	case TypeKindError:
 		layout = Layout{Size: 2, Align: 2}
 	case TypeKindEnum:
@@ -2013,6 +2031,155 @@ func (fb *fasmEmitter) emitArrayIndex(ins *MIRInstr) {
 	}
 	fb.emitLoadIndirect(t, "rax")
 	fb.emitStore(t, resSlot)
+}
+
+// emitAddrOf materializes the address of a local slot or a global.
+func (fb *fasmEmitter) emitAddrOf(ins *MIRInstr) {
+	resSlot := fb.valueSlots[ins.Result]
+	switch ins.Imm.Kind {
+	case MIRImmLocal:
+		fmt.Fprintf(&fb.out, "    lea rax, [rbp-%d]\n", fb.localSlots[ins.Imm.Local])
+	case MIRImmSymbol:
+		fmt.Fprintf(&fb.out, "    lea rax, [%s]\n", fb.globalLabel(ins.Imm.Symbol))
+	}
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
+}
+
+// emitDerefLoad loads a value through the address in Args[0].
+func (fb *fasmEmitter) emitDerefLoad(ins *MIRInstr) {
+	addrSlot := fb.valueSlots[ins.Args[0]]
+	t := fb.prog.Types.Lookup(ins.Type)
+	size := fb.sizeOf(t)
+	resSlot := fb.valueSlots[ins.Result]
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", addrSlot)
+	if fb.isAggregate(t) {
+		fmt.Fprintf(&fb.out, "    mov rsi, rax\n")
+		fmt.Fprintf(&fb.out, "    lea rdi, [rbp-%d]\n", resSlot)
+		fmt.Fprintf(&fb.out, "    mov rcx, %d\n", size)
+		fb.out.WriteString("    cld\n")
+		fb.out.WriteString("    rep movsb\n")
+		return
+	}
+	fb.emitLoadIndirect(t, "rax")
+	fb.emitStore(t, resSlot)
+}
+
+// emitDerefStore stores Args[1] through the address in Args[0].
+func (fb *fasmEmitter) emitDerefStore(ins *MIRInstr) {
+	addrSlot := fb.valueSlots[ins.Args[0]]
+	valSlot := fb.valueSlots[ins.Args[1]]
+	t := fb.prog.Types.Lookup(ins.Type)
+	size := fb.sizeOf(t)
+	// Preserve the address in r10 so a scalar value never clobbers it.
+	fmt.Fprintf(&fb.out, "    mov r10, qword [rbp-%d]\n", addrSlot)
+	if fb.isAggregate(t) {
+		fmt.Fprintf(&fb.out, "    lea rsi, [rbp-%d]\n", valSlot)
+		fmt.Fprintf(&fb.out, "    mov rdi, r10\n")
+		fmt.Fprintf(&fb.out, "    mov rcx, %d\n", size)
+		fb.out.WriteString("    cld\n")
+		fb.out.WriteString("    rep movsb\n")
+		return
+	}
+	fb.emitLoad(t, valSlot)
+	fb.emitStoreToReg(t, "r10")
+}
+
+// emitStoreToReg stores the value currently in rax (integers) or xmm0
+// (floats) at the address in reg, using the type's width.
+func (fb *fasmEmitter) emitStoreToReg(t IRType, reg string) {
+	size := fb.sizeOf(t)
+	if t.Kind == TypeKindFloat {
+		if t.Name == "F32" {
+			fmt.Fprintf(&fb.out, "    movss dword [%s], xmm0\n", reg)
+		} else {
+			fmt.Fprintf(&fb.out, "    movsd qword [%s], xmm0\n", reg)
+		}
+		return
+	}
+	switch size {
+	case 1:
+		fmt.Fprintf(&fb.out, "    mov byte [%s], al\n", reg)
+	case 2:
+		fmt.Fprintf(&fb.out, "    mov word [%s], ax\n", reg)
+	case 4:
+		fmt.Fprintf(&fb.out, "    mov dword [%s], eax\n", reg)
+	default:
+		fmt.Fprintf(&fb.out, "    mov qword [%s], rax\n", reg)
+	}
+}
+
+// emitArrayElemAddr computes the address "data + index * sizeof(elem)" of an
+// array element. The array value in Args[0] holds the data pointer at offset
+// 0 (16-byte fat value), and the result is the element address.
+func (fb *fasmEmitter) emitArrayElemAddr(ins *MIRInstr) {
+	arrSlot := fb.valueSlots[ins.Args[0]]
+	idxSlot := fb.valueSlots[ins.Args[1]]
+	ptrType := fb.prog.Types.Lookup(ins.Type)
+	elemType := fb.prog.Types.Lookup(ptrType.Elem)
+	elemSize := fb.sizeOf(elemType)
+	resSlot := fb.valueSlots[ins.Result]
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", arrSlot)
+	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d]\n", idxSlot)
+	if elemSize != 1 {
+		fmt.Fprintf(&fb.out, "    imul rcx, %d\n", elemSize)
+	}
+	fb.out.WriteString("    add rax, rcx\n")
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
+}
+
+// emitFieldAddr computes "base + offset(field)" for the struct at a pointer.
+// The pointed-to struct type comes from the address operand's type.
+func (fb *fasmEmitter) emitFieldAddr(ins *MIRInstr) {
+	addrSlot := fb.valueSlots[ins.Args[0]]
+	addrType := fb.prog.Types.Lookup(fb.valueTypes[ins.Args[0]])
+	structType := fb.prog.Types.Lookup(addrType.Elem)
+	fieldIdx := int(ins.Imm.Int)
+	resSlot := fb.valueSlots[ins.Result]
+	if fieldIdx < 0 || fieldIdx >= len(structType.Fields) {
+		return
+	}
+	offsets := fb.structFieldOffsets(structType)
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", addrSlot)
+	if offsets[fieldIdx] != 0 {
+		fmt.Fprintf(&fb.out, "    add rax, %d\n", offsets[fieldIdx])
+	}
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
+}
+
+// emitPtrArith implements pointer +- integer scaled by the pointed-to element
+// size, and pointer difference. subtract selects '-' and scale selects the
+// pointer-difference form (byte difference divided by the element size, with
+// C-like truncation toward zero).
+func (fb *fasmEmitter) emitPtrArith(ins *MIRInstr, subtract, scale bool) {
+	ptrSlot := fb.valueSlots[ins.Args[0]]
+	otherSlot := fb.valueSlots[ins.Args[1]]
+	ptrType := fb.prog.Types.Lookup(fb.valueTypes[ins.Args[0]])
+	elemSize := fb.sizeOf(fb.prog.Types.Lookup(ptrType.Elem))
+	resSlot := fb.valueSlots[ins.Result]
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", ptrSlot)
+	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d]\n", otherSlot)
+	if scale {
+		// p - q: byte difference, then divide by the element size.
+		fb.out.WriteString("    sub rax, rcx\n")
+		if elemSize != 1 {
+			fmt.Fprintf(&fb.out, "    mov rcx, %d\n", elemSize)
+			fb.out.WriteString("    cqo\n")
+			fb.out.WriteString("    idiv rcx\n")
+		}
+	} else if subtract {
+		// p - n: subtract n * size.
+		if elemSize != 1 {
+			fmt.Fprintf(&fb.out, "    imul rcx, %d\n", elemSize)
+		}
+		fb.out.WriteString("    sub rax, rcx\n")
+	} else {
+		// p + n: add n * size.
+		if elemSize != 1 {
+			fmt.Fprintf(&fb.out, "    imul rcx, %d\n", elemSize)
+		}
+		fb.out.WriteString("    add rax, rcx\n")
+	}
+	fb.emitStore(fb.prog.Types.Lookup(ins.Type), resSlot)
 }
 
 // emitLoadIndirect loads the value at [addrReg] into rax (integers) or xmm0

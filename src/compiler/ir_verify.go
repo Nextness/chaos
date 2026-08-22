@@ -131,6 +131,10 @@ func (v *MIRVerifier) verifyTypeTable() {
 			if !v.validResolvedTypeID(typ.Elem) {
 				v.diags.Error(Span{}, "array type "+typ.Name+" has an invalid element type", "use a resolved element type")
 			}
+		case TypeKindPointer:
+			if !v.validResolvedTypeID(typ.Elem) {
+				v.diags.Error(Span{}, "pointer type "+typ.Name+" has an invalid pointed-to type", "use a resolved element type")
+			}
 		case TypeKindEnum:
 			if !v.validResolvedTypeID(typ.Underlying) || types.Lookup(typ.Underlying).Kind != TypeKindInt {
 				v.diags.Error(Span{}, "enum type "+typ.Name+" has a non-integer underlying type", "use a resolved integer underlying type")
@@ -185,6 +189,16 @@ func (v *MIRVerifier) verifyTypeTable() {
 
 func (v *MIRVerifier) validResolvedTypeID(id TypeID) bool {
 	return int(id) < v.prog.Types.Len() && v.prog.Types.Lookup(id).Kind != TypeKindUnknown
+}
+
+// pointerAssignCompatible reports whether a value of type vt can be stored
+// where a value of type target is expected. Non-nullable pointer values are
+// compatible with nullable pointer slots of the same pointed-to type (the
+// non-null-to-nullable widening).
+func (v *MIRVerifier) pointerAssignCompatible(vt, target TypeID) bool {
+	vtT, ftT := v.prog.Types.Lookup(vt), v.prog.Types.Lookup(target)
+	return vtT.Kind == TypeKindPointer && ftT.Kind == TypeKindPointer &&
+		vtT.Elem == ftT.Elem && strings.HasSuffix(ftT.Name, "?")
 }
 
 func (v *MIRVerifier) verifyGlobalInit() {
@@ -311,12 +325,12 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 	for _, arg := range ins.Args {
 		v.checkUse(arg, b.ID, index, ins.Span, "instruction")
 	}
-	if int(ins.Op) > int(MIRArrayIndex) {
+	if int(ins.Op) > int(MIROpcodeMax) {
 		v.diags.Error(ins.Span, "unknown MIR opcode "+strconv.Itoa(int(ins.Op)), "report this compiler bug")
 		return
 	}
 	v.requireType(ins.Type, ins.Span, "instruction")
-	produces := ins.Op != MIRStoreLocal && ins.Op != MIRStoreGlobal
+	produces := ins.Op != MIRStoreLocal && ins.Op != MIRStoreGlobal && ins.Op != MIRDerefStore
 	if ins.Op == MIRCall && ins.Type == v.prog.Types.Void() {
 		produces = false
 	}
@@ -355,7 +369,7 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 			v.diags.Error(ins.Span, "store.local references unknown local l"+strconv.Itoa(int(ins.Imm.Local)), "use a declared local")
 		} else {
 			vt := v.valueTypes[ins.Args[0]]
-			if vt != lt && vt != v.prog.Types.Unknown() {
+			if vt != lt && vt != v.prog.Types.Unknown() && !v.pointerAssignCompatible(vt, lt) {
 				v.diags.Error(ins.Span, "store.local value type "+v.typeName(vt)+" does not match local type "+v.typeName(lt), "store a value of the local's type")
 			}
 			if ins.Type != lt {
@@ -384,7 +398,7 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		} else if len(ins.Args) != 1 {
 			v.diags.Error(ins.Span, "store.global requires one value argument", "add the stored value")
 		} else {
-			if vt := v.valueTypes[ins.Args[0]]; vt != global.Type && vt != v.prog.Types.Unknown() {
+			if vt := v.valueTypes[ins.Args[0]]; vt != global.Type && vt != v.prog.Types.Unknown() && !v.pointerAssignCompatible(vt, global.Type) {
 				v.diags.Error(ins.Span, "store.global value type "+v.typeName(vt)+" does not match global type "+v.typeName(global.Type), "store a value of the global's type")
 			}
 			if ins.Type != global.Type {
@@ -484,6 +498,95 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		if ins.Imm.Kind != MIRImmNone {
 			v.diags.Error(ins.Span, "array.index takes no immediate operand", "remove the immediate")
 		}
+	case MIRAddrOf:
+		if len(ins.Args) != 0 {
+			v.diags.Error(ins.Span, "addr.of takes no value arguments", "remove the arguments")
+		}
+		if ins.Imm.Kind != MIRImmLocal && ins.Imm.Kind != MIRImmSymbol {
+			v.diags.Error(ins.Span, "addr.of requires a local or symbol operand", "add the addressed entity")
+		} else if v.prog.Types.Lookup(ins.Type).Kind != TypeKindPointer {
+			v.diags.Error(ins.Span, "addr.of result must be a pointer type", "use the pointer to the addressed entity")
+		}
+	case MIRDerefLoad:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "deref.load requires one value argument", "add the pointer value")
+		} else if pt := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); pt.Kind == TypeKindPointer {
+			if ins.Type != pt.Elem {
+				v.diags.Error(ins.Span, "deref.load result type "+v.typeName(ins.Type)+" does not match pointed-to type "+v.typeName(pt.Elem), "use the pointed-to type")
+			}
+		} else if pt.Kind != TypeKindUnknown {
+			v.diags.Error(ins.Span, "deref.load operand type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not a pointer", "use a pointer value")
+		}
+		if ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "deref.load takes no immediate operand", "remove the immediate")
+		}
+	case MIRDerefStore:
+		if len(ins.Args) != 2 {
+			v.diags.Error(ins.Span, "deref.store requires two value arguments", "add the address and the stored value")
+		} else if pt := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); pt.Kind == TypeKindPointer {
+			if vt := v.valueTypes[ins.Args[1]]; vt != pt.Elem && vt != v.prog.Types.Unknown() {
+				v.diags.Error(ins.Span, "deref.store value type "+v.typeName(vt)+" does not match pointed-to type "+v.typeName(pt.Elem), "store a value of the pointed-to type")
+			}
+		} else if pt.Kind != TypeKindUnknown {
+			v.diags.Error(ins.Span, "deref.store first argument type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not a pointer", "use a pointer value")
+		}
+		if ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "deref.store takes no immediate operand", "remove the immediate")
+		}
+	case MIRArrayElemAddr:
+		if len(ins.Args) != 2 {
+			v.diags.Error(ins.Span, "array.elem.addr requires two value arguments", "add the array and index values")
+		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind != TypeKindArray && at.Kind != TypeKindUnknown {
+			v.diags.Error(ins.Span, "array.elem.addr base type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not an array", "use an array value")
+		} else if pt := v.prog.Types.Lookup(ins.Type); pt.Kind == TypeKindPointer && at.Kind == TypeKindArray && pt.Elem != at.Elem {
+			v.diags.Error(ins.Span, "array.elem.addr result type does not point at the array element type", "use the pointer-to-element type")
+		}
+		if ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "array.elem.addr takes no immediate operand", "remove the immediate")
+		}
+	case MIRFieldAddr:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "field.addr requires one value argument", "add the base address")
+		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind == TypeKindPointer {
+			st := v.prog.Types.Lookup(at.Elem)
+			fi := int(ins.Imm.Int)
+			if st.Kind != TypeKindStruct && st.Kind != TypeKindTuple {
+				v.diags.Error(ins.Span, "field.addr base does not point at a record type", "use the address of a struct")
+			} else if fi < 0 || fi >= len(st.Fields) {
+				v.diags.Error(ins.Span, "field.addr references an unknown field index", "use a declared field index")
+			} else if pt := v.prog.Types.Lookup(ins.Type); pt.Kind != TypeKindPointer || pt.Elem != st.Fields[fi].Type {
+				v.diags.Error(ins.Span, "field.addr result does not point at the field type", "use the pointer-to-field type")
+			}
+		} else if ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "field.addr takes no immediate operand", "remove the immediate")
+		}
+	case MIRPtrAdd, MIRPtrSub, MIRPtrDiff:
+		if len(ins.Args) != 2 {
+			v.diags.Error(ins.Span, ins.Op.String()+" requires two value arguments", "add both operands")
+		} else {
+			lt := v.valueTypes[ins.Args[0]]
+			rt := v.valueTypes[ins.Args[1]]
+			ltKind := v.prog.Types.Lookup(lt).Kind
+			rtKind := v.prog.Types.Lookup(rt).Kind
+			if ins.Op == MIRPtrDiff {
+				if (ltKind != TypeKindPointer && lt != v.prog.Types.Unknown()) || (rtKind != TypeKindPointer && rt != v.prog.Types.Unknown()) || (ltKind == TypeKindPointer && lt != rt) {
+					v.diags.Error(ins.Span, "ptr.diff requires two pointers of the same type", "subtract pointers of the same type")
+				}
+				if ins.Type != v.prog.Types.S64() {
+					v.diags.Error(ins.Span, "ptr.diff result must be S64", "use the S64 result contract")
+				}
+			} else {
+				if (ltKind != TypeKindPointer && lt != v.prog.Types.Unknown()) || (rtKind != TypeKindInt && rt != v.prog.Types.Unknown()) {
+					v.diags.Error(ins.Span, ins.Op.String()+" requires a pointer and an integer offset", "use a pointer plus an integer")
+				}
+				if ins.Type != lt {
+					v.diags.Error(ins.Span, ins.Op.String()+" result type must match the pointer type", "use the pointer result type")
+				}
+			}
+		}
+		if ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, ins.Op.String()+" takes no immediate operand", "remove the immediate")
+		}
 	}
 }
 
@@ -529,7 +632,7 @@ func (v *MIRVerifier) checkBinaryCmp(ins *MIRInstr) {
 	}
 	kind := v.prog.Types.Lookup(lt).Kind
 	ordering := ins.Op == MIRCmpLt || ins.Op == MIRCmpGt || ins.Op == MIRCmpLe || ins.Op == MIRCmpGe
-	if ordering && kind != TypeKindInt && kind != TypeKindFloat && kind != TypeKindString {
+	if ordering && kind != TypeKindInt && kind != TypeKindFloat && kind != TypeKindString && kind != TypeKindPointer {
 		v.diags.Error(ins.Span, "ordering comparison is not defined for "+v.typeName(lt), "use a numeric type or ==/!=")
 	}
 	if !ordering && !v.isEqualityComparable(kind) {
@@ -566,7 +669,9 @@ func (v *MIRVerifier) checkConst(ins *MIRInstr) {
 		want = MIRImmBool
 	case TypeKindString:
 		want = MIRImmString
-	case TypeKindInt, TypeKindEnum, TypeKindError:
+	case TypeKindInt, TypeKindEnum, TypeKindError, TypeKindPointer:
+		// Pointers are addresses stored as machine words; the null pointer is
+		// the zero constant.
 		want = MIRImmInt
 	case TypeKindFloat:
 		want = MIRImmFloat
@@ -599,6 +704,10 @@ func (v *MIRVerifier) checkConst(ins *MIRInstr) {
 			if value.Sign() < 0 || value.BitLen() > 16 {
 				v.diags.Error(ins.Span, "error const is outside its 16-bit ordinal representation", "use a declared error member")
 			}
+		} else if t.Kind == TypeKindPointer {
+			if value.Sign() != 0 {
+				v.diags.Error(ins.Span, "pointer const must be null", "store the null pointer as zero")
+			}
 		} else if !fitsIntegerType(rangeType, value) {
 			v.diags.Error(ins.Span, "integer const does not fit "+string(rangeType), "use a value representable by its MIR type")
 		}
@@ -612,7 +721,7 @@ func (v *MIRVerifier) isNumeric(id TypeID) bool {
 
 func (v *MIRVerifier) isEqualityComparable(kind TypeKind) bool {
 	switch kind {
-	case TypeKindBool, TypeKindString, TypeKindInt, TypeKindFloat, TypeKindStruct, TypeKindTuple, TypeKindError, TypeKindArray, TypeKindEnum:
+	case TypeKindBool, TypeKindString, TypeKindInt, TypeKindFloat, TypeKindStruct, TypeKindTuple, TypeKindError, TypeKindArray, TypeKindEnum, TypeKindPointer:
 		return true
 	}
 	return false
@@ -677,7 +786,7 @@ func (v *MIRVerifier) checkStructInit(ins *MIRInstr) {
 	}
 	for i, a := range ins.Args {
 		ft := st.Fields[i].Type
-		if vt := v.valueTypes[a]; vt != ft && vt != v.prog.Types.Unknown() {
+		if vt := v.valueTypes[a]; vt != ft && vt != v.prog.Types.Unknown() && !v.pointerAssignCompatible(vt, ft) {
 			v.diags.Error(ins.Span, "struct.init field "+st.Fields[i].Name+" type "+v.typeName(vt)+" does not match field type "+v.typeName(ft), "use the field's type")
 		}
 	}
@@ -714,7 +823,7 @@ func (v *MIRVerifier) verifyTerminator(fn *MIRFunction, b *MIRBlock) {
 				}
 			} else {
 				v.checkUse(t.Value, b.ID, useIndex, t.Span, "return")
-				if vt := v.valueTypes[t.Value]; vt != fn.Results[0] && vt != v.prog.Types.Unknown() {
+				if vt := v.valueTypes[t.Value]; vt != fn.Results[0] && vt != v.prog.Types.Unknown() && !v.pointerAssignCompatible(vt, fn.Results[0]) {
 					v.diags.Error(t.Span, "return value type "+v.typeName(vt)+" does not match result type "+v.typeName(fn.Results[0]), "return a value of the result type")
 				}
 			}

@@ -1,0 +1,64 @@
+// expect-exit: 0
+// Pointers: '*T' address-of and '.*' dereference, nullable '*T?' pointers with
+// mandatory null checks, pointer arithmetic, pointer fields, and pointers in
+// procedure signatures and error results.
+Some_Error :: error { GENERIC; }
+
+Person :: struct {
+    name: String;
+    age: S64;
+}
+
+Node :: struct {
+    value: S64;
+    next: *Node?;
+}
+
+peek :: proc (p: *S64) -> S64 {
+    return p.*;
+}
+
+double :: proc (v: *S64) -> S64 {
+    return v.* * 2;
+}
+
+make_ptr :: proc (wanted: Bool) -> (*S64 <> Some_Error) {
+    if wanted {
+        v := 42;
+        return *v;
+    }
+    return .GENERIC!;
+}
+
+#entry main :: proc -> S64 {
+    a := 10;
+    a_ptr: *S64 = *a;
+    if a_ptr.* != 10 { return 1; }
+    a_ptr.* = 12;
+    if a != 12 { return 2; }
+
+    arr := []S64.{1, 2, 3};
+    head: *S64 = *arr[0];
+    tail := head + 2;
+    if tail.* != 3 || tail - head != 2 { return 3; }
+
+    person := Person.{name=«ada», age=36};
+    pp: *Person = *person;
+    pp.*.age = 37;
+    if pp.*.age != 37 { return 4; }
+
+    n1 := Node.{value=1, next=null};
+    n2 := Node.{value=2, next=*n1};
+    next_p: *Node? = n2.next;
+    if next_p == null { return 5; }
+    if next_p.*.value != 1 { return 6; }
+
+    p := make_ptr(true) unless catch {
+        return 7;
+    }
+    if p.* != 42 { return 8; }
+
+    if peek(*a) != 12 { return 9; }
+    if double(*a) != 24 { return 10; }
+    return 0;
+}

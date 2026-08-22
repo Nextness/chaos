@@ -1,0 +1,77 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ErrorDecl Some_Error
+    Member GENERIC
+  StructDecl Person
+    Field name: Ident(String)
+    Field age: Ident(S64)
+  StructDecl Node
+    Field value: Ident(S64)
+    Field next: Pointer(*Ident(Node)?)
+  ProcDecl peek
+    Param p: Pointer(*Ident(S64))
+    Results: Ident(S64)
+    Block
+      ReturnStmt Deref(Ident(p))
+  ProcDecl double
+    Param v: Pointer(*Ident(S64))
+    Results: Ident(S64)
+    Block
+      ReturnStmt Binary(* Deref(Ident(v)) Int(2))
+  ProcDecl make_ptr
+    Param wanted: Ident(Bool)
+    Results: Pointer(*Ident(S64)) <> Ident(Some_Error)
+    Block
+      IfStmt condition=Ident(wanted)
+        Block
+          VarDecl v = Int(42) [mutable=true compileTime=false]
+          ReturnStmt Unary(* Ident(v))
+      ReturnStmt ErrorMember(.GENERIC!)
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl a = Int(10) [mutable=true compileTime=false]
+      VarDecl a_ptr: Pointer(*Ident(S64)) = Unary(* Ident(a)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Deref(Ident(a_ptr)) Int(10))
+        Block
+          ReturnStmt Int(1)
+      AssignStmt Deref(Ident(a_ptr)) = Int(12)
+      IfStmt condition=Binary(!= Ident(a) Int(12))
+        Block
+          ReturnStmt Int(2)
+      VarDecl arr = ArrayInit(Ident(S64), Int(1), Int(2), Int(3)) [mutable=true compileTime=false]
+      VarDecl head: Pointer(*Ident(S64)) = Unary(* Index(Ident(arr), Int(0))) [mutable=true compileTime=false]
+      VarDecl tail = Binary(+ Ident(head) Int(2)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(|| Binary(!= Deref(Ident(tail)) Int(3)) Binary(!= Binary(- Ident(tail) Ident(head)) Int(2)))
+        Block
+          ReturnStmt Int(3)
+      VarDecl person = StructInit(Ident(Person), name=String("ada"), age=Int(36)) [mutable=true compileTime=false]
+      VarDecl pp: Pointer(*Ident(Person)) = Unary(* Ident(person)) [mutable=true compileTime=false]
+      AssignStmt Field(Deref(Ident(pp)), age) = Int(37)
+      IfStmt condition=Binary(!= Field(Deref(Ident(pp)), age) Int(37))
+        Block
+          ReturnStmt Int(4)
+      VarDecl n1 = StructInit(Ident(Node), value=Int(1), next=Null()) [mutable=true compileTime=false]
+      VarDecl n2 = StructInit(Ident(Node), value=Int(2), next=Unary(* Ident(n1))) [mutable=true compileTime=false]
+      VarDecl next_p: Pointer(*Ident(Node)?) = Field(Ident(n2), next) [mutable=true compileTime=false]
+      IfStmt condition=Binary(== Ident(next_p) Null())
+        Block
+          ReturnStmt Int(5)
+      IfStmt condition=Binary(!= Field(Deref(Ident(next_p)), value) Int(1))
+        Block
+          ReturnStmt Int(6)
+      UnlessCatchStmt p = Call(Ident(make_ptr), Bool(true))
+        Block
+          ReturnStmt Int(7)
+      IfStmt condition=Binary(!= Deref(Ident(p)) Int(42))
+        Block
+          ReturnStmt Int(8)
+      IfStmt condition=Binary(!= Call(Ident(peek), Unary(* Ident(a))) Int(12))
+        Block
+          ReturnStmt Int(9)
+      IfStmt condition=Binary(!= Call(Ident(double), Unary(* Ident(a))) Int(24))
+        Block
+          ReturnStmt Int(10)
+      ReturnStmt Int(0)

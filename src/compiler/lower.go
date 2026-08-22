@@ -149,8 +149,8 @@ func (l *Lowerer) lookupType(name string) (TypeID, bool) {
 	return l.types.ByName(name)
 }
 
-// typeOfTypeExpr resolves a type expression (an identifier or an array type
-// "[]T") to a TypeID.
+// typeOfTypeExpr resolves a type expression (an identifier, an array type
+// "[]T", or a pointer type "*T" / "*T?") to a TypeID.
 func (l *Lowerer) typeOfTypeExpr(e Expr) TypeID {
 	switch n := e.(type) {
 	case *IdentExpr:
@@ -159,6 +159,8 @@ func (l *Lowerer) typeOfTypeExpr(e Expr) TypeID {
 		}
 	case *ArrayTypeExpr:
 		return l.types.InternArray(l.typeOfTypeExpr(n.Elem))
+	case *PointerTypeExpr:
+		return l.types.InternPointer(l.typeOfTypeExpr(n.Elem), n.Nullable)
 	}
 	return l.types.Unknown()
 }
@@ -306,7 +308,27 @@ func (l *Lowerer) inferASTType(expr Expr) TypeID {
 	case *ParenExpr:
 		return l.inferASTType(n.Inner)
 	case *UnaryExpr:
+		if n.Op == UnaryOpAddr {
+			// Address-of: result type is the pointer to the operand type.
+			return l.types.InternPointer(l.inferASTType(n.Operand), false)
+		}
 		return l.inferASTType(n.Operand)
+	case *DerefExpr:
+		ot := l.inferASTType(n.Operand)
+		if ot != l.types.Unknown() && l.types.Lookup(ot).Kind == TypeKindPointer {
+			return l.types.PointerElemType(ot)
+		}
+		return l.types.Unknown()
+	case *FieldAccessExpr:
+		bt := l.inferASTType(n.Base)
+		if hs, ok := l.hirStructs[bt]; ok {
+			for _, field := range hs.Fields {
+				if field.Name == n.Field {
+					return field.Type
+				}
+			}
+		}
+		return l.types.Unknown()
 	case *BinaryExpr:
 		if n.Op >= BinaryOpLt {
 			return l.types.Bool()
@@ -379,6 +401,11 @@ func (l *Lowerer) semanticTypeID(t Type) TypeID {
 	name := string(t)
 	if strings.HasPrefix(name, "[]") {
 		return l.types.InternArray(l.semanticTypeID(Type(strings.TrimPrefix(name, "[]"))))
+	}
+	if strings.HasPrefix(name, "*") {
+		nullable := strings.HasSuffix(name, "?")
+		elem := strings.TrimSuffix(strings.TrimPrefix(name, "*"), "?")
+		return l.types.InternPointer(l.semanticTypeID(Type(elem)), nullable)
 	}
 	if id, ok := l.lookupType(name); ok {
 		return id
@@ -628,6 +655,9 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 	case *MultiVarDecl:
 		return l.lowerMultiVarDecl(n)
 	case *AssignStmt:
+		if n.Target != nil {
+			return l.lowerTargetAssign(n)
+		}
 		sym := l.lookup(n.Name)
 		t := l.varTypes[sym]
 		value := l.lowerExprAs(n.Value, t)
@@ -671,8 +701,14 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 	case *ContinueStmt:
 		return &HIRContinue{Span_: n.Span_}
 	case *CompoundAssignStmt:
+		if n.Target != nil {
+			return l.lowerTargetCompound(n)
+		}
 		return l.lowerCompoundAssign(n)
 	case *IncDecStmt:
+		if n.Target != nil {
+			return l.lowerTargetIncDec(n)
+		}
 		return l.lowerIncDec(n)
 	case *ProcDecl:
 		l.registerProc(n)
@@ -953,12 +989,155 @@ func (l *Lowerer) lowerCompoundAssign(n *CompoundAssignStmt) HIRStmt {
 	}
 }
 
+// lowerTargetAssign lowers "target = value" for an index, field, or deref
+// target: compute the target's address once and store through it.
+func (l *Lowerer) lowerTargetAssign(n *AssignStmt) HIRStmt {
+	addr := l.addressOf(n.Target)
+	t := l.inferASTType(n.Target)
+	if t == l.types.Unknown() {
+		t = l.inferASTType(n.Value)
+	}
+	value := l.lowerExprAs(n.Value, t)
+	return &HIRAddrStore{Span_: n.Span_, Addr: addr, Value: value, Type: t}
+}
+
+// lowerTargetCompound desugars "target += value" / "target -= value" for a
+// compound target into a read, an operation, and a store through the address.
+func (l *Lowerer) lowerTargetCompound(n *CompoundAssignStmt) HIRStmt {
+	addr := l.addressOf(n.Target)
+	vt := l.valueExpr(n.Target)
+	t := vt.hirType()
+	right := l.lowerExprAs(n.Value, t)
+	return &HIRAddrStore{
+		Span_: n.Span_,
+		Addr:  addr,
+		Value: &HIRBinary{Span_: n.Span_, Op: n.Op, Left: vt, Right: right, Type: t},
+		Type:  t,
+	}
+}
+
+// lowerTargetIncDec desugars "target++" / "target--" for a non-identifier
+// target into a read, an add/sub of one, and a store through the address.
+// A pointer target steps by one element (the literal is typed S64).
+func (l *Lowerer) lowerTargetIncDec(n *IncDecStmt) HIRStmt {
+	addr := l.addressOf(n.Target)
+	vt := l.valueExpr(n.Target)
+	t := vt.hirType()
+	oneType := t
+	if l.types.Lookup(t).Kind == TypeKindPointer {
+		oneType = l.types.S64()
+	}
+	one := &HIRConst{Span_: n.Span_, Type: oneType, Kind: ConstInt, Int: 1}
+	return &HIRAddrStore{
+		Span_: n.Span_,
+		Addr:  addr,
+		Value: &HIRBinary{Span_: n.Span_, Op: n.Op, Left: vt, Right: one, Type: t},
+		Type:  t,
+	}
+}
+
+// valueExpr produces the HIR expression that reads the current value of an
+// lvalue expression (index, field, or deref target).
+func (l *Lowerer) valueExpr(target Expr) HIRExpr {
+	switch n := target.(type) {
+	case *IdentExpr:
+		sym := l.lookup(n.Name)
+		return &HIRRef{Span_: n.Span_, Type: l.varTypes[sym], Symbol: sym}
+	case *IndexExpr:
+		base := l.lowerExpr(n.Base)
+		idx := l.lowerExpr(n.Index)
+		return &HIRIndex{Span_: n.Span_, Base: base, Index: idx, Type: l.inferASTType(n)}
+	case *FieldAccessExpr:
+		return l.lowerExpr(n)
+	case *DerefExpr:
+		return l.lowerExpr(n)
+	}
+	return l.poison(target.nodeSpan(), "unsupported lvalue read")
+}
+
+// addressOf produces the HIR expression computing the address of an lvalue:
+// a local/global, a dereferenced pointer (its address IS the pointer value),
+// an array element, or a struct field.
+func (l *Lowerer) addressOf(target Expr) HIRExpr {
+	switch n := target.(type) {
+	case *IdentExpr:
+		sym := l.lookup(n.Name)
+		if sym == NoSymbol {
+			return l.poison(n.Span_, "unresolved lvalue '"+n.Name+"'")
+		}
+		return &HIRAddrOf{Span_: n.Span_, Operand: &HIRRef{Span_: n.Span_, Symbol: sym, Type: l.varTypes[sym]}, Type: l.types.InternPointer(l.varTypes[sym], false)}
+	case *DerefExpr:
+		// The address behind "p.*" is the pointer value of p, loaded as a
+		// value; no address computation is needed.
+		return l.lowerExpr(n.Operand)
+	case *IndexExpr:
+		arr := l.lowerExpr(n.Base)
+		idx := l.lowerExpr(n.Index)
+		elemType := l.typeOfIndexElem(n)
+		return &HIRArrayElemAddr{Span_: n.Span_, Array: arr, Index: idx, Type: l.types.InternPointer(elemType, false)}
+	case *FieldAccessExpr:
+		baseAddr := l.addressOf(n.Base)
+		idx := l.typeIndex(n.Base, n.Field)
+		if idx < 0 {
+			return l.poison(n.Span_, "unknown struct field '"+n.Field+"'")
+		}
+		return &HIRFieldAddr{Span_: n.Span_, Addr: baseAddr, Field: idx, Type: l.types.InternPointer(l.typeOfField(n.Base, n.Field), false)}
+	}
+	return l.poison(target.nodeSpan(), "unsupported address-of target")
+}
+
+// typeIndex returns the declaration index of the named field on the struct
+// type of base, or -1 when base is not a struct.
+func (l *Lowerer) typeIndex(base Expr, field string) int {
+	bt := l.inferASTType(base)
+	hs, ok := l.hirStructs[bt]
+	if !ok {
+		return -1
+	}
+	for i, f := range hs.Fields {
+		if f.Name == field {
+			return i
+		}
+	}
+	return -1
+}
+
+// typeOfField returns the resolved field type of the named field on the
+// struct type of base, or Unknown when base is not a struct.
+func (l *Lowerer) typeOfField(base Expr, field string) TypeID {
+	bt := l.inferASTType(base)
+	hs, ok := l.hirStructs[bt]
+	if !ok {
+		return l.types.Unknown()
+	}
+	for _, f := range hs.Fields {
+		if f.Name == field {
+			return f.Type
+		}
+	}
+	return l.types.Unknown()
+}
+
+// typeOfIndexElem returns the element type of the indexed array.
+func (l *Lowerer) typeOfIndexElem(n *IndexExpr) TypeID {
+	at := l.inferASTType(n.Base)
+	if at != l.types.Unknown() && l.types.Lookup(at).Kind == TypeKindArray {
+		return l.types.Lookup(at).Elem
+	}
+	return l.inferASTType(n)
+}
+
 // lowerIncDec desugars "name++" / "++name" into "name = name + 1" (and the
-// decrement forms into "name = name - 1").
+// decrement forms into "name = name - 1"). A pointer target increments by one
+// element: the literal is typed S64 so the MIR ptr.* opcodes apply the scale.
 func (l *Lowerer) lowerIncDec(n *IncDecStmt) HIRStmt {
 	sym := l.lookup(n.Name)
 	t := l.varTypes[sym]
-	one := &HIRConst{Span_: n.Span_, Type: t, Kind: ConstInt, Int: 1}
+	oneType := t
+	if l.types.Lookup(t).Kind == TypeKindPointer {
+		oneType = l.types.S64()
+	}
+	one := &HIRConst{Span_: n.Span_, Type: oneType, Kind: ConstInt, Int: 1}
 	return &HIRAssign{
 		Span_:  n.Span_,
 		Target: sym,
@@ -1191,6 +1370,8 @@ func (l *Lowerer) zeroValue(t TypeID, span Span) HIRExpr {
 			fields[i] = HIRStructInitField{Span_: span, Field: field.Symbol, Value: value}
 		}
 		return &HIRStructInit{Span_: span, Struct: NoSymbol, Type: t, Fields: fields}
+	case TypeKindPointer:
+		return &HIRConst{Span_: span, Type: t, Kind: ConstInt, Int: 0}
 	case TypeKindVoid:
 		return &HIRZero{Span_: span, Type: t}
 	}
@@ -1247,7 +1428,17 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 	case *BinaryExpr:
 		return l.lowerBinary(n)
 	case *UnaryExpr:
+		if n.Op == UnaryOpAddr {
+			// '*target' is the address of an lvalue.
+			return l.addressOf(n.Operand)
+		}
 		return l.lowerUnary(n)
+	case *NullLitExpr:
+		t := l.inferASTType(n)
+		if t == l.types.Unknown() || l.types.Lookup(t).Kind != TypeKindPointer {
+			return l.poison(n.Span_, "null has no pointer target type")
+		}
+		return &HIRConst{Span_: n.Span_, Type: t, Kind: ConstInt, Int: 0}
 	case *CallExpr:
 		return l.lowerCall(n)
 	case *StructInitExpr:
@@ -1286,6 +1477,33 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		idx := l.lowerExpr(n.Index)
 		elemType := l.types.Lookup(base.hirType()).Elem
 		return &HIRIndex{Span_: n.Span_, Base: base, Index: idx, Type: elemType}
+	case *DerefExpr:
+		operand := l.lowerExpr(n.Operand)
+		t := l.inferASTType(n)
+		if t == l.types.Unknown() {
+			t = l.types.PointerElemType(operand.hirType())
+		}
+		return &HIRDeref{Span_: n.Span_, Operand: operand, Type: t}
+	case *FieldAccessExpr:
+		// A base that names an enum type is an enum member reference and
+		// lowers to the member's constant.
+		if name := enumBaseName(n.Base); name != "" {
+			if t := l.typeOfTypeExpr(&IdentExpr{Name: name}); t != l.types.Unknown() && l.types.Lookup(t).Kind == TypeKindEnum {
+				return l.lowerEnumMember(&EnumMemberExpr{
+					Span_:    n.Span_,
+					TypeName: name,
+					Name:     n.Field,
+				}, name)
+			}
+		}
+		// A field read on a struct value (including one produced by a deref).
+		base := l.lowerExpr(n.Base)
+		ft := l.inferASTType(n)
+		idx := l.typeIndex(n.Base, n.Field)
+		if idx < 0 {
+			return l.poison(n.Span_, "unknown struct field '"+n.Field+"'")
+		}
+		return &HIRFieldLoad{Span_: n.Span_, Base: base, Field: idx, Type: ft}
 	case *LoopBuiltinExpr:
 		if n.Name == "this" && l.rangeThis != nil {
 			return l.rangeThis

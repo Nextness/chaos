@@ -615,3 +615,85 @@ func TestLowerIfxLiteralAdaptation(t *testing.T) {
 		t.Errorf("then branch type = %s, want U8", typeName(hir, ifx.Then.hirType()))
 	}
 }
+
+func TestLowerPointerExprs(t *testing.T) {
+	hir, _ := lowerSource(t, "#entry main :: proc -> S64 {\n    a := 10;\n    p: *S64 = *a;\n    v := p.*;\n    p.* = 11;\n    return v;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	if len(p.Body.Stmts) != 5 {
+		t.Fatalf("expected 5 statements, got %d", len(p.Body.Stmts))
+	}
+	// b: *S64 = *a  → HIRAddrOf over an HIRRef.
+	addrDecl, ok := p.Body.Stmts[1].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 1 = %T, want *HIRVarDecl", p.Body.Stmts[1])
+	}
+	if typeName(hir, addrDecl.Type) != "*S64" {
+		t.Errorf("addressed declaration type = %s, want *S64", typeName(hir, addrDecl.Type))
+	}
+	addrOf, ok := addrDecl.Init.(*HIRAddrOf)
+	if !ok {
+		t.Fatalf("init of addressed binding = %T, want *HIRAddrOf", addrDecl.Init)
+	}
+	if _, ok := addrOf.Operand.(*HIRRef); !ok {
+		t.Fatalf("addr.of operand = %T, want *HIRRef", addrOf.Operand)
+	}
+	// v := p.* reads the pointed-to S64.
+	readDecl, ok := p.Body.Stmts[2].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 2 = %T, want *HIRVarDecl", p.Body.Stmts[2])
+	}
+	if deref, ok := readDecl.Init.(*HIRDeref); !ok {
+		t.Fatalf("read init = %T, want *HIRDeref", readDecl.Init)
+	} else if typeName(hir, deref.Type) != "S64" {
+		t.Errorf("deref type = %s, want S64", typeName(hir, deref.Type))
+	}
+	// p.* = 11 stores through the address expression.
+	store, ok := p.Body.Stmts[3].(*HIRAddrStore)
+	if !ok {
+		t.Fatalf("statement 3 = %T, want *HIRAddrStore", p.Body.Stmts[3])
+	}
+	if _, ok := store.Addr.(*HIRRef); !ok {
+		t.Fatalf("store addr = %T, want *HIRRef (pointer value)", store.Addr)
+	}
+	if typeName(hir, store.Type) != "S64" {
+		t.Errorf("store type = %s, want S64", typeName(hir, store.Type))
+	}
+}
+
+func TestLowerPointerFieldAccess(t *testing.T) {
+	// Field access lowers to HIRFieldLoad over a deref and to an address
+	// store for "pp.*.field = v", plus a field.addr for the assignment.
+	hir, _ := lowerSource(t, "Person :: struct { name: String; age: S64; }\n#entry main :: proc -> S64 {\n    person := Person.{name=«x», age=7};\n    pp: *Person = *person;\n    v := pp.*.age;\n    pp.*.age = 9;\n    return v;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	readDecl, ok := p.Body.Stmts[2].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 2 = %T, want *HIRVarDecl", p.Body.Stmts[2])
+	}
+	fl, ok := readDecl.Init.(*HIRFieldLoad)
+	if !ok {
+		t.Fatalf("field read init = %T, want *HIRFieldLoad", readDecl.Init)
+	}
+	if fl.Field != 1 {
+		t.Errorf("field index = %d, want 1 (age)", fl.Field)
+	}
+	if _, ok := fl.Base.(*HIRDeref); !ok {
+		t.Fatalf("field base = %T, want *HIRDeref", fl.Base)
+	}
+	store, ok := p.Body.Stmts[3].(*HIRAddrStore)
+	if !ok {
+		t.Fatalf("statement 3 = %T, want *HIRAddrStore", p.Body.Stmts[3])
+	}
+	fieldAddr, ok := store.Addr.(*HIRFieldAddr)
+	if !ok {
+		t.Fatalf("store addr = %T, want *HIRFieldAddr", store.Addr)
+	}
+	if fieldAddr.Field != 1 {
+		t.Errorf("field.addr index = %d, want 1", fieldAddr.Field)
+	}
+}

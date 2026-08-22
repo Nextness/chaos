@@ -34,9 +34,13 @@ func WalkAST(program *Program, visit func(Node) bool) {
 		case *MultiVarDecl:
 			walkNode(n.Init)
 		case *AssignStmt:
+			walkNode(n.Target)
 			walkNode(n.Value)
 		case *CompoundAssignStmt:
+			walkNode(n.Target)
 			walkNode(n.Value)
+		case *IncDecStmt:
+			walkNode(n.Target)
 		case *ReturnStmt:
 			for _, value := range n.Values {
 				walkNode(value)
@@ -119,6 +123,8 @@ func WalkAST(program *Program, visit func(Node) bool) {
 			walkNode(n.Value)
 		case *ArrayTypeExpr:
 			walkNode(n.Elem)
+		case *PointerTypeExpr:
+			walkNode(n.Elem)
 		case *ArrayInitExpr:
 			walkNode(n.Elem)
 			for _, item := range n.Items {
@@ -127,13 +133,17 @@ func WalkAST(program *Program, visit func(Node) bool) {
 		case *IndexExpr:
 			walkNode(n.Base)
 			walkNode(n.Index)
+		case *DerefExpr:
+			walkNode(n.Operand)
+		case *FieldAccessExpr:
+			walkNode(n.Base)
 		case *IfxExpr:
 			walkNode(n.Condition)
 			walkNode(n.Then)
 			walkNode(n.Else)
 		case *IdentExpr, *IntExpr, *FloatExpr, *StringExpr, *BoolExpr,
-			*LoopBuiltinExpr, *ErrorExpr, *ErrorMemberExpr, *EnumMemberExpr,
-			*BreakStmt, *ContinueStmt, *IncDecStmt, *ErrorMember:
+			*NullLitExpr, *LoopBuiltinExpr, *ErrorExpr, *ErrorMemberExpr,
+			*EnumMemberExpr, *BreakStmt, *ContinueStmt, *ErrorMember:
 			// Leaves.
 		}
 	}

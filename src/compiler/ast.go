@@ -81,6 +81,18 @@ func (e *BoolExpr) nodeSpan() Span {
 
 func (e *BoolExpr) exprNode() {}
 
+// NullLitExpr is the null literal. It is only valid where a nullable pointer
+// type is expected.
+type NullLitExpr struct {
+	Span_ Span
+}
+
+func (e *NullLitExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *NullLitExpr) exprNode() {}
+
 // BinaryOp enumerates all binary operators.
 type BinaryOp uint8
 
@@ -152,8 +164,9 @@ func (e *BinaryExpr) exprNode() {}
 type UnaryOp uint8
 
 const (
-	UnaryOpNeg UnaryOp = iota // -
-	UnaryOpNot                // !
+	UnaryOpNeg  UnaryOp = iota // -
+	UnaryOpNot                 // !
+	UnaryOpAddr                // * (address-of, lvalue operand)
 )
 
 func (op UnaryOp) String() string {
@@ -162,6 +175,8 @@ func (op UnaryOp) String() string {
 		return "-"
 	case UnaryOpNot:
 		return "!"
+	case UnaryOpAddr:
+		return "*"
 	default:
 		return "?"
 	}
@@ -244,6 +259,49 @@ func (e *ArrayTypeExpr) nodeSpan() Span {
 }
 
 func (e *ArrayTypeExpr) exprNode() {}
+
+// PointerTypeExpr is a pointer type expression: "*T" or "*T?" for a nullable
+// pointer. Elem is the pointed-to type; Nullable is true when the pointer
+// itself may hold null. Only pointer types may be nullable.
+type PointerTypeExpr struct {
+	Span_    Span
+	Elem     Expr
+	Nullable bool
+}
+
+func (e *PointerTypeExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *PointerTypeExpr) exprNode() {}
+
+// DerefExpr is a pointer dereference: "base.*". The pointer must be provably
+// non-null (either a non-nullable type or narrowed by a null check).
+type DerefExpr struct {
+	Span_   Span
+	Operand Expr
+}
+
+func (e *DerefExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *DerefExpr) exprNode() {}
+
+// FieldAccessExpr reads a struct field: "base.field". Field reads produce the
+// field value; as an assignment target the read is replaced by a write.
+type FieldAccessExpr struct {
+	Span_     Span
+	Base      Expr
+	Field     string
+	FieldSpan Span
+}
+
+func (e *FieldAccessExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *FieldAccessExpr) exprNode() {}
 
 // ArrayInitExpr is an array literal: "[]T.{item, item, ...}". Elem is the
 // element type expression; Items holds the element values.
@@ -347,6 +405,7 @@ type AssignStmt struct {
 	Span_    Span
 	Name     string
 	NameSpan Span
+	Target   Expr // non-nil for index/field/deref targets; Name holds the identifier target otherwise
 	Value    Expr
 }
 
@@ -504,6 +563,7 @@ type CompoundAssignStmt struct {
 	Span_    Span
 	Name     string
 	NameSpan Span
+	Target   Expr // non-nil for index/field/deref targets
 	Op       BinaryOp
 	Value    Expr
 }
@@ -522,6 +582,7 @@ type IncDecStmt struct {
 	Span_    Span
 	Name     string
 	NameSpan Span
+	Target   Expr // non-nil for index/field/deref targets
 	Op       BinaryOp
 	Prefix   bool
 }

@@ -539,3 +539,60 @@ func TestSemanticTokensIfx(t *testing.T) {
 		t.Errorf("semantic data = %v, want %v", got, want)
 	}
 }
+
+func TestSemanticTokensPointers(t *testing.T) {
+	// The null keyword is a keyword; pointer type elements keep their type
+	// tokens; dereference operands render as variables.
+	source := "main :: proc -> S64 {\n\tp: *S64? = null;\n\tx := p.*;\n\treturn x;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want int
+	}{
+		{0, 0, semTypeFunction},   // main
+		{0, 8, semTypeKeyword},    // proc
+		{0, 16, semTypeType},      // S64 (result type)
+		{0, 20, semTypeDelimiter}, // {
+		{1, 1, semTypeVariable},   // p
+		{1, 4, semTypeType},       // * (pointer marker)
+		{1, 5, semTypeType},       // S64 (inside *S64?)
+		{1, 8, semTypeType},       // ? (nullable marker)
+		{1, 12, semTypeKeyword},   // null
+		{2, 1, semTypeVariable},   // x
+		{2, 6, semTypeVariable},   // p (deref operand)
+		{3, 1, semTypeKeyword},    // return
+		{3, 8, semTypeVariable},   // x
+		{4, 0, semTypeDelimiter},  // }
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want {
+			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}
+
+func TestSemanticTokensPointerProcSignature(t *testing.T) {
+	// The '*' and '?' in procedure parameter and result types are type
+	// tokens, matching the user-reported case:
+	//   another_proc :: proc (param1: *String) -> *String { ... }
+	source := "another_proc :: proc (param1: *String) -> *String {\n    return param1;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want int
+	}{
+		{0, 0, semTypeFunction},   // another_proc
+		{0, 16, semTypeKeyword},   // proc
+		{0, 22, semTypeParameter}, // param1
+		{0, 30, semTypeType},      // * (param pointer marker)
+		{0, 31, semTypeType},      // String (param pointed-to type)
+		{0, 42, semTypeType},      // * (result pointer marker)
+		{0, 43, semTypeType},      // String (result pointed-to type)
+		{1, 11, semTypeVariable},  // param1 (returned)
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want {
+			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}

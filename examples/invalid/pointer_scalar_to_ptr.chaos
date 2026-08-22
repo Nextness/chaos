@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: cannot assign
+#entry main :: proc -> S64 {
+    p: *S64 = 10;
+    return 0;
+}

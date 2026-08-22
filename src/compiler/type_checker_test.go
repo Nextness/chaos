@@ -1121,3 +1121,125 @@ main :: proc -> S64 { return A + B + C + D; }
 		t.Fatalf("branch overflow was not reported: %v", diags)
 	}
 }
+
+func TestTypeCheckPointersValid(t *testing.T) {
+	valid := `
+Person :: struct { name: String; age: S64; next: *Person?; }
+bump :: proc (p: *S64) -> S64 { return p.*; }
+pick :: proc (p: *S64?) -> *S64? {
+    if p == null { return null; }
+    return p;
+}
+#entry main :: proc -> S64 {
+    a := 10;
+    b: *S64 = *a;
+    c := b.*;
+    b.* = 42;
+    person := Person.{name=«x», age=7};
+    pp: *Person = *person;
+    pp.*.age = 9;
+    if pp.*.age == 9 && c == 42 { return 0; }
+    n: *S64? = null;
+    if n == null { return 1; }
+    return 2;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid pointer program failed: %v", diags)
+	}
+}
+
+func TestTypeCheckPointerArithmetic(t *testing.T) {
+	valid := `
+#entry main :: proc -> S64 {
+	arr := []S64.{10, 20, 30};
+	p: *S64 = *arr[0];
+	q := p + 2;
+	back := q - 1;
+	if back == p && q > p && p < q && q != p { return 0; }
+	return 1;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid pointer arithmetic failed: %v", diags)
+	}
+
+	// A non-nullable pointer cannot hold null.
+	nn := "#entry main :: proc -> S64 { a: *S64 = null; return 0; }"
+	if diags := typeCheckSource(t, nn); !hasError(diags, "cannot assign null to a non-nullable pointer") {
+		t.Fatalf("null to non-nullable pointer was not reported: %v", diags)
+	}
+}
+
+func TestTypeCheckPointerNullFlow(t *testing.T) {
+	// A nullable pointer must be proved non-null before dereference or before
+	// being passed to a non-nullable parameter.
+	valid := `
+use :: proc (p: *S64) -> S64 { return p.*; }
+#entry main :: proc -> S64 {
+	p: *S64? = null;
+	if p == null { return 1; }
+	x := p.*;
+	y := use(p);
+	return x + y;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("null-checked pointer use failed: %v", diags)
+	}
+
+	dang := `
+use :: proc (p: *S64) -> S64 { return p.*; }
+#entry main :: proc -> S64 {
+	p: *S64? = null;
+	return use(p);
+}
+`
+	if diags := typeCheckSource(t, dang); !hasError(diags, "cannot assign the nullable pointer") {
+		t.Fatalf("nullable into non-nullable parameter was not reported: %v", diags)
+	}
+
+	unchecked := "#entry main :: proc -> S64 { p: *S64? = null; return p.*; }"
+	if diags := typeCheckSource(t, unchecked); !hasError(diags, "cannot dereference") {
+		t.Fatalf("deref of unchecked nullable pointer was not reported: %v", diags)
+	}
+}
+
+func TestTypeCheckPointerMisc(t *testing.T) {
+	// Scalar to pointer and pointer to scalar are rejected.
+	bad := "#entry main :: proc -> S64 { a: *S64 = 10; return 0; }"
+	if diags := typeCheckSource(t, bad); !hasError(diags, "cannot assign") {
+		t.Fatalf("scalar literal to pointer was not reported: %v", diags)
+	}
+
+	// Non-nullable pointers cannot be compared to null.
+	nn := "#entry main :: proc -> S64 { a: *S64; if a == null { return 0; } return 1; }"
+	if diags := typeCheckSource(t, nn); !hasError(diags, "cannot compare a non-nullable pointer with null") {
+		t.Fatalf("non-nullable == null was not reported: %v", diags)
+	}
+
+	// Pointers are runtime-only: compile-time bindings reject them.
+	ct := "#entry main :: proc -> S64 { a: S64 = 1; x :: *a; return 0; }"
+	if diags := typeCheckSource(t, ct); !hasError(diags, "pointers are only available at runtime") {
+		t.Fatalf("compile-time pointer was not reported: %v", diags)
+	}
+
+	// Self-referential structs are allowed only through a nullable pointer.
+	selfref := "Node :: struct { next: *Node?; } main :: proc { n: Node; }"
+	if diags := typeCheckSource(t, selfref); diags.HasErrors() {
+		t.Fatalf("valid self-referential struct failed: %v", diags)
+	}
+	badSelf := "Node :: struct { next: *Node; }"
+	if diags := typeCheckSource(t, badSelf); !hasError(diags, "infinite size") {
+		t.Fatalf("non-nullable self-reference was not rejected: %v", diags)
+	}
+
+	// Qualified enum member references still resolve through field access.
+	enumOK := `
+Color :: enum { RED: U8 = 1; GREEN; }
+main :: proc { c: Color = Color.GREEN; }
+`
+	if diags := typeCheckSource(t, enumOK); diags.HasErrors() {
+		t.Fatalf("enum member through field access failed: %v", diags)
+	}
+}

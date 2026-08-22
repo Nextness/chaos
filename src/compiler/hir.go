@@ -248,6 +248,71 @@ func (e *HIRFieldLoad) hirExprNode()    {}
 func (e *HIRFieldLoad) hirSpan() Span   { return e.Span_ }
 func (e *HIRFieldLoad) hirType() TypeID { return e.Type }
 
+// HIRDeref loads a value through a pointer: "p.*". Type is the pointed-to
+// element type. The pointer must be null-checked before this node may reach
+// lowering (enforced during type checking).
+type HIRDeref struct {
+	Span_   Span
+	Operand HIRExpr
+	Type    TypeID
+}
+
+func (e *HIRDeref) hirExprNode()    {}
+func (e *HIRDeref) hirSpan() Span   { return e.Span_ }
+func (e *HIRDeref) hirType() TypeID { return e.Type }
+
+// HIRAddrOf computes the address of an lvalue (a local, global, or the value
+// behind a dereference). Type is the resulting pointer type "*Elem".
+type HIRAddrOf struct {
+	Span_   Span
+	Operand HIRExpr
+	Type    TypeID
+}
+
+func (e *HIRAddrOf) hirExprNode()    {}
+func (e *HIRAddrOf) hirSpan() Span   { return e.Span_ }
+func (e *HIRAddrOf) hirType() TypeID { return e.Type }
+
+// HIRFieldAddr computes the address of a field inside the struct at a
+// pointer: "addr + offset(field)". Addr is an address HIRExpr; Type is the
+// pointed-to field type (a pointer type).
+type HIRFieldAddr struct {
+	Span_ Span
+	Addr  HIRExpr
+	Field int
+	Type  TypeID
+}
+
+func (e *HIRFieldAddr) hirExprNode()    {}
+func (e *HIRFieldAddr) hirSpan() Span   { return e.Span_ }
+func (e *HIRFieldAddr) hirType() TypeID { return e.Type }
+
+// HIRArrayElemAddr computes the address of the element at Index inside the
+// array value Array. Type is the pointer-to-element type.
+type HIRArrayElemAddr struct {
+	Span_ Span
+	Array HIRExpr
+	Index HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRArrayElemAddr) hirExprNode()    {}
+func (e *HIRArrayElemAddr) hirSpan() Span   { return e.Span_ }
+func (e *HIRArrayElemAddr) hirType() TypeID { return e.Type }
+
+// HIRAddrStore stores a value through an address expression (the target of an
+// assignment to an array element, struct field, or dereferenced pointer).
+// Type is the stored value's type.
+type HIRAddrStore struct {
+	Span_ Span
+	Addr  HIRExpr
+	Value HIRExpr
+	Type  TypeID
+}
+
+func (s *HIRAddrStore) hirStmtNode()  {}
+func (s *HIRAddrStore) hirSpan() Span { return s.Span_ }
+
 // ConstKind classifies an HIRConst literal.
 type ConstKind uint8
 

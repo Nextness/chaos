@@ -90,7 +90,19 @@ const (
 	MIRArrayInit
 	MIRArrayLen
 	MIRArrayIndex
+	MIRAddrOf
+	MIRDerefLoad
+	MIRDerefStore
+	MIRArrayElemAddr
+	MIRFieldAddr
+	MIRPtrAdd
+	MIRPtrSub
+	MIRPtrDiff
 )
+
+// MIROpcodeMax is the largest valid MIROpcode. The verifier uses it to reject
+// out-of-range opcodes without depending on a parallel name table.
+const MIROpcodeMax = MIRPtrDiff
 
 // String returns the textual name of an opcode.
 func (op MIROpcode) String() string {
@@ -149,6 +161,22 @@ func (op MIROpcode) String() string {
 		return "array.len"
 	case MIRArrayIndex:
 		return "array.index"
+	case MIRAddrOf:
+		return "addr.of"
+	case MIRDerefLoad:
+		return "deref.load"
+	case MIRDerefStore:
+		return "deref.store"
+	case MIRArrayElemAddr:
+		return "array.elem.addr"
+	case MIRFieldAddr:
+		return "field.addr"
+	case MIRPtrAdd:
+		return "ptr.add"
+	case MIRPtrSub:
+		return "ptr.sub"
+	case MIRPtrDiff:
+		return "ptr.diff"
 	}
 	return "?"
 }

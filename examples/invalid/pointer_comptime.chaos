@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: pointers are only available at runtime
+#entry main :: proc -> S64 {
+    a := 1;
+    x :: *a;
+    return 0;
+}
