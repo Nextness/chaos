@@ -54,6 +54,7 @@ type TypeChecker struct {
 	procTypes              map[*ProcDecl]Type
 	typeProcs              map[Type]*ProcDecl
 	nextSemanticID         int
+	ifxContext             bool // ifx is valid only as the value of an assignment or return
 }
 
 // declarationScope is the lexical compile-time namespace. Procedures and
@@ -497,6 +498,10 @@ func (tc *TypeChecker) collectInitializerIdentifiers(expr Expr, expected Type, n
 		for _, item := range n.Items {
 			tc.collectInitializerIdentifiers(item, elem, names, visiting)
 		}
+	case *IfxExpr:
+		tc.collectInitializerIdentifiers(n.Condition, TypeBool, names, visiting)
+		tc.collectInitializerIdentifiers(n.Then, expected, names, visiting)
+		tc.collectInitializerIdentifiers(n.Else, expected, names, visiting)
 	case *IndexExpr:
 		tc.collectInitializerIdentifiers(n.Base, TypeUnknown, names, visiting)
 		tc.collectInitializerIdentifiers(n.Index, TypeUnknown, names, visiting)
@@ -687,7 +692,9 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 			tc.diags.Error(n.NameSpan, "cannot assign to immutable binding '"+n.Name+"'", "declare it with ':=' if it must change")
 			return
 		}
-		tc.checkAssign(n.Span_, binding.Type, n.Value)
+		tc.withIfxContext(n.Value, func() {
+			tc.checkAssign(n.Span_, binding.Type, n.Value)
+		})
 		binding.Initialized = true
 		tc.setBinding(n.Name, binding)
 	case *ReturnStmt:
@@ -1232,6 +1239,8 @@ func (tc *TypeChecker) isConstExpr(expr Expr, visiting map[string]bool) bool {
 			}
 		}
 		return true
+	case *IfxExpr:
+		return tc.isConstExpr(n.Condition, visiting) && tc.isConstExpr(n.Then, visiting) && tc.isConstExpr(n.Else, visiting)
 	case *StructInitExpr:
 		for _, field := range n.Fields {
 			if !tc.isConstExpr(field.Value, visiting) {
@@ -1369,6 +1378,15 @@ func (tc *TypeChecker) evalConstInt(expr Expr, target Type, visiting map[Expr]bo
 		value, known, fault := tc.evalConstInt(binding.ConstExpr, target, visiting)
 		delete(visiting, expr)
 		return value, known, fault
+	case *IfxExpr:
+		cond, known := tc.evalConstBool(n.Condition, visiting)
+		if !known {
+			return nil, false, nil
+		}
+		if cond {
+			return tc.evalConstInt(n.Then, target, visiting)
+		}
+		return tc.evalConstInt(n.Else, target, visiting)
 	}
 	return nil, false, nil
 }
@@ -1403,6 +1421,9 @@ func (tc *TypeChecker) markConstIntType(expr Expr, target Type, visiting map[Exp
 	case *BinaryExpr:
 		tc.markConstIntType(n.Left, target, visiting)
 		tc.markConstIntType(n.Right, target, visiting)
+	case *IfxExpr:
+		tc.markConstIntType(n.Then, target, visiting)
+		tc.markConstIntType(n.Else, target, visiting)
 	}
 }
 
@@ -1473,8 +1494,108 @@ func (tc *TypeChecker) evalConstFloat(expr Expr, target Type, visiting map[Expr]
 		value, known, fault := tc.evalConstFloat(binding.ConstExpr, target, visiting)
 		delete(visiting, expr)
 		return value, known, fault
+	case *IfxExpr:
+		cond, known := tc.evalConstBool(n.Condition, visiting)
+		if !known {
+			return 0, false, nil
+		}
+		if cond {
+			return tc.evalConstFloat(n.Then, target, visiting)
+		}
+		return tc.evalConstFloat(n.Else, target, visiting)
 	}
 	return 0, false, nil
+}
+
+// evalConstBool evaluates a compile-time-known Bool expression: literals,
+// negation, logical operators, integer and floating-point comparisons, and
+// references to compile-time Bool bindings. It returns false when the
+// expression is not compile-time-known.
+func (tc *TypeChecker) evalConstBool(expr Expr, visiting map[Expr]bool) (bool, bool) {
+	if expr == nil || visiting[expr] {
+		return false, false
+	}
+	switch n := expr.(type) {
+	case *BoolExpr:
+		return n.Value, true
+	case *ParenExpr:
+		return tc.evalConstBool(n.Inner, visiting)
+	case *UnaryExpr:
+		if n.Op == UnaryOpNot {
+			value, known := tc.evalConstBool(n.Operand, visiting)
+			return !value, known
+		}
+	case *BinaryExpr:
+		switch n.Op {
+		case BinaryOpAnd, BinaryOpOr:
+			left, leftOK := tc.evalConstBool(n.Left, visiting)
+			right, rightOK := tc.evalConstBool(n.Right, visiting)
+			if !leftOK || !rightOK {
+				return false, false
+			}
+			if n.Op == BinaryOpAnd {
+				return left && right, true
+			}
+			return left || right, true
+		case BinaryOpLt, BinaryOpGt, BinaryOpLe, BinaryOpGe, BinaryOpEq, BinaryOpNeq:
+			leftInt, leftIntOK, leftIntFault := tc.evalConstInt(n.Left, TypeUnknown, visiting)
+			rightInt, rightIntOK, rightIntFault := tc.evalConstInt(n.Right, TypeUnknown, visiting)
+			if leftIntOK && leftIntFault == nil && rightIntOK && rightIntFault == nil {
+				return compareConstInts(n.Op, leftInt, rightInt), true
+			}
+			leftFloat, leftFloatOK, leftFloatFault := tc.evalConstFloat(n.Left, TypeUnknown, visiting)
+			rightFloat, rightFloatOK, rightFloatFault := tc.evalConstFloat(n.Right, TypeUnknown, visiting)
+			if leftFloatOK && leftFloatFault == nil && rightFloatOK && rightFloatFault == nil {
+				return compareConstFloats(n.Op, leftFloat, rightFloat), true
+			}
+		}
+	case *IdentExpr:
+		binding, _, ok := tc.lookupBinding(n.Name)
+		if !ok || !binding.CompileTime || binding.ConstExpr == nil {
+			return false, false
+		}
+		visiting[expr] = true
+		value, known := tc.evalConstBool(binding.ConstExpr, visiting)
+		delete(visiting, expr)
+		return value, known
+	}
+	return false, false
+}
+
+func compareConstInts(op BinaryOp, a, b *big.Int) bool {
+	switch op {
+	case BinaryOpLt:
+		return a.Cmp(b) < 0
+	case BinaryOpGt:
+		return a.Cmp(b) > 0
+	case BinaryOpLe:
+		return a.Cmp(b) <= 0
+	case BinaryOpGe:
+		return a.Cmp(b) >= 0
+	case BinaryOpEq:
+		return a.Cmp(b) == 0
+	case BinaryOpNeq:
+		return a.Cmp(b) != 0
+	}
+	return false
+}
+
+func compareConstFloats(op BinaryOp, a, b float64) bool {
+	switch op {
+	case BinaryOpLt:
+		return a < b
+	case BinaryOpGt:
+		return a > b
+	case BinaryOpLe:
+		return a <= b
+	case BinaryOpGe:
+		return a >= b
+	case BinaryOpEq:
+		return a == b
+	case BinaryOpNeq:
+		return a != b
+	}
+	return false
 }
 
 func (tc *TypeChecker) reportConstFloatFault(fault *constFloatFault, target Type) {
@@ -1495,6 +1616,11 @@ func (tc *TypeChecker) reportConstFloatFault(fault *constFloatFault, target Type
 // nested inside arrays and structs.
 func (tc *TypeChecker) validateCompileTimeExpr(expr Expr, target Type) {
 	if expr == nil || target == TypeUnknown || isLiteral(expr) {
+		return
+	}
+	if ifx, ok := expr.(*IfxExpr); ok {
+		tc.validateCompileTimeExpr(ifx.Then, target)
+		tc.validateCompileTimeExpr(ifx.Else, target)
 		return
 	}
 	if isIntegerType(target) {
@@ -1605,7 +1731,9 @@ func (tc *TypeChecker) checkVarDecl(d *VarDecl) Type {
 	}
 
 	if declType != TypeUnknown {
-		tc.checkAssign(d.Span_, declType, d.Init)
+		tc.withIfxContext(d.Init, func() {
+			tc.checkAssign(d.Span_, declType, d.Init)
+		})
 		if d.CompileTime {
 			tc.validateCompileTimeExpr(d.Init, declType)
 		}
@@ -1614,7 +1742,10 @@ func (tc *TypeChecker) checkVarDecl(d *VarDecl) Type {
 		}
 		return declType
 	}
-	t := tc.inferExpr(d.Init)
+	var t Type
+	tc.withIfxContext(d.Init, func() {
+		t = tc.inferExpr(d.Init)
+	})
 	tc.checkLiteralRange(d.Init, t)
 	if d.CompileTime {
 		tc.validateCompileTimeExpr(d.Init, t)
@@ -1757,7 +1888,10 @@ func (tc *TypeChecker) checkReturnStmt(s *ReturnStmt) {
 	if tc.currentReturnType != TypeVoid {
 		// A '<>' procedure may return either the value type or the error type.
 		if tc.currentErrorReturnType != "" && len(values) == 1 {
-			vt := tc.inferExpr(values[0])
+			var vt Type
+			tc.withIfxContext(values[0], func() {
+				vt = tc.inferExpr(values[0])
+			})
 			if vt == tc.currentErrorReturnType {
 				return // an error value returned from a '<>' procedure
 			}
@@ -1770,7 +1904,9 @@ func (tc *TypeChecker) checkReturnStmt(s *ReturnStmt) {
 			return
 		}
 		for i, value := range values {
-			tc.checkAssign(value.nodeSpan(), tc.currentReturnTypes[i], value)
+			tc.withIfxContext(value, func() {
+				tc.checkAssign(value.nodeSpan(), tc.currentReturnTypes[i], value)
+			})
 		}
 		return
 	}
@@ -1778,7 +1914,9 @@ func (tc *TypeChecker) checkReturnStmt(s *ReturnStmt) {
 		tc.diags.Error(s.Span_, "an error return must contain one error value", "return one member of "+tc.formatType(tc.currentErrorReturnType))
 		return
 	}
-	tc.checkAssign(s.Span_, tc.currentErrorReturnType, values[0])
+	tc.withIfxContext(values[0], func() {
+		tc.checkAssign(s.Span_, tc.currentErrorReturnType, values[0])
+	})
 }
 
 // inferExpr returns the type of an expression, reporting type errors it
@@ -1876,6 +2014,12 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 			return TypeUnknown
 		}
 		return tc.rangeIndexType
+	case *IfxExpr:
+		if !tc.ifxContext {
+			tc.diags.Error(n.Span_, "ifx expressions are only supported as the value of an assignment or return", "use ifx directly as the assigned or returned value")
+			return TypeUnknown
+		}
+		return tc.checkIfxExpr(n)
 	}
 	return TypeUnknown
 }
@@ -2421,6 +2565,15 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 	if target == TypeUnknown || value == nil {
 		return
 	}
+	if ifx, ok := unwrapParens(value).(*IfxExpr); ok {
+		if !tc.ifxContext {
+			tc.diags.Error(ifx.Span_, "ifx expressions are only supported as the value of an assignment or return", "use ifx directly as the assigned or returned value")
+			return
+		}
+		tc.checkIfxAssign(ifx, target)
+		tc.analysis.ExprTypes[value] = target
+		return
+	}
 	if isLiteral(value) {
 		if !literalCompatible(value, target) {
 			valType := tc.inferExpr(value)
@@ -2479,6 +2632,94 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 	if valType != TypeUnknown && valType != target {
 		tc.diags.Error(span, "cannot assign "+tc.formatType(valType)+" to "+tc.formatType(target), "use a value of type "+tc.formatType(target))
 	}
+}
+
+// unwrapParens strips transparent parenthesization from an expression.
+func unwrapParens(e Expr) Expr {
+	for {
+		p, ok := e.(*ParenExpr)
+		if !ok {
+			return e
+		}
+		e = p.Inner
+	}
+}
+
+// isIfxValue reports whether an expression is an ifx expression, looking
+// through transparent parentheses.
+func isIfxValue(e Expr) bool {
+	_, ok := unwrapParens(e).(*IfxExpr)
+	return ok
+}
+
+// withIfxContext runs fn with the ifx context flag set when value is an ifx
+// expression (possibly parenthesized). The flag permits an ifx expression to
+// be type-checked as the complete value of an assignment or return; every
+// other expression position leaves it unset so the type checker can reject
+// ifx with a precise diagnostic.
+func (tc *TypeChecker) withIfxContext(value Expr, fn func()) {
+	if isIfxValue(value) {
+		prev := tc.ifxContext
+		tc.ifxContext = true
+		fn()
+		tc.ifxContext = prev
+		return
+	}
+	fn()
+}
+
+// checkIfxExpr infers the type of an ifx expression with no expected target
+// type. The condition must be Bool and both branches must have the same type;
+// a literal branch adapts to the other branch's type.
+func (tc *TypeChecker) checkIfxExpr(n *IfxExpr) Type {
+	// A nested ifx expression is not the direct value of an assignment or
+	// return, so the condition and both branches are checked with the flag
+	// cleared.
+	prev := tc.ifxContext
+	tc.ifxContext = false
+	condType := tc.inferExpr(n.Condition)
+	thenType := tc.inferExpr(n.Then)
+	elseType := tc.inferExpr(n.Else)
+	tc.ifxContext = prev
+	if condType != TypeUnknown && condType != TypeBool {
+		tc.diags.Error(n.Condition.nodeSpan(), "ifx condition must be Bool, got "+tc.formatType(condType), "use a boolean condition")
+	}
+	compatible := tc.operandsCompatible(n.Then, thenType, n.Else, elseType)
+	effective := thenType
+	if isLiteral(n.Then) && !isLiteral(n.Else) {
+		effective = elseType
+	}
+	if compatible {
+		if isLiteral(n.Then) {
+			tc.checkLiteralRange(n.Then, effective)
+			tc.analysis.ExprTypes[n.Then] = effective
+		}
+		if isLiteral(n.Else) {
+			tc.checkLiteralRange(n.Else, effective)
+			tc.analysis.ExprTypes[n.Else] = effective
+		}
+	} else {
+		tc.diags.Error(n.Span_, "ifx branches must have the same type, got "+tc.formatType(thenType)+" and "+tc.formatType(elseType), "use values of the same type")
+	}
+	return effective
+}
+
+// checkIfxAssign checks an ifx expression against a known target type: the
+// condition must be Bool and both branches must be assignable to the target.
+func (tc *TypeChecker) checkIfxAssign(n *IfxExpr, target Type) {
+	// A nested ifx expression is not the direct value of an assignment or
+	// return, so the condition and both branches are checked with the flag
+	// cleared.
+	prev := tc.ifxContext
+	tc.ifxContext = false
+	condType := tc.inferExpr(n.Condition)
+	tc.checkAssign(n.Then.nodeSpan(), target, n.Then)
+	tc.checkAssign(n.Else.nodeSpan(), target, n.Else)
+	tc.ifxContext = prev
+	if condType != TypeUnknown && condType != TypeBool {
+		tc.diags.Error(n.Condition.nodeSpan(), "ifx condition must be Bool, got "+tc.formatType(condType), "use a boolean condition")
+	}
+	tc.analysis.ExprTypes[n] = target
 }
 
 // checkErrorMember validates a bare error member reference against a target

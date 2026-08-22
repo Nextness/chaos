@@ -1,0 +1,14 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl a: S64 = Ifx(Bool(true) then Int(10) else Int(20)) [mutable=true compileTime=false]
+      VarDecl b: S64 = Ifx(Bool(false) then Int(30) else Int(40)) [mutable=true compileTime=false]
+      VarDecl c: S64 = Ifx(Binary(< Ident(a) Ident(b)) then Int(1) else Int(2)) [mutable=true compileTime=false]
+      VarDecl d: String = String("hi") [mutable=true compileTime=false]
+      VarDecl e: String = Ifx(Binary(== Ident(d) String("hi")) then String("yes") else String("no")) [mutable=true compileTime=false]
+      VarDecl f: S64 = Int(0) [mutable=true compileTime=false]
+      Assign f = Ifx(Binary(== Ident(c) Int(1)) then Int(5) else Int(6))
+      If condition=Binary(!= Ident(e) String("yes"))
+        Block
+          Return Int(9)
+      Return Ifx(Binary(== Ident(f) Int(5)) then Int(7) else Int(8))

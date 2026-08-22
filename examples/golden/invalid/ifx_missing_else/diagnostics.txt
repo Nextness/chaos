@@ -1,0 +1,3 @@
+[ERROR] 4:25:ifx_missing_else.chaos - expected 'else' in ifx expression
+     x := ifx true then 1;
+                         ^ -> add 'else' and a value for the false case

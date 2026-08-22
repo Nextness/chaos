@@ -1085,6 +1085,120 @@ func TestParseIfThenTolerant(t *testing.T) {
 }
 
 // ──────────────────────────────────────────────
+// Ifx expressions
+// ──────────────────────────────────────────────
+
+func parseIfxFromInit(t *testing.T, init string) *IfxExpr {
+	t.Helper()
+	expr := parseExpr(t, init)
+	ifx, ok := expr.(*IfxExpr)
+	if !ok {
+		t.Fatalf("expected *IfxExpr, got %T", expr)
+	}
+	return ifx
+}
+
+func TestParseIfxThenElse(t *testing.T) {
+	ifx := parseIfxFromInit(t, "ifx cond then 1 else 2")
+	if _, ok := ifx.Condition.(*IdentExpr); !ok {
+		t.Fatalf("Condition = %T, want *IdentExpr", ifx.Condition)
+	}
+	if no, ok := ifx.Then.(*IntExpr); !ok || no.Value != "1" {
+		t.Fatalf("Then = %#v, want Int(1)", ifx.Then)
+	}
+	if no, ok := ifx.Else.(*IntExpr); !ok || no.Value != "2" {
+		t.Fatalf("Else = %#v, want Int(2)", ifx.Else)
+	}
+}
+
+func TestParseIfxBareThen(t *testing.T) {
+	// 'then' is optional: "ifx cond a else b".
+	ifx := parseIfxFromInit(t, "ifx cond 1 else 2")
+	if no, ok := ifx.Then.(*IntExpr); !ok || no.Value != "1" {
+		t.Fatalf("Then = %#v, want Int(1)", ifx.Then)
+	}
+	if no, ok := ifx.Else.(*IntExpr); !ok || no.Value != "2" {
+		t.Fatalf("Else = %#v, want Int(2)", ifx.Else)
+	}
+}
+
+func TestParseIfxElseExtends(t *testing.T) {
+	// The else branch is a full expression and extends to the end.
+	expr := parseExpr(t, "ifx c then 1 else b + 1")
+	ifx, ok := expr.(*IfxExpr)
+	if !ok {
+		t.Fatalf("expected *IfxExpr, got %T", expr)
+	}
+	if _, ok := ifx.Else.(*BinaryExpr); !ok {
+		t.Fatalf("Else = %T, want *BinaryExpr", ifx.Else)
+	}
+}
+
+func TestParseIfxNested(t *testing.T) {
+	// Nested ifx parses: the inner expression consumes its own else first.
+	expr := parseExpr(t, "ifx c1 then ifx c2 then 1 else 2 else 3")
+	ifx, ok := expr.(*IfxExpr)
+	if !ok {
+		t.Fatalf("expected *IfxExpr, got %T", expr)
+	}
+	if _, ok := ifx.Then.(*IfxExpr); !ok {
+		t.Fatalf("Then = %T, want *IfxExpr", ifx.Then)
+	}
+	if no, ok := ifx.Else.(*IntExpr); !ok || no.Value != "3" {
+		t.Fatalf("Else = %#v, want Int(3)", ifx.Else)
+	}
+}
+
+func TestParseIfxMissingElse(t *testing.T) {
+	source := "dummy :: proc { x := ifx true then 1; }"
+	result := parseTestCase(t, source)
+	if !hasError(result.Diags, "expected 'else' in ifx expression") {
+		t.Errorf("expected missing-else error, got %v", result.Diags)
+	}
+}
+
+func TestParseIfxMissingThenValue(t *testing.T) {
+	// "ifx cond else value" has no true branch.
+	source := "dummy :: proc { x := ifx true else 2; }"
+	result := parseTestCase(t, source)
+	if !hasError(result.Diags, "expected a value after the condition in ifx expression") {
+		t.Errorf("expected missing-then-value error, got %v", result.Diags)
+	}
+}
+
+func TestParseIfxAsExprStmt(t *testing.T) {
+	// An ifx used as a bare statement parses as an expression statement; the
+	// type checker rejects it with a precise diagnostic.
+	stmt := parseOneStmt(t, "ifx true then 1 else 2;")
+	exprStmt, ok := stmt.(*ExprStmt)
+	if !ok {
+		t.Fatalf("expected *ExprStmt, got %T", stmt)
+	}
+	if _, ok := exprStmt.Expr.(*IfxExpr); !ok {
+		t.Fatalf("Expr = %T, want *IfxExpr", exprStmt.Expr)
+	}
+}
+
+func TestParseIfxTolerant(t *testing.T) {
+	source := "dummy :: proc { x := ifx true then 1 else 2; }"
+	result := parseTolerantTestCase(t, source)
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected tolerant-mode errors: %v", result.Diags)
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	decl, ok := proc.Body.Stmts[0].(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", proc.Body.Stmts[0])
+	}
+	if _, ok := decl.Init.(*IfxExpr); !ok {
+		t.Fatalf("Init = %T, want *IfxExpr", decl.Init)
+	}
+}
+
+// ──────────────────────────────────────────────
 // For loops
 // ──────────────────────────────────────────────
 

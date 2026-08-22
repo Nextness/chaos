@@ -349,6 +349,12 @@ func (l *Lowerer) inferASTType(expr Expr) TypeID {
 				return t
 			}
 		}
+	case *IfxExpr:
+		thenType := l.inferASTType(n.Then)
+		if thenType != l.types.Unknown() {
+			return thenType
+		}
+		return l.inferASTType(n.Else)
 	}
 	return l.types.Unknown()
 }
@@ -1288,6 +1294,8 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 			return &HIRRef{Span_: n.Span_, Symbol: l.rangeIndex, Type: l.types.S64()}
 		}
 		return l.poison(n.Span_, "loop builtin used outside a range loop")
+	case *IfxExpr:
+		return l.lowerIfx(n)
 	}
 	return l.poison(e.nodeSpan(), "unsupported expression")
 }
@@ -1419,6 +1427,17 @@ func (l *Lowerer) lowerUnary(n *UnaryExpr) HIRExpr {
 		return l.foldConstant(unary)
 	}
 	return unary
+}
+
+// lowerIfx lowers an ifx expression. Both branches are adapted to the
+// resolved type of the expression, which comes from the semantic analysis and
+// falls back to the branch types.
+func (l *Lowerer) lowerIfx(n *IfxExpr) HIRExpr {
+	cond := l.lowerExpr(n.Condition)
+	t := l.inferASTType(n)
+	then := l.lowerExprAs(n.Then, t)
+	els := l.lowerExprAs(n.Else, t)
+	return &HIRIfx{Span_: n.Span_, Cond: cond, Then: then, Else: els, Type: t}
 }
 
 func (l *Lowerer) lowerCall(n *CallExpr) HIRExpr {

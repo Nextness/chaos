@@ -127,6 +127,10 @@ func WalkAST(program *Program, visit func(Node) bool) {
 		case *IndexExpr:
 			walkNode(n.Base)
 			walkNode(n.Index)
+		case *IfxExpr:
+			walkNode(n.Condition)
+			walkNode(n.Then)
+			walkNode(n.Else)
 		case *IdentExpr, *IntExpr, *FloatExpr, *StringExpr, *BoolExpr,
 			*LoopBuiltinExpr, *ErrorExpr, *ErrorMemberExpr, *EnumMemberExpr,
 			*BreakStmt, *ContinueStmt, *IncDecStmt, *ErrorMember:

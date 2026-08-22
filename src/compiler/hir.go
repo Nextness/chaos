@@ -334,6 +334,20 @@ func (e *HIRUnary) hirExprNode()    {}
 func (e *HIRUnary) hirSpan() Span   { return e.Span_ }
 func (e *HIRUnary) hirType() TypeID { return e.Type }
 
+// HIRIfx is a ternary expression: ifx cond then then else else. All three
+// parts are expressions and the node produces a value of Type.
+type HIRIfx struct {
+	Span_ Span
+	Cond  HIRExpr
+	Then  HIRExpr
+	Else  HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRIfx) hirExprNode()    {}
+func (e *HIRIfx) hirSpan() Span   { return e.Span_ }
+func (e *HIRIfx) hirType() TypeID { return e.Type }
+
 // HIRCall is a call to a named procedure.
 type HIRCall struct {
 	Span_ Span

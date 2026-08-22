@@ -83,6 +83,8 @@ The active single-file language includes:
 - multiple value returns, error-return unions, `unless catch`, and `if catch`;
 - arrays, range/C-style/condition loops, branching, arithmetic, comparisons,
   `return`, and `exit`;
+- `ifx` ternary expressions (`x := ifx cond then a else b;`), valid only as the
+  complete value of an assignment or return;
 - element-wise array equality and field-wise struct equality;
 - Unicode identifiers normalized to NFC.
 

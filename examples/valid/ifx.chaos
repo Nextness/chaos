@@ -1,0 +1,15 @@
+// expect-exit: 7
+// ifx is a ternary expression. Unlike other languages it is only valid as the
+// complete value of an assignment or return; the 'then' keyword is optional,
+// the 'else' branch is required, and the condition must be Bool.
+#entry main :: proc -> S64 {
+    a := ifx true then 10 else 20;
+    b := ifx false 30 else 40;
+    c: S64 = ifx a < b then 1 else 2;
+    d := «hi»;
+    e := ifx d == «hi» then «yes» else «no»;
+    f := 0;
+    f = ifx c == 1 then 5 else 6;
+    if e != «yes» { return 9; }
+    return ifx f == 5 then 7 else 8;
+}

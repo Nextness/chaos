@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: ifx condition must be Bool
+#entry main :: proc -> S64 {
+    x := ifx 5 then 1 else 2;
+    return x;
+}

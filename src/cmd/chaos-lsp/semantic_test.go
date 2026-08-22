@@ -512,3 +512,30 @@ func TestSemanticTokensEnum(t *testing.T) {
 		}
 	}
 }
+
+func TestSemanticTokensIfx(t *testing.T) {
+	// The ifx keyword and the then/else keywords are highlighted as
+	// keywords; identifiers and literals inside the branches keep their
+	// normal highlighting.
+	source := "main :: proc -> S64 {\n\ta := ifx true then 1 else 2;\n\treturn a;\n}"
+	want := []int{
+		0, 0, 4, semTypeFunction, 0, // main
+		0, 8, 4, semTypeKeyword, 0, // proc
+		0, 8, 3, semTypeType, 0, // S64
+		0, 4, 1, semTypeDelimiter, 0, // {
+		1, 1, 1, semTypeVariable, 0, // a
+		0, 5, 3, semTypeKeyword, 0, // ifx
+		0, 4, 4, semTypeKeyword, 0, // true
+		0, 5, 4, semTypeKeyword, 0, // then
+		0, 5, 1, semTypeNumber, 0, // 1
+		0, 2, 4, semTypeKeyword, 0, // else
+		0, 5, 1, semTypeNumber, 0, // 2
+		1, 1, 6, semTypeKeyword, 0, // return
+		0, 7, 1, semTypeVariable, 0, // a
+		1, 0, 1, semTypeDelimiter, 0, // }
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}

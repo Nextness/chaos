@@ -42,7 +42,8 @@ package compiler
 //	unary_expr     = unary_op unary_expr | postfix_expr
 //	postfix_expr   = primary_expr (("(" arg_list? ")") | ("[" expr "]"))*
 //	arg_list       = expr ("," expr)*
-//	primary_expr   = ident | int | float | string | "true" | "false" | "(" expr ")" | struct_init
+//	primary_expr   = ident | int | float | string | "true" | "false" | "(" expr ")" | struct_init | ifx_expr
+//	ifx_expr      = "ifx" expr ("then")? expr "else" expr
 //	struct_init    = (ident ".")? "{" struct_init_field ("," struct_init_field)* "}"
 //	struct_init_field = (ident "=")? expr
 type Parser struct {
@@ -224,7 +225,7 @@ func (p *Parser) syncStmt() {
 		switch tok.Kind {
 		case TkEOF, TkRBrace, TkSemicolon:
 			return
-		case TkIdent, TkReturn, TkExit, TkIf, TkLBrace:
+		case TkIdent, TkReturn, TkExit, TkIf, TkIfx, TkLBrace:
 			return
 		}
 		p.bump()
@@ -989,6 +990,15 @@ func (p *Parser) parseStmt() Stmt {
 
 	case TkIf:
 		return p.parseIfStmt()
+
+	case TkIfx:
+		// An ifx expression used as a statement. The type checker rejects it
+		// because ifx is only valid as the value of an assignment or return;
+		// parsing it here produces a precise diagnostic instead of a generic
+		// "unexpected token" error.
+		expr := p.parseExpr(0)
+		p.expect(TkSemicolon)
+		return &ExprStmt{Span_: expr.nodeSpan(), Expr: expr}
 
 	case TkFor:
 		return p.parseForStmt()
@@ -2170,6 +2180,9 @@ func (p *Parser) parseAtom() Expr {
 		p.diags.Error(direc.Span, "unknown directive '"+direc.Text()+"' in expression", "use '#this' or '#index' inside a range loop")
 		return &ErrorExpr{Span_: tok.Span}
 
+	case TkIfx:
+		return p.parseIfxExpr()
+
 	case TkLParen:
 		p.bump() // consume "("
 		inner := p.parseExpr(0)
@@ -2186,6 +2199,63 @@ func (p *Parser) parseAtom() Expr {
 
 	default:
 		return nil
+	}
+}
+
+// parseIfxExpr parses a ternary expression after "ifx" has been consumed:
+// "ifx cond then then else else". The 'then' keyword is optional. The
+// condition and both branches are full expressions; the branches extend to
+// the end of the enclosing expression, so "ifx c then a else b + 1" gives
+// else = "b + 1". The 'else' branch is required because the expression must
+// produce a value.
+func (p *Parser) parseIfxExpr() Expr {
+	tok := p.bump() // consume "ifx"
+
+	cond := p.parseExpr(0)
+	if cond == nil {
+		p.diags.Error(p.peek().Span, "expected condition after 'ifx'", "add a condition after 'ifx'")
+		cond = &ErrorExpr{Span_: p.peek().Span}
+	}
+
+	var then Expr
+	if p.at(TkThen) {
+		p.bump() // consume "then"
+		then = p.parseExpr(0)
+		if then == nil {
+			p.diags.Error(p.peek().Span, "expected value after 'then'", "add a value after 'then'")
+			then = &ErrorExpr{Span_: p.peek().Span}
+		}
+	} else if p.at(TkElse) {
+		p.diags.Error(p.peek().Span, "expected a value after the condition in ifx expression", "add a value or 'then' before 'else'")
+		then = &ErrorExpr{Span_: p.peek().Span}
+	} else {
+		then = p.parseExpr(0)
+		if then == nil {
+			p.diags.Error(p.peek().Span, "expected a value after the condition in ifx expression", "add a value or 'then' before 'else'")
+			then = &ErrorExpr{Span_: p.peek().Span}
+		}
+	}
+
+	if !p.at(TkElse) {
+		p.diags.Error(p.peek().Span, "expected 'else' in ifx expression", "add 'else' and a value for the false case")
+		return &IfxExpr{
+			Span_:     spanUnion(tok.Span, then.nodeSpan()),
+			Condition: cond,
+			Then:      then,
+			Else:      &ErrorExpr{Span_: p.peek().Span},
+		}
+	}
+	p.bump() // consume "else"
+	els := p.parseExpr(0)
+	if els == nil {
+		p.diags.Error(p.peek().Span, "expected value after 'else'", "add a value after 'else'")
+		els = &ErrorExpr{Span_: p.peek().Span}
+	}
+	return &IfxExpr{
+		Span_:     spanUnion(tok.Span, els.nodeSpan()),
+		Condition: cond,
+		Then:      then,
+		Else:      els,
 	}
 }
 

@@ -443,9 +443,41 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 		base := ml.lowerExpr(n.Base)
 		idx := ml.lowerExpr(n.Index)
 		return ml.emit(MIRArrayIndex, n.Type, []ValueID{base, idx}, MIRImmediate{}, n.Span_)
+	case *HIRIfx:
+		return ml.lowerIfx(n)
 	}
 	ml.diags.Error(e.hirSpan(), "unsupported HIR expression reached MIR lowering", "report this compiler bug")
 	return NoValue
+}
+
+// lowerIfx lowers a ternary expression into a branch over the condition,
+// two store blocks, and a join block that loads the selected value from a
+// temporary local. The temporary is immutable because exactly one branch
+// stores into it before the load.
+func (ml *MIRLowerer) lowerIfx(n *HIRIfx) ValueID {
+	cond := ml.lowerExpr(n.Cond)
+	thenBlock := ml.newBlock()
+	elseBlock := ml.newBlock()
+	joinBlock := ml.newBlock()
+	ml.setTerminator(MIRTerminator{Kind: MIRBranch, Cond: cond, Then: thenBlock.ID, Else: elseBlock.ID, Span: n.Span_})
+
+	lid := LocalID(len(ml.cur.Locals))
+	ml.cur.Locals = append(ml.cur.Locals, lid)
+	ml.cur.LocalTypes = append(ml.cur.LocalTypes, n.Type)
+	ml.cur.LocalMutable = append(ml.cur.LocalMutable, false)
+
+	ml.curBlock = thenBlock
+	thenVal := ml.lowerExpr(n.Then)
+	ml.emitInit(MIRStoreLocal, n.Type, []ValueID{thenVal}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: joinBlock.ID, Span: n.Span_})
+
+	ml.curBlock = elseBlock
+	elseVal := ml.lowerExpr(n.Else)
+	ml.emitInit(MIRStoreLocal, n.Type, []ValueID{elseVal}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
+	ml.setTerminator(MIRTerminator{Kind: MIRJump, Target: joinBlock.ID, Span: n.Span_})
+
+	ml.curBlock = joinBlock
+	return ml.emit(MIRLoadLocal, n.Type, nil, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
 }
 
 // lowerStructInit lowers a struct literal into a struct.init instruction whose

@@ -242,6 +242,14 @@ func dumpHIRExpr(b *strings.Builder, hir *HIR, e HIRExpr) {
 		b.WriteString(", ")
 		dumpHIRExpr(b, hir, n.Index)
 		b.WriteString(")")
+	case *HIRIfx:
+		b.WriteString("Ifx(")
+		dumpHIRExpr(b, hir, n.Cond)
+		b.WriteString(" then ")
+		dumpHIRExpr(b, hir, n.Then)
+		b.WriteString(" else ")
+		dumpHIRExpr(b, hir, n.Else)
+		b.WriteString(")")
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)
 	}

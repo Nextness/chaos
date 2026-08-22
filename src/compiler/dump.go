@@ -355,6 +355,14 @@ func dumpExpr(b *strings.Builder, e Expr) {
 		b.WriteString(")")
 	case *LoopBuiltinExpr:
 		fmt.Fprintf(b, "LoopBuiltin(%s)", n.Name)
+	case *IfxExpr:
+		b.WriteString("Ifx(")
+		dumpExpr(b, n.Condition)
+		b.WriteString(" then ")
+		dumpExpr(b, n.Then)
+		b.WriteString(" else ")
+		dumpExpr(b, n.Else)
+		b.WriteString(")")
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)
 	}

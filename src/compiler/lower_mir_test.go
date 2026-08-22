@@ -311,3 +311,81 @@ func TestMIRExitStatusOnly(t *testing.T) {
 		t.Errorf("exit terminator = %+v, want status only", term)
 	}
 }
+
+func TestMIRIfx(t *testing.T) {
+	_, mir := lowerSource(t, "#entry main :: proc -> S64 {\n    return ifx true then 1 else 2;\n}")
+	fn := findMIRFunction(mir, "main")
+	if fn == nil {
+		t.Fatal("function main not found")
+	}
+	// entry (branch), then (store + jump), else (store + jump), join (load,
+	// return).
+	if len(fn.Blocks) != 4 {
+		t.Fatalf("blocks = %d, want 4 (entry, then, else, join)", len(fn.Blocks))
+	}
+	entry := fn.Blocks[0]
+	if entry.Term.Kind != MIRBranch {
+		t.Fatalf("entry terminator = %v, want branch", entry.Term.Kind)
+	}
+	thenBlock := fn.Blocks[1]
+	elseBlock := fn.Blocks[2]
+	joinBlock := fn.Blocks[3]
+	if entry.Term.Then != thenBlock.ID || entry.Term.Else != elseBlock.ID {
+		t.Errorf("branch targets = then %d else %d, want %d and %d", entry.Term.Then, entry.Term.Else, thenBlock.ID, elseBlock.ID)
+	}
+	// Both branches store the selected value into the same temp local.
+	thenStore := findInstrInBlock(thenBlock, MIRStoreLocal)
+	elseStore := findInstrInBlock(elseBlock, MIRStoreLocal)
+	if thenStore == nil || elseStore == nil {
+		t.Fatalf("missing store.local in the ifx branches: then=%v else=%v", thenStore, elseStore)
+	}
+	if !thenStore.Initializing || !elseStore.Initializing {
+		t.Errorf("branch stores must be marked as initialization: then=%v else=%v", thenStore.Initializing, elseStore.Initializing)
+	}
+	lid := thenStore.Imm.Local
+	if elseStore.Imm.Local != lid {
+		t.Errorf("branch stores target different locals: %d and %d", lid, elseStore.Imm.Local)
+	}
+	if thenBlock.Term.Kind != MIRJump || thenBlock.Term.Target != joinBlock.ID ||
+		elseBlock.Term.Kind != MIRJump || elseBlock.Term.Target != joinBlock.ID {
+		t.Errorf("branch terminators must jump to the join block: then=%+v else=%+v", thenBlock.Term, elseBlock.Term)
+	}
+	// The join block loads the temp and returns it.
+	load := findInstrInBlock(joinBlock, MIRLoadLocal)
+	if load == nil {
+		t.Fatal("missing load local in the join block")
+	}
+	if load.Imm.Local != lid {
+		t.Errorf("join load local = %d, want %d", load.Imm.Local, lid)
+	}
+	if joinBlock.Term.Kind != MIRReturn || joinBlock.Term.Value != load.Result {
+		t.Errorf("join terminator = %+v, want return of the loaded value", joinBlock.Term)
+	}
+}
+
+func TestMIRIfxCompileTimeFolded(t *testing.T) {
+	_, mir := lowerSource(t, "#entry main :: proc -> S64 { answer :: ifx true then 42 else 7; return answer; }")
+	fn := findMIRFunction(mir, "main")
+	if fn == nil {
+		t.Fatal("function main not found")
+	}
+	// A compile-time ifx with a constant condition folds to a constant.
+	if len(fn.Blocks) != 1 {
+		t.Fatalf("blocks = %d, want 1 (folded to a constant)", len(fn.Blocks))
+	}
+	constant := findInstr(fn, MIRConst)
+	if constant == nil || constant.Imm.Kind != MIRImmInt || constant.Imm.Str != "42" {
+		t.Fatalf("folded constant = %+v, want exact integer 42", constant)
+	}
+}
+
+// findInstrInBlock returns the first instruction in a block with the given
+// opcode, or nil.
+func findInstrInBlock(b *MIRBlock, op MIROpcode) *MIRInstr {
+	for _, ins := range b.Instrs {
+		if ins.Op == op {
+			return ins
+		}
+	}
+	return nil
+}

@@ -76,7 +76,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 	for _, tok := range tokens {
 		idx := -1
 		switch tok.Kind {
-		case compiler.TkExit, compiler.TkIf, compiler.TkElif, compiler.TkElse,
+		case compiler.TkExit, compiler.TkIf, compiler.TkIfx, compiler.TkElif, compiler.TkElse,
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
 			compiler.TkStruct, compiler.TkErrorKw, compiler.TkEnum, compiler.TkUnless, compiler.TkCatch,
 			compiler.TkFor, compiler.TkBreak, compiler.TkContinue,
@@ -202,6 +202,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		case *compiler.IndexExpr:
 			walkExpr(e.Base)
 			walkExpr(e.Index)
+		case *compiler.IfxExpr:
+			walkExpr(e.Condition)
+			walkExpr(e.Then)
+			walkExpr(e.Else)
 		case *compiler.LoopBuiltinExpr:
 			// Builtin directive; no highlight.
 		case *compiler.ArrayTypeExpr:

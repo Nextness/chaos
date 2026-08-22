@@ -1,0 +1,6 @@
+[ERROR] 4:14:ifx_mixed_binary.chaos - ifx expressions are only supported as the value of an assignment or return
+     x := 1 + ifx true then 2 else 3;
+              ^^^^^^^^^^^^^^^^^^^^^^ -> use ifx directly as the assigned or returned value
+[ERROR] 4:10:ifx_mixed_binary.chaos - operator + is not defined for 
+     x := 1 + ifx true then 2 else 3;
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^ -> use numeric operands

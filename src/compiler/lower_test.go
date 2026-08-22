@@ -564,3 +564,54 @@ main :: proc -> S64 {
 		t.Fatalf("bare enum comparison lowered as %#v, want E constant 9", comparison.Right)
 	}
 }
+
+func TestLowerIfx(t *testing.T) {
+	hir, _ := lowerSource(t, "#entry main :: proc -> S64 {\n    return ifx true then 1 else 2;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	ret, ok := p.Body.Stmts[0].(*HIRReturn)
+	if !ok {
+		t.Fatalf("statement 0 = %T, want *HIRReturn", p.Body.Stmts[0])
+	}
+	ifx, ok := ret.Value.(*HIRIfx)
+	if !ok {
+		t.Fatalf("return value = %T, want *HIRIfx", ret.Value)
+	}
+	if typeName(hir, ifx.Type) != "S64" {
+		t.Errorf("ifx type = %s, want S64", typeName(hir, ifx.Type))
+	}
+	thenC, ok := ifx.Then.(*HIRConst)
+	if !ok || typeName(hir, thenC.Type) != "S64" || thenC.Int != 1 {
+		t.Errorf("then branch = %#v, want S64 constant 1", ifx.Then)
+	}
+	elseC, ok := ifx.Else.(*HIRConst)
+	if !ok || typeName(hir, elseC.Type) != "S64" || elseC.Int != 2 {
+		t.Errorf("else branch = %#v, want S64 constant 2", ifx.Else)
+	}
+}
+
+func TestLowerIfxLiteralAdaptation(t *testing.T) {
+	// A literal branch adapts to the other branch's type, so the whole
+	// expression and both branches carry the wider type.
+	hir, _ := lowerSource(t, "main :: proc {\n    x: U8 = 10;\n    y := ifx true then 1 else x;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	decl, ok := p.Body.Stmts[1].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 1 = %T, want *HIRVarDecl", p.Body.Stmts[1])
+	}
+	ifx, ok := decl.Init.(*HIRIfx)
+	if !ok {
+		t.Fatalf("init = %T, want *HIRIfx", decl.Init)
+	}
+	if typeName(hir, ifx.Type) != "U8" {
+		t.Errorf("ifx type = %s, want U8", typeName(hir, ifx.Type))
+	}
+	if typeName(hir, ifx.Then.hirType()) != "U8" {
+		t.Errorf("then branch type = %s, want U8", typeName(hir, ifx.Then.hirType()))
+	}
+}

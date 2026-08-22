@@ -981,3 +981,143 @@ outer :: proc -> S64 {
 		t.Fatalf("runtime value was accepted as a type alias: %v", diags)
 	}
 }
+
+// ──────────────────────────────────────────────
+// Ifx expressions
+// ──────────────────────────────────────────────
+
+func TestTypeCheckIfxInference(t *testing.T) {
+	valid := `
+main :: proc {
+    a := ifx true then 1 else 2;
+    b := ifx false 10 else 20;
+    s := ifx true then «hi» else «bye»;
+    f := ifx false then 1.5 else 2.5;
+    bo := ifx true then true else false;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid ifx declarations failed: %v", diags)
+	}
+
+	// Different non-literal branch types are rejected.
+	if diags := typeCheckSource(t, "main :: proc { x := ifx true then 1 else «two»; }"); !hasError(diags, "ifx branches must have the same type, got S64 and String") {
+		t.Fatalf("branch mismatch was not reported: %v", diags)
+	}
+	// A literal branch adapts to the other branch's type.
+	if diags := typeCheckSource(t, "main :: proc { x: U8 = 1; y := ifx true then 1 else x; }"); diags.HasErrors() {
+		t.Fatalf("literal branch did not adapt to U8: %v", diags)
+	}
+}
+
+func TestTypeCheckIfxTypedTarget(t *testing.T) {
+	valid := `
+main :: proc {
+    a: S64 = ifx true then 1 else 2;
+    b: U8 = ifx false then 200 else 100;
+    c: String = ifx true then «yes» else «no»;
+    d := 0;
+    d = ifx true then 5 else 6;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid typed ifx failed: %v", diags)
+	}
+
+	if diags := typeCheckSource(t, "main :: proc { x: S64 = ifx true then 1 else «two»; }"); !hasError(diags, "cannot assign String to S64") {
+		t.Fatalf("typed branch mismatch was not reported: %v", diags)
+	}
+}
+
+func TestTypeCheckIfxReturns(t *testing.T) {
+	valid := `
+main :: proc -> S64 {
+    return ifx true then 1 else 2;
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid ifx return failed: %v", diags)
+	}
+
+	invalid := "wrong :: proc -> S64 { return ifx true then 1 else «two»; }"
+	if diags := typeCheckSource(t, invalid); !hasError(diags, "cannot assign String to S64") {
+		t.Fatalf("invalid ifx return was not reported: %v", diags)
+	}
+}
+
+func TestTypeCheckIfxConditionMustBeBool(t *testing.T) {
+	if diags := typeCheckSource(t, "main :: proc { x := ifx 5 then 1 else 2; }"); !hasError(diags, "ifx condition must be Bool, got S64") {
+		t.Fatalf("non-Bool condition was not reported: %v", diags)
+	}
+	if diags := typeCheckSource(t, "main :: proc { x := ifx true then 1 else 2; }"); diags.HasErrors() {
+		t.Fatalf("Bool condition rejected: %v", diags)
+	}
+}
+
+func TestTypeCheckIfxOnlyAssignmentOrReturn(t *testing.T) {
+	want := "ifx expressions are only supported as the value of an assignment or return"
+	rejected := []string{
+		"main :: proc { x := 1 + ifx true then 2 else 3; }",                                                      // binary operand
+		"foo :: proc (v: S64) { }\nmain :: proc { foo(ifx true then 1 else 2); }",                                // call argument
+		"main :: proc { a := []S64.{ifx true then 1 else 2}; }",                                                  // array item
+		"main :: proc { ifx true then 1 else 2; }",                                                               // bare expression statement
+		"main :: proc { x: S64 = 0; x += ifx true then 1 else 2; }",                                              // compound assignment
+		"foo :: proc (v: S64) -> S64 { return v; }\nmain :: proc -> S64 { return foo(ifx true then 1 else 2); }", // call argument of a return operand
+	}
+	for _, src := range rejected {
+		if diags := typeCheckSource(t, src); !hasError(diags, want) {
+			t.Fatalf("ifx misuse was not rejected in %q: %v", src, diags)
+		}
+	}
+}
+
+func TestTypeCheckIfxNestedRejected(t *testing.T) {
+	rejected := []string{
+		// Nested in a branch.
+		"main :: proc { x := ifx true then ifx false then 1 else 2 else 3; }",
+		// Nested in the condition.
+		"main :: proc { x := ifx (ifx true then true else false) then 1 else 2; }",
+	}
+	for _, src := range rejected {
+		if diags := typeCheckSource(t, src); !hasError(diags, "ifx expressions are only supported as the value of an assignment or return") {
+			t.Fatalf("nested ifx was not rejected in %q: %v", src, diags)
+		}
+	}
+}
+
+func TestTypeCheckIfxParenthesized(t *testing.T) {
+	valid := `
+main :: proc {
+    x := (ifx true then 1 else 2);
+    y: S64 = (ifx false then 3 else 4);
+}
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("parenthesized ifx rejected: %v", diags)
+	}
+}
+
+func TestTypeCheckIfxCompileTime(t *testing.T) {
+	valid := `
+A :: ifx true then 42 else 7;
+B :: ifx false then 1 else 2;
+C :: ifx 5 > 3 then 42 else 7;
+D :: ifx (true && false) then 1 else 2;
+main :: proc -> S64 { return A + B + C + D; }
+`
+	if diags := typeCheckSource(t, valid); diags.HasErrors() {
+		t.Fatalf("valid compile-time ifx failed: %v", diags)
+	}
+
+	// A runtime value cannot appear in a compile-time ifx.
+	invalid := "main :: proc { x: S64 = 1; y :: ifx x > 0 then 1 else 2; }"
+	if diags := typeCheckSource(t, invalid); !hasError(diags, "compile-time assignment requires a compile-time-known expression") {
+		t.Fatalf("runtime ifx condition in compile-time binding was not reported: %v", diags)
+	}
+
+	// A branch that overflows the target is caught at compile time.
+	overflow := "bad : S8 : ifx true then 127 + 1 else 0;"
+	if diags := typeCheckSource(t, overflow); !hasError(diags, "compile-time integer value 128 does not fit S8") {
+		t.Fatalf("branch overflow was not reported: %v", diags)
+	}
+}

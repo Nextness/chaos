@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: ifx branches must have the same type
+#entry main :: proc -> S64 {
+    x := ifx true then 1 else «two»;
+    return 0;
+}

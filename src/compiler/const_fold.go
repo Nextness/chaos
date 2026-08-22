@@ -107,6 +107,20 @@ func (l *Lowerer) foldConstant(expr HIRExpr) HIRExpr {
 		copy := *n
 		copy.Base = base
 		return &copy
+
+	case *HIRIfx:
+		cond := l.foldConstant(n.Cond)
+		then := l.foldConstant(n.Then)
+		els := l.foldConstant(n.Else)
+		if c, ok := cond.(*HIRConst); ok && c.Kind == ConstBool {
+			if c.Bool {
+				return then
+			}
+			return els
+		}
+		copy := *n
+		copy.Cond, copy.Then, copy.Else = cond, then, els
+		return &copy
 	}
 	return expr
 }

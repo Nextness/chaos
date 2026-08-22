@@ -273,6 +273,23 @@ func (e *IndexExpr) nodeSpan() Span {
 
 func (e *IndexExpr) exprNode() {}
 
+// IfxExpr is a ternary expression: "ifx cond then then else else". The 'then'
+// keyword is optional. It is an expression, not a statement, but it is only
+// valid as the complete value of an assignment or return; using it as a
+// subexpression of another operation is rejected during type checking.
+type IfxExpr struct {
+	Span_     Span
+	Condition Expr
+	Then      Expr
+	Else      Expr
+}
+
+func (e *IfxExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *IfxExpr) exprNode() {}
+
 // LoopBuiltinExpr is a builtin reference inside a range loop body: '#this'
 // (the current element) or '#index' (the current index). Name is "this" or
 // "index".

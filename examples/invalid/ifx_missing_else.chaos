@@ -1,0 +1,6 @@
+// expect-stage: parse
+// expect-error: expected 'else' in ifx expression
+#entry main :: proc -> S64 {
+    x := ifx true then 1;
+    return x;
+}

@@ -40,6 +40,8 @@ some_procedure :: proc (param_1: String, param_2: S64) -> String {
     variable2 := 10;
     VARIABLE3 :: 10.1;
 
+    new_var := ifx true then 10 else 2;
+
     something_1 := Something_New.{field1=«hello world», field2=10, field3=true};
     something_2 := Something_New.{«hello world», field2=10, field3=true};
     something_3 := Something_New.{«hello world», 10, field3=true};

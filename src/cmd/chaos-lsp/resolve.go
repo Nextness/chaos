@@ -494,6 +494,10 @@ func (r *resolver) collectOccurrences() {
 		case *compiler.IndexExpr:
 			walkExpr(e.Base)
 			walkExpr(e.Index)
+		case *compiler.IfxExpr:
+			walkExpr(e.Condition)
+			walkExpr(e.Then)
+			walkExpr(e.Else)
 		case *compiler.LoopBuiltinExpr:
 			// Builtin directive; no symbol.
 		case *compiler.ArrayTypeExpr:
@@ -1072,6 +1076,11 @@ func inferredExprType(expr compiler.Expr) string {
 		return "[]" + exprText(e.Elem)
 	case *compiler.ParenExpr:
 		return inferredExprType(e.Inner)
+	case *compiler.IfxExpr:
+		if t := inferredExprType(e.Then); t != "inferred" {
+			return t
+		}
+		return inferredExprType(e.Else)
 	}
 	return "inferred"
 }

@@ -114,6 +114,7 @@ const (
 	// Keywords
 	TkExit
 	TkIf
+	TkIfx
 	TkElif
 	TkElse
 	TkProc
@@ -181,6 +182,7 @@ var tokenKindNames = [...]string{
 	TkDec:         "--",
 	TkExit:        "exit",
 	TkIf:          "if",
+	TkIfx:         "ifx",
 	TkElif:        "elif",
 	TkElse:        "else",
 	TkProc:        "proc",
@@ -245,6 +247,7 @@ func init() {
 		{"false", TkFalse},
 		{"exit", TkExit},
 		{"if", TkIf},
+		{"ifx", TkIfx},
 		{"elif", TkElif},
 		{"else", TkElse},
 		{"proc", TkProc},

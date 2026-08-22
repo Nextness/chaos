@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: ifx expressions are only supported as the value of an assignment or return
+#entry main :: proc -> S64 {
+    x := 1 + ifx true then 2 else 3;
+    return x;
+}

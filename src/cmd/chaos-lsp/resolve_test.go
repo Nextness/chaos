@@ -89,6 +89,27 @@ func TestReferencesListsAllOccurrences(t *testing.T) {
 	}
 }
 
+func TestIfxBranchIdentifiersResolve(t *testing.T) {
+	source := "main :: proc {\n    left := 1;\n    right := 2;\n    chosen := ifx true then left else right;\n}"
+	r := buildResolverFor(t, source)
+
+	leftRef := offsetOf(t, source, "then left") + len("then ")
+	leftSym := r.definitionAt(leftRef)
+	if leftSym == nil || leftSym.name != "left" {
+		t.Fatalf("ifx branch definition = %+v, want the left declaration", leftSym)
+	}
+	leftOccs := r.referencesAt(leftRef)
+	if len(leftOccs) != 2 {
+		t.Fatalf("left references = %d, want declaration and branch use", len(leftOccs))
+	}
+
+	rightRef := offsetOf(t, source, "else right") + len("else ")
+	rightSym := r.definitionAt(rightRef)
+	if rightSym == nil || rightSym.name != "right" {
+		t.Fatalf("ifx branch definition = %+v, want the right declaration", rightSym)
+	}
+}
+
 func TestReferencesRespectShadowedDeclarations(t *testing.T) {
 	source := "main :: proc {\n    x := 1;\n    {\n        x := 2;\n        inner := x;\n    }\n    outer := x;\n}"
 	r := buildResolverFor(t, source)

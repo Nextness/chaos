@@ -1,0 +1,3 @@
+[ERROR] 4:10:ifx_branch_mismatch.chaos - ifx branches must have the same type, got S64 and String
+     x := ifx true then 1 else «two»;
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^ -> use values of the same type
