@@ -1,0 +1,31 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl first = String("hello") [mutable=true compileTime=false]
+      VarDecl last = String("world") [mutable=true compileTime=false]
+      VarDecl greeting = Interp("", Ident(first), " ", Ident(last), "!") [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(greeting) String("hello world!"))
+        Block
+          ReturnStmt Int(1)
+      IfStmt condition=Binary(!= Field(Ident(greeting), count) Int(12))
+        Block
+          ReturnStmt Int(2)
+      VarDecl name = String("ada") [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Interp("", Ident(name), "") String("ada"))
+        Block
+          ReturnStmt Int(3)
+      IfStmt condition=Binary(!= Interp("[", Ident(name), "]") String("[ada]"))
+        Block
+          ReturnStmt Int(4)
+      IfStmt condition=Binary(!= Interp("", Ident(name), "-", Ident(name), "") String("ada-ada"))
+        Block
+          ReturnStmt Int(5)
+      VarDecl empty = String("") [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Interp("a", Ident(empty), "b") String("ab"))
+        Block
+          ReturnStmt Int(6)
+      ReturnStmt Int(0)

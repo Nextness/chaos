@@ -1318,3 +1318,56 @@ func TestTypeCheckPointerErrorsMore(t *testing.T) {
 		}
 	}
 }
+
+func TestTypeCheckAddrAndAllocate(t *testing.T) {
+	// A pointer assigns to Addr implicitly; Addr casts back to a pointer.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    x := 7;\n    p: *S64 = *x;\n    a: Addr = p;\n    q: *S64 = a.(*S64);\n    return q.*;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for Addr: %v", diags)
+	}
+	// #allocate returns Addr and accepts an integer size.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a := #allocate 16;\n    #deallocate a;\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for #allocate: %v", diags)
+	}
+	// #deallocate accepts a pointer value too.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    x := 7;\n    p: *S64 = *x;\n    #deallocate p;\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for #deallocate pointer: %v", diags)
+	}
+	// A non-pointer cannot assign to Addr.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: Addr = 5;\n    return 0;\n}"); !hasError(diags, "cannot assign S64 to Addr") {
+		t.Errorf("expected Addr assignment error, got %v", diags)
+	}
+	// #allocate size must be an integer.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a := #allocate 1.5;\n    return 0;\n}"); !hasError(diags, "#allocate size must be an integer") {
+		t.Errorf("expected #allocate size error, got %v", diags)
+	}
+	// #deallocate requires an address.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    #deallocate 5;\n    return 0;\n}"); !hasError(diags, "#deallocate requires an address") {
+		t.Errorf("expected #deallocate error, got %v", diags)
+	}
+}
+
+func TestTypeCheckStringFields(t *testing.T) {
+	// Reading data and count works.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    s := «hello»;\n    n: Size = s.count;\n    p: *Byte = s.data;\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for String field read: %v", diags)
+	}
+	// Writing data and count on an uninitialized String works.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    new_var := «hello world»;\n    a: String;\n    a.data = new_var.data;\n    a.count = new_var.count;\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for String field write: %v", diags)
+	}
+	// Unknown String field is rejected.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    s := «x»;\n    return s.length;\n}"); !hasError(diags, "String has no field 'length'") {
+		t.Errorf("expected unknown String field error, got %v", diags)
+	}
+}
+
+func TestTypeCheckInterpolation(t *testing.T) {
+	// Interpolating a String is valid.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    name := «world»;\n    s := «hello {name}!»;\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for interpolation: %v", diags)
+	}
+	// Interpolating a non-String is rejected.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    n := 5;\n    s := «value {n}»;\n    return 0;\n}"); !hasError(diags, "interpolation requires a String value") {
+		t.Errorf("expected interpolation type error, got %v", diags)
+	}
+}

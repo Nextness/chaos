@@ -1,5 +1,7 @@
 package compiler
 
+import "strings"
+
 // Parser is a hand-written recursive-descent parser with a correct Pratt
 // expression parser.
 //
@@ -1093,6 +1095,25 @@ func (p *Parser) parseStmt() Stmt {
 		if p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "shadow" {
 			return p.parseShadowVarDecl()
 		}
+		// '#deallocate <addr>' frees a heap block returned by '#allocate'.
+		if p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "deallocate" {
+			hashTok := p.bump() // consume "#"
+			p.bump()            // consume TkDirec("deallocate")
+			addr := p.parseExpr(0)
+			if addr == nil {
+				p.diags.Error(p.peek().Span, "expected an address expression after '#deallocate'", "add an address expression after '#deallocate'")
+				p.syncStmt()
+				if p.at(TkSemicolon) {
+					p.bump()
+				}
+				return nil
+			}
+			p.expect(TkSemicolon)
+			return &DeallocateStmt{
+				Span_: Span{File: hashTok.Span.File, Start: hashTok.Span.Start, End: addr.nodeSpan().End},
+				Addr:  addr,
+			}
+		}
 		// Other directives keep the tolerant-mode skip behavior.
 		if p.tolerant {
 			p.skipToMatchedBraces()
@@ -2107,6 +2128,76 @@ func (p *Parser) parseExpr(minBp int) Expr {
 	return p.parseExprRest(left, minBp)
 }
 
+// parseInterpolatedString splits a string literal's inner text into literal
+// runs and '{expr}' interpolation segments. It returns (nil, false) when the
+// string contains no interpolation.
+func (p *Parser) parseInterpolatedString(span Span, value string) ([]InterpPart, bool) {
+	var parts []InterpPart
+	found := false
+	i := 0
+	for i < len(value) {
+		open := strings.IndexByte(value[i:], '{')
+		if open < 0 {
+			parts = append(parts, InterpPart{Literal: value[i:]})
+			break
+		}
+		open += i
+		parts = append(parts, InterpPart{Literal: value[i:open]})
+		// Find the matching '}' accounting for nested braces.
+		depth := 1
+		j := open + 1
+		for j < len(value) && depth > 0 {
+			switch value[j] {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+			j++
+		}
+		if depth > 0 {
+			p.diags.Error(span, "unterminated interpolation in string literal", "close the '{' with '}'")
+			return nil, false
+		}
+		inner := value[open+1 : j-1]
+		// The inner expression starts after the opening « (2 bytes) and the
+		// '{' (1 byte) within the string literal's source span.
+		exprOffset := span.Start + 2 + open + 1
+		parts = append(parts, InterpPart{Expr: p.parseInterpolationExpr(inner, span, exprOffset)})
+		found = true
+		i = j
+	}
+	if !found {
+		return nil, false
+	}
+	// The parts must end with a literal (possibly empty) so the interleaving
+	// is literal, expr, literal, expr, ..., literal.
+	if len(parts) > 0 && parts[len(parts)-1].Expr != nil {
+		parts = append(parts, InterpPart{Literal: ""})
+	}
+	return parts, true
+}
+
+// parseInterpolationExpr tokenizes and parses the expression inside a '{...}'
+// interpolation segment. The token spans are offset by exprOffset so they point
+// at the expression's real position in the original source.
+func (p *Parser) parseInterpolationExpr(text string, span Span, exprOffset int) Expr {
+	tokens, diags := Tokenize([]byte(text), span.File)
+	for i := range tokens {
+		tokens[i].Span.Start += exprOffset
+		tokens[i].Span.End += exprOffset
+	}
+	sub := &Parser{tokens: tokens, program: p.program}
+	expr := sub.parseExpr(0)
+	p.diags = append(p.diags, diags...)
+	p.diags = append(p.diags, sub.diags...)
+	if expr == nil {
+		p.diags.Error(span, "expected an expression inside '{...}' interpolation", "add an expression between '{' and '}'")
+		return &ErrorExpr{Span_: span}
+	}
+	return expr
+}
+
 // parseExprRest is the single postfix/binary continuation loop. Statement
 // parsers that already consumed an identifier use it too, preventing calls
 // and indexing from acquiring different chaining behavior.
@@ -2145,6 +2236,22 @@ func (p *Parser) parseExprRest(left Expr, minBp int) Expr {
 				star := p.bump()
 				left = &DerefExpr{Span_: spanUnion(left.nodeSpan(), star.Span), Operand: left}
 				continue
+			case p.at(TkLParen):
+				// Type cast: "expr.(*T)".
+				p.bump() // consume "("
+				target := p.parseTypeExpr()
+				if target == nil {
+					p.diags.Error(p.peek().Span, "expected a type after '.('", "add a type expression after '.('")
+					p.expect(TkRParen)
+					continue
+				}
+				closeTok := p.expect(TkRParen)
+				left = &CastExpr{
+					Span_: spanUnion(left.nodeSpan(), closeTok.Span),
+					Value: left,
+					Type:  target,
+				}
+				continue
 			case p.at(TkIdent):
 				field := p.bump()
 				left = &FieldAccessExpr{
@@ -2155,7 +2262,7 @@ func (p *Parser) parseExprRest(left Expr, minBp int) Expr {
 				}
 				continue
 			default:
-				p.diags.Error(tok.Span, "expected '*' or a field name after '.'", "write '.*' to dereference a pointer or '.field' to read a field")
+				p.diags.Error(tok.Span, "expected '*', '(', or a field name after '.'", "write '.*' to dereference a pointer, '.(*T)' to cast, or '.field' to read a field")
 				break
 			}
 		}
@@ -2229,6 +2336,9 @@ func (p *Parser) parseAtom() Expr {
 
 	case TkString:
 		p.bump()
+		if parts, ok := p.parseInterpolatedString(tok.Span, tok.Value); ok {
+			return &InterpolatedStringExpr{Span_: tok.Span, Parts: parts}
+		}
 		return &StringExpr{Span_: tok.Span, Value: tok.Value}
 
 	case TkTrue:
@@ -2334,7 +2444,19 @@ func (p *Parser) parseAtom() Expr {
 				Name:  direc.Value,
 			}
 		}
-		p.diags.Error(direc.Span, "unknown directive '"+direc.Text()+"' in expression", "use '#this' or '#index' inside a range loop")
+		// #allocate <size> allocates a heap block and yields an Addr.
+		if direc.Kind == TkDirec && direc.Value == "allocate" {
+			size := p.parseExpr(0)
+			if size == nil {
+				p.diags.Error(p.peek().Span, "expected a size expression after '#allocate'", "add a size expression after '#allocate'")
+				return &ErrorExpr{Span_: tok.Span}
+			}
+			return &AllocateExpr{
+				Span_: Span{File: tok.Span.File, Start: tok.Span.Start, End: size.nodeSpan().End},
+				Size:  size,
+			}
+		}
+		p.diags.Error(direc.Span, "unknown directive '"+direc.Text()+"' in expression", "use '#this', '#index', or '#allocate'")
 		return &ErrorExpr{Span_: tok.Span}
 
 	case TkIfx:

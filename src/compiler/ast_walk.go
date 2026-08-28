@@ -137,6 +137,17 @@ func WalkAST(program *Program, visit func(Node) bool) {
 			walkNode(n.Operand)
 		case *FieldAccessExpr:
 			walkNode(n.Base)
+		case *AllocateExpr:
+			walkNode(n.Size)
+		case *CastExpr:
+			walkNode(n.Value)
+			walkNode(n.Type)
+		case *InterpolatedStringExpr:
+			for _, part := range n.Parts {
+				walkNode(part.Expr)
+			}
+		case *DeallocateStmt:
+			walkNode(n.Addr)
 		case *IfxExpr:
 			walkNode(n.Condition)
 			walkNode(n.Then)

@@ -10,6 +10,7 @@ const (
 	BuiltinString
 	BuiltinInteger
 	BuiltinFloat
+	BuiltinAddr
 )
 
 // BuiltinTypeInfo is the compiler-owned source of truth shared by semantic
@@ -43,6 +44,7 @@ var builtinTypes = []BuiltinTypeInfo{
 	{Name: "F32", Kind: BuiltinFloat, Bits: 32, FasmSupported: true},
 	{Name: "F64", Kind: BuiltinFloat, Bits: 64, FasmSupported: true},
 	{Name: "F128", Kind: BuiltinFloat, Bits: 128},
+	{Name: "Addr", Kind: BuiltinAddr, FasmSupported: true},
 }
 
 var builtinTypeByName = func() map[string]BuiltinTypeInfo {

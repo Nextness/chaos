@@ -1,0 +1,27 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl first: String = String("hello") [mutable=true compileTime=false]
+      VarDecl last: String = String("world") [mutable=true compileTime=false]
+      VarDecl greeting: String = Expr(*compiler.HIRInterpolate) [mutable=true compileTime=false]
+      If condition=Binary(!= Ident(greeting) String("hello world!"))
+        Block
+          Return Int(1)
+      If condition=Binary(!= FieldLoad(Ident(greeting), 1) Int(12))
+        Block
+          Return Int(2)
+      VarDecl name: String = String("ada") [mutable=true compileTime=false]
+      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("ada"))
+        Block
+          Return Int(3)
+      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("[ada]"))
+        Block
+          Return Int(4)
+      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("ada-ada"))
+        Block
+          Return Int(5)
+      VarDecl empty: String = String("") [mutable=true compileTime=false]
+      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("ab"))
+        Block
+          Return Int(6)
+      Return Int(0)

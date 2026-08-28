@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 
 	"chaos_compiler/compiler"
 )
@@ -28,6 +29,20 @@ type semanticToken struct {
 	startChar int
 	length    int
 	typeIndex int
+	modifiers int
+}
+
+// semModBold is the bit for the "bold" semantic token modifier, matching the
+// LSP standard modifier name declared in the legend.
+const semModBold = 1
+
+// boldTypeTokens emits type tokens with the bold modifier set.
+func boldTypeTokens(span compiler.Span, sf *compiler.SourceFile) []semanticToken {
+	toks := spanToTokenRows(span, sf, semTypeType)
+	for i := range toks {
+		toks[i].modifiers = semModBold
+	}
+	return toks
 }
 
 // utf16LineLength returns the UTF-16 length of the line starting at lineStart,
@@ -86,6 +101,12 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 		case compiler.TkInt, compiler.TkFloat:
 			idx = semTypeNumber
 		case compiler.TkString:
+			if strings.Contains(tok.Value, "{") {
+				// Interpolated string: the AST walker emits the literal
+				// segments and the inner expressions separately, so the
+				// interpolation is not swallowed by the whole-string token.
+				continue
+			}
 			idx = semTypeString
 		case compiler.TkComment:
 			idx = semTypeComment
@@ -235,6 +256,11 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			}
 		case *compiler.DerefExpr:
 			walkExpr(e.Operand)
+			// The '.*' dereference operator reads as a bold type token.
+			opStart := compiler.NodeSpan(e.Operand).End
+			if opStart < e.Span_.End {
+				out = append(out, boldTypeTokens(compiler.Span{File: e.Span_.File, Start: opStart, End: e.Span_.End}, sf)...)
+			}
 		case *compiler.NullLitExpr:
 			// Keyword literal; no highlight.
 		case *compiler.PointerTypeExpr:
@@ -253,6 +279,42 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkExpr(e.Else)
 		case *compiler.LoopBuiltinExpr:
 			// Builtin directive; no highlight.
+		case *compiler.InterpolatedStringExpr:
+			// Emit a string token for each literal segment (including the
+			// opening « and closing ») and walk the inner expressions, so the
+			// interpolation is highlighted as its real type instead of being
+			// swallowed by the whole-string token.
+			file := e.Span_.File
+			// Opening « (2 bytes).
+			out = append(out, spanToTokenRows(compiler.Span{File: file, Start: e.Span_.Start, End: e.Span_.Start + 2}, sf, semTypeString)...)
+			cursor := e.Span_.Start + 2 // after the opening «
+			for _, part := range e.Parts {
+				if part.Expr != nil {
+					exprSpan := compiler.NodeSpan(part.Expr)
+					// The '{' before and '}' after the interpolation are
+					// delimiters, colored like braces outside strings.
+					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: exprSpan.Start - 1, End: exprSpan.Start}, sf, semTypeDelimiter)...)
+					walkExpr(part.Expr)
+					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: exprSpan.End, End: exprSpan.End + 1}, sf, semTypeDelimiter)...)
+					// Skip the expression and its closing '}'.
+					cursor = exprSpan.End + 1
+				} else {
+					end := cursor + len(part.Literal)
+					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: cursor, End: end}, sf, semTypeString)...)
+					cursor = end
+				}
+			}
+			// Closing » (2 bytes).
+			out = append(out, spanToTokenRows(compiler.Span{File: file, Start: e.Span_.End - 2, End: e.Span_.End}, sf, semTypeString)...)
+		case *compiler.AllocateExpr:
+			walkExpr(e.Size)
+		case *compiler.CastExpr:
+			walkExpr(e.Value)
+			// The whole '.(*T)' cast reads as a bold type token.
+			castStart := compiler.NodeSpan(e.Value).End
+			if castStart < e.Span_.End {
+				out = append(out, boldTypeTokens(compiler.Span{File: e.Span_.File, Start: castStart, End: e.Span_.End}, sf)...)
+			}
 		case *compiler.ArrayTypeExpr:
 			typeToken(e, sf, known, &out)
 		case *compiler.ErrorExpr:
@@ -346,6 +408,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			walkBlock(s.Body)
 		case *compiler.BreakStmt, *compiler.ContinueStmt:
 			// No operands to highlight.
+		case *compiler.DeallocateStmt:
+			if s.Addr != nil {
+				walkExpr(s.Addr)
+			}
 		case *compiler.CompoundAssignStmt:
 			out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
 			if s.Value != nil {
@@ -431,9 +497,8 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 }
 
 // encodeSemanticTokens sorts tokens by position and delta-encodes them as
-// [deltaLine, deltaStart, length, typeIndex, modifiers] rows. The modifiers
-// field is always 0 (no modifiers), matching the LSP semantic tokens wire
-// format of 5 integers per token.
+// [deltaLine, deltaStart, length, typeIndex, modifiers] rows, matching the LSP
+// semantic tokens wire format of 5 integers per token.
 func encodeSemanticTokens(tokens []semanticToken) []int {
 	sort.Slice(tokens, func(i, j int) bool {
 		if tokens[i].line != tokens[j].line {
@@ -456,7 +521,7 @@ func encodeSemanticTokens(tokens []semanticToken) []int {
 		if deltaLine == 0 {
 			deltaStart = tok.startChar - prevStart
 		}
-		out = append(out, deltaLine, deltaStart, tok.length, tok.typeIndex, 0)
+		out = append(out, deltaLine, deltaStart, tok.length, tok.typeIndex, tok.modifiers)
 		prevLine = tok.line
 		prevStart = tok.startChar
 		lastLine = tok.line

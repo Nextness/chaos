@@ -551,3 +551,31 @@ func TestCatchBindingDefinitionAndReferences(t *testing.T) {
 		t.Fatalf("references for err = %d, want 2", len(occs))
 	}
 }
+
+func TestInterpolationAndAllocateResolve(t *testing.T) {
+	// The identifier inside an interpolation segment resolves to its
+	// declaration, and the operand of #deallocate resolves too.
+	source := "main :: proc -> S64 {\n\tname := «world»;\n\tg := «hello {name}!»;\n\tbuf := #allocate 16;\n\t#deallocate buf;\n\treturn 0;\n}"
+	r := buildResolverFor(t, source)
+
+	// Definition on the interpolated `name` resolves to the declaration.
+	nameRef := offsetOf(t, source, "{name}") + 1
+	sym := r.definitionAt(nameRef)
+	if sym == nil || sym.name != "name" {
+		t.Fatalf("definition of interpolated name = %+v, want name", sym)
+	}
+
+	// Definition on the #deallocate operand resolves to the #allocate binding.
+	bufRef := offsetOf(t, source, "#deallocate buf") + len("#deallocate ")
+	sym = r.definitionAt(bufRef)
+	if sym == nil || sym.name != "buf" {
+		t.Fatalf("definition of deallocate buf = %+v, want buf", sym)
+	}
+
+	// References on name: the declaration and the interpolated use.
+	nameDecl := offsetOf(t, source, "name := ")
+	occs := r.referencesAt(nameDecl)
+	if len(occs) != 2 {
+		t.Fatalf("references for name = %d, want 2", len(occs))
+	}
+}

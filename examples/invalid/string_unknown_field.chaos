@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: String has no field 'length'
+#entry main :: proc -> S64 {
+    s := «hello»;
+    return s.length;
+}

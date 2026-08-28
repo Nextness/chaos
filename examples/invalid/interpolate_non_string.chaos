@@ -1,0 +1,7 @@
+// expect-stage: type
+// expect-error: interpolation requires a String value
+#entry main :: proc -> S64 {
+    n := 5;
+    s := «value {n}»;
+    return 0;
+}

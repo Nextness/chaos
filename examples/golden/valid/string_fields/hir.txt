@@ -1,0 +1,22 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl s: String = String("hello") [mutable=true compileTime=false]
+      If condition=Binary(!= FieldLoad(Ident(s), 1) Int(5))
+        Block
+          Return Int(1)
+      VarDecl p: *Byte = FieldLoad(Ident(s), 0) [mutable=true compileTime=false]
+      If condition=Binary(!= Deref(Ident(p)) Int(104))
+        Block
+          Return Int(2)
+      VarDecl new_var: String = String("hello world") [mutable=true compileTime=false]
+      VarDecl a: String [mutable=true compileTime=false]
+      AddrStore FieldAddr(AddrOf(Ident(a)), 0) = FieldLoad(Ident(new_var), 0)
+      AddrStore FieldAddr(AddrOf(Ident(a)), 1) = FieldLoad(Ident(new_var), 1)
+      If condition=Binary(!= FieldLoad(Ident(a), 1) Int(11))
+        Block
+          Return Int(3)
+      If condition=Binary(!= Deref(FieldLoad(Ident(a), 0)) Int(104))
+        Block
+          Return Int(4)
+      Return Int(0)

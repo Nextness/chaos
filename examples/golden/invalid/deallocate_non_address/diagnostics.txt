@@ -1,0 +1,3 @@
+[ERROR] 4:17:deallocate_non_address.chaos - #deallocate requires an address, got S64
+     #deallocate 5;
+                 ^ -> pass an Addr or pointer value

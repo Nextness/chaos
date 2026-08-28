@@ -1,0 +1,88 @@
+MIR
+  Function main() -> S64
+    Local l0: String
+    Local l1: String
+    Local l2: String
+    Local l3: String
+    Local l4: String
+    bb0:
+      v0:String = const "hello"
+      store.local v0 l0
+      v1:String = const "world"
+      store.local v1 l1
+      v2:String = load.local l0
+      v3:String = load.local l1
+      v4:String = interpolate v2 v3 "" " " "!"
+      store.local v4 l2
+      v5:String = load.local l2
+      v6:String = const "hello world!"
+      v7:Bool = cmp.neq v5 v6
+      branch v7, bb1, bb2
+    bb1:
+      v8:S64 = const 1
+      return v8
+    bb2:
+      jump bb3
+    bb3:
+      v9:String = load.local l2
+      v10:Size = field.load v9 field1
+      v11:Size = const 12
+      v12:Bool = cmp.neq v10 v11
+      branch v12, bb4, bb5
+    bb4:
+      v13:S64 = const 2
+      return v13
+    bb5:
+      jump bb6
+    bb6:
+      v14:String = const "ada"
+      store.local v14 l3
+      v15:String = load.local l3
+      v16:String = interpolate v15 "" ""
+      v17:String = const "ada"
+      v18:Bool = cmp.neq v16 v17
+      branch v18, bb7, bb8
+    bb7:
+      v19:S64 = const 3
+      return v19
+    bb8:
+      jump bb9
+    bb9:
+      v20:String = load.local l3
+      v21:String = interpolate v20 "[" "]"
+      v22:String = const "[ada]"
+      v23:Bool = cmp.neq v21 v22
+      branch v23, bb10, bb11
+    bb10:
+      v24:S64 = const 4
+      return v24
+    bb11:
+      jump bb12
+    bb12:
+      v25:String = load.local l3
+      v26:String = load.local l3
+      v27:String = interpolate v25 v26 "" "-" ""
+      v28:String = const "ada-ada"
+      v29:Bool = cmp.neq v27 v28
+      branch v29, bb13, bb14
+    bb13:
+      v30:S64 = const 5
+      return v30
+    bb14:
+      jump bb15
+    bb15:
+      v31:String = const ""
+      store.local v31 l4
+      v32:String = load.local l4
+      v33:String = interpolate v32 "a" "b"
+      v34:String = const "ab"
+      v35:Bool = cmp.neq v33 v34
+      branch v35, bb16, bb17
+    bb16:
+      v36:S64 = const 6
+      return v36
+    bb17:
+      jump bb18
+    bb18:
+      v37:S64 = const 0
+      return v37

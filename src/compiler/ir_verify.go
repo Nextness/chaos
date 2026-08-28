@@ -119,11 +119,13 @@ func (v *MIRVerifier) verifyTypeTable() {
 				want = TypeKindInt
 			case BuiltinFloat:
 				want = TypeKindFloat
+			case BuiltinAddr:
+				want = TypeKindAddr
 			}
 			if typ.Kind != want {
 				v.diags.Error(Span{}, "built-in type "+typ.Name+" has inconsistent metadata", "preserve the compiler built-in type registry")
 			}
-		} else if typ.Kind == TypeKindInt || typ.Kind == TypeKindFloat || typ.Kind == TypeKindBool || typ.Kind == TypeKindString || typ.Kind == TypeKindVoid {
+		} else if typ.Kind == TypeKindInt || typ.Kind == TypeKindFloat || typ.Kind == TypeKindBool || typ.Kind == TypeKindString || typ.Kind == TypeKindVoid || typ.Kind == TypeKindAddr {
 			v.diags.Error(Span{}, "primitive type metadata uses unknown name '"+typ.Name+"'", "use a compiler-defined primitive type")
 		}
 		switch typ.Kind {
@@ -330,7 +332,7 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		return
 	}
 	v.requireType(ins.Type, ins.Span, "instruction")
-	produces := ins.Op != MIRStoreLocal && ins.Op != MIRStoreGlobal && ins.Op != MIRDerefStore
+	produces := ins.Op != MIRStoreLocal && ins.Op != MIRStoreGlobal && ins.Op != MIRDerefStore && ins.Op != MIRDeallocate
 	if ins.Op == MIRCall && ins.Type == v.prog.Types.Void() {
 		produces = false
 	}
@@ -448,7 +450,7 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 			v.diags.Error(ins.Span, "field.load requires a field operand", "add a field index")
 		} else {
 			bt := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]])
-			if !isRecordKind(bt.Kind) {
+			if !isRecordKind(bt.Kind) && bt.Kind != TypeKindString {
 				v.diags.Error(ins.Span, "field.load base type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not a record", "use a struct or tuple value")
 			} else if ins.Imm.Int < 0 || int(ins.Imm.Int) >= len(bt.Fields) {
 				v.diags.Error(ins.Span, "field.load field index out of range", "use a declared field")
@@ -550,7 +552,7 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind == TypeKindPointer {
 			st := v.prog.Types.Lookup(at.Elem)
 			fi := int(ins.Imm.Int)
-			if st.Kind != TypeKindStruct && st.Kind != TypeKindTuple {
+			if st.Kind != TypeKindStruct && st.Kind != TypeKindTuple && st.Kind != TypeKindString {
 				v.diags.Error(ins.Span, "field.addr base does not point at a record type", "use the address of a struct")
 			} else if fi < 0 || fi >= len(st.Fields) {
 				v.diags.Error(ins.Span, "field.addr references an unknown field index", "use a declared field index")
@@ -586,6 +588,48 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		}
 		if ins.Imm.Kind != MIRImmNone {
 			v.diags.Error(ins.Span, ins.Op.String()+" takes no immediate operand", "remove the immediate")
+		}
+	case MIRAllocate:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "allocate requires one value argument", "add the size")
+		} else if v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]).Kind != TypeKindInt {
+			v.diags.Error(ins.Span, "allocate size must be an integer", "use an integer size")
+		}
+		if v.prog.Types.Lookup(ins.Type).Kind != TypeKindAddr || ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "allocate must produce Addr and take no immediate", "use the Addr result contract")
+		}
+	case MIRDeallocate:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "deallocate requires one value argument", "add the address")
+		} else {
+			at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]])
+			if at.Kind != TypeKindAddr && at.Kind != TypeKindPointer && at.Kind != TypeKindUnknown {
+				v.diags.Error(ins.Span, "deallocate operand type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not an address", "pass an Addr or pointer value")
+			}
+		}
+		if ins.Type != v.prog.Types.Void() || ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "deallocate must produce Void and take no immediate", "use the Void result contract")
+		}
+	case MIRCast:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "cast requires one value argument", "add the value to cast")
+		}
+		if ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "cast takes no immediate operand", "remove the immediate")
+		}
+	case MIRInterpolate:
+		if ins.Type != v.prog.Types.String() {
+			v.diags.Error(ins.Span, "interpolate must produce String", "use the String result contract")
+		}
+		if ins.Imm.Kind != MIRImmStringList {
+			v.diags.Error(ins.Span, "interpolate requires a literal-parts operand", "add the literal segments")
+		} else if len(ins.Imm.Strs) != len(ins.Args)+1 {
+			v.diags.Error(ins.Span, "interpolate literal count must be one more than the value count", "provide one literal per gap")
+		}
+		for _, a := range ins.Args {
+			if vt := v.valueTypes[a]; vt != v.prog.Types.String() && vt != v.prog.Types.Unknown() {
+				v.diags.Error(ins.Span, "interpolate value type "+v.typeName(vt)+" is not String", "interpolate a String value")
+			}
 		}
 	}
 }

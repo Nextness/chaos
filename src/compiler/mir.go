@@ -98,11 +98,15 @@ const (
 	MIRPtrAdd
 	MIRPtrSub
 	MIRPtrDiff
+	MIRAllocate
+	MIRDeallocate
+	MIRCast
+	MIRInterpolate
 )
 
 // MIROpcodeMax is the largest valid MIROpcode. The verifier uses it to reject
 // out-of-range opcodes without depending on a parallel name table.
-const MIROpcodeMax = MIRPtrDiff
+const MIROpcodeMax = MIRInterpolate
 
 // String returns the textual name of an opcode.
 func (op MIROpcode) String() string {
@@ -177,6 +181,14 @@ func (op MIROpcode) String() string {
 		return "ptr.sub"
 	case MIRPtrDiff:
 		return "ptr.diff"
+	case MIRAllocate:
+		return "allocate"
+	case MIRDeallocate:
+		return "deallocate"
+	case MIRCast:
+		return "cast"
+	case MIRInterpolate:
+		return "interpolate"
 	}
 	return "?"
 }
@@ -193,6 +205,7 @@ const (
 	MIRImmSymbol
 	MIRImmLocal
 	MIRImmField
+	MIRImmStringList
 )
 
 // MIRImmediate is the non-value operand of an instruction.
@@ -201,6 +214,7 @@ type MIRImmediate struct {
 	Int    int64
 	Float  float64
 	Str    string
+	Strs   []string
 	Bool   bool
 	Symbol SymbolID
 	Local  LocalID

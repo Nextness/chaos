@@ -25,6 +25,7 @@ const (
 	TypeF64     Type = "F64"
 	TypeBool    Type = "Bool"
 	TypeVoid    Type = "Void"
+	TypeAddr    Type = "Addr"
 	TypeNull    Type = "null" // the null literal; only valid with nullable pointers
 	TypeUnknown Type = ""
 )
@@ -815,6 +816,11 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 	case *ContinueStmt:
 		if tc.loopDepth == 0 {
 			tc.diags.Error(n.Span_, "continue outside a loop", "use continue inside a for loop")
+		}
+	case *DeallocateStmt:
+		at := tc.inferExpr(n.Addr)
+		if at != TypeUnknown && at != TypeAddr && !isPointerType(at) {
+			tc.diags.Error(n.Addr.nodeSpan(), "#deallocate requires an address, got "+tc.formatType(at), "pass an Addr or pointer value")
 		}
 	case *CompoundAssignStmt:
 		if n.Target != nil {
@@ -2164,6 +2170,17 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 		return TypeF64
 	case *StringExpr:
 		return TypeString
+	case *InterpolatedStringExpr:
+		for _, part := range n.Parts {
+			if part.Expr == nil {
+				continue
+			}
+			et := tc.inferExpr(part.Expr)
+			if et != TypeUnknown && et != TypeString {
+				tc.diags.Error(part.Expr.nodeSpan(), "interpolation requires a String value, got "+tc.formatType(et), "interpolate a String value")
+			}
+		}
+		return TypeString
 	case *BoolExpr:
 		return TypeBool
 	case *IdentExpr:
@@ -2240,6 +2257,23 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 		return tc.rangeIndexType
 	case *NullLitExpr:
 		return TypeNull
+	case *AllocateExpr:
+		sizeType := tc.inferExpr(n.Size)
+		if sizeType != TypeUnknown && !isIntegerType(sizeType) {
+			tc.diags.Error(n.Size.nodeSpan(), "#allocate size must be an integer, got "+tc.formatType(sizeType), "use an integer size")
+		}
+		return TypeAddr
+	case *CastExpr:
+		target := tc.resolveTypeExpr(n.Type)
+		tc.checkTypeExprValid(n.Type)
+		if target == TypeUnknown {
+			tc.diags.Error(n.Type.nodeSpan(), "cannot cast to an unknown type", "use a declared type")
+			return TypeUnknown
+		}
+		// The cast reinterprets the value; the source type is still checked so
+		// undeclared identifiers are reported.
+		tc.inferExpr(n.Value)
+		return target
 	case *DerefExpr:
 		return tc.checkDeref(n)
 	case *FieldAccessExpr:
@@ -2329,6 +2363,17 @@ func (tc *TypeChecker) checkFieldAccess(n *FieldAccessExpr) Type {
 		}
 	}
 	bt := tc.inferExpr(n.Base)
+	if bt == TypeString {
+		// String exposes its data (*Byte) and count (Size) fields directly.
+		switch n.Field {
+		case "data":
+			return pointerType(Type("Byte"), false)
+		case "count":
+			return Type("Size")
+		}
+		tc.diags.Error(n.FieldSpan, "String has no field '"+n.Field+"'", "use 'data' or 'count'")
+		return TypeUnknown
+	}
 	st, ok := tc.structDeclForType(bt)
 	if !ok {
 		if name := enumBaseName(n.Base); name != "" {
@@ -2388,7 +2433,17 @@ func (tc *TypeChecker) checkAssignableTarget(target Expr) (Type, bool) {
 		}
 		return arrayElemType(baseType), true
 	case *FieldAccessExpr:
-		bt := tc.inferExpr(n.Base)
+		bt := tc.fieldBaseType(n.Base)
+		if bt == TypeString {
+			switch n.Field {
+			case "data":
+				return pointerType(Type("Byte"), false), true
+			case "count":
+				return Type("Size"), true
+			}
+			tc.diags.Error(n.FieldSpan, "String has no field '"+n.Field+"'", "use 'data' or 'count'")
+			return TypeUnknown, false
+		}
 		st, ok := tc.structDeclForType(bt)
 		if !ok {
 			tc.diags.Error(n.Base.nodeSpan(), "cannot access a field on a value of type "+tc.formatType(bt), "use a struct value")
@@ -2420,6 +2475,27 @@ func (tc *TypeChecker) checkExprAssign(span Span, target Expr, value Expr) {
 	tc.withIfxContext(value, func() {
 		tc.checkAssign(span, ty, value)
 	})
+	// Writing to a field of an uninitialized variable initializes it.
+	if fa, isField := target.(*FieldAccessExpr); isField {
+		if ident, ok := unwrapParens(fa.Base).(*IdentExpr); ok {
+			if b, _, found := tc.lookupBinding(ident.Name); found && !b.Initialized {
+				b.Initialized = true
+				tc.setBinding(ident.Name, b)
+			}
+		}
+	}
+}
+
+// fieldBaseType returns the type of a field-access base without triggering the
+// definite-initialization error, so a field write can initialize an otherwise
+// uninitialized variable.
+func (tc *TypeChecker) fieldBaseType(base Expr) Type {
+	if ident, ok := unwrapParens(base).(*IdentExpr); ok {
+		if b, _, found := tc.lookupBinding(ident.Name); found {
+			return b.Type
+		}
+	}
+	return tc.inferExpr(base)
 }
 
 // checkExprCompound validates "target += value" / "target -= value" for an
@@ -3199,6 +3275,17 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 		} else {
 			tc.diags.Error(span, "cannot assign null to "+tc.formatType(target), "only nullable pointers can hold null")
 		}
+		tc.analysis.ExprTypes[value] = target
+		return
+	}
+	if target == TypeAddr {
+		// Addr accepts any pointer value implicitly; it is an opaque address.
+		valType := tc.inferExpr(value)
+		if isPointerType(valType) || valType == TypeAddr {
+			tc.analysis.ExprTypes[value] = target
+			return
+		}
+		tc.diags.Error(span, "cannot assign "+tc.formatType(valType)+" to Addr", "use a pointer value")
 		tc.analysis.ExprTypes[value] = target
 		return
 	}

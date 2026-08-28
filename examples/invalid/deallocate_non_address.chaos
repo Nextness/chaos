@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: #deallocate requires an address
+#entry main :: proc -> S64 {
+    #deallocate 5;
+    return 0;
+}

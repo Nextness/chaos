@@ -1,0 +1,22 @@
+// expect-exit: 0
+// String interpolation: '{expr}' segments inside a string literal are replaced
+// by the interpolated String values at runtime. Only String values can be
+// interpolated.
+#entry main :: proc -> S64 {
+    first := «hello»;
+    last := «world»;
+    greeting := «{first} {last}!»;
+    if greeting != «hello world!» { return 1; }
+    if greeting.count != 12 { return 2; }
+
+    // Leading and trailing interpolation, and repeated values.
+    name := «ada»;
+    if «{name}» != «ada» { return 3; }
+    if «[{name}]» != «[ada]» { return 4; }
+    if «{name}-{name}» != «ada-ada» { return 5; }
+
+    // Interpolating an empty string.
+    empty := «»;
+    if «a{empty}b» != «ab» { return 6; }
+    return 0;
+}

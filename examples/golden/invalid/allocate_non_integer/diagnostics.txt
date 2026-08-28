@@ -1,0 +1,3 @@
+[ERROR] 4:20:allocate_non_integer.chaos - #allocate size must be an integer, got F64
+     a := #allocate 1.5;
+                    ^^^ -> use an integer size

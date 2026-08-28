@@ -1,0 +1,16 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl buf: Addr = Expr(*compiler.HIRAllocate) [mutable=true compileTime=false]
+      VarDecl p: *S64 = Expr(*compiler.HIRCast) [mutable=true compileTime=false]
+      AddrStore Ident(p) = Int(42)
+      If condition=Binary(!= Deref(Ident(p)) Int(42))
+        Block
+          Return Int(1)
+      VarDecl a: Addr = Expr(*compiler.HIRCast) [mutable=true compileTime=false]
+      VarDecl q: *S64 = Expr(*compiler.HIRCast) [mutable=true compileTime=false]
+      If condition=Binary(!= Deref(Ident(q)) Int(42))
+        Block
+          Return Int(2)
+      Stmt *compiler.HIRDeallocate
+      Return Int(0)

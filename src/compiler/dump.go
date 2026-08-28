@@ -390,6 +390,29 @@ func dumpExpr(b *strings.Builder, e Expr) {
 		b.WriteString(")")
 	case *LoopBuiltinExpr:
 		fmt.Fprintf(b, "LoopBuiltin(%s)", n.Name)
+	case *AllocateExpr:
+		b.WriteString("Allocate(")
+		dumpExpr(b, n.Size)
+		b.WriteString(")")
+	case *CastExpr:
+		b.WriteString("Cast(")
+		dumpExpr(b, n.Value)
+		b.WriteString(" as ")
+		dumpExpr(b, n.Type)
+		b.WriteString(")")
+	case *InterpolatedStringExpr:
+		b.WriteString("Interp(")
+		for i, part := range n.Parts {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			if part.Expr != nil {
+				dumpExpr(b, part.Expr)
+			} else {
+				fmt.Fprintf(b, "%q", part.Literal)
+			}
+		}
+		b.WriteString(")")
 	case *IfxExpr:
 		b.WriteString("Ifx(")
 		dumpExpr(b, n.Condition)

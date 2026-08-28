@@ -697,3 +697,82 @@ func TestLowerPointerFieldAccess(t *testing.T) {
 		t.Errorf("field.addr index = %d, want 1", fieldAddr.Field)
 	}
 }
+
+func TestLowerStringFieldAccess(t *testing.T) {
+	// String field access lowers through the ordinary field machinery: data is
+	// field 0, count is field 1.
+	hir, _ := lowerSource(t, "#entry main :: proc -> S64 {\n    s := «hello»;\n    n := s.count;\n    p := s.data;\n    return 0;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	countDecl, ok := p.Body.Stmts[1].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 1 = %T, want *HIRVarDecl", p.Body.Stmts[1])
+	}
+	fl, ok := countDecl.Init.(*HIRFieldLoad)
+	if !ok {
+		t.Fatalf("count init = %T, want *HIRFieldLoad", countDecl.Init)
+	}
+	if fl.Field != 1 {
+		t.Errorf("count field index = %d, want 1", fl.Field)
+	}
+	dataDecl, ok := p.Body.Stmts[2].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 2 = %T, want *HIRVarDecl", p.Body.Stmts[2])
+	}
+	dl, ok := dataDecl.Init.(*HIRFieldLoad)
+	if !ok {
+		t.Fatalf("data init = %T, want *HIRFieldLoad", dataDecl.Init)
+	}
+	if dl.Field != 0 {
+		t.Errorf("data field index = %d, want 0", dl.Field)
+	}
+}
+
+func TestLowerAllocateAndCast(t *testing.T) {
+	// #allocate lowers to HIRAllocate; a cast lowers to HIRCast.
+	hir, _ := lowerSource(t, "#entry main :: proc -> S64 {\n    a := #allocate 16;\n    p: *S64 = a.(*S64);\n    #deallocate a;\n    return 0;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	allocDecl, ok := p.Body.Stmts[0].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 0 = %T, want *HIRVarDecl", p.Body.Stmts[0])
+	}
+	if _, ok := allocDecl.Init.(*HIRAllocate); !ok {
+		t.Fatalf("alloc init = %T, want *HIRAllocate", allocDecl.Init)
+	}
+	castDecl, ok := p.Body.Stmts[1].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 1 = %T, want *HIRVarDecl", p.Body.Stmts[1])
+	}
+	if _, ok := castDecl.Init.(*HIRCast); !ok {
+		t.Fatalf("cast init = %T, want *HIRCast", castDecl.Init)
+	}
+}
+
+func TestLowerInterpolation(t *testing.T) {
+	// An interpolated string lowers to HIRInterpolate with the literal parts
+	// and interpolated values.
+	hir, _ := lowerSource(t, "#entry main :: proc -> S64 {\n    name := «world»;\n    s := «hello {name}!»;\n    return 0;\n}")
+	p := findHIRProc(hir, "main")
+	if p == nil {
+		t.Fatal("proc main not found")
+	}
+	decl, ok := p.Body.Stmts[1].(*HIRVarDecl)
+	if !ok {
+		t.Fatalf("statement 1 = %T, want *HIRVarDecl", p.Body.Stmts[1])
+	}
+	interp, ok := decl.Init.(*HIRInterpolate)
+	if !ok {
+		t.Fatalf("interp init = %T, want *HIRInterpolate", decl.Init)
+	}
+	if len(interp.Literals) != 2 || len(interp.Values) != 1 {
+		t.Fatalf("literals = %v, values = %d, want 2 literals and 1 value", interp.Literals, len(interp.Values))
+	}
+	if interp.Literals[0] != "hello " || interp.Literals[1] != "!" {
+		t.Errorf("literals = %q, want [\"hello \" \"!\"]", interp.Literals)
+	}
+}

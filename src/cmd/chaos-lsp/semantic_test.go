@@ -294,7 +294,7 @@ func decodeSemanticData(data []int) []semanticToken {
 		} else {
 			start = data[i+1]
 		}
-		out = append(out, semanticToken{line: line, startChar: start, length: data[i+2], typeIndex: data[i+3]})
+		out = append(out, semanticToken{line: line, startChar: start, length: data[i+2], typeIndex: data[i+3], modifiers: data[i+4]})
 	}
 	return out
 }
@@ -567,6 +567,65 @@ func TestSemanticTokensPointers(t *testing.T) {
 		tok, ok := tokenAt(tokens, check.line, check.start)
 		if !ok || tok.typeIndex != check.want {
 			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}
+
+func TestSemanticTokensStringFieldsAndInterpolation(t *testing.T) {
+	// String field access, #allocate / #deallocate, and casts render their
+	// identifiers as variables. In an interpolated string the literal segments
+	// are strings and the inner expression is highlighted as its real type.
+	source := "main :: proc -> S64 {\n\ts := «hello»;\n\tn := s.count;\n\tname := «world»;\n\tg := «hello {name}!»;\n\tbuf := #allocate 16;\n\tp: *S64 = buf.(*S64);\n\t#deallocate buf;\n\treturn n;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want int
+	}{
+		{0, 0, semTypeFunction},   // main
+		{1, 1, semTypeVariable},   // s
+		{2, 1, semTypeVariable},   // n
+		{2, 6, semTypeVariable},   // s (field base)
+		{2, 8, semTypeVariable},   // count (field)
+		{3, 1, semTypeVariable},   // name
+		{4, 1, semTypeVariable},   // g
+		{4, 6, semTypeString},     // « (opening guillemet)
+		{4, 7, semTypeString},     // hello  (literal before interpolation)
+		{4, 13, semTypeDelimiter}, // { (interpolation open)
+		{4, 14, semTypeVariable},  // name (interpolated)
+		{4, 18, semTypeDelimiter}, // } (interpolation close)
+		{4, 19, semTypeString},    // ! (literal after interpolation)
+		{4, 20, semTypeString},    // » (closing guillemet)
+		{5, 1, semTypeVariable},   // buf
+		{6, 1, semTypeVariable},   // p
+		{6, 11, semTypeVariable},  // buf (cast value)
+		{6, 14, semTypeType},      // .(*S64) (whole cast)
+		{7, 13, semTypeVariable},  // buf (deallocate operand)
+		{8, 8, semTypeVariable},   // n (returned)
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want {
+			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}
+
+func TestSemanticTokensDerefAndCastTypeColor(t *testing.T) {
+	// The '.*' dereference operator and the whole '.(*T)' cast read as bold
+	// type tokens.
+	source := "main :: proc -> S64 {\n\tx := 5;\n\tp: *S64 = *x;\n\ty := p.*;\n\tbuf := #allocate 16;\n\tq: *S64 = buf.(*S64);\n\treturn 0;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want, wantMod int
+	}{
+		{3, 6, semTypeVariable, 0},       // p (deref operand)
+		{3, 7, semTypeType, semModBold},  // .* (deref operator, bold)
+		{5, 11, semTypeVariable, 0},      // buf (cast value)
+		{5, 14, semTypeType, semModBold}, // .(*S64) (whole cast, bold)
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want || tok.modifiers != check.wantMod {
+			t.Errorf("token at %d:%d = %+v, want type %d modifiers %d", check.line, check.start, tok, check.want, check.wantMod)
 		}
 	}
 }

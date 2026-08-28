@@ -1,0 +1,20 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl buf = Allocate(Int(16)) [mutable=true compileTime=false]
+      VarDecl p: Pointer(*Ident(S64)) = Cast(Ident(buf) as Pointer(*Ident(S64))) [mutable=true compileTime=false]
+      AssignStmt Deref(Ident(p)) = Int(42)
+      IfStmt condition=Binary(!= Deref(Ident(p)) Int(42))
+        Block
+          ReturnStmt Int(1)
+      VarDecl a: Ident(Addr) = Ident(p) [mutable=true compileTime=false]
+      VarDecl q: Pointer(*Ident(S64)) = Cast(Ident(a) as Pointer(*Ident(S64))) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Deref(Ident(q)) Int(42))
+        Block
+          ReturnStmt Int(2)
+      Stmt *compiler.DeallocateStmt
+      ReturnStmt Int(0)

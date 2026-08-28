@@ -68,7 +68,7 @@ L0:
     rep movsb
     lea rdi, [rbp-152]
     lea rsi, [rbp-168]
-    call chaos_eq_20
+    call chaos_eq_22
     mov byte [rbp-169], al
     movzx rax, byte [rbp-169]
     test al, al
@@ -105,7 +105,7 @@ chaos_eq_6:
     sete al
     ret
 
-chaos_eq_20:
+chaos_eq_22:
     push rbp
     mov rbp, rsp
     push rbx

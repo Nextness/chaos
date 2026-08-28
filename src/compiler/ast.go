@@ -362,6 +362,67 @@ func (e *LoopBuiltinExpr) nodeSpan() Span {
 
 func (e *LoopBuiltinExpr) exprNode() {}
 
+// AllocateExpr is the '#allocate <size>' intrinsic. It allocates a heap block
+// of the given size and yields an Addr to it.
+type AllocateExpr struct {
+	Span_ Span
+	Size  Expr
+}
+
+func (e *AllocateExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *AllocateExpr) exprNode() {}
+
+// CastExpr is a type cast: "expr.(*T)". It reinterprets the value as the
+// given type. The cast target is a type expression.
+type CastExpr struct {
+	Span_ Span
+	Value Expr
+	Type  Expr
+}
+
+func (e *CastExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *CastExpr) exprNode() {}
+
+// InterpPart is one segment of an interpolated string: either a literal text
+// run or an interpolation expression. Exactly one of Literal and Expr is set.
+type InterpPart struct {
+	Literal string
+	Expr    Expr
+}
+
+// InterpolatedStringExpr is a string literal containing '{expr}' segments,
+// for example «hello {name}». The result is a String built at runtime by
+// concatenating the literal parts and the interpolated values.
+type InterpolatedStringExpr struct {
+	Span_ Span
+	Parts []InterpPart
+}
+
+func (e *InterpolatedStringExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *InterpolatedStringExpr) exprNode() {}
+
+// DeallocateStmt is the '#deallocate <addr>' intrinsic. It frees a heap block
+// previously returned by '#allocate'.
+type DeallocateStmt struct {
+	Span_ Span
+	Addr  Expr
+}
+
+func (e *DeallocateStmt) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *DeallocateStmt) stmtNode() {}
+
 // ErrorExpr is a placeholder inserted when the parser encounters an error
 // during expression parsing. It allows the parser to continue and collect
 // additional diagnostics without crashing.

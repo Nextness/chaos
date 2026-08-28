@@ -1,0 +1,17 @@
+// expect-exit: 0
+// String is a struct-like aggregate with 'data' (*Byte) and 'count' (Size)
+// fields. Both are readable and writable directly.
+#entry main :: proc -> S64 {
+    s := «hello»;
+    if s.count != 5 { return 1; }
+    p: *Byte = s.data;
+    if p.* != 104 { return 2; } // 'h'
+
+    new_var := «hello world»;
+    a: String;
+    a.data = new_var.data;
+    a.count = new_var.count;
+    if a.count != 11 { return 3; }
+    if a.data.* != 104 { return 4; }
+    return 0;
+}

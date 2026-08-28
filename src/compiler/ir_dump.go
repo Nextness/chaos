@@ -374,6 +374,10 @@ func dumpMIRInstr(b *strings.Builder, prog *MIRProgram, fn *MIRFunction, ins *MI
 		fmt.Fprintf(b, " l%d", ins.Imm.Local)
 	case MIRImmField:
 		fmt.Fprintf(b, " field%d", ins.Imm.Int)
+	case MIRImmStringList:
+		for _, s := range ins.Imm.Strs {
+			fmt.Fprintf(b, " %q", s)
+		}
 	}
 	b.WriteString("\n")
 }

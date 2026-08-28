@@ -1,0 +1,48 @@
+MIR
+  Function main() -> S64
+    Local l0: Addr
+    Local l1: *S64
+    Local l2: Addr
+    Local l3: *S64
+    bb0:
+      v0:S64 = const 16
+      v1:Addr = allocate v0
+      store.local v1 l0
+      v2:Addr = load.local l0
+      v3:*S64 = cast v2
+      store.local v3 l1
+      v4:*S64 = load.local l1
+      v5:S64 = const 42
+      deref.store v4 v5
+      v6:*S64 = load.local l1
+      v7:S64 = deref.load v6
+      v8:S64 = const 42
+      v9:Bool = cmp.neq v7 v8
+      branch v9, bb1, bb2
+    bb1:
+      v10:S64 = const 1
+      return v10
+    bb2:
+      jump bb3
+    bb3:
+      v11:*S64 = load.local l1
+      v12:Addr = cast v11
+      store.local v12 l2
+      v13:Addr = load.local l2
+      v14:*S64 = cast v13
+      store.local v14 l3
+      v15:*S64 = load.local l3
+      v16:S64 = deref.load v15
+      v17:S64 = const 42
+      v18:Bool = cmp.neq v16 v17
+      branch v18, bb4, bb5
+    bb4:
+      v19:S64 = const 2
+      return v19
+    bb5:
+      jump bb6
+    bb6:
+      v20:Addr = load.local l0
+      deallocate v20
+      v21:S64 = const 0
+      return v21

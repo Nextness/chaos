@@ -1,0 +1,26 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl s = String("hello") [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Field(Ident(s), count) Int(5))
+        Block
+          ReturnStmt Int(1)
+      VarDecl p: Pointer(*Ident(Byte)) = Field(Ident(s), data) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Deref(Ident(p)) Int(104))
+        Block
+          ReturnStmt Int(2)
+      VarDecl new_var = String("hello world") [mutable=true compileTime=false]
+      VarDecl a: Ident(String) [mutable=true compileTime=false]
+      AssignStmt Field(Ident(a), data) = Field(Ident(new_var), data)
+      AssignStmt Field(Ident(a), count) = Field(Ident(new_var), count)
+      IfStmt condition=Binary(!= Field(Ident(a), count) Int(11))
+        Block
+          ReturnStmt Int(3)
+      IfStmt condition=Binary(!= Deref(Field(Ident(a), data)) Int(104))
+        Block
+          ReturnStmt Int(4)
+      ReturnStmt Int(0)

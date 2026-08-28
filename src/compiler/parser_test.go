@@ -1240,7 +1240,7 @@ func TestParsePointerSyntaxErrors(t *testing.T) {
 	}
 
 	result = parseTestCase(t, "dummy :: proc { x := p.; }")
-	if !hasError(result.Diags, "expected '*' or a field name after '.'") {
+	if !hasError(result.Diags, "expected '*', '(', or a field name after '.'") {
 		t.Errorf("expected dangling-dot error, got %v", result.Diags)
 	}
 }
@@ -1675,6 +1675,87 @@ func TestParseStringExpr(t *testing.T) {
 	}
 	if e.Value != "hello" {
 		t.Errorf("Value = %q, want %q", e.Value, "hello")
+	}
+}
+
+func TestParseInterpolatedString(t *testing.T) {
+	expr := parseExpr(t, "«hello {name}!»")
+	interp, ok := expr.(*InterpolatedStringExpr)
+	if !ok {
+		t.Fatalf("expected *InterpolatedStringExpr, got %T", expr)
+	}
+	if len(interp.Parts) != 3 {
+		t.Fatalf("parts = %d, want 3", len(interp.Parts))
+	}
+	if interp.Parts[0].Literal != "hello " {
+		t.Errorf("part 0 literal = %q, want %q", interp.Parts[0].Literal, "hello ")
+	}
+	if interp.Parts[1].Expr == nil {
+		t.Fatal("part 1 should be an expression")
+	}
+	if id, ok := interp.Parts[1].Expr.(*IdentExpr); !ok || id.Name != "name" {
+		t.Fatalf("part 1 expr = %#v, want Ident(name)", interp.Parts[1].Expr)
+	}
+	if interp.Parts[2].Literal != "!" {
+		t.Errorf("part 2 literal = %q, want %q", interp.Parts[2].Literal, "!")
+	}
+}
+
+func TestParseInterpolatedStringLeading(t *testing.T) {
+	expr := parseExpr(t, "«{name}»")
+	interp, ok := expr.(*InterpolatedStringExpr)
+	if !ok {
+		t.Fatalf("expected *InterpolatedStringExpr, got %T", expr)
+	}
+	if len(interp.Parts) != 3 {
+		t.Fatalf("parts = %d, want 3", len(interp.Parts))
+	}
+	if interp.Parts[0].Literal != "" {
+		t.Errorf("part 0 literal = %q, want empty", interp.Parts[0].Literal)
+	}
+	if interp.Parts[1].Expr == nil {
+		t.Fatal("part 1 should be an expression")
+	}
+	if interp.Parts[2].Literal != "" {
+		t.Errorf("part 2 literal = %q, want empty", interp.Parts[2].Literal)
+	}
+}
+
+func TestParseAllocateExpr(t *testing.T) {
+	expr := parseExpr(t, "#allocate 16")
+	alloc, ok := expr.(*AllocateExpr)
+	if !ok {
+		t.Fatalf("expected *AllocateExpr, got %T", expr)
+	}
+	if int, ok := alloc.Size.(*IntExpr); !ok || int.Value != "16" {
+		t.Fatalf("Size = %#v, want Int(16)", alloc.Size)
+	}
+}
+
+func TestParseDeallocateStmt(t *testing.T) {
+	stmt := parseOneStmt(t, "#deallocate a;")
+	deal, ok := stmt.(*DeallocateStmt)
+	if !ok {
+		t.Fatalf("expected *DeallocateStmt, got %T", stmt)
+	}
+	if id, ok := deal.Addr.(*IdentExpr); !ok || id.Name != "a" {
+		t.Fatalf("Addr = %#v, want Ident(a)", deal.Addr)
+	}
+}
+
+func TestParseCastExpr(t *testing.T) {
+	expr := parseExpr(t, "a.(*S64)")
+	cast, ok := expr.(*CastExpr)
+	if !ok {
+		t.Fatalf("expected *CastExpr, got %T", expr)
+	}
+	if id, ok := cast.Value.(*IdentExpr); !ok || id.Name != "a" {
+		t.Fatalf("Value = %#v, want Ident(a)", cast.Value)
+	}
+	if pt, ok := cast.Type.(*PointerTypeExpr); !ok {
+		t.Fatalf("Type = %#v, want *PointerTypeExpr", cast.Type)
+	} else if id, ok := pt.Elem.(*IdentExpr); !ok || id.Name != "S64" {
+		t.Fatalf("Type elem = %#v, want Ident(S64)", pt.Elem)
 	}
 }
 

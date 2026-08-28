@@ -93,7 +93,7 @@ func (s *Server) handleInitialize(msg message) Response {
 			TextDocumentSync:       &TextDocumentSyncOptions{OpenClose: true, Change: 2},
 			DocumentSymbolProvider: true,
 			SemanticTokensProvider: &SemanticTokensOptions{
-				Legend: SemanticTokensLegend{TokenTypes: semanticTokenTypes, TokenModifiers: []string{}},
+				Legend: SemanticTokensLegend{TokenTypes: semanticTokenTypes, TokenModifiers: []string{"bold"}},
 				Full:   true,
 			},
 			DefinitionProvider:        true,

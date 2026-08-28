@@ -531,6 +531,17 @@ func (r *resolver) collectOccurrences() {
 			walkExpr(e.Else)
 		case *compiler.LoopBuiltinExpr:
 			// Builtin directive; no symbol.
+		case *compiler.InterpolatedStringExpr:
+			for _, part := range e.Parts {
+				if part.Expr != nil {
+					walkExpr(part.Expr)
+				}
+			}
+		case *compiler.AllocateExpr:
+			walkExpr(e.Size)
+		case *compiler.CastExpr:
+			walkExpr(e.Value)
+			walkExpr(e.Type)
 		case *compiler.ArrayTypeExpr:
 			walkExpr(e.Elem)
 		case *compiler.ErrorExpr:
@@ -647,6 +658,10 @@ func (r *resolver) collectOccurrences() {
 			walkBlock(s.Body)
 		case *compiler.BreakStmt, *compiler.ContinueStmt:
 			// No operands.
+		case *compiler.DeallocateStmt:
+			if s.Addr != nil {
+				walkExpr(s.Addr)
+			}
 		case *compiler.CompoundAssignStmt:
 			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
 			if s.Value != nil {

@@ -1,0 +1,71 @@
+MIR
+  Function main() -> S64
+    Local l0: String
+    Local l1: *Byte
+    Local l2: String
+    Local l3: String
+    bb0:
+      v0:String = const "hello"
+      store.local v0 l0
+      v1:String = load.local l0
+      v2:Size = field.load v1 field1
+      v3:Size = const 5
+      v4:Bool = cmp.neq v2 v3
+      branch v4, bb1, bb2
+    bb1:
+      v5:S64 = const 1
+      return v5
+    bb2:
+      jump bb3
+    bb3:
+      v6:String = load.local l0
+      v7:*Byte = field.load v6 field0
+      store.local v7 l1
+      v8:*Byte = load.local l1
+      v9:Byte = deref.load v8
+      v10:Byte = const 104
+      v11:Bool = cmp.neq v9 v10
+      branch v11, bb4, bb5
+    bb4:
+      v12:S64 = const 2
+      return v12
+    bb5:
+      jump bb6
+    bb6:
+      v13:String = const "hello world"
+      store.local v13 l2
+      v14:*String = addr.of l3
+      v15:**Byte = field.addr v14 field0
+      v16:String = load.local l2
+      v17:*Byte = field.load v16 field0
+      deref.store v15 v17
+      v18:*String = addr.of l3
+      v19:*Size = field.addr v18 field1
+      v20:String = load.local l2
+      v21:Size = field.load v20 field1
+      deref.store v19 v21
+      v22:String = load.local l3
+      v23:Size = field.load v22 field1
+      v24:Size = const 11
+      v25:Bool = cmp.neq v23 v24
+      branch v25, bb7, bb8
+    bb7:
+      v26:S64 = const 3
+      return v26
+    bb8:
+      jump bb9
+    bb9:
+      v27:String = load.local l3
+      v28:*Byte = field.load v27 field0
+      v29:Byte = deref.load v28
+      v30:Byte = const 104
+      v31:Bool = cmp.neq v29 v30
+      branch v31, bb10, bb11
+    bb10:
+      v32:S64 = const 4
+      return v32
+    bb11:
+      jump bb12
+    bb12:
+      v33:S64 = const 0
+      return v33

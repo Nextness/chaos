@@ -425,6 +425,55 @@ func (e *HIRCall) hirExprNode()    {}
 func (e *HIRCall) hirSpan() Span   { return e.Span_ }
 func (e *HIRCall) hirType() TypeID { return e.Type }
 
+// HIRAllocate is the '#allocate <size>' intrinsic. It allocates a heap block
+// of the given size and yields an Addr to it.
+type HIRAllocate struct {
+	Span_ Span
+	Size  HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRAllocate) hirExprNode()    {}
+func (e *HIRAllocate) hirSpan() Span   { return e.Span_ }
+func (e *HIRAllocate) hirType() TypeID { return e.Type }
+
+// HIRCast reinterprets a value as another type. Pointer and Addr casts are
+// representation-preserving no-ops; the node exists so the type change is
+// explicit in the IR.
+type HIRCast struct {
+	Span_ Span
+	Value HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRCast) hirExprNode()    {}
+func (e *HIRCast) hirSpan() Span   { return e.Span_ }
+func (e *HIRCast) hirType() TypeID { return e.Type }
+
+// HIRInterpolate builds a String at runtime from literal runs and interpolated
+// String values. Literals holds the literal parts (one more than the number of
+// interpolated values); Values holds the interpolated String expressions.
+type HIRInterpolate struct {
+	Span_    Span
+	Literals []string
+	Values   []HIRExpr
+	Type     TypeID
+}
+
+func (e *HIRInterpolate) hirExprNode()    {}
+func (e *HIRInterpolate) hirSpan() Span   { return e.Span_ }
+func (e *HIRInterpolate) hirType() TypeID { return e.Type }
+
+// HIRDeallocate is the '#deallocate <addr>' intrinsic. It frees a heap block
+// previously returned by '#allocate'.
+type HIRDeallocate struct {
+	Span_ Span
+	Addr  HIRExpr
+}
+
+func (s *HIRDeallocate) hirStmtNode()  {}
+func (s *HIRDeallocate) hirSpan() Span { return s.Span_ }
+
 // HIRStructInit is a struct literal. Fields are kept in source order; each
 // carries the resolved field symbol.
 type HIRStructInit struct {

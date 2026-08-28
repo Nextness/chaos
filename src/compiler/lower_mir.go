@@ -228,6 +228,9 @@ func (ml *MIRLowerer) lowerStmt(s HIRStmt) {
 		ml.lowerBreak(n)
 	case *HIRContinue:
 		ml.lowerContinue(n)
+	case *HIRDeallocate:
+		addr := ml.lowerExpr(n.Addr)
+		ml.emitVoid(MIRDeallocate, ml.types.Void(), []ValueID{addr}, MIRImmediate{}, n.Span_)
 	}
 }
 
@@ -496,6 +499,20 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 		return ml.emit(MIRArrayIndex, n.Type, []ValueID{base, idx}, MIRImmediate{}, n.Span_)
 	case *HIRIfx:
 		return ml.lowerIfx(n)
+	case *HIRAllocate:
+		size := ml.lowerExpr(n.Size)
+		return ml.emit(MIRAllocate, n.Type, []ValueID{size}, MIRImmediate{}, n.Span_)
+	case *HIRCast:
+		// A cast is representation-preserving: the value is copied into a new
+		// value slot typed as the target type.
+		v := ml.lowerExpr(n.Value)
+		return ml.emit(MIRCast, n.Type, []ValueID{v}, MIRImmediate{}, n.Span_)
+	case *HIRInterpolate:
+		args := make([]ValueID, len(n.Values))
+		for i, v := range n.Values {
+			args[i] = ml.lowerExpr(v)
+		}
+		return ml.emit(MIRInterpolate, n.Type, args, MIRImmediate{Kind: MIRImmStringList, Strs: n.Literals}, n.Span_)
 	}
 	ml.diags.Error(e.hirSpan(), "unsupported HIR expression reached MIR lowering", "report this compiler bug")
 	return NoValue

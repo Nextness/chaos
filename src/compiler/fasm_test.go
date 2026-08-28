@@ -387,6 +387,16 @@ func TestFasmRuntime(t *testing.T) {
 		{"pointer order comparisons", "#entry main :: proc -> S64 {\n    arr := []S64.{10, 20, 30};\n    p: *S64 = *arr[0];\n    q: *S64 = *arr[1];\n    if p <= q && q >= p && q > p && p < q { return 20; }\n    return 0;\n}", 20},
 		{"double pointer", "#entry main :: proc -> S64 {\n    a := 5;\n    p: *S64 = *a;\n    pp: **S64 = *p;\n    if pp.*.* == 5 && pp.* == p && pp == *p { return 5; }\n    return 0;\n}", 5},
 		{"null left comparison", "#entry main :: proc -> S64 {\n    a := 10;\n    p: *S64? = *a;\n    if null == p { return 1; }\n    if null != p { return 10; }\n    return 0;\n}", 10},
+		{"allocate returns addr", "#entry main :: proc -> S64 {\n    a := #allocate 16;\n    b: Addr = a;\n    #deallocate a;\n    return 0;\n}", 0},
+		{"allocate cast deref", "#entry main :: proc -> S64 {\n    a := #allocate 16;\n    p: *S64 = a.(*S64);\n    p.* = 42;\n    #deallocate a;\n    return p.*;\n}", 42},
+		{"addr from pointer", "#entry main :: proc -> S64 {\n    x := 7;\n    p: *S64 = *x;\n    a: Addr = p;\n    q: *S64 = a.(*S64);\n    return q.*;\n}", 7},
+		{"string data count read", "#entry main :: proc -> S64 {\n    s := «hello»;\n    if s.count == 5 { return 5; }\n    return 0;\n}", 5},
+		{"string data count write", "#entry main :: proc -> S64 {\n    new_var := «hello world»;\n    a: String;\n    a.data = new_var.data;\n    a.count = new_var.count;\n    if a.count == 11 { return 11; }\n    return 0;\n}", 11},
+		{"string data pointer", "#entry main :: proc -> S64 {\n    s := «abc»;\n    p: *Byte = s.data;\n    if p.* == 97 { return 97; }\n    return 0;\n}", 97},
+		{"string interpolation", "#entry main :: proc -> S64 {\n    name := «world»;\n    s := «hello {name}!»;\n    if s == «hello world!» { return 12; }\n    return 0;\n}", 12},
+		{"string interpolation multiple", "#entry main :: proc -> S64 {\n    a := «foo»;\n    b := «bar»;\n    s := «{a}-{b}-{a}»;\n    if s == «foo-bar-foo» { return 9; }\n    return 0;\n}", 9},
+		{"string interpolation leading", "#entry main :: proc -> S64 {\n    name := «x»;\n    s := «{name}»;\n    if s == «x» { return 3; }\n    return 0;\n}", 3},
+		{"string interpolation empty", "#entry main :: proc -> S64 {\n    name := «»;\n    s := «a{name}b»;\n    if s == «ab» { return 2; }\n    return 0;\n}", 2},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

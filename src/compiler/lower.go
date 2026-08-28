@@ -700,6 +700,8 @@ func (l *Lowerer) lowerStmt(s Stmt) HIRStmt {
 		return &HIRBreak{Span_: n.Span_}
 	case *ContinueStmt:
 		return &HIRContinue{Span_: n.Span_}
+	case *DeallocateStmt:
+		return &HIRDeallocate{Span_: n.Span_, Addr: l.lowerExpr(n.Addr)}
 	case *CompoundAssignStmt:
 		if n.Target != nil {
 			return l.lowerTargetCompound(n)
@@ -1090,6 +1092,15 @@ func (l *Lowerer) addressOf(target Expr) HIRExpr {
 // type of base, or -1 when base is not a struct.
 func (l *Lowerer) typeIndex(base Expr, field string) int {
 	bt := l.inferASTType(base)
+	if bt == l.types.String() {
+		switch field {
+		case "data":
+			return 0
+		case "count":
+			return 1
+		}
+		return -1
+	}
 	hs, ok := l.hirStructs[bt]
 	if !ok {
 		return -1
@@ -1106,6 +1117,15 @@ func (l *Lowerer) typeIndex(base Expr, field string) int {
 // struct type of base, or Unknown when base is not a struct.
 func (l *Lowerer) typeOfField(base Expr, field string) TypeID {
 	bt := l.inferASTType(base)
+	if bt == l.types.String() {
+		switch field {
+		case "data":
+			return l.types.InternPointer(l.types.Byte(), false)
+		case "count":
+			return l.types.Size()
+		}
+		return l.types.Unknown()
+	}
 	hs, ok := l.hirStructs[bt]
 	if !ok {
 		return l.types.Unknown()
@@ -1441,6 +1461,21 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		return &HIRConst{Span_: n.Span_, Type: t, Kind: ConstInt, Int: 0}
 	case *CallExpr:
 		return l.lowerCall(n)
+	case *AllocateExpr:
+		return &HIRAllocate{Span_: n.Span_, Size: l.lowerExpr(n.Size), Type: l.types.Addr()}
+	case *CastExpr:
+		return &HIRCast{Span_: n.Span_, Value: l.lowerExpr(n.Value), Type: l.typeOfTypeExpr(n.Type)}
+	case *InterpolatedStringExpr:
+		var literals []string
+		var values []HIRExpr
+		for _, part := range n.Parts {
+			if part.Expr != nil {
+				values = append(values, l.lowerExpr(part.Expr))
+			} else {
+				literals = append(literals, part.Literal)
+			}
+		}
+		return &HIRInterpolate{Span_: n.Span_, Literals: literals, Values: values, Type: l.types.String()}
 	case *StructInitExpr:
 		if n.Type != nil {
 			return l.lowerStructInit(n, l.typeOfTypeExpr(n.Type))
@@ -1531,7 +1566,15 @@ func (l *Lowerer) lowerExprAs(e Expr, target TypeID) HIRExpr {
 	if em, ok := e.(*EnumMemberExpr); ok && em.TypeName == "" {
 		return l.lowerEnumMember(em, l.types.Lookup(target).Name)
 	}
-	return l.adaptLiteral(l.lowerExpr(e), target)
+	lowered := l.lowerExpr(e)
+	// A pointer value assigned to Addr is implicitly cast to the opaque
+	// address type.
+	if target == l.types.Addr() && lowered.hirType() != target {
+		if lt := l.types.Lookup(lowered.hirType()); lt.Kind == TypeKindPointer || lt.Kind == TypeKindAddr {
+			return &HIRCast{Span_: e.nodeSpan(), Value: lowered, Type: target}
+		}
+	}
+	return l.adaptLiteral(lowered, target)
 }
 
 // lowerErrorMember lowers an error member reference to its ordinal constant.

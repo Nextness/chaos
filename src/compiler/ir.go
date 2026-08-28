@@ -90,6 +90,7 @@ const (
 	TypeKindEnum
 	TypeKindTuple
 	TypeKindPointer
+	TypeKindAddr
 	TypeKindUnknown
 )
 
@@ -136,10 +137,20 @@ func NewTypeTable() *TypeTable {
 			kind = TypeKindInt
 		case BuiltinFloat:
 			kind = TypeKindFloat
+		case BuiltinAddr:
+			kind = TypeKindAddr
 		}
 		tt.intern(info.Name, kind)
 	}
 	tt.intern("", TypeKindUnknown)
+	// String is a struct-like aggregate with two fields: data points at the
+	// first byte of the string and count is its length. Exposing them as
+	// fields lets user code read and write them directly.
+	dataPtr := tt.InternPointer(tt.byName["Byte"], false)
+	tt.types[tt.byName["String"]].Fields = []TypeField{
+		{Name: "data", Type: dataPtr},
+		{Name: "count", Type: tt.byName["Size"]},
+	}
 	return tt
 }
 
@@ -319,6 +330,15 @@ func (tt *TypeTable) Bool() TypeID { return tt.byName["Bool"] }
 
 // String returns the TypeID of the String type.
 func (tt *TypeTable) String() TypeID { return tt.byName["String"] }
+
+// Addr returns the TypeID of the Addr type.
+func (tt *TypeTable) Addr() TypeID { return tt.byName["Addr"] }
+
+// Byte returns the TypeID of the Byte type.
+func (tt *TypeTable) Byte() TypeID { return tt.byName["Byte"] }
+
+// Size returns the TypeID of the Size type.
+func (tt *TypeTable) Size() TypeID { return tt.byName["Size"] }
 
 // S64 returns the TypeID of the S64 type.
 func (tt *TypeTable) S64() TypeID { return tt.byName["S64"] }

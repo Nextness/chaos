@@ -1,0 +1,3 @@
+[ERROR] 4:5:addr_from_scalar.chaos - cannot assign S64 to Addr
+     a: Addr = 5;
+     ^^^^^^^^^^^ -> use a pointer value

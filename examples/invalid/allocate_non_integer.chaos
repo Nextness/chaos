@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: #allocate size must be an integer
+#entry main :: proc -> S64 {
+    a := #allocate 1.5;
+    return 0;
+}

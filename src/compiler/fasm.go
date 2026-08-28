@@ -77,6 +77,7 @@ type fasmEmitter struct {
 	layouts          map[TypeID]Layout
 	layoutVisiting   map[TypeID]bool
 	equalityTypes    map[TypeID]bool
+	needsHeap        bool
 }
 
 // Layout is the single backend storage contract used for stack slots,
@@ -264,6 +265,18 @@ func (fb *fasmEmitter) collectStringConsts() {
 					}
 					fb.divisionMessages[ins] = index
 				}
+				if ins.Op == MIRAllocate {
+					fb.needsHeap = true
+				}
+				if ins.Op == MIRInterpolate {
+					fb.needsHeap = true
+					for _, lit := range ins.Imm.Strs {
+						if _, ok := fb.stringIndexes[lit]; !ok {
+							fb.stringIndexes[lit] = len(fb.strings)
+							fb.strings = append(fb.strings, lit)
+						}
+					}
+				}
 			}
 		}
 	}
@@ -294,13 +307,21 @@ func (fb *fasmEmitter) emitDivisionZeroExit(ins *MIRInstr) {
 }
 
 func (fb *fasmEmitter) emitData() {
-	if len(fb.prog.Globals) == 0 && len(fb.floatConsts) == 0 && len(fb.strings) == 0 {
+	if len(fb.prog.Globals) == 0 && len(fb.floatConsts) == 0 && len(fb.strings) == 0 && !fb.needsHeap {
 		return
 	}
 	fb.out.WriteString("segment readable writable\n")
 	for _, g := range fb.prog.Globals {
 		size := fb.sizeOf(fb.prog.Types.Lookup(g.Type))
 		fmt.Fprintf(&fb.out, "%s:\n    rb %d\n", fb.globalLabel(g.Symbol), size)
+	}
+	if fb.needsHeap {
+		// A static bump allocator: chaos_heap is the reserved arena and
+		// chaos_heap_ptr tracks the next free byte. #allocate bumps the
+		// pointer; #deallocate is a no-op for now (a bump allocator cannot
+		// reclaim individual blocks).
+		fb.out.WriteString("chaos_heap:\n    rb 1048576\n")
+		fb.out.WriteString("chaos_heap_ptr:\n    dq chaos_heap\n")
 	}
 	for i, fc := range fb.floatConsts {
 		if fc.size == 4 {
@@ -628,6 +649,14 @@ func (fb *fasmEmitter) emitInstr(ins *MIRInstr) {
 		fb.emitPtrArith(ins, true, false)
 	case MIRPtrDiff:
 		fb.emitPtrArith(ins, true, true)
+	case MIRAllocate:
+		fb.emitAllocate(ins)
+	case MIRDeallocate:
+		fb.emitDeallocate(ins)
+	case MIRCast:
+		fb.emitCast(ins)
+	case MIRInterpolate:
+		fb.emitInterpolate(ins)
 	default:
 		fb.diags.Error(ins.Span, "unsupported MIR opcode reached the fasm backend", "verify MIR before code generation")
 	}
@@ -1740,10 +1769,13 @@ func (fb *fasmEmitter) layoutOf(t IRType) Layout {
 			layout = Layout{Size: size, Align: size}
 		}
 	case TypeKindString:
-		layout = Layout{Size: 16, Align: 8}
+		// String is a (data, count) pair: data at offset 0, count at offset 8.
+		layout = Layout{Size: 16, Align: 8, FieldOffsets: []int{0, 8}}
 	case TypeKindArray:
 		layout = Layout{Size: 16, Align: 8}
 	case TypeKindPointer:
+		layout = Layout{Size: 8, Align: 8}
+	case TypeKindAddr:
 		layout = Layout{Size: 8, Align: 8}
 	case TypeKindError:
 		layout = Layout{Size: 2, Align: 2}
@@ -2180,6 +2212,94 @@ func (fb *fasmEmitter) emitPtrArith(ins *MIRInstr, subtract, scale bool) {
 		fb.out.WriteString("    add rax, rcx\n")
 	}
 	fb.emitStore(fb.prog.Types.Lookup(ins.Type), resSlot)
+}
+
+// emitAllocate implements '#allocate <size>'. It returns the current bump
+// pointer and advances it by the size aligned up to 8 bytes. The heap is a
+// static arena (chaos_heap) tracked by chaos_heap_ptr.
+func (fb *fasmEmitter) emitAllocate(ins *MIRInstr) {
+	sizeSlot := fb.valueSlots[ins.Args[0]]
+	resSlot := fb.valueSlots[ins.Result]
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", sizeSlot)
+	fb.out.WriteString("    add rax, 7\n")
+	fb.out.WriteString("    and rax, -8\n")
+	fb.out.WriteString("    mov rcx, rax\n")
+	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
+	fb.out.WriteString("    add rax, rcx\n")
+	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
+}
+
+// emitDeallocate implements '#deallocate <addr>'. A bump allocator cannot
+// reclaim individual blocks, so this is a no-op for now.
+func (fb *fasmEmitter) emitDeallocate(ins *MIRInstr) {}
+
+// emitCast copies the value into a new slot typed as the target type. Pointer
+// and Addr casts are representation-preserving, so this is a plain copy.
+func (fb *fasmEmitter) emitCast(ins *MIRInstr) {
+	t := fb.prog.Types.Lookup(ins.Type)
+	srcSlot := fb.valueSlots[ins.Args[0]]
+	resSlot := fb.valueSlots[ins.Result]
+	if fb.isAggregate(t) {
+		fb.emitAggCopy(srcSlot, resSlot, fb.sizeOf(t))
+		return
+	}
+	fb.emitLoad(t, srcSlot)
+	fb.emitStore(t, resSlot)
+}
+
+// emitInterpolate builds a String at runtime from literal runs and interpolated
+// String values. The literal parts (ins.Imm.Strs) and the interpolated values
+// (ins.Args) interleave as literal, value, literal, value, ..., literal. A
+// fresh heap buffer holds the concatenated bytes.
+func (fb *fasmEmitter) emitInterpolate(ins *MIRInstr) {
+	resSlot := fb.valueSlots[ins.Result]
+	// Compute the total byte count in rbx.
+	fb.out.WriteString("    xor ebx, ebx\n")
+	for _, lit := range ins.Imm.Strs {
+		fmt.Fprintf(&fb.out, "    mov rax, %d\n", len(lit))
+		fb.out.WriteString("    add rbx, rax\n")
+	}
+	for _, a := range ins.Args {
+		fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d+8]\n", fb.valueSlots[a])
+		fb.out.WriteString("    add rbx, rax\n")
+	}
+	// Allocate a buffer of the aligned size.
+	fb.out.WriteString("    mov rax, rbx\n")
+	fb.out.WriteString("    add rax, 7\n")
+	fb.out.WriteString("    and rax, -8\n")
+	fb.out.WriteString("    mov rcx, rax\n")
+	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
+	fb.out.WriteString("    add rax, rcx\n")
+	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
+	// Copy each part into the buffer.
+	fmt.Fprintf(&fb.out, "    mov rdi, qword [rbp-%d]\n", resSlot)
+	fb.out.WriteString("    cld\n")
+	litIdx := 0
+	for _, a := range ins.Args {
+		// Copy the literal before this interpolated value.
+		fb.emitInterpCopy(ins.Imm.Strs[litIdx])
+		litIdx++
+		// Copy the interpolated value's bytes.
+		slot := fb.valueSlots[a]
+		fmt.Fprintf(&fb.out, "    mov rsi, qword [rbp-%d]\n", slot)
+		fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d+8]\n", slot)
+		fb.out.WriteString("    rep movsb\n")
+	}
+	// Copy the trailing literal.
+	fb.emitInterpCopy(ins.Imm.Strs[litIdx])
+	// Set the result count.
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rbx\n", resSlot)
+}
+
+// emitInterpCopy copies a literal string from the data section into the
+// destination cursor (rdi), advancing it.
+func (fb *fasmEmitter) emitInterpCopy(lit string) {
+	idx := fb.stringIndexes[lit]
+	fmt.Fprintf(&fb.out, "    mov rsi, str%d\n", idx)
+	fmt.Fprintf(&fb.out, "    mov rcx, %d\n", len(lit))
+	fb.out.WriteString("    rep movsb\n")
 }
 
 // emitLoadIndirect loads the value at [addrReg] into rax (integers) or xmm0
