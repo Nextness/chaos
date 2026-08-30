@@ -128,6 +128,34 @@ func TestPointerFieldAccessResolves(t *testing.T) {
 	}
 }
 
+func TestAssignmentLvalueResolves(t *testing.T) {
+	// A complex assignment lvalue like 'p.*.node_pool[n].text = op;' must
+	// resolve its members and indices to their symbols.
+	source := "main :: proc {\n    p: *Parser;\n    n: S64;\n    op: String;\n    p.*.node_pool[n].text = op;\n}"
+	r := buildResolverFor(t, source)
+
+	// The deref base resolves to the p declaration.
+	ppRef := offsetOf(t, source, "p.*")
+	ppSym := r.definitionAt(ppRef)
+	if ppSym == nil || ppSym.name != "p" {
+		t.Fatalf("deref base definition = %+v, want the p declaration", ppSym)
+	}
+
+	// The index resolves to the n declaration.
+	nRef := offsetOf(t, source, "[n]") + 1
+	nSym := r.definitionAt(nRef)
+	if nSym == nil || nSym.name != "n" {
+		t.Fatalf("index definition = %+v, want the n declaration", nSym)
+	}
+
+	// The value resolves to the op declaration.
+	opRef := offsetOf(t, source, "= op;") + 2
+	opSym := r.definitionAt(opRef)
+	if opSym == nil || opSym.name != "op" {
+		t.Fatalf("value definition = %+v, want the op declaration", opSym)
+	}
+}
+
 func TestQualifiedEnumMemberResolves(t *testing.T) {
 	source := "Color :: enum {\n    RED: U8 = 1;\n    GREEN;\n}\nmain :: proc {\n    c: Color = Color.GREEN;\n}"
 	r := buildResolverFor(t, source)
@@ -279,6 +307,23 @@ func TestHoverReturnsVoidErrorSignature(t *testing.T) {
 	content := r.hoverAt(ref)
 	if !strings.Contains(content, "f() -> (Void <> Some_Error)") {
 		t.Errorf("hover = %q, want full Void error-return signature", content)
+	}
+}
+
+func TestHoverInitLaterVariable(t *testing.T) {
+	// 'a: S64 = ...;' declares a variable initialized later. Hover must
+	// report the declared type even though there is no initializer.
+	source := "#entry main :: proc -> S64 {\n    a: S64 = ...;\n    a = 42;\n    return a;\n}"
+	r := buildResolverFor(t, source)
+	decl := offsetOf(t, source, "a: S64 = ...")
+	content := r.hoverAt(decl)
+	if !strings.Contains(content, "a : S64") {
+		t.Errorf("hover at declaration = %q, want a : S64", content)
+	}
+	use := offsetOf(t, source, "return a;") + len("return ")
+	content = r.hoverAt(use)
+	if !strings.Contains(content, "a : S64") {
+		t.Errorf("hover at use = %q, want a : S64", content)
 	}
 }
 

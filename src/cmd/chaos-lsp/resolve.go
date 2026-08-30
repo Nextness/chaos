@@ -89,6 +89,12 @@ func buildResolver(doc *Document) *resolver { return doc.resolver }
 func (r *resolver) buildScopes() {
 	r.global = &scope{start: 0, end: len(r.sf.Source)}
 	for _, decl := range r.program.Decls {
+		// Only index declarations in the current file. Imported declarations
+		// have spans in other files and must not be added to this document's
+		// symbol index.
+		if declSpanFile(decl) != r.sf.ID {
+			continue
+		}
 		switch d := decl.(type) {
 		case *compiler.ProcDecl:
 			sym := &symbol{name: d.Name, kind: completionKindFunction, span: d.NameSpan, proc: d, scope: r.global}
@@ -562,7 +568,13 @@ func (r *resolver) collectOccurrences() {
 				expectedType = previous
 			}
 		case *compiler.AssignStmt:
-			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
+			if s.Target != nil {
+				// A complex lvalue target (index, field, or deref) is walked
+				// so its members and indices resolve to their symbols.
+				walkExpr(s.Target)
+			} else {
+				r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
+			}
 			if s.Value != nil {
 				previous := expectedType
 				if target := r.resolveName(s.Name, s.NameSpan.Start); target != nil && target.varDecl != nil {
@@ -663,7 +675,11 @@ func (r *resolver) collectOccurrences() {
 				walkExpr(s.Addr)
 			}
 		case *compiler.CompoundAssignStmt:
-			r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
+			if s.Target != nil {
+				walkExpr(s.Target)
+			} else {
+				r.occurrences = append(r.occurrences, &occurrence{name: s.Name, span: s.NameSpan})
+			}
 			if s.Value != nil {
 				walkExpr(s.Value)
 			}
@@ -681,6 +697,9 @@ func (r *resolver) collectOccurrences() {
 	}
 
 	for _, decl := range r.program.Decls {
+		if declSpanFile(decl) != r.sf.ID {
+			continue
+		}
 		walkStmt(decl)
 	}
 }

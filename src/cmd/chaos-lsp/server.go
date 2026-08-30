@@ -41,6 +41,13 @@ func newDocument(uri string, version int, text string) *Document {
 		var semanticDiags compiler.DiagnosticList
 		d.analysis, semanticDiags = compiler.AnalyzeProgram(d.program)
 		d.diags = append(d.diags, semanticDiags...)
+		// AnalyzeProgram resolves imports and returns the resolved program
+		// (imported declarations spliced in) as analysis.Program. Use it for
+		// symbol indexing and semantic highlighting so names defined in
+		// imported modules are recognized.
+		if d.analysis != nil && d.analysis.Program != nil {
+			d.program = d.analysis.Program
+		}
 	} else {
 		d.analysis = &compiler.SemanticAnalysis{
 			ExprTypes:     make(map[compiler.Expr]compiler.Type),

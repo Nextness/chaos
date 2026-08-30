@@ -1593,6 +1593,26 @@ func TestParseDynamicArrayTypeExpr(t *testing.T) {
 	}
 }
 
+func TestParseSymbolicSizeArrayTypeExpr(t *testing.T) {
+	// "[N]T" with a symbolic (generic) size parses as a fixed-size array
+	// whose size is an identifier that generic instantiation substitutes.
+	decl := parseOneDecl(t, "a: [N]S64;")
+	vd, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	at, ok := vd.DeclType.(*ArrayTypeExpr)
+	if !ok {
+		t.Fatalf("DeclType = %T, want *ArrayTypeExpr", vd.DeclType)
+	}
+	if at.Kind != ArrayFixed {
+		t.Fatalf("Kind = %v, want ArrayFixed", at.Kind)
+	}
+	if id, ok := at.Size.(*IdentExpr); !ok || id.Name != "N" {
+		t.Fatalf("Size = %#v, want IdentExpr(N)", at.Size)
+	}
+}
+
 func TestParseSizeOf(t *testing.T) {
 	expr := parseExpr(t, "size_of(S64)")
 	so, ok := expr.(*SizeOfExpr)

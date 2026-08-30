@@ -36,6 +36,12 @@ func toLSPRange(r compiler.Range) Range {
 func documentSymbols(program *compiler.Program, sf *compiler.SourceFile) []DocumentSymbol {
 	var out []DocumentSymbol
 	for _, decl := range program.Decls {
+		// Only include declarations in the current file. Imported
+		// declarations have spans in other files and must not appear in this
+		// document's outline.
+		if declSpanFile(decl) != sf.ID {
+			continue
+		}
 		switch d := decl.(type) {
 		case *compiler.ProcDecl:
 			out = append(out, DocumentSymbol{

@@ -236,3 +236,21 @@ func TestSemanticTokensEmptyDocument(t *testing.T) {
 		t.Errorf("semanticTokens result = %s, want data:[]", resp.Result)
 	}
 }
+
+func TestDidOpenNoDiagnosticsForNewSyntax(t *testing.T) {
+	// Init-later declarations ('a: S64 = ...;') and trailing commas are
+	// valid; the LSP must not report diagnostics for them.
+	s, buf := newTestServer()
+	s.handleRequest(message{JSONRPC: "2.0", ID: json.RawMessage(`0`), Method: "initialize"})
+	s.handleNotification(message{
+		Method: "textDocument/didOpen",
+		Params: json.RawMessage(`{"textDocument":{"uri":"file:///new.chaos","languageId":"chaos","version":1,"text":"#entry main :: proc -> S64 {\n    a: S64 = ...;\n    a = 42;\n    return a;\n}\nPoint :: struct { x: S64; y: S64; }\nmake :: proc (p: Point) -> S64 { return p.x; }\nmain2 :: proc { p := Point.{ x = 1, y = 2, }; make(p,); }"}}`),
+	})
+	out := buf.String()
+	if !strings.Contains(out, "textDocument/publishDiagnostics") {
+		t.Fatalf("no publishDiagnostics in output: %q", out)
+	}
+	if strings.Contains(out, `"severity":1`) {
+		t.Errorf("unexpected error diagnostics for new syntax: %q", out)
+	}
+}

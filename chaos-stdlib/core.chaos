@@ -11,7 +11,7 @@
 append <T> :: proc (arr: *[dyn]T, value: T) -> Void {
     if arr.*.count + 1 > arr.*.capacity {
         new_cap := arr.*.capacity * 2;
-        if new_cap < 1 { new_cap = 1; }
+        if new_cap < 1 then new_cap = 1;
         new_buf: Addr = #allocate new_cap * size_of(T);
         new_ptr: *T = new_buf.(*T);
         i: Size = 0;
@@ -111,9 +111,10 @@ int_to_string :: proc (value: S64) -> String {
         ptr[0] = 45;
         i += 1;
     }
-    result: String;
-    result.data = ptr;
-    result.count = i;
+    result: String = .{
+        data = ptr,
+        count = i,
+    };
     return result;
 }
 
@@ -129,11 +130,11 @@ string_to_int :: proc (s: String) -> S64 {
     }
     for i < s.count {
         c: S64 = s.data[i].(S64);
-        if c < 48 || c > 57 { break; }
+        if c < 48 || c > 57 then break;
         result = result * 10 + (c - 48);
         i += 1;
     }
-    if negative { result = -result; }
+    if negative then result = -result;
     return result;
 }
 
@@ -158,7 +159,7 @@ string_to_float :: proc (s: String) -> F64 {
         fraction: F64 = 0.1;
         for i < s.count {
             c: S64 = s.data[i].(S64);
-            if c < 48 || c > 57 { break; }
+            if c < 48 || c > 57 then break;
             result = result + (c - 48).(F64) * fraction;
             fraction = fraction * 0.1;
             i += 1;
@@ -174,21 +175,21 @@ string_to_float :: proc (s: String) -> F64 {
         exp: S64 = 0;
         for i < s.count {
             c: S64 = s.data[i].(S64);
-            if c < 48 || c > 57 { break; }
+            if c < 48 || c > 57 then break;
             exp = exp * 10 + (c - 48);
             i += 1;
         }
-        if exp_neg { exp = -exp; }
+        if exp_neg then exp = -exp;
         power: F64 = 1.0;
         e := exp;
-        if e < 0 { e = -e; }
+        if e < 0 then e = -e;
         j: S64 = 0;
         for j < e {
             power = power * 10.0;
             j += 1;
         }
-        if exp < 0 { result = result / power; } else { result = result * power; }
+        result = ifx exp < 0 then result / power else result * power;
     }
-    if negative { result = -result; }
+    if negative then result = -result;
     return result;
 }

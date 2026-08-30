@@ -789,6 +789,17 @@ func (p *Parser) parseArrayTypeExpr() *ArrayTypeExpr {
 		} else {
 			p.bump() // consume "]"
 		}
+	case p.at(TkIdent):
+		// "[N]T": fixed-size array with a symbolic (generic) size. The size
+		// is a name that generic instantiation substitutes with an integer.
+		sizeTok := p.bump()
+		size = &IdentExpr{Span_: sizeTok.Span, Name: sizeTok.Text()}
+		kind = ArrayFixed
+		if !p.at(TkRBracket) {
+			p.diags.Error(p.peek().Span, "expected ']' after the array size", "add ']' after the size")
+		} else {
+			p.bump() // consume "]"
+		}
 	default:
 		p.diags.Error(p.peek().Span, "expected ']', a size, or 'dyn' inside '['", "write '[]T', '[N]T', or '[dyn]T'")
 		if !p.at(TkRBracket) {

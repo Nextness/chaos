@@ -97,7 +97,10 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 			compiler.TkFor, compiler.TkBreak, compiler.TkContinue, compiler.TkNull,
 			compiler.TkSizeOf,
 			compiler.TkTrue, compiler.TkFalse,
-			compiler.TkHash, compiler.TkDirec:
+			compiler.TkHash, compiler.TkDirec,
+			compiler.TkEllipsis:
+			// TkEllipsis is the '...' marker in 'name : Type = ...;'
+			// (initialize-later) declarations; it reads as a keyword.
 			idx = semTypeKeyword
 		case compiler.TkInt, compiler.TkFloat:
 			idx = semTypeNumber
@@ -137,10 +140,17 @@ func knownTypeNames(program *compiler.Program) map[string]bool {
 		switch d := decl.(type) {
 		case *compiler.StructDecl:
 			types[d.Name] = true
+			for _, tp := range d.TypeParams {
+				types[tp.Name] = true
+			}
 		case *compiler.ErrorDecl:
 			types[d.Name] = true
 		case *compiler.EnumDecl:
 			types[d.Name] = true
+		case *compiler.ProcDecl:
+			for _, tp := range d.TypeParams {
+				types[tp.Name] = true
+			}
 		}
 	}
 	return types
@@ -257,10 +267,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			}
 		case *compiler.DerefExpr:
 			walkExpr(e.Operand)
-			// The '.*' dereference operator reads as a bold type token.
+			// The '.*' dereference operator reads as a keyword.
 			opStart := compiler.NodeSpan(e.Operand).End
 			if opStart < e.Span_.End {
-				out = append(out, boldTypeTokens(compiler.Span{File: e.Span_.File, Start: opStart, End: e.Span_.End}, sf)...)
+				out = append(out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: opStart, End: e.Span_.End}, sf, semTypeKeyword)...)
 			}
 		case *compiler.NullLitExpr:
 			// Keyword literal; no highlight.
@@ -335,7 +345,13 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				walkExpr(s.Init)
 			}
 		case *compiler.AssignStmt:
-			out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
+			if s.Target != nil {
+				// A complex lvalue target (index, field, or deref) is walked
+				// so its operators and members are highlighted.
+				walkExpr(s.Target)
+			} else {
+				out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
+			}
 			if s.Value != nil {
 				walkExpr(s.Value)
 			}
@@ -414,7 +430,11 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				walkExpr(s.Addr)
 			}
 		case *compiler.CompoundAssignStmt:
-			out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
+			if s.Target != nil {
+				walkExpr(s.Target)
+			} else {
+				out = append(out, spanToTokenRows(s.NameSpan, sf, semTypeVariable)...)
+			}
 			if s.Value != nil {
 				walkExpr(s.Value)
 			}
@@ -436,6 +456,9 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 
 	walkProc = func(proc *compiler.ProcDecl) {
 		out = append(out, spanToTokenRows(proc.NameSpan, sf, semTypeFunction)...)
+		for _, tp := range proc.TypeParams {
+			out = append(out, spanToTokenRows(tp.NameSpan, sf, semTypeType)...)
+		}
 		for _, param := range proc.Params {
 			out = append(out, spanToTokenRows(param.NameSpan, sf, semTypeParameter)...)
 			typeToken(param.Type, sf, known, &out)
@@ -453,6 +476,9 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 
 	walkStruct = func(st *compiler.StructDecl) {
 		out = append(out, spanToTokenRows(st.NameSpan, sf, semTypeType)...)
+		for _, tp := range st.TypeParams {
+			out = append(out, spanToTokenRows(tp.NameSpan, sf, semTypeType)...)
+		}
 		for _, field := range st.Fields {
 			out = append(out, spanToTokenRows(field.NameSpan, sf, semTypeVariable)...)
 			typeToken(field.Type, sf, known, &out)
@@ -481,6 +507,12 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 	}
 
 	for _, decl := range program.Decls {
+		// Only emit tokens for declarations in the current file. Imported
+		// declarations have spans in other files and must not be rendered
+		// against this document's source.
+		if declSpanFile(decl) != sf.ID {
+			continue
+		}
 		switch d := decl.(type) {
 		case *compiler.ProcDecl:
 			walkProc(d)
@@ -497,15 +529,51 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 	return out
 }
 
+// declSpanFile returns the source file ID of a declaration's span, or -1 when
+// the declaration carries no span.
+func declSpanFile(decl compiler.Decl) compiler.FileID {
+	switch d := decl.(type) {
+	case *compiler.ProcDecl:
+		return d.Span_.File
+	case *compiler.VarDecl:
+		return d.Span_.File
+	case *compiler.StructDecl:
+		return d.Span_.File
+	case *compiler.ErrorDecl:
+		return d.Span_.File
+	case *compiler.EnumDecl:
+		return d.Span_.File
+	case *compiler.ImportDecl:
+		return d.Span_.File
+	}
+	return -1
+}
+
+// tokenPriority orders overlapping tokens so the more specific one wins. A
+// type token (e.g. the "[dyn]" of an array type, or the ".(*T)" of a cast)
+// must take precedence over the delimiter tokens it contains, so it sorts
+// first and the contained delimiters are dropped by the overlap check.
+func tokenPriority(t semanticToken) int {
+	if t.typeIndex == semTypeType {
+		return 0
+	}
+	return 1
+}
+
 // encodeSemanticTokens sorts tokens by position and delta-encodes them as
 // [deltaLine, deltaStart, length, typeIndex, modifiers] rows, matching the LSP
 // semantic tokens wire format of 5 integers per token.
 func encodeSemanticTokens(tokens []semanticToken) []int {
-	sort.Slice(tokens, func(i, j int) bool {
+	sort.SliceStable(tokens, func(i, j int) bool {
 		if tokens[i].line != tokens[j].line {
 			return tokens[i].line < tokens[j].line
 		}
-		return tokens[i].startChar < tokens[j].startChar
+		if tokens[i].startChar != tokens[j].startChar {
+			return tokens[i].startChar < tokens[j].startChar
+		}
+		// At the same position, the more specific token (a type) sorts first
+		// so it wins the overlap check below.
+		return tokenPriority(tokens[i]) < tokenPriority(tokens[j])
 	})
 	var out []int
 	prevLine, prevStart := 0, 0

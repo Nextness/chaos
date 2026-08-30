@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -152,6 +154,32 @@ func TestSemanticTokensCompileTimeVarIsVariable(t *testing.T) {
 	want := []int{
 		0, 0, 9, semTypeVariable, 0, // variable3
 		0, 13, 4, semTypeNumber, 0, // 10.1
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}
+
+func TestSemanticTokensInitLaterEllipsis(t *testing.T) {
+	// 'a: S64 = ...;' declares a variable initialized later; the '...'
+	// marker reads as a keyword.
+	source := "#entry main :: proc -> S64 {\n    a: S64 = ...;\n    a = 42;\n    return a;\n}"
+	want := []int{
+		0, 0, 1, semTypeKeyword, 0, // #
+		0, 1, 5, semTypeKeyword, 0, // entry
+		0, 6, 4, semTypeFunction, 0, // main
+		0, 8, 4, semTypeKeyword, 0, // proc
+		0, 8, 3, semTypeType, 0, // S64 (result)
+		0, 4, 1, semTypeDelimiter, 0, // {
+		1, 4, 1, semTypeVariable, 0, // a
+		0, 3, 3, semTypeType, 0, // S64
+		0, 6, 3, semTypeKeyword, 0, // ...
+		1, 4, 1, semTypeVariable, 0, // a (reassign)
+		0, 4, 2, semTypeNumber, 0, // 42
+		1, 4, 6, semTypeKeyword, 0, // return
+		0, 7, 1, semTypeVariable, 0, // a
+		1, 0, 1, semTypeDelimiter, 0, // }
 	}
 	got := semanticData(t, source)
 	if !reflect.DeepEqual(got, want) {
@@ -336,6 +364,27 @@ func TestSemanticTokensGenericEntryProc(t *testing.T) {
 	tokens := decodeSemanticData(semanticData(t, source))
 	if tok, ok := tokenAt(tokens, 0, 7); !ok || tok.typeIndex != semTypeFunction {
 		t.Fatalf("generic entry was not highlighted as a function: %+v", tok)
+	}
+}
+
+func TestSemanticTokensGenericTypeParamsHighlighted(t *testing.T) {
+	// A generic type parameter must be highlighted as a type both in its
+	// declaration '<T>' and everywhere it is used in the signature, including
+	// array element positions and return types.
+	source := "pop_last <T> :: proc (arr: *[dyn]T) -> T {\n    return arr[0];\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want int
+	}{
+		{0, 10, semTypeType}, // T (type parameter in <T>)
+		{0, 33, semTypeType}, // T (element type of *[dyn]T)
+		{0, 39, semTypeType}, // T (return type)
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want {
+			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
 	}
 }
 
@@ -620,15 +669,15 @@ func TestSemanticTokensStringFieldsAndInterpolation(t *testing.T) {
 }
 
 func TestSemanticTokensDerefAndCastTypeColor(t *testing.T) {
-	// The '.*' dereference operator and the whole '.(*T)' cast read as bold
-	// type tokens.
+	// The '.*' dereference operator reads as a keyword; the whole '.(*T)'
+	// cast reads as a bold type token.
 	source := "main :: proc -> S64 {\n\tx := 5;\n\tp: *S64 = *x;\n\ty := p.*;\n\tbuf := #allocate 16;\n\tq: *S64 = buf.(*S64);\n\treturn 0;\n}"
 	tokens := decodeSemanticData(semanticData(t, source))
 	checks := []struct {
 		line, start, want, wantMod int
 	}{
 		{3, 6, semTypeVariable, 0},       // p (deref operand)
-		{3, 7, semTypeType, semModBold},  // .* (deref operator, bold)
+		{3, 7, semTypeKeyword, 0},        // .* (deref operator, keyword)
 		{5, 11, semTypeVariable, 0},      // buf (cast value)
 		{5, 14, semTypeType, semModBold}, // .(*S64) (whole cast, bold)
 	}
@@ -640,10 +689,114 @@ func TestSemanticTokensDerefAndCastTypeColor(t *testing.T) {
 	}
 }
 
+func TestSemanticTokensDerefInAssignmentLvalue(t *testing.T) {
+	// A complex assignment lvalue like 'p.*.node_pool[n].text' must be
+	// walked so the '.*' operator reads as a keyword and the members and
+	// index are highlighted.
+	source := "main :: proc {\n    p.*.node_pool[n].text = op;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want int
+	}{
+		{1, 4, semTypeVariable},   // p (deref operand)
+		{1, 5, semTypeKeyword},    // .* (deref operator)
+		{1, 8, semTypeVariable},   // node_pool (field)
+		{1, 17, semTypeDelimiter}, // [ (index open)
+		{1, 18, semTypeVariable},  // n (index)
+		{1, 19, semTypeDelimiter}, // ] (index close)
+		{1, 21, semTypeVariable},  // text (field)
+		{1, 28, semTypeVariable},  // op (value)
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want {
+			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}
+
+func TestSemanticTokensImportedTypeHighlighted(t *testing.T) {
+	// A type defined in an imported module must be recognized and highlighted
+	// as a type in the current file. The LSP resolves imports through the
+	// resolved program returned by AnalyzeProgram.
+	dir := t.TempDir()
+	modPath := filepath.Join(dir, "parser.chaos")
+	if err := os.WriteFile(modPath, []byte("Parser :: struct {\n    pos: S64;\n}\n"), 0o600); err != nil {
+		t.Fatalf("write module: %v", err)
+	}
+	mainPath := filepath.Join(dir, "main.chaos")
+	source := "#import «parser»;\nmain :: proc {\n    p: Parser;\n    p.pos = 1;\n}"
+	if err := os.WriteFile(mainPath, []byte(source), 0o600); err != nil {
+		t.Fatalf("write main: %v", err)
+	}
+
+	sm := &compiler.SourceManager{}
+	fileID := sm.Register(mainPath, []byte(source))
+	sf := sm.Lookup(fileID)
+	tokens, _ := compiler.Tokenize(sf.Source, fileID)
+	result := compiler.ParseProgramTolerant(tokens)
+	result.Program.Sources = map[compiler.FileID]compiler.SourceFile{fileID: *sf}
+	analysis, _ := compiler.AnalyzeProgram(result.Program)
+	prog := result.Program
+	if analysis != nil && analysis.Program != nil {
+		prog = analysis.Program
+	}
+	all := append(tokenSemanticTokens(tokens, sf), astSemanticTokens(prog, sf)...)
+	decoded := decodeSemanticData(encodeSemanticTokens(all))
+
+	// 'Parser' in the type position of the current file reads as a type.
+	found := false
+	for _, tok := range decoded {
+		if tok.line == 2 && tok.startChar == 7 && tok.typeIndex == semTypeType {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("Parser not highlighted as a type in the current file")
+	}
+	// No tokens may be emitted for the imported module's declarations, which
+	// live in another file and would otherwise render at garbage positions.
+	for _, tok := range decoded {
+		if tok.line > 4 {
+			t.Errorf("unexpected token beyond the current file: %+v", tok)
+		}
+	}
+}
+
+func TestSemanticTokensArrayTypes(t *testing.T) {
+	// Array type expressions in all their forms read as type tokens: the
+	// brackets, the size/dyn marker, and the element type. Pointer prefixes
+	// are type tokens too.
+	source := "main :: proc {\n    a: *[dyn]S64;\n    b: [dyn]S64;\n    c: []S64;\n    d: [4]S64;\n    e: [N]S64;\n    f: **[dyn]S64;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	checks := []struct {
+		line, start, want int
+	}{
+		{1, 7, semTypeType},  // * (pointer to array)
+		{1, 8, semTypeType},  // [dyn]
+		{1, 13, semTypeType}, // S64
+		{2, 7, semTypeType},  // [dyn]
+		{2, 12, semTypeType}, // S64
+		{3, 7, semTypeType},  // []
+		{3, 9, semTypeType},  // S64
+		{4, 7, semTypeType},  // [4]
+		{4, 10, semTypeType}, // S64
+		{5, 7, semTypeType},  // [N]
+		{5, 10, semTypeType}, // S64
+		{6, 7, semTypeType},  // * (first pointer)
+		{6, 8, semTypeType},  // * (second pointer)
+		{6, 9, semTypeType},  // [dyn]
+		{6, 14, semTypeType}, // S64
+	}
+	for _, check := range checks {
+		tok, ok := tokenAt(tokens, check.line, check.start)
+		if !ok || tok.typeIndex != check.want {
+			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}
+
 func TestSemanticTokensPointerProcSignature(t *testing.T) {
-	// The '*' and '?' in procedure parameter and result types are type
-	// tokens, matching the user-reported case:
-	//   another_proc :: proc (param1: *String) -> *String { ... }
 	source := "another_proc :: proc (param1: *String) -> *String {\n    return param1;\n}"
 	tokens := decodeSemanticData(semanticData(t, source))
 	checks := []struct {
