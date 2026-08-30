@@ -309,14 +309,14 @@ func tokenAt(tokens []semanticToken, line, start int) (semanticToken, bool) {
 	return semanticToken{}, false
 }
 
-func TestSemanticTokensDoNotInventGenericProcedures(t *testing.T) {
+func TestSemanticTokensGenericProcedures(t *testing.T) {
 	source := "function1 :: proc (input1: String) { }\n" +
 		"function2 :: proc (input1: String) -> String { }\n" +
 		"function3 :: proc -> String { }\n" +
 		"function4 :: proc { }\n" +
 		"function5 <T: String | S64> :: proc (input1: T) { }\n"
 	tokens := decodeSemanticData(semanticData(t, source))
-	for line := 0; line < 4; line++ {
+	for line := 0; line < 5; line++ {
 		tok, ok := tokenAt(tokens, line, 0)
 		if !ok {
 			t.Errorf("no token at line %d col 0", line)
@@ -329,16 +329,13 @@ func TestSemanticTokensDoNotInventGenericProcedures(t *testing.T) {
 			t.Errorf("token at line %d col 0 has length %d, want 9", line, tok.length)
 		}
 	}
-	if tok, ok := tokenAt(tokens, 4, 0); ok && tok.typeIndex == semTypeFunction {
-		t.Fatalf("unsupported generic declaration was highlighted as a function: %+v", tok)
-	}
 }
 
-func TestSemanticTokensDoNotInventGenericEntryProc(t *testing.T) {
+func TestSemanticTokensGenericEntryProc(t *testing.T) {
 	source := "#entry function5 <T: String | S64> :: proc (input1: T) { }"
 	tokens := decodeSemanticData(semanticData(t, source))
-	if tok, ok := tokenAt(tokens, 0, 7); ok && tok.typeIndex == semTypeFunction {
-		t.Fatalf("unsupported generic entry was highlighted as a function: %+v", tok)
+	if tok, ok := tokenAt(tokens, 0, 7); !ok || tok.typeIndex != semTypeFunction {
+		t.Fatalf("generic entry was not highlighted as a function: %+v", tok)
 	}
 }
 
@@ -367,6 +364,19 @@ func TestSemanticTokensErrorDecl(t *testing.T) {
 		if tok.typeIndex != c.want {
 			t.Errorf("token at line %d col %d has type %d, want %d", c.line, c.start, tok.typeIndex, c.want)
 		}
+	}
+}
+
+func TestSemanticTokensSizeOf(t *testing.T) {
+	source := "main :: proc -> S64 {\n    if size_of(S64) != 8 { return 1; }\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	// size_of is a keyword at line 1, col 7.
+	tok, ok := tokenAt(tokens, 1, 7)
+	if !ok {
+		t.Fatalf("no token at line 1 col 7 (size_of)")
+	}
+	if tok.typeIndex != semTypeKeyword {
+		t.Errorf("size_of token type = %d, want %d (keyword)", tok.typeIndex, semTypeKeyword)
 	}
 }
 

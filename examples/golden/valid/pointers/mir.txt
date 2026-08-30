@@ -3,13 +3,13 @@ MIR
     Local l0: *S64 (param)
     bb0:
       v0:*S64 = load.local l0
-      v1:S64 = deref.load v0
+      v1:S64 = deref.load:S64 v0
       return v1
   Function double(l0: *S64) -> S64
     Local l0: *S64 (param)
     bb0:
       v0:*S64 = load.local l0
-      v1:S64 = deref.load v0
+      v1:S64 = deref.load:S64 v0
       v2:S64 = const 2
       v3:S64 = mul v1 v2
       return v3
@@ -54,7 +54,7 @@ MIR
       v1:*S64 = addr.of l0
       store.local v1 l1
       v2:*S64 = load.local l1
-      v3:S64 = deref.load v2
+      v3:S64 = deref.load:S64 v2
       v4:S64 = const 10
       v5:Bool = cmp.neq v3 v4
       branch v5, bb1, bb2
@@ -66,7 +66,7 @@ MIR
     bb3:
       v7:*S64 = load.local l1
       v8:S64 = const 12
-      deref.store v7 v8
+      deref.store:S64 v7 v8
       v9:S64 = load.local l0
       v10:S64 = const 12
       v11:Bool = cmp.neq v9 v10
@@ -91,7 +91,7 @@ MIR
       v22:*S64 = ptr.add v20 v21
       store.local v22 l4
       v23:*S64 = load.local l4
-      v24:S64 = deref.load v23
+      v24:S64 = deref.load:S64 v23
       v25:S64 = const 3
       v26:Bool = cmp.neq v24 v25
       v27:*S64 = load.local l4
@@ -116,9 +116,9 @@ MIR
       v38:*Person = load.local l6
       v39:*S64 = field.addr v38 field1
       v40:S64 = const 37
-      deref.store v39 v40
+      deref.store:S64 v39 v40
       v41:*Person = load.local l6
-      v42:Person = deref.load v41
+      v42:Person = deref.load:Person v41
       v43:S64 = field.load v42 field1
       v44:S64 = const 37
       v45:Bool = cmp.neq v43 v44
@@ -151,7 +151,7 @@ MIR
       jump bb15
     bb15:
       v59:*Node? = load.local l9
-      v60:Node = deref.load v59
+      v60:Node = deref.load:Node v59
       v61:S64 = field.load v60 field0
       v62:S64 = const 1
       v63:Bool = cmp.neq v61 v62
@@ -178,7 +178,7 @@ MIR
       v71:*S64 = field.load v70 field0
       store.local v71 l11
       v72:*S64 = load.local l11
-      v73:S64 = deref.load v72
+      v73:S64 = deref.load:S64 v72
       v74:S64 = const 42
       v75:Bool = cmp.neq v73 v74
       branch v75, bb22, bb23

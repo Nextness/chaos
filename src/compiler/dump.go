@@ -370,7 +370,7 @@ func dumpExpr(b *strings.Builder, e Expr) {
 		b.WriteString(")")
 	case *ArrayInitExpr:
 		b.WriteString("ArrayInit(")
-		dumpExpr(b, n.Elem)
+		dumpExpr(b, n.Elem.Elem)
 		for _, item := range n.Items {
 			b.WriteString(", ")
 			dumpExpr(b, item)
@@ -393,6 +393,10 @@ func dumpExpr(b *strings.Builder, e Expr) {
 	case *AllocateExpr:
 		b.WriteString("Allocate(")
 		dumpExpr(b, n.Size)
+		b.WriteString(")")
+	case *SizeOfExpr:
+		b.WriteString("SizeOf(")
+		dumpExpr(b, n.Type)
 		b.WriteString(")")
 	case *CastExpr:
 		b.WriteString("Cast(")

@@ -1,0 +1,6 @@
+[ERROR] 5:1:import_missing_semicolon.chaos - expected ;, got #
+ #entry main :: proc -> S64 { return 0; }
+ ^ -> add ';' here
+[ERROR] 5:2:import_missing_semicolon.chaos - expected declaration, got directive
+ #entry main :: proc -> S64 { return 0; }
+  ^^^^^ -> start the line with an identifier followed by '::', ':', or ':='

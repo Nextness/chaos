@@ -29,12 +29,18 @@ func run(programName string, args []string, diagOut, out io.Writer) int {
 	check := flags.Bool("check", false, "type-check without requiring an entry point or emitting an artifact")
 	outputPath := flags.String("o", "", "write the selected artifact to this path (default executable: a.out)")
 	backendName := flags.String("backend", "fasm", "code-generation backend (supported: fasm)")
+	debug := flags.Bool("debug", false, "enable compiler debug tracing")
+	stdlibDir := flags.String("stdlib", "chaos-stdlib", "directory containing standard-library modules")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
 		return 2
 	}
+	if *debug {
+		compiler.Debug = true
+	}
+	compiler.StdlibDir = *stdlibDir
 
 	if flags.NArg() != 1 {
 		fmt.Fprintf(diagOut, "[ERROR] exactly one Chaos source file is required (got %d arguments; usage: %s [mode] [-o path] <file.chaos>)\n", flags.NArg(), programName)
@@ -74,9 +80,10 @@ func run(programName string, args []string, diagOut, out io.Writer) int {
 	sm := &compiler.SourceManager{}
 	fileID := sm.Register(path, source)
 	sf := sm.Lookup(fileID)
+	sources := map[compiler.FileID]compiler.SourceFile{fileID: *sf}
 	tokens, diags := compiler.Tokenize(source, fileID)
 	if len(diags) > 0 {
-		compiler.RenderAll(diagOut, diags, sf)
+		compiler.RenderAllSources(diagOut, diags, sources)
 		if diags.HasErrors() {
 			return 1
 		}
@@ -84,18 +91,21 @@ func run(programName string, args []string, diagOut, out io.Writer) int {
 
 	result := compiler.ParseProgram(tokens)
 	if result.Program != nil {
-		result.Program.Sources = map[compiler.FileID]compiler.SourceFile{fileID: *sf}
+		result.Program.Sources = sources
 	}
 	if len(result.Diags) > 0 {
-		compiler.RenderAll(diagOut, result.Diags, sf)
+		compiler.RenderAllSources(diagOut, result.Diags, sources)
 		if result.Diags.HasErrors() {
 			return 1
 		}
 	}
 
 	analysis, typeDiags := compiler.AnalyzeProgram(result.Program)
+	if analysis != nil && analysis.Program != nil {
+		sources = analysis.Program.Sources
+	}
 	if len(typeDiags) > 0 {
-		compiler.RenderAll(diagOut, typeDiags, sf)
+		compiler.RenderAllSources(diagOut, typeDiags, sources)
 		if typeDiags.HasErrors() {
 			return 1
 		}
@@ -110,8 +120,8 @@ func run(programName string, args []string, diagOut, out io.Writer) int {
 		return writeSelectedOutput(*outputPath, text.String(), out, diagOut)
 	}
 	if requiresBackend {
-		if targetDiags := compiler.ValidateTarget(result.Program, analysis, *backendName); len(targetDiags) > 0 {
-			compiler.RenderAll(diagOut, targetDiags, sf)
+		if targetDiags := compiler.ValidateTarget(analysis.Program, analysis, *backendName); len(targetDiags) > 0 {
+			compiler.RenderAllSources(diagOut, targetDiags, sources)
 			if targetDiags.HasErrors() {
 				return 1
 			}
@@ -120,20 +130,20 @@ func run(programName string, args []string, diagOut, out io.Writer) int {
 
 	hir, hirDiags := compiler.LowerAnalyzedProgram(result.Program, analysis)
 	if len(hirDiags) > 0 {
-		compiler.RenderAll(diagOut, hirDiags, sf)
+		compiler.RenderAllSources(diagOut, hirDiags, sources)
 		if hirDiags.HasErrors() {
 			return 1
 		}
 	}
 	mir, mirDiags := compiler.LowerToMIR(hir)
 	if len(mirDiags) > 0 {
-		compiler.RenderAll(diagOut, mirDiags, sf)
+		compiler.RenderAllSources(diagOut, mirDiags, sources)
 		if mirDiags.HasErrors() {
 			return 1
 		}
 	}
 	if verifyDiags := compiler.VerifyMIR(mir); len(verifyDiags) > 0 {
-		compiler.RenderAll(diagOut, verifyDiags, sf)
+		compiler.RenderAllSources(diagOut, verifyDiags, sources)
 		if verifyDiags.HasErrors() {
 			return 1
 		}
@@ -147,7 +157,7 @@ func run(programName string, args []string, diagOut, out io.Writer) int {
 
 	assembly, backendDiags := backend.Emit(mir)
 	if len(backendDiags) > 0 {
-		compiler.RenderAll(diagOut, backendDiags, sf)
+		compiler.RenderAllSources(diagOut, backendDiags, sources)
 		if backendDiags.HasErrors() {
 			return 1
 		}

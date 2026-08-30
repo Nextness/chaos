@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -65,6 +66,13 @@ type TypeChecker struct {
 	typeProcs              map[Type]*ProcDecl
 	nextSemanticID         int
 	ifxContext             bool // ifx is valid only as the value of an assignment or return
+	typeParamScopes        []map[string]Type
+	genericInstances       map[*ProcDecl][]*ProcDecl // generic proc -> instantiated copies
+	program                *Program
+	structInstances        map[*StructDecl][]*StructDecl // generic struct -> instantiated copies
+	instanceTypes          map[*StructDecl]Type          // instantiated struct -> its nominal type
+	structLiteralTypes     map[*StructInitExpr]Type      // generic struct literal -> instantiated type
+	imports                map[string]*ImportDecl        // namespace name -> resolved import
 }
 
 // declarationScope is the lexical compile-time namespace. Procedures and
@@ -103,12 +111,15 @@ type Binding struct {
 // types include contextual adaptation (for example an integer literal assigned
 // to U8 and a bare enum member resolved by its target type).
 type SemanticAnalysis struct {
-	ExprTypes     map[Expr]Type
-	TypeExprTypes map[Expr]Type
-	DeclTypes     map[Decl]Type
-	NominalDecls  map[Type]Decl
-	ProcDecls     map[Type]*ProcDecl
-	GlobalOrder   []*VarDecl // dependency order for runtime/constant initialization
+	ExprTypes          map[Expr]Type
+	TypeExprTypes      map[Expr]Type
+	DeclTypes          map[Decl]Type
+	NominalDecls       map[Type]Decl
+	ProcDecls          map[Type]*ProcDecl
+	GlobalOrder        []*VarDecl               // dependency order for runtime/constant initialization
+	CallInstances      map[*CallExpr]*ProcDecl  // generic call -> instantiated proc
+	StructLiteralTypes map[*StructInitExpr]Type // generic struct literal -> instantiated type
+	Program            *Program                 // the analyzed program (with prelude and instantiations)
 }
 
 // FormatType renders an internal semantic type without exposing the stable
@@ -190,31 +201,42 @@ func CheckProgram(program *Program) DiagnosticList {
 // AnalyzeProgram type-checks a program and returns facts consumed by lowering
 // and editor tooling, so those stages do not establish a competing type truth.
 func AnalyzeProgram(program *Program) (*SemanticAnalysis, DiagnosticList) {
+	program, importDiags := ResolveImports(program, StdlibDir)
 	analysis := &SemanticAnalysis{
-		ExprTypes:     make(map[Expr]Type),
-		TypeExprTypes: make(map[Expr]Type),
-		DeclTypes:     make(map[Decl]Type),
-		NominalDecls:  make(map[Type]Decl),
-		ProcDecls:     make(map[Type]*ProcDecl),
+		ExprTypes:          make(map[Expr]Type),
+		TypeExprTypes:      make(map[Expr]Type),
+		DeclTypes:          make(map[Decl]Type),
+		NominalDecls:       make(map[Type]Decl),
+		ProcDecls:          make(map[Type]*ProcDecl),
+		CallInstances:      make(map[*CallExpr]*ProcDecl),
+		StructLiteralTypes: make(map[*StructInitExpr]Type),
 	}
 	tc := &TypeChecker{
-		procs:          make(map[string]*ProcDecl),
-		structs:        make(map[string]*StructDecl),
-		errors:         make(map[string]*ErrorDecl),
-		enums:          make(map[string]*EnumDecl),
-		globalPrevious: make(map[*VarDecl]*VarDecl),
-		globalTypes:    make(map[*VarDecl]Type),
-		nominalTypes:   make(map[Decl]Type),
-		typeDecls:      make(map[Type]Decl),
-		procTypes:      make(map[*ProcDecl]Type),
-		typeProcs:      make(map[Type]*ProcDecl),
-		analysis:       analysis,
+		procs:              make(map[string]*ProcDecl),
+		structs:            make(map[string]*StructDecl),
+		errors:             make(map[string]*ErrorDecl),
+		enums:              make(map[string]*EnumDecl),
+		globalPrevious:     make(map[*VarDecl]*VarDecl),
+		globalTypes:        make(map[*VarDecl]Type),
+		nominalTypes:       make(map[Decl]Type),
+		typeDecls:          make(map[Type]Decl),
+		procTypes:          make(map[*ProcDecl]Type),
+		typeProcs:          make(map[Type]*ProcDecl),
+		analysis:           analysis,
+		genericInstances:   make(map[*ProcDecl][]*ProcDecl),
+		structInstances:    make(map[*StructDecl][]*StructDecl),
+		instanceTypes:      make(map[*StructDecl]Type),
+		structLiteralTypes: make(map[*StructInitExpr]Type),
+		imports:            make(map[string]*ImportDecl),
+		program:            program,
 	}
 	if program == nil {
 		tc.diags.Error(Span{}, "cannot analyze a nil program", "parse a source program before semantic analysis")
 		return analysis, tc.diags
 	}
+	tc.diags = append(tc.diags, importDiags...)
 	tc.checkProgram(program)
+	analysis.Program = program
 	return analysis, tc.diags
 }
 
@@ -289,6 +311,40 @@ func (tc *TypeChecker) lookupAnyBinding(name string) (Binding, int, bool) {
 		}
 	}
 	return Binding{}, -1, false
+}
+
+// typeParamType is the abstract type of a generic type parameter within a
+// generic declaration body.
+func typeParamType(name string) Type { return Type("<" + name + ">") }
+
+// isTypeParam reports whether a type is an abstract generic type parameter.
+func isTypeParam(t Type) bool {
+	s := string(t)
+	return strings.HasPrefix(s, "<") && strings.HasSuffix(s, ">")
+}
+
+// typeParamName returns the name of a type parameter type.
+func typeParamName(t Type) string { return strings.TrimSuffix(strings.TrimPrefix(string(t), "<"), ">") }
+
+func (tc *TypeChecker) pushTypeParams(params []TypeParam) {
+	scope := make(map[string]Type, len(params))
+	for _, p := range params {
+		scope[p.Name] = typeParamType(p.Name)
+	}
+	tc.typeParamScopes = append(tc.typeParamScopes, scope)
+}
+
+func (tc *TypeChecker) popTypeParams() {
+	tc.typeParamScopes = tc.typeParamScopes[:len(tc.typeParamScopes)-1]
+}
+
+func (tc *TypeChecker) lookupTypeParam(name string) (Type, bool) {
+	for i := len(tc.typeParamScopes) - 1; i >= 0; i-- {
+		if t, ok := tc.typeParamScopes[i][name]; ok {
+			return t, true
+		}
+	}
+	return TypeUnknown, false
 }
 
 func (tc *TypeChecker) lookupProc(name string) (*ProcDecl, bool) {
@@ -386,6 +442,19 @@ func (tc *TypeChecker) setBinding(name string, binding Binding) {
 func (tc *TypeChecker) checkProgram(program *Program) {
 	tc.pushScope() // global scope
 
+	// Namespaced imports are checked in their own scope so their members are
+	// visible to each other but not to the importing program by bare name.
+	// This runs before the program's own declarations are registered so the
+	// module's functions never see (or collide with) the importing program's
+	// globals. It also runs before the program's procedures so that generic
+	// instantiations created while checking the program overwrite the abstract
+	// type facts of any nodes shared with the module's generic bodies.
+	for _, decl := range program.Decls {
+		if d, ok := decl.(*ImportDecl); ok && d.Namespace != "" {
+			tc.checkImportModule(d)
+		}
+	}
+
 	// Top-level declarations are forward visible. Registration is separate
 	// from validation so entry and procedure bodies do not depend on file order.
 	// Local blocks deliberately use the opposite rule and register declarations
@@ -414,6 +483,10 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 		case *EnumDecl:
 			tc.enums[d.Name] = d
 			tc.registerEnum(d)
+		case *ImportDecl:
+			if d.Namespace != "" {
+				tc.imports[d.Namespace] = d
+			}
 		}
 	}
 
@@ -470,6 +543,36 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 		}
 	}
 
+	tc.popScope()
+}
+
+// checkImportModule registers and type-checks a namespaced import's
+// declarations in a dedicated scope. The scope is popped afterwards, so the
+// module's members are reachable only through the namespace binding.
+func (tc *TypeChecker) checkImportModule(imp *ImportDecl) {
+	tc.pushScope()
+	for _, d := range imp.Decls {
+		switch dd := d.(type) {
+		case *ProcDecl:
+			tc.registerProc(dd)
+		case *StructDecl:
+			tc.registerStruct(dd)
+		case *ErrorDecl:
+			tc.registerError(dd)
+		case *EnumDecl:
+			tc.registerEnum(dd)
+		}
+	}
+	for _, d := range imp.Decls {
+		if s, ok := d.(*StructDecl); ok {
+			tc.checkStructDecl(s)
+		}
+	}
+	for _, d := range imp.Decls {
+		if p, ok := d.(*ProcDecl); ok {
+			tc.checkProc(p)
+		}
+	}
 	tc.popScope()
 }
 
@@ -545,7 +648,7 @@ func (tc *TypeChecker) collectInitializerIdentifiers(expr Expr, expected Type, n
 			tc.collectInitializerIdentifiers(arg, TypeUnknown, names, visiting)
 		}
 	case *ArrayInitExpr:
-		elem := tc.resolveTypeExpr(n.Elem)
+		elem := tc.resolveTypeExpr(n.Elem.Elem)
 		for _, item := range n.Items {
 			tc.collectInitializerIdentifiers(item, elem, names, visiting)
 		}
@@ -611,6 +714,10 @@ func (tc *TypeChecker) checkProc(p *ProcDecl) {
 	tc.procValueFloor = len(tc.scopes)
 	tc.procDepth++
 	tc.pushScope()
+	if len(p.TypeParams) > 0 {
+		tc.pushTypeParams(p.TypeParams)
+		defer tc.popTypeParams()
+	}
 	seenParams := make(map[string]Span, len(p.Params))
 	for _, param := range p.Params {
 		tc.checkTypeExprValid(param.Type)
@@ -734,7 +841,13 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		tc.checkShadow(n.Name, n.NameSpan, n.Shadow)
 		t := tc.checkVarDecl(n)
 		tc.analysis.DeclTypes[n] = t
-		binding := Binding{Type: t, TypeValue: tc.constTypeValue(n.Init), Mutable: n.Mutable, Initialized: n.Init != nil, CompileTime: n.CompileTime, ConstExpr: n.Init, Span: n.NameSpan}
+		initialized := n.Init != nil
+		// An uninitialized dynamic array is still initialized: the backend
+		// gives it a one-element buffer with capacity 1.
+		if !initialized && t != TypeUnknown && arrayKindOf(t) == ArrayDynamic {
+			initialized = true
+		}
+		binding := Binding{Type: t, TypeValue: tc.constTypeValue(n.Init), Mutable: n.Mutable, Initialized: initialized, CompileTime: n.CompileTime, ConstExpr: n.Init, Span: n.NameSpan}
 		if n.Init != nil {
 			binding.NullState = tc.exprNullState(n.Init)
 		}
@@ -1340,8 +1453,21 @@ func (tc *TypeChecker) checkEntry(program *Program) {
 		return
 	}
 	p := program.EntryDecl
+	// The entry procedure may take no arguments or exactly the process
+	// argument vector: (argc: S64, argv: *String).
 	if len(p.Params) != 0 {
-		tc.diags.Error(p.NameSpan, "entry procedure must not take arguments", "declare '#entry "+p.Name+" :: proc -> S64'")
+		if len(p.Params) != 2 {
+			tc.diags.Error(p.NameSpan, "entry procedure must take no arguments or exactly (argc: S64, argv: *String)", "declare '#entry "+p.Name+" :: proc -> S64' or '#entry "+p.Name+" :: proc (argc: S64, argv: *String) -> S64'")
+		} else {
+			argcType := tc.resolveTypeExpr(p.Params[0].Type)
+			argvType := tc.resolveTypeExpr(p.Params[1].Type)
+			if argcType != TypeS64 {
+				tc.diags.Error(p.Params[0].NameSpan, "entry argc parameter must be S64", "declare the first parameter as 'argc: S64'")
+			}
+			if argvType != pointerType(TypeString, false) {
+				tc.diags.Error(p.Params[1].NameSpan, "entry argv parameter must be *String", "declare the second parameter as 'argv: *String'")
+			}
+		}
 	}
 	if len(p.Results) != 1 || tc.resolveTypeExpr(p.Results[0]) != TypeS64 || p.ErrorResult != nil {
 		tc.diags.Error(p.NameSpan, "entry procedure must return exactly S64", "declare '#entry "+p.Name+" :: proc -> S64'")
@@ -1349,6 +1475,10 @@ func (tc *TypeChecker) checkEntry(program *Program) {
 }
 
 func (tc *TypeChecker) checkStructDecl(d *StructDecl) {
+	if len(d.TypeParams) > 0 {
+		tc.pushTypeParams(d.TypeParams)
+		defer tc.popTypeParams()
+	}
 	seen := make(map[string]bool, len(d.Fields))
 	for _, field := range d.Fields {
 		if seen[field.Name] {
@@ -1945,7 +2075,15 @@ func (tc *TypeChecker) checkVarDecl(d *VarDecl) Type {
 	// An inferred struct literal (.{...}) takes its type from the declaration.
 	if si, ok := d.Init.(*StructInitExpr); ok && si.Type == nil {
 		if declType != TypeUnknown {
-			tc.checkStructInit(si, declType)
+			if isArrayType(declType) {
+				tc.checkArrayInitFromStruct(d.Span_, declType, si)
+			} else {
+				tc.checkStructInit(si, declType)
+			}
+			// A generic struct literal resolves to its instantiated type.
+			if inst, ok := tc.structLiteralTypes[si]; ok {
+				declType = inst
+			}
 			if d.CompileTime {
 				tc.validateCompileTimeExpr(d.Init, declType)
 			}
@@ -2016,6 +2154,9 @@ func (tc *TypeChecker) resolveTypeExpr(e Expr) (resolved Type) {
 	}()
 	switch n := e.(type) {
 	case *IdentExpr:
+		if tp, ok := tc.lookupTypeParam(n.Name); ok {
+			return tp
+		}
 		if isBuiltinTypeName(n.Name) {
 			return Type(n.Name)
 		}
@@ -2033,7 +2174,19 @@ func (tc *TypeChecker) resolveTypeExpr(e Expr) (resolved Type) {
 		}
 		return Type(n.Name)
 	case *ArrayTypeExpr:
-		return arrayType(tc.resolveTypeExpr(n.Elem))
+		elem := tc.resolveTypeExpr(n.Elem)
+		switch n.Kind {
+		case ArrayFixed:
+			size, ok := tc.arrayFixedSize(n)
+			if !ok {
+				return TypeUnknown
+			}
+			return fixedArrayType(elem, size)
+		case ArrayDynamic:
+			return dynamicArrayType(elem)
+		default:
+			return arrayType(elem)
+		}
 	case *PointerTypeExpr:
 		return pointerType(tc.resolveTypeExpr(n.Elem), n.Nullable)
 	}
@@ -2075,6 +2228,9 @@ func (tc *TypeChecker) checkTypeExprValid(e Expr) {
 		}
 	case *ArrayTypeExpr:
 		tc.checkTypeExprValid(n.Elem)
+		if n.Kind == ArrayFixed {
+			tc.arrayFixedSize(n)
+		}
 	case *PointerTypeExpr:
 		tc.checkTypeExprValid(n.Elem)
 	}
@@ -2225,14 +2381,47 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 	case *ErrorExpr:
 		return TypeUnknown
 	case *ArrayInitExpr:
-		elemType := tc.resolveTypeExpr(n.Elem)
+		elemType := tc.resolveTypeExpr(n.Elem.Elem)
 		tc.checkTypeExprValid(n.Elem)
 		for _, item := range n.Items {
 			tc.checkAssign(item.nodeSpan(), elemType, item)
 		}
-		return arrayType(elemType)
+		switch n.Elem.Kind {
+		case ArrayFixed:
+			size, ok := tc.arrayFixedSize(n.Elem)
+			if !ok {
+				return TypeUnknown
+			}
+			if len(n.Items) != size {
+				tc.diags.Error(n.Span_, fmt.Sprintf("array literal has %d elements but type declares %d", len(n.Items), size), "provide exactly the declared number of elements")
+			}
+			return fixedArrayType(elemType, size)
+		case ArrayDynamic:
+			return dynamicArrayType(elemType)
+		default:
+			return arrayType(elemType)
+		}
 	case *IndexExpr:
 		baseType := tc.inferExpr(n.Base)
+		if isPointerType(baseType) {
+			// Pointer indexing "p[i]" reads/writes the element at offset i.
+			idxType := tc.inferExpr(n.Index)
+			if idxType != TypeUnknown && !isIntegerType(idxType) {
+				tc.diags.Error(n.Index.nodeSpan(), "pointer index must be an integer, got "+tc.formatType(idxType), "use an integer index")
+			}
+			if Debug {
+				fmt.Printf("DBG TC IndexExpr pointer base=%s elem=%s span=%d\n", tc.formatType(baseType), tc.formatType(pointerElemType(baseType)), n.Span_.Start)
+			}
+			return pointerElemType(baseType)
+		}
+		if baseType == TypeString {
+			// String indexing "s[i]" reads/writes the byte at offset i.
+			idxType := tc.inferExpr(n.Index)
+			if idxType != TypeUnknown && !isIntegerType(idxType) {
+				tc.diags.Error(n.Index.nodeSpan(), "string index must be an integer, got "+tc.formatType(idxType), "use an integer index")
+			}
+			return Type("Byte")
+		}
 		if !isArrayType(baseType) {
 			tc.diags.Error(n.Base.nodeSpan(), "cannot index a value of type "+tc.formatType(baseType), "use an array value")
 			return TypeUnknown
@@ -2240,6 +2429,16 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 		idxType := tc.inferExpr(n.Index)
 		if idxType != TypeUnknown && !isIntegerType(idxType) {
 			tc.diags.Error(n.Index.nodeSpan(), "array index must be an integer, got "+tc.formatType(idxType), "use an integer index")
+		}
+		// A constant index on a fixed-size array is checked at compile time.
+		if arrayKindOf(baseType) == ArrayFixed {
+			if size, ok := arrayFixedSizeOf(baseType); ok {
+				if idx, known, _ := tc.evalConstInt(n.Index, TypeS64, make(map[Expr]bool)); known {
+					if idx.Sign() < 0 || idx.Cmp(big.NewInt(int64(size))) >= 0 {
+						tc.diags.Error(n.Index.nodeSpan(), fmt.Sprintf("array index %s is out of bounds for a %d-element array", idx.String(), size), "use an index in the range 0.."+strconv.Itoa(size-1))
+					}
+				}
+			}
 		}
 		return arrayElemType(baseType)
 	case *LoopBuiltinExpr:
@@ -2263,6 +2462,17 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 			tc.diags.Error(n.Size.nodeSpan(), "#allocate size must be an integer, got "+tc.formatType(sizeType), "use an integer size")
 		}
 		return TypeAddr
+	case *SizeOfExpr:
+		// size_of resolves its operand as a type expression; if that fails it
+		// is a value expression whose type is measured. The result is Size.
+		t := tc.resolveTypeExpr(n.Type)
+		if t == TypeUnknown {
+			t = tc.inferExpr(n.Type)
+		}
+		if t == TypeUnknown {
+			tc.diags.Error(n.Type.nodeSpan(), "size_of requires a known type or value", "use a declared type or a value")
+		}
+		return Type("Size")
 	case *CastExpr:
 		target := tc.resolveTypeExpr(n.Type)
 		tc.checkTypeExprValid(n.Type)
@@ -2348,6 +2558,17 @@ func (tc *TypeChecker) exprIsNonNull(e Expr) bool {
 // (and returns the enum type). Assignment targets flow through
 // checkAssignableTarget instead.
 func (tc *TypeChecker) checkFieldAccess(n *FieldAccessExpr) Type {
+	// A base that names an imported module namespace resolves to a member of
+	// that module. Procedures cannot be used as values (no function pointers),
+	// so a non-call member reference is an error.
+	if imp, ok := tc.importNamespace(n.Base); ok {
+		if tc.findImportProc(imp, n.Field) != nil {
+			tc.diags.Error(n.FieldSpan, "procedure '"+n.Field+"' cannot be used as a value", "call it directly")
+			return TypeUnknown
+		}
+		tc.diags.Error(n.FieldSpan, "module '"+imp.Module+"' has no member '"+n.Field+"'", "use a declared member of the imported module")
+		return TypeUnknown
+	}
 	// A base that names an enum type is an enum member reference. The enum
 	// name must be resolved directly: inferring the base as a value would
 	// yield the generic "Type" binding rather than the enum itself.
@@ -2374,6 +2595,9 @@ func (tc *TypeChecker) checkFieldAccess(n *FieldAccessExpr) Type {
 		tc.diags.Error(n.FieldSpan, "String has no field '"+n.Field+"'", "use 'data' or 'count'")
 		return TypeUnknown
 	}
+	if isArrayType(bt) {
+		return tc.arrayFieldType(n, bt)
+	}
 	st, ok := tc.structDeclForType(bt)
 	if !ok {
 		if name := enumBaseName(n.Base); name != "" {
@@ -2395,6 +2619,27 @@ func (tc *TypeChecker) checkFieldAccess(n *FieldAccessExpr) Type {
 		}
 	}
 	tc.diags.Error(n.FieldSpan, "struct "+tc.formatType(bt)+" has no field '"+n.Field+"'", "use a declared field name")
+	return TypeUnknown
+}
+
+// arrayFieldType checks "array.field" for an array base. Arrays expose data
+// (pointer to the element type) and count (Size); dynamic arrays also expose
+// capacity (Size).
+func (tc *TypeChecker) arrayFieldType(n *FieldAccessExpr, bt Type) Type {
+	elem := arrayElemType(bt)
+	switch n.Field {
+	case "data":
+		return pointerType(elem, false)
+	case "count":
+		return Type("Size")
+	case "capacity":
+		if arrayKindOf(bt) == ArrayDynamic {
+			return Type("Size")
+		}
+		tc.diags.Error(n.FieldSpan, "only dynamic arrays have a 'capacity' field", "use 'data' or 'count'")
+		return TypeUnknown
+	}
+	tc.diags.Error(n.FieldSpan, "array has no field '"+n.Field+"'", "use 'data', 'count', or 'capacity'")
 	return TypeUnknown
 }
 
@@ -2423,6 +2668,20 @@ func (tc *TypeChecker) checkAssignableTarget(target Expr) (Type, bool) {
 		return b.Type, true
 	case *IndexExpr:
 		baseType := tc.inferExpr(n.Base)
+		if isPointerType(baseType) {
+			idxType := tc.inferExpr(n.Index)
+			if idxType != TypeUnknown && !isIntegerType(idxType) {
+				tc.diags.Error(n.Index.nodeSpan(), "pointer index must be an integer, got "+tc.formatType(idxType), "use an integer index")
+			}
+			return pointerElemType(baseType), true
+		}
+		if baseType == TypeString {
+			idxType := tc.inferExpr(n.Index)
+			if idxType != TypeUnknown && !isIntegerType(idxType) {
+				tc.diags.Error(n.Index.nodeSpan(), "string index must be an integer, got "+tc.formatType(idxType), "use an integer index")
+			}
+			return Type("Byte"), true
+		}
 		if !isArrayType(baseType) {
 			tc.diags.Error(n.Base.nodeSpan(), "cannot index a value of type "+tc.formatType(baseType), "use an array value")
 			return TypeUnknown, false
@@ -2443,6 +2702,9 @@ func (tc *TypeChecker) checkAssignableTarget(target Expr) (Type, bool) {
 			}
 			tc.diags.Error(n.FieldSpan, "String has no field '"+n.Field+"'", "use 'data' or 'count'")
 			return TypeUnknown, false
+		}
+		if isArrayType(bt) {
+			return tc.arrayFieldType(n, bt), true
 		}
 		st, ok := tc.structDeclForType(bt)
 		if !ok {
@@ -2957,26 +3219,55 @@ func (tc *TypeChecker) checkUnaryExpr(n *UnaryExpr) Type {
 }
 
 func (tc *TypeChecker) checkCallExpr(n *CallExpr) Type {
-	ident, ok := n.Func.(*IdentExpr)
-	if !ok {
+	switch f := n.Func.(type) {
+	case *IdentExpr:
+		// Compiler builtins (print, read_file, ...) are checked before user
+		// declarations so they cannot be shadowed.
+		if t, builtin := tc.checkBuiltinCall(n, f); builtin {
+			return t
+		}
+		proc, direct := tc.lookupProc(f.Name)
+		if binding, _, valueExists := tc.lookupBinding(f.Name); valueExists {
+			if !isProcType(binding.Type) {
+				tc.diags.Error(f.Span_, "binding '"+f.Name+"' is not callable", "call a declared procedure")
+				return TypeUnknown
+			}
+			proc = tc.typeProcs[binding.Type]
+			direct = proc != nil
+		}
+		if !direct {
+			tc.diags.Error(n.Span_, "call to unknown procedure "+f.Name, "declare the procedure before calling it")
+			return TypeUnknown
+		}
+		return tc.checkCallTo(proc, n)
+	case *FieldAccessExpr:
+		// 'namespace.member(...)' where namespace is an imported module.
+		if imp, ok := tc.importNamespace(f.Base); ok {
+			proc := tc.findImportProc(imp, f.Field)
+			if proc == nil {
+				tc.diags.Error(f.FieldSpan, "module '"+imp.Module+"' has no member '"+f.Field+"'", "use a declared member of the imported module")
+				return TypeUnknown
+			}
+			return tc.checkCallTo(proc, n)
+		}
+		tc.diags.Error(n.Func.nodeSpan(), "expression is not callable", "call a declared procedure")
+		return TypeUnknown
+	default:
 		tc.diags.Error(n.Func.nodeSpan(), "expression is not callable", "call a declared procedure")
 		return TypeUnknown
 	}
-	proc, direct := tc.lookupProc(ident.Name)
-	if binding, _, valueExists := tc.lookupBinding(ident.Name); valueExists {
-		if !isProcType(binding.Type) {
-			tc.diags.Error(ident.Span_, "binding '"+ident.Name+"' is not callable", "call a declared procedure")
-			return TypeUnknown
-		}
-		proc = tc.typeProcs[binding.Type]
-		direct = proc != nil
-	}
-	if !direct {
-		tc.diags.Error(n.Span_, "call to unknown procedure "+ident.Name, "declare the procedure before calling it")
-		return TypeUnknown
+}
+
+// checkCallTo validates a call against a resolved procedure: generic
+// instantiation, argument count, and argument types.
+func (tc *TypeChecker) checkCallTo(proc *ProcDecl, n *CallExpr) Type {
+	// A generic procedure is instantiated at the call site with concrete type
+	// arguments inferred from the argument types.
+	if len(proc.TypeParams) > 0 {
+		return tc.checkGenericCall(n, proc)
 	}
 	if len(n.Args) != len(proc.Params) {
-		tc.diags.Error(n.Span_, "call to "+ident.Name+" expects "+strconv.Itoa(len(proc.Params))+" arguments, got "+strconv.Itoa(len(n.Args)), "pass the correct number of arguments")
+		tc.diags.Error(n.Span_, "call to "+proc.Name+" expects "+strconv.Itoa(len(proc.Params))+" arguments, got "+strconv.Itoa(len(n.Args)), "pass the correct number of arguments")
 	}
 	for i, arg := range n.Args {
 		if i < len(proc.Params) {
@@ -2993,6 +3284,272 @@ func (tc *TypeChecker) checkCallExpr(n *CallExpr) Type {
 	return TypeVoid
 }
 
+// importNamespace reports whether base is an identifier naming an imported
+// module namespace, and returns the resolved import.
+func (tc *TypeChecker) importNamespace(base Expr) (*ImportDecl, bool) {
+	id, ok := base.(*IdentExpr)
+	if !ok {
+		return nil, false
+	}
+	imp, ok := tc.imports[id.Name]
+	return imp, ok
+}
+
+// findImportProc looks up a procedure by name in an import's declarations.
+func (tc *TypeChecker) findImportProc(imp *ImportDecl, name string) *ProcDecl {
+	for _, d := range imp.Decls {
+		if p, ok := d.(*ProcDecl); ok && p.Name == name {
+			return p
+		}
+	}
+	return nil
+}
+
+// checkBuiltinCall type-checks a call to a compiler builtin procedure. It
+// returns the call's result type and true when the name is a builtin. Builtins
+// are recognized by name and cannot be shadowed by user declarations.
+func (tc *TypeChecker) checkBuiltinCall(n *CallExpr, ident *IdentExpr) (Type, bool) {
+	switch ident.Name {
+	case "print", "println":
+		if len(n.Args) != 1 {
+			tc.diags.Error(n.Span_, "call to "+ident.Name+" expects 1 argument, got "+strconv.Itoa(len(n.Args)), "pass a String value")
+			return TypeVoid, true
+		}
+		tc.checkAssign(n.Args[0].nodeSpan(), TypeString, n.Args[0])
+		return TypeVoid, true
+	case "read_file":
+		if len(n.Args) != 1 {
+			tc.diags.Error(n.Span_, "call to read_file expects 1 argument, got "+strconv.Itoa(len(n.Args)), "pass a file path String")
+			return TypeString, true
+		}
+		tc.checkAssign(n.Args[0].nodeSpan(), TypeString, n.Args[0])
+		return TypeString, true
+	case "file_exists":
+		if len(n.Args) != 1 {
+			tc.diags.Error(n.Span_, "call to file_exists expects 1 argument, got "+strconv.Itoa(len(n.Args)), "pass a file path String")
+			return TypeBool, true
+		}
+		tc.checkAssign(n.Args[0].nodeSpan(), TypeString, n.Args[0])
+		return TypeBool, true
+	}
+	return TypeUnknown, false
+}
+
+// checkGenericCall instantiates a generic procedure at a call site: it infers
+// the concrete type arguments from the argument types, checks the constraints,
+// builds an instantiated copy of the procedure, type-checks the copy, and adds
+// it to the program so lowering emits it.
+func (tc *TypeChecker) checkGenericCall(n *CallExpr, proc *ProcDecl) Type {
+	argTypes := make([]Type, len(n.Args))
+	for i, arg := range n.Args {
+		argTypes[i] = tc.concreteArgType(arg)
+	}
+	typeArgs, ok := tc.inferTypeArgs(proc, argTypes)
+	if !ok {
+		tc.diags.Error(n.Span_, "cannot infer type arguments for generic procedure "+proc.Name, "pass arguments whose types determine the type parameters")
+		return TypeUnknown
+	}
+	if !tc.checkTypeConstraints(proc, typeArgs, n.Span_) {
+		return TypeUnknown
+	}
+	// Build the concrete type-expression mapping for AST substitution.
+	mapping := make(map[string]Expr, len(typeArgs))
+	for name, t := range typeArgs {
+		mapping[name] = tc.typeToExpr(t)
+	}
+	// Reuse an existing instantiation with the same type arguments so repeated
+	// calls do not create duplicate declarations.
+	suffix := tc.instanceSuffix(typeArgs)
+	for _, existing := range tc.genericInstances[proc] {
+		if strings.HasSuffix(existing.Name, suffix) {
+			tc.analysis.CallInstances[n] = existing
+			return tc.genericCallResult(existing, n)
+		}
+	}
+	instance := instantiateProc(proc, mapping)
+	instance.Name = proc.Name + "$" + suffix
+	// Type-check the instantiated body and register it for lowering.
+	tc.checkProc(instance)
+	tc.registerProc(instance)
+	tc.genericInstances[proc] = append(tc.genericInstances[proc], instance)
+	if tc.program != nil {
+		tc.program.Decls = append(tc.program.Decls, instance)
+	}
+	tc.analysis.CallInstances[n] = instance
+	// Type-check the call against the instantiated signature.
+	return tc.genericCallResult(instance, n)
+}
+
+// genericCallResult type-checks a call against an instantiated generic
+// procedure's signature and returns the call's result type.
+func (tc *TypeChecker) genericCallResult(instance *ProcDecl, n *CallExpr) Type {
+	if len(n.Args) != len(instance.Params) {
+		tc.diags.Error(n.Span_, "call to "+instance.Name+" expects "+strconv.Itoa(len(instance.Params))+" arguments, got "+strconv.Itoa(len(n.Args)), "pass the correct number of arguments")
+	}
+	for i, arg := range n.Args {
+		if i < len(instance.Params) {
+			paramType := tc.resolveTypeExpr(instance.Params[i].Type)
+			tc.checkAssign(arg.nodeSpan(), paramType, arg)
+		}
+	}
+	if len(instance.Results) > 0 {
+		if instance.ErrorResult != nil {
+			return errorUnionType(tupleType(tc.procValueResults(instance)), tc.procErrorResult(instance))
+		}
+		return tupleType(tc.procValueResults(instance))
+	}
+	return TypeVoid
+}
+
+// inferTypeArgs infers concrete types for a generic procedure's type
+// parameters by matching each argument type against the corresponding
+// parameter type.
+func (tc *TypeChecker) inferTypeArgs(proc *ProcDecl, argTypes []Type) (map[string]Type, bool) {
+	tc.pushTypeParams(proc.TypeParams)
+	defer tc.popTypeParams()
+	mapping := make(map[string]Type)
+	for i, arg := range argTypes {
+		if i >= len(proc.Params) {
+			break
+		}
+		paramType := tc.resolveTypeExpr(proc.Params[i].Type)
+		if !tc.matchType(paramType, arg, mapping) {
+			return nil, false
+		}
+	}
+	return mapping, true
+}
+
+// concreteArgType returns a concrete type for a call argument, resolving
+// context-dependent literals to their default type so generic type inference
+// can bind type parameters.
+func (tc *TypeChecker) concreteArgType(e Expr) Type {
+	t := tc.inferExpr(e)
+	if t != TypeUnknown {
+		return t
+	}
+	switch e.(type) {
+	case *IntExpr:
+		return TypeS64
+	case *FloatExpr:
+		return TypeF64
+	case *StringExpr:
+		return TypeString
+	case *BoolExpr:
+		return TypeBool
+	}
+	return TypeUnknown
+}
+
+// matchType structurally matches an argument type against a parameter type,
+// binding type parameters as they are encountered. It returns false when the
+// types cannot match.
+func (tc *TypeChecker) matchType(param, arg Type, mapping map[string]Type) bool {
+	if isTypeParam(param) {
+		name := typeParamName(param)
+		if existing, ok := mapping[name]; ok {
+			return existing == arg
+		}
+		mapping[name] = arg
+		return true
+	}
+	if isArrayType(param) && isArrayType(arg) {
+		if arrayKindOf(param) != arrayKindOf(arg) {
+			return false
+		}
+		if arrayKindOf(param) == ArrayFixed {
+			ps, pok := arrayFixedSizeOf(param)
+			as, aok := arrayFixedSizeOf(arg)
+			if !pok || !aok || ps != as {
+				return false
+			}
+		}
+		return tc.matchType(arrayElemType(param), arrayElemType(arg), mapping)
+	}
+	if isPointerType(param) && isPointerType(arg) {
+		if pointerNullable(param) != pointerNullable(arg) {
+			return false
+		}
+		return tc.matchType(pointerElemType(param), pointerElemType(arg), mapping)
+	}
+	return param == arg
+}
+
+// checkTypeConstraints verifies that each inferred type argument satisfies its
+// type parameter's constraint list.
+func (tc *TypeChecker) checkTypeConstraints(proc *ProcDecl, typeArgs map[string]Type, span Span) bool {
+	ok := true
+	for _, tp := range proc.TypeParams {
+		arg, found := typeArgs[tp.Name]
+		if !found {
+			continue
+		}
+		if len(tp.Constraints) == 0 {
+			continue
+		}
+		satisfied := false
+		for _, c := range tp.Constraints {
+			if tc.resolveTypeExpr(c) == arg {
+				satisfied = true
+				break
+			}
+		}
+		if !satisfied {
+			tc.diags.Error(span, "type argument "+tc.formatType(arg)+" does not satisfy the constraints of type parameter '"+tp.Name+"'", "use one of the allowed constraint types")
+			ok = false
+		}
+	}
+	return ok
+}
+
+// typeToExpr converts a resolved Type back into a type expression for AST
+// substitution.
+func (tc *TypeChecker) typeToExpr(t Type) Expr {
+	if isArrayType(t) {
+		elem := tc.typeToExpr(arrayElemType(t))
+		switch arrayKindOf(t) {
+		case ArrayFixed:
+			if size, ok := arrayFixedSizeOf(t); ok {
+				return &ArrayTypeExpr{Span_: Span{}, Elem: elem, Kind: ArrayFixed, Size: &IntExpr{Value: strconv.Itoa(size)}}
+			}
+		case ArrayDynamic:
+			return &ArrayTypeExpr{Span_: Span{}, Elem: elem, Kind: ArrayDynamic}
+		default:
+			return &ArrayTypeExpr{Span_: Span{}, Elem: elem, Kind: ArrayRuntime}
+		}
+	}
+	if isPointerType(t) {
+		return &PointerTypeExpr{Span_: Span{}, Elem: tc.typeToExpr(pointerElemType(t)), Nullable: pointerNullable(t)}
+	}
+	// A nominal type (struct, enum, error) resolves back to its declared
+	// source name; the semantic type name is not a valid type expression.
+	if decl, ok := tc.typeDecls[t]; ok {
+		if name, _, _ := declarationName(decl); name != "" {
+			return &IdentExpr{Span_: Span{}, Name: name}
+		}
+	}
+	return &IdentExpr{Span_: Span{}, Name: string(t)}
+}
+
+// instanceSuffix builds a stable suffix for an instantiated procedure name
+// from its concrete type arguments.
+func (tc *TypeChecker) instanceSuffix(typeArgs map[string]Type) string {
+	// Sort for determinism.
+	names := make([]string, 0, len(typeArgs))
+	for name := range typeArgs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, name := range names {
+		b.WriteString(name)
+		b.WriteString("=")
+		b.WriteString(string(typeArgs[name]))
+		b.WriteString("_")
+	}
+	return b.String()
+}
+
 // procErrorResult returns the error type of a '<>' procedure result,
 // normalizing the written order.
 func (tc *TypeChecker) procErrorResult(p *ProcDecl) Type {
@@ -3004,10 +3561,36 @@ func (tc *TypeChecker) procErrorResult(p *ProcDecl) Type {
 	return rt
 }
 
+// checkArrayInitFromStruct checks an inferred ".{...}" literal assigned to an
+// array type. The parser produces a StructInitExpr for ".{...}"; when the
+// target is an array, its positional values are the array elements.
+func (tc *TypeChecker) checkArrayInitFromStruct(span Span, target Type, si *StructInitExpr) {
+	elem := arrayElemType(target)
+	for _, field := range si.Fields {
+		if field.Name != "" {
+			tc.diags.Error(field.Span_, "array literal elements cannot be named", "use positional values")
+			continue
+		}
+		tc.checkAssign(field.Span_, elem, field.Value)
+	}
+	if arrayKindOf(target) == ArrayFixed {
+		if size, ok := arrayFixedSizeOf(target); ok && len(si.Fields) != size {
+			tc.diags.Error(span, fmt.Sprintf("array literal has %d elements but type declares %d", len(si.Fields), size), "provide exactly the declared number of elements")
+		}
+	}
+}
+
 func (tc *TypeChecker) checkStructInit(si *StructInitExpr, structType Type) {
 	st, ok := tc.structDeclForType(structType)
 	if !ok {
 		tc.diags.Error(si.Span_, "unknown struct type "+tc.formatType(structType), "use a declared struct type")
+		return
+	}
+	// A generic struct is instantiated at the use site: infer the type
+	// arguments from the struct literal's field values, then check the
+	// literal against the instantiated type.
+	if len(st.TypeParams) > 0 {
+		tc.checkGenericStructInit(si, st)
 		return
 	}
 	fieldTypes := make(map[string]Type, len(st.Fields))
@@ -3046,6 +3629,120 @@ func (tc *TypeChecker) checkStructInit(si *StructInitExpr, structType Type) {
 	}
 }
 
+// checkGenericStructInit instantiates a generic struct at a use site by
+// inferring the type arguments from the struct literal's field values, then
+// checks the literal against the instantiated type.
+func (tc *TypeChecker) checkGenericStructInit(si *StructInitExpr, st *StructDecl) {
+	tc.pushTypeParams(st.TypeParams)
+	defer tc.popTypeParams()
+	// Infer type arguments by matching each field's declared type (which may
+	// contain type parameters) against the field value's concrete type.
+	typeArgs := make(map[string]Type)
+	positional := 0
+	for _, field := range si.Fields {
+		var fieldDecl *StructField
+		if field.Name != "" {
+			for i := range st.Fields {
+				if st.Fields[i].Name == field.Name {
+					fieldDecl = &st.Fields[i]
+					break
+				}
+			}
+		} else {
+			// Positional: match against the next declaration-order field.
+			if positional < len(st.Fields) {
+				fieldDecl = &st.Fields[positional]
+			}
+			positional++
+		}
+		if fieldDecl == nil {
+			continue
+		}
+		paramType := tc.resolveTypeExpr(fieldDecl.Type)
+		argType := tc.concreteArgType(field.Value)
+		if argType != TypeUnknown {
+			tc.matchType(paramType, argType, typeArgs)
+		}
+	}
+	// Check constraints.
+	for _, tp := range st.TypeParams {
+		arg, found := typeArgs[tp.Name]
+		if !found || len(tp.Constraints) == 0 {
+			continue
+		}
+		satisfied := false
+		for _, c := range tp.Constraints {
+			if tc.resolveTypeExpr(c) == arg {
+				satisfied = true
+				break
+			}
+		}
+		if !satisfied {
+			tc.diags.Error(si.Span_, "type argument "+tc.formatType(arg)+" does not satisfy the constraints of type parameter '"+tp.Name+"'", "use one of the allowed constraint types")
+		}
+	}
+	// Build the concrete type-expression mapping and substitute field types.
+	mapping := make(map[string]Expr, len(typeArgs))
+	for name, t := range typeArgs {
+		mapping[name] = tc.typeToExpr(t)
+	}
+	// Create an instantiated struct type with the substituted field types and
+	// record it so field access resolves to the concrete types.
+	instance := &StructDecl{
+		Span_:    st.Span_,
+		Name:     st.Name + "$" + tc.instanceSuffix(typeArgs),
+		NameSpan: st.NameSpan,
+		Fields:   make([]StructField, len(st.Fields)),
+	}
+	for i, f := range st.Fields {
+		instance.Fields[i] = f
+		instance.Fields[i].Type = substituteTypeExpr(f.Type, mapping)
+	}
+	instType := tc.newSemanticType("struct", instance.Name)
+	tc.instanceTypes[instance] = instType
+	tc.typeDecls[instType] = instance
+	tc.analysis.NominalDecls[instType] = instance
+	tc.structInstances[st] = append(tc.structInstances[st], instance)
+	tc.structLiteralTypes[si] = instType
+	tc.analysis.StructLiteralTypes[si] = instType
+	if tc.program != nil {
+		tc.program.Decls = append(tc.program.Decls, instance)
+	}
+	fieldTypes := make(map[string]Type, len(instance.Fields))
+	fieldIndexes := make(map[string]int, len(instance.Fields))
+	for i, f := range instance.Fields {
+		fieldTypes[f.Name] = tc.resolveTypeExpr(f.Type)
+		fieldIndexes[f.Name] = i
+	}
+	assigned := make(map[int]bool, len(si.Fields))
+	positional = 0
+	for _, field := range si.Fields {
+		if field.Name != "" {
+			ft, ok := fieldTypes[field.Name]
+			if !ok {
+				tc.diags.Error(field.Span_, "unknown field "+field.Name+" in struct "+st.Name, "use a declared field name")
+				continue
+			}
+			index := fieldIndexes[field.Name]
+			if assigned[index] {
+				tc.diags.Error(field.NameSpan, "field '"+field.Name+"' is initialized more than once", "remove the duplicate field initializer")
+				continue
+			}
+			assigned[index] = true
+			tc.checkAssign(field.Span_, ft, field.Value)
+			continue
+		}
+		if positional < len(instance.Fields) {
+			assigned[positional] = true
+			ft := tc.resolveTypeExpr(instance.Fields[positional].Type)
+			tc.checkAssign(field.Span_, ft, field.Value)
+			positional++
+		} else {
+			tc.diags.Error(field.Span_, "too many fields in struct literal for "+st.Name, "remove the extra field")
+		}
+	}
+}
+
 // typeOfTypeExpr extracts the type name from a type expression: an identifier
 // or an array type "[]T".
 func typeOfTypeExpr(e Expr) Type {
@@ -3053,7 +3750,20 @@ func typeOfTypeExpr(e Expr) Type {
 	case *IdentExpr:
 		return Type(n.Name)
 	case *ArrayTypeExpr:
-		return arrayType(typeOfTypeExpr(n.Elem))
+		elem := typeOfTypeExpr(n.Elem)
+		switch n.Kind {
+		case ArrayFixed:
+			if lit, ok := n.Size.(*IntExpr); ok {
+				if sz, err := strconv.Atoi(strings.ReplaceAll(lit.Value, "_", "")); err == nil {
+					return fixedArrayType(elem, sz)
+				}
+			}
+			return TypeUnknown
+		case ArrayDynamic:
+			return dynamicArrayType(elem)
+		default:
+			return arrayType(elem)
+		}
 	}
 	return TypeUnknown
 }
@@ -3070,6 +3780,13 @@ func declarationName(d Decl) (string, Span, bool) {
 		return n.Name, n.NameSpan, n.Shadow
 	case *EnumDecl:
 		return n.Name, n.NameSpan, n.Shadow
+	case *ImportDecl:
+		// A namespaced import binds its namespace name like any other
+		// declaration, so 'c :: #import «core»;' collides with a second
+		// top-level 'c'. Flat imports bind nothing.
+		if n.Namespace != "" {
+			return n.Namespace, n.Span_, false
+		}
 	}
 	return "", Span{}, false
 }
@@ -3116,19 +3833,102 @@ func (tc *TypeChecker) formatTypes(types []Type) string {
 
 func isProcType(t Type) bool { return strings.HasPrefix(string(t), "\x00proc:") }
 
-// arrayType is the type name of an array with the given element type.
+// arrayType is the type name of a runtime-sized array "[]T".
 func arrayType(elem Type) Type {
 	return Type("[]" + string(elem))
 }
 
-// isArrayType reports whether t is an array type.
+// fixedArrayType is the type name of a fixed-size array "[N]T".
+func fixedArrayType(elem Type, n int) Type {
+	return Type(fmt.Sprintf("[%d]%s", n, string(elem)))
+}
+
+// dynamicArrayType is the type name of a dynamic array "[dyn]T".
+func dynamicArrayType(elem Type) Type {
+	return Type("[dyn]" + string(elem))
+}
+
+// isArrayType reports whether t is an array type ("[]T", "[N]T", or "[dyn]T").
 func isArrayType(t Type) bool {
-	return strings.HasPrefix(string(t), "[]")
+	s := string(t)
+	if strings.HasPrefix(s, "[]") || strings.HasPrefix(s, "[dyn]") {
+		return true
+	}
+	if len(s) > 0 && s[0] == '[' {
+		if i := strings.IndexByte(s, ']'); i > 0 {
+			for j := 1; j < i; j++ {
+				if s[j] < '0' || s[j] > '9' {
+					return false
+				}
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // arrayElemType returns the element type of an array type.
 func arrayElemType(t Type) Type {
-	return Type(strings.TrimPrefix(string(t), "[]"))
+	s := string(t)
+	if strings.HasPrefix(s, "[]") {
+		return Type(s[2:])
+	}
+	if strings.HasPrefix(s, "[dyn]") {
+		return Type(s[5:])
+	}
+	if i := strings.IndexByte(s, ']'); i > 0 {
+		return Type(s[i+1:])
+	}
+	return t
+}
+
+// arrayKindOf returns the array kind of an array type.
+func arrayKindOf(t Type) ArrayKind {
+	s := string(t)
+	if strings.HasPrefix(s, "[dyn]") {
+		return ArrayDynamic
+	}
+	if strings.HasPrefix(s, "[]") {
+		return ArrayRuntime
+	}
+	return ArrayFixed
+}
+
+// arrayFixedSizeOf returns the compile-time size of a fixed-size array type.
+func arrayFixedSizeOf(t Type) (int, bool) {
+	s := string(t)
+	if !strings.HasPrefix(s, "[") {
+		return 0, false
+	}
+	i := strings.IndexByte(s, ']')
+	if i <= 1 {
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.ReplaceAll(s[1:i], "_", ""))
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
+// arrayFixedSize resolves the compile-time size of a fixed-size array type
+// expression "[N]T". The size must be a non-negative integer literal.
+func (tc *TypeChecker) arrayFixedSize(at *ArrayTypeExpr) (int, bool) {
+	if at.Size == nil {
+		tc.diags.Error(at.Span_, "fixed-size array is missing its size", "write '[N]T' with an integer size")
+		return 0, false
+	}
+	lit, ok := at.Size.(*IntExpr)
+	if !ok {
+		tc.diags.Error(at.Size.nodeSpan(), "array size must be a compile-time integer constant", "use a literal integer size")
+		return 0, false
+	}
+	n, err := strconv.Atoi(strings.ReplaceAll(lit.Value, "_", ""))
+	if err != nil || n < 0 {
+		tc.diags.Error(at.Size.nodeSpan(), "invalid array size", "use a non-negative integer size")
+		return 0, false
+	}
+	return n, true
 }
 
 // pointerType is the type name of a pointer with the given element type.
@@ -3343,6 +4143,11 @@ func (tc *TypeChecker) checkAssign(span Span, target Type, value Expr) {
 		}
 	}
 	if init, ok := value.(*StructInitExpr); ok && init.Type == nil {
+		if isArrayType(target) {
+			tc.checkArrayInitFromStruct(span, target, init)
+			tc.analysis.ExprTypes[value] = target
+			return
+		}
 		tc.checkStructInit(init, target)
 		tc.analysis.ExprTypes[value] = target
 		return

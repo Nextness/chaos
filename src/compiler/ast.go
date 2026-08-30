@@ -247,11 +247,25 @@ func (f StructInitField) nodeSpan() Span {
 	return f.Span_
 }
 
-// ArrayTypeExpr is an array type expression: "[]T". Elem is the element type
-// expression.
+// ArrayKind classifies the three array forms: "[]T" (runtime-sized, size from
+// an allocation or cast), "[N]T" (fixed size known at compile time), and
+// "[dyn]T" (dynamic, grows via append).
+type ArrayKind uint8
+
+const (
+	ArrayRuntime ArrayKind = iota // []T
+	ArrayFixed                    // [N]T
+	ArrayDynamic                  // [dyn]T
+)
+
+// ArrayTypeExpr is an array type expression: "[]T", "[N]T", or "[dyn]T".
+// Elem is the element type expression. Kind selects the array form; for
+// ArrayFixed, Size is the compile-time size expression.
 type ArrayTypeExpr struct {
 	Span_ Span
 	Elem  Expr
+	Kind  ArrayKind
+	Size  Expr // non-nil only for ArrayFixed ("[N]T")
 }
 
 func (e *ArrayTypeExpr) nodeSpan() Span {
@@ -303,11 +317,12 @@ func (e *FieldAccessExpr) nodeSpan() Span {
 
 func (e *FieldAccessExpr) exprNode() {}
 
-// ArrayInitExpr is an array literal: "[]T.{item, item, ...}". Elem is the
-// element type expression; Items holds the element values.
+// ArrayInitExpr is an array literal: "[]T.{item, ...}", "[N]T.{item, ...}",
+// or "[dyn]T.{item, ...}". Elem is the array type expression; Items holds the
+// element values.
 type ArrayInitExpr struct {
 	Span_ Span
-	Elem  Expr // element type expression ([]T)
+	Elem  *ArrayTypeExpr // array type expression ([]T, [N]T, or [dyn]T)
 	Items []Expr
 }
 
@@ -374,6 +389,20 @@ func (e *AllocateExpr) nodeSpan() Span {
 }
 
 func (e *AllocateExpr) exprNode() {}
+
+// SizeOfExpr is the 'size_of' keyword: "size_of <type|variable>" or
+// "size_of(type|variable)". It yields the size in bytes of the given type or
+// value as a compile-time Size constant.
+type SizeOfExpr struct {
+	Span_ Span
+	Type  Expr
+}
+
+func (e *SizeOfExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *SizeOfExpr) exprNode() {}
 
 // CastExpr is a type cast: "expr.(*T)". It reinterprets the value as the
 // given type. The cast target is a type expression.
@@ -678,6 +707,7 @@ type ProcDecl struct {
 	Span_       Span
 	Name        string
 	NameSpan    Span
+	TypeParams  []TypeParam
 	Params      []Param
 	Results     []Expr // type expressions (empty for void)
 	ErrorResult Expr   // error type expression (nil when no '<>')
@@ -702,11 +732,12 @@ func (d *ProcDecl) declNode() {}
 // The declaration itself does not require a trailing semicolon; each field
 // ends with its own semicolon.
 type StructDecl struct {
-	Span_    Span
-	Name     string
-	NameSpan Span
-	Fields   []StructField
-	Shadow   bool
+	Span_      Span
+	Name       string
+	NameSpan   Span
+	TypeParams []TypeParam
+	Fields     []StructField
+	Shadow     bool
 }
 
 func (d *StructDecl) nodeSpan() Span {
@@ -715,6 +746,15 @@ func (d *StructDecl) nodeSpan() Span {
 
 func (d *StructDecl) stmtNode() {}
 func (d *StructDecl) declNode() {}
+
+// TypeParam is a generic type parameter with a constraint list (a union of
+// allowed types). For example in "Name <T: String | U64>", T has constraints
+// String and U64.
+type TypeParam struct {
+	Name        string
+	NameSpan    Span
+	Constraints []Expr // allowed type expressions (union)
+}
 
 // StructField is a single field in a struct definition: "name: type;".
 type StructField struct {
@@ -815,6 +855,25 @@ func (d *EnumDecl) nodeSpan() Span {
 
 func (d *EnumDecl) stmtNode() {}
 func (d *EnumDecl) declNode() {}
+
+// ImportDecl is a '#import «module»;' directive. Namespace is empty for a flat
+// import (the module's declarations become directly visible) or the binding
+// name for 'c :: #import «module»;' (members are accessed as c.member). Decls
+// holds the module's resolved declarations, filled by ResolveImports before
+// semantic analysis.
+type ImportDecl struct {
+	Span_     Span
+	Module    string
+	Namespace string
+	Decls     []Decl
+}
+
+func (d *ImportDecl) nodeSpan() Span {
+	return d.Span_
+}
+
+func (d *ImportDecl) stmtNode() {}
+func (d *ImportDecl) declNode() {}
 
 // EnumMember is a single member of an enum type: "NAME;", "NAME = value;", or
 // (on the first member only) "NAME: Type = value;". Type is nil for members

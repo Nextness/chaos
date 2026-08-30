@@ -13,6 +13,8 @@
 // into stable SymbolIDs and types into TypeIDs.
 package compiler
 
+import "fmt"
+
 // SymbolID identifies a declared entity (procedure, struct, variable,
 // parameter, or field) in the IR. Every declaration receives a fresh ID, so
 // identity is stable across shadowing and lowering.
@@ -111,8 +113,10 @@ type IRType struct {
 	Kind       TypeKind
 	Name       string
 	Fields     []TypeField
-	Elem       TypeID // element type for TypeKindArray; pointed-to type for TypeKindPointer
-	Underlying TypeID // underlying integer type for TypeKindEnum
+	Elem       TypeID    // element type for TypeKindArray; pointed-to type for TypeKindPointer
+	Underlying TypeID    // underlying integer type for TypeKindEnum
+	ArrayKind  ArrayKind // array form for TypeKindArray ([]T, [N]T, [dyn]T)
+	ArraySize  int       // compile-time size for TypeKindArray with ArrayKind == ArrayFixed
 }
 
 // TypeTable interns types by name.
@@ -220,18 +224,40 @@ func (tt *TypeTable) InternScopedError(name string) TypeID {
 	return tt.internUnindexed(name, TypeKindError)
 }
 
-// InternArray interns an array type "[]Elem" for the given element type.
+// InternArray interns a runtime-sized array type "[]Elem" for the given
+// element type.
 func (tt *TypeTable) InternArray(elem TypeID) TypeID {
-	name := "[]" + tt.Lookup(elem).Name
+	return tt.InternArrayKind(elem, ArrayRuntime, 0)
+}
+
+// InternArrayKind interns an array type for the given element type and array
+// form: "[]Elem" (runtime), "[N]Elem" (fixed), or "[dyn]Elem" (dynamic).
+func (tt *TypeTable) InternArrayKind(elem TypeID, kind ArrayKind, size int) TypeID {
+	name := arrayTypeName(tt.Lookup(elem).Name, kind, size)
 	if id, ok := tt.byName[name]; ok {
-		if tt.types[id].Kind == TypeKindArray && tt.types[id].Elem == elem {
+		if tt.types[id].Kind == TypeKindArray && tt.types[id].Elem == elem &&
+			tt.types[id].ArrayKind == kind && tt.types[id].ArraySize == size {
 			return id
 		}
 		return tt.Unknown()
 	}
 	id := tt.intern(name, TypeKindArray)
 	tt.types[id].Elem = elem
+	tt.types[id].ArrayKind = kind
+	tt.types[id].ArraySize = size
 	return id
+}
+
+// arrayTypeName builds the interned name for an array type.
+func arrayTypeName(elemName string, kind ArrayKind, size int) string {
+	switch kind {
+	case ArrayFixed:
+		return fmt.Sprintf("[%d]%s", size, elemName)
+	case ArrayDynamic:
+		return "[dyn]" + elemName
+	default:
+		return "[]" + elemName
+	}
 }
 
 // InternPointer interns a pointer type "*Elem" (or "*Elem?" for a nullable
@@ -348,3 +374,10 @@ func (tt *TypeTable) F64() TypeID { return tt.byName["F64"] }
 
 // Unknown returns the TypeID of the unknown type used for unresolved values.
 func (tt *TypeTable) Unknown() TypeID { return tt.byName[""] }
+
+// isNumericIRType reports whether an IR type is an integer or floating-point
+// numeric type. Numeric casts between such types are value-preserving
+// conversions rather than bit reinterpretations.
+func isNumericIRType(t IRType) bool {
+	return t.Kind == TypeKindInt || t.Kind == TypeKindFloat
+}

@@ -1503,9 +1503,9 @@ func TestParseArrayLiteral(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *ArrayInitExpr, got %T", expr)
 	}
-	at, ok := al.Elem.(*IdentExpr)
+	at, ok := al.Elem.Elem.(*IdentExpr)
 	if !ok || at.Name != "S64" {
-		t.Fatalf("Elem = %#v, want Ident(S64)", al.Elem)
+		t.Fatalf("Elem = %#v, want Ident(S64)", al.Elem.Elem)
 	}
 	if len(al.Items) != 3 {
 		t.Fatalf("Items = %d, want 3", len(al.Items))
@@ -1525,6 +1525,50 @@ func TestParseArrayTypeExpr(t *testing.T) {
 	}
 	if _, ok := at.Elem.(*IdentExpr); !ok {
 		t.Fatalf("Elem = %T, want *IdentExpr", at.Elem)
+	}
+}
+
+func TestParseFixedArrayTypeExpr(t *testing.T) {
+	decl := parseOneDecl(t, "a: [3]S64 = .{1, 2, 3};")
+	vd, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	at, ok := vd.DeclType.(*ArrayTypeExpr)
+	if !ok {
+		t.Fatalf("DeclType = %T, want *ArrayTypeExpr", vd.DeclType)
+	}
+	if at.Kind != ArrayFixed {
+		t.Fatalf("Kind = %v, want ArrayFixed", at.Kind)
+	}
+	if lit, ok := at.Size.(*IntExpr); !ok || lit.Value != "3" {
+		t.Fatalf("Size = %#v, want IntExpr(3)", at.Size)
+	}
+}
+
+func TestParseDynamicArrayTypeExpr(t *testing.T) {
+	decl := parseOneDecl(t, "a: [dyn]S64 = .{1, 2, 3};")
+	vd, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	at, ok := vd.DeclType.(*ArrayTypeExpr)
+	if !ok {
+		t.Fatalf("DeclType = %T, want *ArrayTypeExpr", vd.DeclType)
+	}
+	if at.Kind != ArrayDynamic {
+		t.Fatalf("Kind = %v, want ArrayDynamic", at.Kind)
+	}
+}
+
+func TestParseSizeOf(t *testing.T) {
+	expr := parseExpr(t, "size_of(S64)")
+	so, ok := expr.(*SizeOfExpr)
+	if !ok {
+		t.Fatalf("expected *SizeOfExpr, got %T", expr)
+	}
+	if id, ok := so.Type.(*IdentExpr); !ok || id.Name != "S64" {
+		t.Fatalf("Type = %#v, want Ident(S64)", so.Type)
 	}
 }
 
@@ -2712,9 +2756,9 @@ func TestStrictEntryProcDirectiveFirst(t *testing.T) {
 }
 
 func TestStrictOtherDirectiveStillErrors(t *testing.T) {
-	result := parseTestCase(t, "#import «fmt.chaos»;")
+	result := parseTestCase(t, "#unknown_directive;")
 	if !result.Diags.HasErrors() {
-		t.Error("strict mode should error on #import, got none")
+		t.Error("strict mode should error on an unknown directive, got none")
 	}
 }
 
@@ -2723,8 +2767,38 @@ func TestTolerantImportDirective(t *testing.T) {
 	if result.Diags.HasErrors() {
 		t.Fatalf("unexpected errors: %v", result.Diags)
 	}
-	if len(result.Program.Decls) != 0 {
-		t.Fatalf("Decls = %d, want 0", len(result.Program.Decls))
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	imp, ok := result.Program.Decls[0].(*ImportDecl)
+	if !ok {
+		t.Fatalf("Decls[0] type = %T, want *ImportDecl", result.Program.Decls[0])
+	}
+	if imp.Module != "fmt.chaos" {
+		t.Errorf("Module = %q, want %q", imp.Module, "fmt.chaos")
+	}
+	if imp.Namespace != "" {
+		t.Errorf("Namespace = %q, want empty for a flat import", imp.Namespace)
+	}
+}
+
+func TestTolerantNamespacedImportDirective(t *testing.T) {
+	result := parseTolerantTestCase(t, "c :: #import «core»;")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	imp, ok := result.Program.Decls[0].(*ImportDecl)
+	if !ok {
+		t.Fatalf("Decls[0] type = %T, want *ImportDecl", result.Program.Decls[0])
+	}
+	if imp.Module != "core" {
+		t.Errorf("Module = %q, want %q", imp.Module, "core")
+	}
+	if imp.Namespace != "c" {
+		t.Errorf("Namespace = %q, want %q", imp.Namespace, "c")
 	}
 }
 
@@ -2850,12 +2924,11 @@ func TestTolerantRealErrorsStillSurface(t *testing.T) {
 	}
 }
 
-func TestTolerantGenericDeclarationsAreRecoveryOnly(t *testing.T) {
+func TestTolerantGenericDeclarationsAreParsed(t *testing.T) {
 	tests := []string{
 		"function5 <T: String | S64> :: proc (input1: T) { }\nnext :: 1;",
 		"#entry function5 <T: String | S64> :: proc (input1: T) { }\nnext :: 1;",
 		"function5 <T: String | S64> :: #entry proc (input1: T) { }\nnext :: 1;",
-		"function8 <T: Array<S64>> :: proc { }\nnext :: 1;",
 		"function9 <T: String | S64, U: S64> :: proc { }\nnext :: 1;",
 		"Foo <T: S64> :: struct { x: T; }\nnext :: 1;",
 	}
@@ -2864,15 +2937,8 @@ func TestTolerantGenericDeclarationsAreRecoveryOnly(t *testing.T) {
 		if result.Diags.HasErrors() {
 			t.Fatalf("unexpected errors for %q: %v", source, result.Diags)
 		}
-		if len(result.Program.Decls) != 1 {
-			t.Fatalf("Decls = %d, want only the supported declaration for %q", len(result.Program.Decls), source)
-		}
-		decl, ok := result.Program.Decls[0].(*VarDecl)
-		if !ok || decl.Name != "next" {
-			t.Fatalf("recovered declaration = %T, want next *VarDecl for %q", result.Program.Decls[0], source)
-		}
-		if result.Program.EntryDecl != nil {
-			t.Fatalf("unsupported generic declaration became entry for %q", source)
+		if len(result.Program.Decls) != 2 {
+			t.Fatalf("Decls = %d, want 2 (generic declaration + next) for %q", len(result.Program.Decls), source)
 		}
 	}
 }
@@ -2934,10 +3000,20 @@ func TestTolerantErrorReturnSpec(t *testing.T) {
 	}
 }
 
-func TestStrictGenericProcStillErrors(t *testing.T) {
+func TestStrictGenericProcParses(t *testing.T) {
 	result := parseTestCase(t, "function5 <T: String | S64> :: proc (input1: T) { }")
-	if !result.Diags.HasErrors() {
-		t.Error("strict mode should error on generic proc, got none")
+	if result.Diags.HasErrors() {
+		t.Errorf("strict mode should parse generic proc, got errors: %v", result.Diags)
+	}
+	if len(result.Program.Decls) != 1 {
+		t.Fatalf("Decls = %d, want 1", len(result.Program.Decls))
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	if len(proc.TypeParams) != 1 || proc.TypeParams[0].Name != "T" {
+		t.Fatalf("TypeParams = %+v, want one param T", proc.TypeParams)
 	}
 }
 

@@ -464,6 +464,55 @@ func (e *HIRInterpolate) hirExprNode()    {}
 func (e *HIRInterpolate) hirSpan() Span   { return e.Span_ }
 func (e *HIRInterpolate) hirType() TypeID { return e.Type }
 
+// HIRConvert is a numeric conversion between integer and floating-point types
+// (for example S64 to F64, or Byte to S64). Unlike HIRCast it preserves the
+// numeric value rather than the bit representation.
+type HIRConvert struct {
+	Span_ Span
+	Value HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRConvert) hirExprNode()    {}
+func (e *HIRConvert) hirSpan() Span   { return e.Span_ }
+func (e *HIRConvert) hirType() TypeID { return e.Type }
+
+// HIRPrint writes a String to stdout. Newline selects the println form, which
+// appends a newline after the value.
+type HIRPrint struct {
+	Span_   Span
+	Value   HIRExpr
+	Newline bool
+	Type    TypeID
+}
+
+func (e *HIRPrint) hirExprNode()    {}
+func (e *HIRPrint) hirSpan() Span   { return e.Span_ }
+func (e *HIRPrint) hirType() TypeID { return e.Type }
+
+// HIRReadFile reads a file into a String. The file must exist and be
+// readable; a failure terminates the program with a diagnostic.
+type HIRReadFile struct {
+	Span_ Span
+	Path  HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRReadFile) hirExprNode()    {}
+func (e *HIRReadFile) hirSpan() Span   { return e.Span_ }
+func (e *HIRReadFile) hirType() TypeID { return e.Type }
+
+// HIRFileExists reports whether a file exists and is readable.
+type HIRFileExists struct {
+	Span_ Span
+	Path  HIRExpr
+	Type  TypeID
+}
+
+func (e *HIRFileExists) hirExprNode()    {}
+func (e *HIRFileExists) hirSpan() Span   { return e.Span_ }
+func (e *HIRFileExists) hirType() TypeID { return e.Type }
+
 // HIRDeallocate is the '#deallocate <addr>' intrinsic. It frees a heap block
 // previously returned by '#allocate'.
 type HIRDeallocate struct {

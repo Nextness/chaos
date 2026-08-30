@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: call to unknown procedure
+// Namespaced imports do not make members visible by bare name.
+c :: #import «core»;
+#entry main :: proc -> S64 {
+    if is_digit(48) { return 1; }
+    return 0;
+}

@@ -130,6 +130,7 @@ const (
 	TkBreak
 	TkContinue
 	TkNull
+	TkSizeOf
 
 	// Compile-time directives and comments
 	TkDirec   // compile-time directive name after '#'
@@ -199,6 +200,7 @@ var tokenKindNames = [...]string{
 	TkBreak:       "break",
 	TkContinue:    "continue",
 	TkNull:        "null",
+	TkSizeOf:      "size_of",
 	TkDirec:       "directive",
 	TkComment:     "comment",
 }
@@ -265,6 +267,7 @@ func init() {
 		{"break", TkBreak},
 		{"continue", TkContinue},
 		{"null", TkNull},
+		{"size_of", TkSizeOf},
 	}
 	keywordTokens = make(map[string]TokenKind, 16)
 	for _, entry := range keywordEntries {

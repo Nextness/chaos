@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: cannot be used as a value
+// Procedures cannot be used as values, even through a namespace.
+c :: #import «core»;
+#entry main :: proc -> S64 {
+    x := c.is_digit;
+    return 0;
+}

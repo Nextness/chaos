@@ -1,0 +1,39 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  Decl *compiler.ImportDecl
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      IfStmt condition=Unary(! Call(Ident(is_digit), Int(48)))
+        Block
+          ReturnStmt Int(1)
+      IfStmt condition=Call(Ident(is_digit), Int(65))
+        Block
+          ReturnStmt Int(2)
+      IfStmt condition=Unary(! Call(Ident(is_alpha), Int(65)))
+        Block
+          ReturnStmt Int(3)
+      IfStmt condition=Unary(! Call(Ident(is_space), Int(32)))
+        Block
+          ReturnStmt Int(4)
+      IfStmt condition=Unary(! Call(Ident(is_alnum), Int(57)))
+        Block
+          ReturnStmt Int(5)
+      IfStmt condition=Unary(! Call(Ident(is_upper), Int(90)))
+        Block
+          ReturnStmt Int(6)
+      IfStmt condition=Unary(! Call(Ident(is_lower), Int(97)))
+        Block
+          ReturnStmt Int(7)
+      IfStmt condition=Binary(!= Call(Ident(int_to_string), Unary(- Int(12345))) String("-12345"))
+        Block
+          ReturnStmt Int(8)
+      IfStmt condition=Binary(!= Call(Ident(string_to_int), String("-9876")) Unary(- Int(9876)))
+        Block
+          ReturnStmt Int(9)
+      IfStmt condition=Binary(!= Call(Ident(string_to_float), String("0.25")) Float(0.25))
+        Block
+          ReturnStmt Int(10)
+      ReturnStmt Int(0)

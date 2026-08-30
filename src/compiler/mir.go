@@ -101,12 +101,16 @@ const (
 	MIRAllocate
 	MIRDeallocate
 	MIRCast
+	MIRConvert
 	MIRInterpolate
+	MIRPrint
+	MIRReadFile
+	MIRFileExists
 )
 
 // MIROpcodeMax is the largest valid MIROpcode. The verifier uses it to reject
 // out-of-range opcodes without depending on a parallel name table.
-const MIROpcodeMax = MIRInterpolate
+const MIROpcodeMax = MIRFileExists
 
 // String returns the textual name of an opcode.
 func (op MIROpcode) String() string {
@@ -187,8 +191,16 @@ func (op MIROpcode) String() string {
 		return "deallocate"
 	case MIRCast:
 		return "cast"
+	case MIRConvert:
+		return "convert"
 	case MIRInterpolate:
 		return "interpolate"
+	case MIRPrint:
+		return "print"
+	case MIRReadFile:
+		return "read.file"
+	case MIRFileExists:
+		return "file.exists"
 	}
 	return "?"
 }

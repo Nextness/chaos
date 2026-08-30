@@ -1,0 +1,21 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  Decl *compiler.ImportDecl
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      IfStmt condition=Unary(! Call(Field(Ident(c), is_digit), Int(48)))
+        Block
+          ReturnStmt Int(1)
+      IfStmt condition=Call(Field(Ident(c), is_digit), Int(65))
+        Block
+          ReturnStmt Int(2)
+      IfStmt condition=Binary(!= Call(Field(Ident(c), int_to_string), Int(42)) String("42"))
+        Block
+          ReturnStmt Int(3)
+      IfStmt condition=Binary(!= Call(Field(Ident(c), string_to_int), String("42")) Int(42))
+        Block
+          ReturnStmt Int(4)
+      ReturnStmt Int(0)

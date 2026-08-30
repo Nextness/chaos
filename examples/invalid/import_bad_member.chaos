@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: has no member
+// Calling a member that the imported module does not declare.
+c :: #import «core»;
+#entry main :: proc -> S64 {
+    c.nonexistent(1);
+    return 0;
+}

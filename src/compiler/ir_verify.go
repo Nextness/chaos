@@ -450,12 +450,34 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 			v.diags.Error(ins.Span, "field.load requires a field operand", "add a field index")
 		} else {
 			bt := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]])
-			if !isRecordKind(bt.Kind) && bt.Kind != TypeKindString {
+			fieldCount := len(bt.Fields)
+			var fieldType TypeID
+			if bt.Kind == TypeKindArray {
+				// Arrays expose data (field 0), count (field 1), and for
+				// dynamic arrays capacity (field 2).
+				switch bt.ArrayKind {
+				case ArrayDynamic:
+					fieldCount = 3
+				default:
+					fieldCount = 2
+				}
+				switch ins.Imm.Int {
+				case 0:
+					fieldType = v.prog.Types.InternPointer(bt.Elem, false)
+				case 1:
+					fieldType = v.prog.Types.Size()
+				case 2:
+					fieldType = v.prog.Types.Size()
+				}
+			} else if ins.Imm.Int >= 0 && int(ins.Imm.Int) < len(bt.Fields) {
+				fieldType = bt.Fields[ins.Imm.Int].Type
+			}
+			if !isRecordKind(bt.Kind) && bt.Kind != TypeKindString && bt.Kind != TypeKindArray {
 				v.diags.Error(ins.Span, "field.load base type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not a record", "use a struct or tuple value")
-			} else if ins.Imm.Int < 0 || int(ins.Imm.Int) >= len(bt.Fields) {
+			} else if ins.Imm.Int < 0 || int(ins.Imm.Int) >= fieldCount {
 				v.diags.Error(ins.Span, "field.load field index out of range", "use a declared field")
-			} else if ft := bt.Fields[ins.Imm.Int].Type; ins.Type != ft {
-				v.diags.Error(ins.Span, "field.load result type "+v.typeName(ins.Type)+" does not match field type "+v.typeName(ft), "use the field's type")
+			} else if ins.Type != fieldType {
+				v.diags.Error(ins.Span, "field.load result type "+v.typeName(ins.Type)+" does not match field type "+v.typeName(fieldType), "use the field's type")
 			}
 		}
 	case MIRZero:
@@ -552,11 +574,29 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind == TypeKindPointer {
 			st := v.prog.Types.Lookup(at.Elem)
 			fi := int(ins.Imm.Int)
-			if st.Kind != TypeKindStruct && st.Kind != TypeKindTuple && st.Kind != TypeKindString {
+			fieldCount := len(st.Fields)
+			var fieldType TypeID
+			if st.Kind == TypeKindArray {
+				switch st.ArrayKind {
+				case ArrayDynamic:
+					fieldCount = 3
+				default:
+					fieldCount = 2
+				}
+				switch fi {
+				case 0:
+					fieldType = v.prog.Types.InternPointer(st.Elem, false)
+				case 1, 2:
+					fieldType = v.prog.Types.Size()
+				}
+			} else if fi >= 0 && fi < len(st.Fields) {
+				fieldType = st.Fields[fi].Type
+			}
+			if st.Kind != TypeKindStruct && st.Kind != TypeKindTuple && st.Kind != TypeKindString && st.Kind != TypeKindArray {
 				v.diags.Error(ins.Span, "field.addr base does not point at a record type", "use the address of a struct")
-			} else if fi < 0 || fi >= len(st.Fields) {
+			} else if fi < 0 || fi >= fieldCount {
 				v.diags.Error(ins.Span, "field.addr references an unknown field index", "use a declared field index")
-			} else if pt := v.prog.Types.Lookup(ins.Type); pt.Kind != TypeKindPointer || pt.Elem != st.Fields[fi].Type {
+			} else if pt := v.prog.Types.Lookup(ins.Type); pt.Kind != TypeKindPointer || pt.Elem != fieldType {
 				v.diags.Error(ins.Span, "field.addr result does not point at the field type", "use the pointer-to-field type")
 			}
 		} else if ins.Imm.Kind != MIRImmNone {
@@ -617,6 +657,20 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		if ins.Imm.Kind != MIRImmNone {
 			v.diags.Error(ins.Span, "cast takes no immediate operand", "remove the immediate")
 		}
+	case MIRConvert:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "convert requires one value argument", "add the value to convert")
+		}
+		if ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "convert takes no immediate operand", "remove the immediate")
+		}
+		if len(ins.Args) == 1 {
+			src := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]])
+			dst := v.prog.Types.Lookup(ins.Type)
+			if !v.isNumeric(src.ID) || !v.isNumeric(dst.ID) {
+				v.diags.Error(ins.Span, "convert requires numeric source and target types", "convert between integer and floating-point types")
+			}
+		}
 	case MIRInterpolate:
 		if ins.Type != v.prog.Types.String() {
 			v.diags.Error(ins.Span, "interpolate must produce String", "use the String result contract")
@@ -630,6 +684,33 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 			if vt := v.valueTypes[a]; vt != v.prog.Types.String() && vt != v.prog.Types.Unknown() {
 				v.diags.Error(ins.Span, "interpolate value type "+v.typeName(vt)+" is not String", "interpolate a String value")
 			}
+		}
+	case MIRPrint:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "print requires one value argument", "add the String to print")
+		} else if vt := v.valueTypes[ins.Args[0]]; vt != v.prog.Types.String() && vt != v.prog.Types.Unknown() {
+			v.diags.Error(ins.Span, "print value type "+v.typeName(vt)+" is not String", "print a String value")
+		}
+		if ins.Type != v.prog.Types.Void() || ins.Imm.Kind != MIRImmBool {
+			v.diags.Error(ins.Span, "print must produce Void and take a newline flag", "use the print contract")
+		}
+	case MIRReadFile:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "read.file requires one value argument", "add the file path String")
+		} else if vt := v.valueTypes[ins.Args[0]]; vt != v.prog.Types.String() && vt != v.prog.Types.Unknown() {
+			v.diags.Error(ins.Span, "read.file path type "+v.typeName(vt)+" is not String", "pass a file path String")
+		}
+		if ins.Type != v.prog.Types.String() || ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "read.file must produce String and take no immediate", "use the read.file contract")
+		}
+	case MIRFileExists:
+		if len(ins.Args) != 1 {
+			v.diags.Error(ins.Span, "file.exists requires one value argument", "add the file path String")
+		} else if vt := v.valueTypes[ins.Args[0]]; vt != v.prog.Types.String() && vt != v.prog.Types.Unknown() {
+			v.diags.Error(ins.Span, "file.exists path type "+v.typeName(vt)+" is not String", "pass a file path String")
+		}
+		if ins.Type != v.prog.Types.Bool() || ins.Imm.Kind != MIRImmNone {
+			v.diags.Error(ins.Span, "file.exists must produce Bool and take no immediate", "use the file.exists contract")
 		}
 	}
 }

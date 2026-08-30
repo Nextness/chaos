@@ -326,6 +326,49 @@ func (p *Parser) parseGenericClause() bool {
 	}
 }
 
+// parseTypeParams parses a generic type-parameter clause: "<T: A | B, U: C>".
+// Each parameter is "Name : Type | Type | ..."; the constraint list is the
+// union of allowed types.
+func (p *Parser) parseTypeParams() []TypeParam {
+	var params []TypeParam
+	if !p.at(TkLt) {
+		return nil
+	}
+	p.bump() // consume "<"
+	for !p.at(TkGt) && !p.at(TkEOF) {
+		if !p.at(TkIdent) {
+			p.diags.Error(p.peek().Span, "expected type parameter name", "add a type parameter name")
+			p.bump()
+			continue
+		}
+		nameTok := p.bump()
+		name := nameTok.Text()
+		var constraints []Expr
+		if p.at(TkColon) {
+			p.bump() // consume ":"
+			for {
+				c := p.parseTypeExpr()
+				if c == nil {
+					p.diags.Error(p.peek().Span, "expected a constraint type", "add a type after ':'")
+					break
+				}
+				constraints = append(constraints, c)
+				if !p.at(TkPipe) {
+					break
+				}
+				p.bump() // consume "|"
+			}
+		}
+		params = append(params, TypeParam{Name: name, NameSpan: nameTok.Span, Constraints: constraints})
+		if !p.at(TkComma) {
+			break
+		}
+		p.bump() // consume ","
+	}
+	p.expect(TkGt)
+	return params
+}
+
 // parseDecl tries to parse a top-level declaration. Returns (decl, true) on
 // success, or (nil, false) on failure (caller must make progress).
 func (p *Parser) parseDecl() (Decl, bool) {
@@ -350,16 +393,15 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		p.bump()            // consume TkDirec("entry")
 		nameTok := p.bump() // consume the ident
 		name := nameTok.Text()
-		if p.tolerant && p.at(TkLt) {
-			p.parseGenericClause()
-			p.skipToMatchedBraces()
-			return nil, false
+		var typeParams []TypeParam
+		if p.at(TkLt) {
+			typeParams = p.parseTypeParams()
 		}
 		if p.atCompTimeAssign() && p.peekN(2).Kind == TkProc {
 			p.bump() // consume first ':' of '::'
 			p.bump() // consume second ':' of '::'
 			p.bump() // consume "proc"
-			decl, ok := p.parseProcDecl(nameTok, name)
+			decl, ok := p.parseProcDecl(nameTok, name, typeParams)
 			if ok {
 				p.setEntry(name, nameTok.Span, decl.(*ProcDecl))
 			}
@@ -367,6 +409,11 @@ func (p *Parser) parseDecl() (Decl, bool) {
 		}
 		p.skipToMatchedBraces()
 		return nil, false
+	}
+
+	// '#import «module»;' imports a module's declarations without a namespace.
+	if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "import" {
+		return p.parseImportDecl("")
 	}
 
 	// Tolerant mode: skip other top-level directives (#import «fmt.chaos»; etc.)
@@ -387,19 +434,22 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	nameTok := p.bump()
 	name := nameTok.Text()
 
-	// Generics are not part of the implemented language. Tolerant mode skips
-	// the whole declaration instead of discarding the generic parameters and
-	// inventing a non-generic semantic declaration for editor features.
-	if p.tolerant && p.at(TkLt) {
-		p.parseGenericClause()
-		p.skipToMatchedBraces()
-		return nil, false
+	// Generic type parameters: "Name <T: A | B, U: C | D> :: ...". Parse them
+	// in both strict and tolerant modes so generic declarations build real
+	// AST nodes.
+	var typeParams []TypeParam
+	if p.at(TkLt) {
+		typeParams = p.parseTypeParams()
 	}
 
 	// Must be followed by ::, :, or := to be a declaration
 	if p.atCompTimeAssign() {
 		p.bump() // consume first ':' of '::'
 		p.bump() // consume second ':' of '::'
+		// 'c :: #import «module»;' imports a module under a namespace.
+		if p.at(TkHash) && p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "import" {
+			return p.parseImportDecl(name)
+		}
 		// Tolerant mode: handle forms the strict parser rejects.
 		if p.tolerant {
 			// ident :: #entry proc {...} — the canonical entry point. Skip
@@ -410,7 +460,7 @@ func (p *Parser) parseDecl() (Decl, bool) {
 				p.bump() // consume TkDirec("entry")
 				if p.at(TkProc) {
 					p.bump() // consume "proc"
-					decl, ok := p.parseProcDecl(nameTok, name)
+					decl, ok := p.parseProcDecl(nameTok, name, nil)
 					if ok {
 						p.setEntry(name, nameTok.Span, decl.(*ProcDecl))
 					}
@@ -420,7 +470,7 @@ func (p *Parser) parseDecl() (Decl, bool) {
 				return nil, false
 			}
 		}
-		return p.parseProcOrVarDecl(nameTok, name, true)
+		return p.parseProcOrVarDecl(nameTok, name, true, typeParams)
 	}
 	if p.atInfer() {
 		p.bump() // consume ':' of ':='
@@ -446,18 +496,40 @@ func (p *Parser) parseDecl() (Decl, bool) {
 	return nil, false
 }
 
+// parseImportDecl parses '#import «module»;' after the '#' and directive
+// tokens have been consumed. namespace is the binding name for
+// 'c :: #import «module»;' or "" for a flat import.
+func (p *Parser) parseImportDecl(namespace string) (Decl, bool) {
+	hashTok := p.bump() // consume '#'
+	p.bump()            // consume TkDirec("import")
+	moduleTok := p.peek()
+	if moduleTok.Kind != TkString {
+		p.diags.Error(moduleTok.Span, "expected a module name string after '#import'", "write '#import «module»;'")
+		p.skipToMatchedBraces()
+		return nil, false
+	}
+	p.bump() // consume the module name string
+	module := moduleTok.Value
+	if module == "" {
+		p.diags.Error(moduleTok.Span, "import module name must not be empty", "write '#import «module»;'")
+	}
+	p.expect(TkSemicolon)
+	return &ImportDecl{
+		Span_:     Span{File: hashTok.Span.File, Start: hashTok.Span.Start, End: moduleTok.Span.End},
+		Module:    module,
+		Namespace: namespace,
+	}, true
+}
+
 // parseProcOrVarDecl handles the case where we've consumed ident "::".
-// If next token is "proc", it's a procedure declaration. If it is "struct",
-// it's a struct type definition. Otherwise it's a compile-time variable
-// declaration.
-func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool) (Decl, bool) {
+func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool, typeParams []TypeParam) (Decl, bool) {
 	if p.at(TkProc) {
 		p.bump() // consume "proc"
-		return p.parseProcDecl(nameTok, name)
+		return p.parseProcDecl(nameTok, name, typeParams)
 	}
 	if p.at(TkStruct) {
 		p.bump() // consume "struct"
-		return p.parseStructDecl(nameTok, name)
+		return p.parseStructDecl(nameTok, name, typeParams)
 	}
 	if p.at(TkErrorKw) {
 		p.bump() // consume "error"
@@ -654,25 +726,66 @@ func (p *Parser) parseTypeBase() Expr {
 		tok := p.bump()
 		return &IdentExpr{Span_: tok.Span, Name: tok.Text()}
 	}
-	if p.at(TkLBracket) && p.peekN(1).Kind == TkRBracket {
-		openTok := p.bump() // consume "["
-		p.bump()            // consume "]"
-		elem := p.parseTypeExpr()
-		if elem == nil {
-			p.diags.Error(p.peek().Span, "expected element type after '[]'", "add an element type after '[]'")
-			return &ArrayTypeExpr{Span_: openTok.Span, Elem: &ErrorExpr{Span_: p.peek().Span}}
-		}
-		return &ArrayTypeExpr{
-			Span_: spanUnion(openTok.Span, elem.nodeSpan()),
-			Elem:  elem,
-		}
+	if p.at(TkLBracket) {
+		return p.parseArrayTypeExpr()
 	}
 	return nil
 }
 
+// parseArrayTypeExpr parses an array type expression starting at "[": "[]T",
+// "[N]T", or "[dyn]T". It consumes the brackets and the element type.
+func (p *Parser) parseArrayTypeExpr() *ArrayTypeExpr {
+	openTok := p.bump() // consume "["
+	kind := ArrayRuntime
+	var size Expr
+	switch {
+	case p.at(TkRBracket):
+		// "[]T": runtime-sized array.
+		p.bump() // consume "]"
+	case p.at(TkInt):
+		// "[N]T": fixed-size array. The size must be a compile-time integer
+		// constant; it is validated during type checking.
+		sizeTok := p.bump()
+		size = &IntExpr{Span_: sizeTok.Span, Value: sizeTok.Value}
+		kind = ArrayFixed
+		if !p.at(TkRBracket) {
+			p.diags.Error(p.peek().Span, "expected ']' after array size", "add ']' after the size")
+		} else {
+			p.bump() // consume "]"
+		}
+	case p.at(TkIdent) && p.peek().Text() == "dyn":
+		// "[dyn]T": dynamic array.
+		p.bump() // consume "dyn"
+		kind = ArrayDynamic
+		if !p.at(TkRBracket) {
+			p.diags.Error(p.peek().Span, "expected ']' after 'dyn'", "add ']' after 'dyn'")
+		} else {
+			p.bump() // consume "]"
+		}
+	default:
+		p.diags.Error(p.peek().Span, "expected ']', a size, or 'dyn' inside '['", "write '[]T', '[N]T', or '[dyn]T'")
+		if !p.at(TkRBracket) {
+			p.bump()
+		} else {
+			p.bump()
+		}
+	}
+	elem := p.parseTypeExpr()
+	if elem == nil {
+		p.diags.Error(p.peek().Span, "expected element type after array brackets", "add an element type after the brackets")
+		return &ArrayTypeExpr{Span_: openTok.Span, Elem: &ErrorExpr{Span_: p.peek().Span}, Kind: kind, Size: size}
+	}
+	return &ArrayTypeExpr{
+		Span_: spanUnion(openTok.Span, elem.nodeSpan()),
+		Elem:  elem,
+		Kind:  kind,
+		Size:  size,
+	}
+}
+
 // parseProcDecl parses the rest of a procedure declaration after "proc" has
 // been consumed. Parameters, results, and body.
-func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
+func (p *Parser) parseProcDecl(nameTok Token, name string, typeParams []TypeParam) (Decl, bool) {
 	// Parameters: ( ... )
 	var params []Param
 	if p.at(TkLParen) {
@@ -750,6 +863,7 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 		Span_:       spanUnion(nameTok.Span, body.Span_),
 		Name:        name,
 		NameSpan:    nameTok.Span,
+		TypeParams:  typeParams,
 		Params:      params,
 		Results:     results,
 		ErrorResult: errorResult,
@@ -761,7 +875,7 @@ func (p *Parser) parseProcDecl(nameTok Token, name string) (Decl, bool) {
 // parseStructDecl parses the rest of a struct type definition after "struct"
 // has been consumed. Fields are "name: type;" entries inside a braced block.
 // The struct declaration itself does not require a trailing semicolon.
-func (p *Parser) parseStructDecl(nameTok Token, name string) (Decl, bool) {
+func (p *Parser) parseStructDecl(nameTok Token, name string, typeParams []TypeParam) (Decl, bool) {
 	if !p.at(TkLBrace) {
 		p.diags.Error(p.peek().Span, "expected '{' after 'struct'", "add a '{' block for the struct fields")
 		return nil, false
@@ -783,10 +897,11 @@ func (p *Parser) parseStructDecl(nameTok Token, name string) (Decl, bool) {
 	closeTok := p.expect(TkRBrace)
 
 	decl := &StructDecl{
-		Span_:    Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
-		Name:     name,
-		NameSpan: nameTok.Span,
-		Fields:   fields,
+		Span_:      Span{File: nameTok.Span.File, Start: nameTok.Span.Start, End: closeTok.Span.End},
+		Name:       name,
+		NameSpan:   nameTok.Span,
+		TypeParams: typeParams,
+		Fields:     fields,
 	}
 	return decl, true
 }
@@ -1200,7 +1315,7 @@ func (p *Parser) parseShadowDecl() (Decl, bool) {
 	case p.atCompTimeAssign():
 		p.bump() // consume first ':' of '::'
 		p.bump() // consume second ':' of '::'
-		decl, ok = p.parseProcOrVarDecl(nameTok, name, true)
+		decl, ok = p.parseProcOrVarDecl(nameTok, name, true, nil)
 	case p.atInfer():
 		p.bump() // consume ':' of ':='
 		p.bump() // consume '=' of ':='
@@ -1299,7 +1414,7 @@ func (p *Parser) parseIdentStmt() Stmt {
 	case p.atCompTimeAssign():
 		p.bump() // consume first ':' of '::'
 		p.bump() // consume second ':' of '::'
-		decl, ok := p.parseProcOrVarDecl(nameTok, name, true)
+		decl, ok := p.parseProcOrVarDecl(nameTok, name, true, nil)
 		if !ok {
 			return nil
 		}
@@ -1469,6 +1584,19 @@ func (p *Parser) parseIdentStmt() Stmt {
 				Op:     op,
 			}
 		default:
+			// A namespaced call used as a statement: "c.member(args);".
+			// parseExprRest already consumed the call, so the target is the
+			// complete CallExpr.
+			if _, isCall := target.(*CallExpr); isCall {
+				if p.at(TkUnless) {
+					return p.parseUnlessCatch(nameTok, "", target)
+				}
+				p.expect(TkSemicolon)
+				return &ExprStmt{
+					Span_: target.nodeSpan(),
+					Expr:  target,
+				}
+			}
 			p.diags.Error(p.peek().Span, "unexpected token after expression '"+name+"'", "add '=', '+=', '-=', '++', or '--' after the expression")
 			p.syncStmt()
 			if p.at(TkSemicolon) {
@@ -2353,6 +2481,24 @@ func (p *Parser) parseAtom() Expr {
 		p.bump()
 		return &NullLitExpr{Span_: tok.Span}
 
+	case TkSizeOf:
+		// size_of <type|variable> or size_of(type|variable). The operand is a
+		// type expression or a value expression; the type checker resolves it.
+		p.bump() // consume "size_of"
+		parenthesized := p.match(TkLParen)
+		operand := p.parseTypeExpr()
+		if operand == nil {
+			operand = p.parseExpr(0)
+		}
+		if operand == nil {
+			p.diags.Error(p.peek().Span, "expected a type or value after 'size_of'", "write 'size_of <type>' or 'size_of(value)'")
+			return &ErrorExpr{Span_: tok.Span}
+		}
+		if parenthesized {
+			p.expect(TkRParen)
+		}
+		return &SizeOfExpr{Span_: spanUnion(tok.Span, operand.nodeSpan()), Type: operand}
+
 	case TkIdent:
 		p.bump()
 		ident := &IdentExpr{Span_: tok.Span, Name: tok.Text()}
@@ -2416,23 +2562,17 @@ func (p *Parser) parseAtom() Expr {
 		return nil
 
 	case TkLBracket:
-		// Array literal: []T.{...}
-		if p.peekN(1).Kind == TkRBracket {
-			openTok := p.bump() // consume "["
-			p.bump()            // consume "]"
-			elem := p.parseTypeExpr()
-			if elem == nil {
-				p.diags.Error(p.peek().Span, "expected element type after '[]'", "add an element type after '[]'")
-				return &ErrorExpr{Span_: openTok.Span}
-			}
-			if p.at(TkDot) && p.peekN(1).Kind == TkLBrace {
-				p.bump() // consume "."
-				return p.parseArrayInit(openTok, elem)
-			}
-			p.diags.Error(p.peek().Span, "expected '.{' after array type in literal", "add '.{' after the array type")
-			return &ErrorExpr{Span_: openTok.Span}
+		// Array literal: []T.{...}, [N]T.{...}, or [dyn]T.{...}
+		arrType := p.parseArrayTypeExpr()
+		if arrType == nil {
+			return &ErrorExpr{Span_: tok.Span}
 		}
-		return nil
+		if p.at(TkDot) && p.peekN(1).Kind == TkLBrace {
+			p.bump() // consume "."
+			return p.parseArrayInit(arrType)
+		}
+		p.diags.Error(p.peek().Span, "expected '.{' after array type in literal", "add '.{' after the array type")
+		return &ErrorExpr{Span_: arrType.Span_}
 
 	case TkHash:
 		// Loop builtins: #this and #index inside a range loop body.
@@ -2539,12 +2679,13 @@ func (p *Parser) parseIfxExpr() Expr {
 }
 
 // parseArrayInit parses the "{ item, item, ... }" part of an array literal
-// after the "." has been consumed. elem is the element type expression from
-// the "[]T" prefix.
-func (p *Parser) parseArrayInit(openTok Token, elem Expr) Expr {
+// after the "." has been consumed. arrType is the "[]T", "[N]T", or "[dyn]T"
+// prefix.
+func (p *Parser) parseArrayInit(arrType *ArrayTypeExpr) Expr {
+	openTok := arrType.Span_
 	if !p.at(TkLBrace) {
 		p.diags.Error(p.peek().Span, "expected '{' after '.' in array literal", "add a '{' block for the array elements")
-		return &ErrorExpr{Span_: openTok.Span}
+		return &ErrorExpr{Span_: openTok}
 	}
 	p.bump() // consume "{"
 
@@ -2572,8 +2713,8 @@ func (p *Parser) parseArrayInit(openTok Token, elem Expr) Expr {
 	closeTok := p.expect(TkRBrace)
 
 	return &ArrayInitExpr{
-		Span_: Span{File: openTok.Span.File, Start: openTok.Span.Start, End: closeTok.Span.End},
-		Elem:  elem,
+		Span_: Span{File: openTok.File, Start: openTok.Start, End: closeTok.Span.End},
+		Elem:  arrType,
 		Items: items,
 	}
 }

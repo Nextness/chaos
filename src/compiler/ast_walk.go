@@ -96,6 +96,10 @@ func WalkAST(program *Program, visit func(Node) bool) {
 		case *EnumMember:
 			walkNode(n.Type)
 			walkNode(n.Value)
+		case *ImportDecl:
+			for i := range n.Decls {
+				walkNode(n.Decls[i])
+			}
 		case *ErrorDecl:
 			for i := range n.Members {
 				walkNode(n.Members[i])
@@ -139,6 +143,8 @@ func WalkAST(program *Program, visit func(Node) bool) {
 			walkNode(n.Base)
 		case *AllocateExpr:
 			walkNode(n.Size)
+		case *SizeOfExpr:
+			walkNode(n.Type)
 		case *CastExpr:
 			walkNode(n.Value)
 			walkNode(n.Type)

@@ -1,0 +1,3 @@
+[ERROR] 6:8:import_bare_name.chaos - call to unknown procedure is_digit
+     if is_digit(48) { return 1; }
+        ^^^^^^^^^^^^ -> declare the procedure before calling it

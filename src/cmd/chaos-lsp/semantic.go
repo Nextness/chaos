@@ -95,6 +95,7 @@ func tokenSemanticTokens(tokens compiler.TokenList, sf *compiler.SourceFile) []s
 			compiler.TkProc, compiler.TkThen, compiler.TkReturn, compiler.TkAs,
 			compiler.TkStruct, compiler.TkErrorKw, compiler.TkEnum, compiler.TkUnless, compiler.TkCatch,
 			compiler.TkFor, compiler.TkBreak, compiler.TkContinue, compiler.TkNull,
+			compiler.TkSizeOf,
 			compiler.TkTrue, compiler.TkFalse,
 			compiler.TkHash, compiler.TkDirec:
 			idx = semTypeKeyword

@@ -1,0 +1,186 @@
+format ELF64 executable 3
+
+segment readable writable
+str0:
+    db 0x68,0x69
+
+segment readable executable
+
+entry _start
+
+_start:
+    call chaos_fn_0
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+chaos_fn_0:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 208
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
+L0:
+    mov rax, 42
+    mov qword [rbp-72], rax
+    mov rax, qword [rbp-72]
+    mov rdi, rax
+    call chaos_fn_1
+    mov qword [rbp-80], rax
+    mov rax, qword [rbp-80]
+    mov qword [rbp-48], rax
+    mov rax, qword [rbp-48]
+    mov qword [rbp-88], rax
+    mov rax, 42
+    mov qword [rbp-96], rax
+    mov rax, qword [rbp-88]
+    cmp rax, qword [rbp-96]
+    setne al
+    mov byte [rbp-97], al
+    movzx rax, byte [rbp-97]
+    test al, al
+    jnz L1
+    jmp L2
+L1:
+    mov rax, 1
+    mov qword [rbp-112], rax
+    mov rax, qword [rbp-112]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
+    leave
+    ret
+L2:
+    jmp L3
+L3:
+    mov rax, str0
+    mov qword [rbp-128], rax
+    mov rax, 2
+    mov qword [rbp-128+8], rax
+    mov rax, qword [rbp-128]
+    mov rdi, rax
+    mov rax, qword [rbp-128+8]
+    mov rsi, rax
+    call chaos_fn_2
+    mov qword [rbp-144], rax
+    mov qword [rbp-144+8], rdx
+    lea rsi, [rbp-144]
+    lea rdi, [rbp-64]
+    mov rcx, 16
+    cld
+    rep movsb
+    lea rsi, [rbp-64]
+    lea rdi, [rbp-160]
+    mov rcx, 16
+    cld
+    rep movsb
+    mov rax, str0
+    mov qword [rbp-176], rax
+    mov rax, 2
+    mov qword [rbp-176+8], rax
+    mov rax, qword [rbp-160]
+    mov rcx, qword [rbp-160+8]
+    mov rdx, qword [rbp-176]
+    mov r8, qword [rbp-176+8]
+    xor r9, r9
+L7:
+    cmp r9, rcx
+    jae L8
+    cmp r9, r8
+    jae L8
+    mov r10b, byte [rax+r9]
+    cmp r10b, byte [rdx+r9]
+    jne L9
+    inc r9
+    jmp L7
+L8:
+    cmp rcx, r8
+L9:
+    setne al
+    mov byte [rbp-177], al
+    movzx rax, byte [rbp-177]
+    test al, al
+    jnz L4
+    jmp L5
+L4:
+    mov rax, 2
+    mov qword [rbp-192], rax
+    mov rax, qword [rbp-192]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
+    leave
+    ret
+L5:
+    jmp L6
+L6:
+    mov rax, 0
+    mov qword [rbp-200], rax
+    mov rax, qword [rbp-200]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
+    leave
+    ret
+
+chaos_fn_1:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 64
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
+    mov rax, rdi
+    mov qword [rbp-48], rax
+L10:
+    mov rax, qword [rbp-48]
+    mov qword [rbp-56], rax
+    mov rax, qword [rbp-56]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
+    leave
+    ret
+
+chaos_fn_2:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 80
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
+    mov rax, rdi
+    mov qword [rbp-56], rax
+    mov rax, rsi
+    mov qword [rbp-56+8], rax
+L11:
+    lea rsi, [rbp-56]
+    lea rdi, [rbp-72]
+    mov rcx, 16
+    cld
+    rep movsb
+    mov rax, qword [rbp-72]
+    mov rdx, qword [rbp-72+8]
+    mov rbx, qword [rbp-8]
+    mov r12, qword [rbp-16]
+    mov r13, qword [rbp-24]
+    mov r14, qword [rbp-32]
+    mov r15, qword [rbp-40]
+    leave
+    ret
+

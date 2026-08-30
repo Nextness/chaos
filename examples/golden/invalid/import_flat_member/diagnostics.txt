@@ -1,0 +1,3 @@
+[ERROR] 6:5:import_flat_member.chaos - expression is not callable
+     c.is_digit(1);
+     ^^^^^^^^^^ -> call a declared procedure

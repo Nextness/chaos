@@ -352,6 +352,12 @@ func dumpMIRInstr(b *strings.Builder, prog *MIRProgram, fn *MIRFunction, ins *MI
 		fmt.Fprintf(b, "v%d:%s = ", ins.Result, prog.typeName(ins.Type))
 	}
 	fmt.Fprintf(b, "%s", ins.Op)
+	// Deref operations carry the pointed-to type on the opcode so the dump
+	// shows what is loaded or stored through the address. This is part of the
+	// IR's normal textual form, not a debug aid.
+	if ins.Op == MIRDerefStore || ins.Op == MIRDerefLoad {
+		fmt.Fprintf(b, ":%s", prog.typeName(ins.Type))
+	}
 	for _, a := range ins.Args {
 		fmt.Fprintf(b, " v%d", a)
 	}

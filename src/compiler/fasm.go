@@ -73,11 +73,15 @@ type fasmEmitter struct {
 	strings          []string
 	stringIndexes    map[string]int
 	divisionMessages map[*MIRInstr]int
+	boundsMessages   map[*MIRInstr]int
+	newlineIndex     int // index of the "\n" constant in strings
+	openFailIndex    int // index of the "cannot open file: " constant in strings
 	globalLabels     map[SymbolID]string
 	layouts          map[TypeID]Layout
 	layoutVisiting   map[TypeID]bool
 	equalityTypes    map[TypeID]bool
 	needsHeap        bool
+	reachable        map[SymbolID]bool // functions reachable from the entry point
 }
 
 // Layout is the single backend storage contract used for stack slots,
@@ -194,11 +198,18 @@ func (fb *fasmEmitter) emit() {
 	entry := fb.findFunction(fb.prog.Entry)
 	if fb.prog.Entry == NoSymbol || entry == nil {
 		fb.diags.Error(Span{}, "program has no valid #entry procedure", "declare '#entry name :: proc -> S64'")
-	} else if len(entry.Params) != 0 || len(entry.Results) != 1 || entry.Results[0] != fb.prog.Types.S64() {
-		fb.diags.Error(entry.Span, "entry procedure does not have the required () -> S64 target signature", "declare '#entry name :: proc -> S64'")
+	} else if !fb.validEntrySignature(entry) {
+		fb.diags.Error(entry.Span, "entry procedure does not have the required () -> S64 or (argc: S64, argv: *String) -> S64 target signature", "declare '#entry name :: proc -> S64' or '#entry name :: proc (argc: S64, argv: *String) -> S64'")
 	}
 	if fb.diags.HasErrors() {
 		return
+	}
+	fb.reachable = fb.computeReachable()
+	// The (argc, argv) entry builds its String array from the bump allocator,
+	// so the heap symbols must be emitted even when no reachable function
+	// allocates. collectStringConsts sets needsHeap for the other triggers.
+	if entry := fb.findFunction(fb.prog.Entry); entry != nil && len(entry.Params) == 2 {
+		fb.needsHeap = true
 	}
 	fb.prepareGlobalLabels()
 	fb.out.WriteString("format ELF64 executable 3\n\n")
@@ -208,12 +219,48 @@ func (fb *fasmEmitter) emit() {
 	fb.out.WriteString("segment readable executable\n\n")
 	fb.emitEntry()
 	for _, fn := range fb.prog.Functions {
-		fb.emitFunction(fn)
+		if fb.reachable[fn.Symbol] {
+			fb.emitFunction(fn)
+		}
 	}
 	fb.emitEqualityHelpers()
 	if fb.diags.HasErrors() {
 		fb.out.Reset()
 	}
+}
+
+// computeReachable marks every function reachable from the entry procedure
+// and the global initializer through direct calls. Unused imported functions
+// are never reached and are therefore not emitted into the binary.
+func (fb *fasmEmitter) computeReachable() map[SymbolID]bool {
+	reachable := make(map[SymbolID]bool)
+	queue := make([]SymbolID, 0, 2)
+	if fb.prog.Entry != NoSymbol {
+		queue = append(queue, fb.prog.Entry)
+	}
+	if fb.prog.GlobalInit != nil {
+		queue = append(queue, fb.prog.GlobalInit.Symbol)
+	}
+	for len(queue) > 0 {
+		sym := queue[0]
+		queue = queue[1:]
+		if reachable[sym] {
+			continue
+		}
+		reachable[sym] = true
+		fn := fb.findFunction(sym)
+		if fn == nil {
+			continue
+		}
+		for _, b := range fn.Blocks {
+			for _, ins := range b.Instrs {
+				if ins.Op == MIRCall && ins.Imm.Kind == MIRImmSymbol && !reachable[ins.Imm.Symbol] {
+					queue = append(queue, ins.Imm.Symbol)
+				}
+			}
+		}
+	}
+	return reachable
 }
 
 // collectFloatConsts gathers every float constant so the data section can be
@@ -222,6 +269,9 @@ func (fb *fasmEmitter) emit() {
 func (fb *fasmEmitter) collectFloatConsts() {
 	fb.floatIndexes = make(map[floatConstKey]int)
 	for _, fn := range fb.prog.Functions {
+		if !fb.reachable[fn.Symbol] {
+			continue
+		}
 		for _, b := range fn.Blocks {
 			for _, ins := range b.Instrs {
 				if ins.Op == MIRConst && ins.Imm.Kind == MIRImmFloat {
@@ -242,9 +292,25 @@ func (fb *fasmEmitter) collectFloatConsts() {
 func (fb *fasmEmitter) collectStringConsts() {
 	fb.stringIndexes = make(map[string]int)
 	fb.divisionMessages = make(map[*MIRInstr]int)
+	fb.boundsMessages = make(map[*MIRInstr]int)
+	fb.newlineIndex = -1
+	fb.openFailIndex = -1
 	for _, fn := range fb.prog.Functions {
+		if !fb.reachable[fn.Symbol] {
+			continue
+		}
 		for _, b := range fn.Blocks {
 			for _, ins := range b.Instrs {
+				if ins.Op == MIRArrayIndex {
+					message := fb.boundsMessage(ins.Span)
+					index, ok := fb.stringIndexes[message]
+					if !ok {
+						index = len(fb.strings)
+						fb.stringIndexes[message] = index
+						fb.strings = append(fb.strings, message)
+					}
+					fb.boundsMessages[ins] = index
+				}
 				if ins.Op == MIRConst && ins.Imm.Kind == MIRImmString {
 					if _, ok := fb.stringIndexes[ins.Imm.Str]; !ok {
 						fb.stringIndexes[ins.Imm.Str] = len(fb.strings)
@@ -268,6 +334,11 @@ func (fb *fasmEmitter) collectStringConsts() {
 				if ins.Op == MIRAllocate {
 					fb.needsHeap = true
 				}
+				if ins.Op == MIRArrayInit {
+					if t := fb.prog.Types.Lookup(ins.Type); t.Kind == TypeKindArray && t.ArrayKind == ArrayDynamic {
+						fb.needsHeap = true
+					}
+				}
 				if ins.Op == MIRInterpolate {
 					fb.needsHeap = true
 					for _, lit := range ins.Imm.Strs {
@@ -277,9 +348,41 @@ func (fb *fasmEmitter) collectStringConsts() {
 						}
 					}
 				}
+				if ins.Op == MIRPrint && ins.Imm.Bool {
+					fb.ensureString("\n", &fb.newlineIndex)
+				}
+				if ins.Op == MIRReadFile || ins.Op == MIRFileExists {
+					// The null-terminated path copy uses the bump allocator.
+					fb.needsHeap = true
+					fb.ensureString("\n", &fb.newlineIndex)
+				}
+				if ins.Op == MIRReadFile {
+					fb.ensureString("cannot open file: ", &fb.openFailIndex)
+				}
 			}
 		}
 	}
+}
+
+// ensureString adds s to the string constant table if it is not already
+// present and records its index in *index.
+func (fb *fasmEmitter) ensureString(s string, index *int) {
+	if *index >= 0 {
+		return
+	}
+	if i, ok := fb.stringIndexes[s]; ok {
+		*index = i
+		return
+	}
+	i := len(fb.strings)
+	fb.stringIndexes[s] = i
+	fb.strings = append(fb.strings, s)
+	*index = i
+}
+
+// newlineLabel returns the data-section label of the "\n" constant.
+func (fb *fasmEmitter) newlineLabel() string {
+	return fmt.Sprintf("str%d", fb.newlineIndex)
 }
 
 func (fb *fasmEmitter) divisionMessage(span Span) string {
@@ -295,6 +398,32 @@ func (fb *fasmEmitter) divisionMessage(span Span) string {
 
 func (fb *fasmEmitter) emitDivisionZeroExit(ins *MIRInstr) {
 	index := fb.divisionMessages[ins]
+	message := fb.strings[index]
+	fb.out.WriteString("    mov rax, 1\n")
+	fb.out.WriteString("    mov rdi, 2\n")
+	fmt.Fprintf(&fb.out, "    mov rsi, str%d\n", index)
+	fmt.Fprintf(&fb.out, "    mov rdx, %d\n", len(message))
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov rax, 60\n")
+	fb.out.WriteString("    mov rdi, 1\n")
+	fb.out.WriteString("    syscall\n")
+}
+
+// boundsMessage renders the runtime out-of-bounds message for an array index.
+func (fb *fasmEmitter) boundsMessage(span Span) string {
+	if sf, ok := fb.prog.Sources[span.File]; ok {
+		clamped, source := ClampSpan(span, &sf)
+		line, _ := OffsetToLineCol(clamped.Start, source.LineOffsets)
+		lineStart := source.LineOffsets[line-1]
+		column := utf8.RuneCount(source.Source[lineStart:clamped.Start]) + 1
+		return fmt.Sprintf("array index out of bounds at %s:%d:%d\n", source.Path, line, column)
+	}
+	return fmt.Sprintf("array index out of bounds at file-%d:%d\n", span.File, span.Start)
+}
+
+// emitBoundsExit writes the runtime out-of-bounds error and exits.
+func (fb *fasmEmitter) emitBoundsExit(ins *MIRInstr) {
+	index := fb.boundsMessages[ins]
 	message := fb.strings[index]
 	fb.out.WriteString("    mov rax, 1\n")
 	fb.out.WriteString("    mov rdi, 2\n")
@@ -361,7 +490,27 @@ func fasmFloat(v float64) string {
 	return s
 }
 
+// validEntrySignature reports whether an entry procedure has the supported
+// target signature: no parameters or (argc: S64, argv: *String), returning S64.
+func (fb *fasmEmitter) validEntrySignature(fn *MIRFunction) bool {
+	if len(fn.Results) != 1 || fn.Results[0] != fb.prog.Types.S64() {
+		return false
+	}
+	if len(fn.Params) == 0 {
+		return true
+	}
+	if len(fn.Params) != 2 {
+		return false
+	}
+	if fn.LocalTypes[fn.Params[0]] != fb.prog.Types.S64() {
+		return false
+	}
+	argvType := fb.prog.Types.Lookup(fn.LocalTypes[fn.Params[1]])
+	return argvType.Kind == TypeKindPointer && argvType.Elem == fb.prog.Types.String()
+}
+
 // emitEntry emits the process entry wrapper: it runs the global initializers,
+// builds the argument vector when the entry procedure takes (argc, argv),
 // calls the '#entry' procedure, and exits with its result.
 func (fb *fasmEmitter) emitEntry() {
 	fb.out.WriteString("entry _start\n\n")
@@ -385,13 +534,60 @@ func (fb *fasmEmitter) emitEntry() {
 			fb.out.WriteString("    mov rdi, rsp\n")
 		}
 	}
-	// Zero the integer argument registers the entry procedure uses.
-	intCount := 0
-	for _, lid := range entryFn.Params {
-		intCount += fb.intRegCount(fb.prog.Types.Lookup(entryFn.LocalTypes[lid]))
-	}
-	for i := 0; i < intCount && i < 6; i++ {
-		fmt.Fprintf(&fb.out, "    xor %s, %s\n", intArgReg(i), intArgReg(i))
+	if len(entryFn.Params) == 2 {
+		// The entry procedure takes (argc: S64, argv: *String). Build a
+		// String array from the process argument vector: argc is at [rsp]
+		// and argv (char**) at rsp+8. Each String is (data, count) with the
+		// count computed by strlen.
+		fb.needsHeap = true
+		fb.out.WriteString("    mov r12, qword [rsp]\n")
+		fb.out.WriteString("    lea r13, [rsp+8]\n")
+		// Allocate argc*16 bytes (aligned) from the bump allocator.
+		fb.out.WriteString("    mov rax, r12\n")
+		fb.out.WriteString("    shl rax, 4\n")
+		fb.out.WriteString("    add rax, 7\n")
+		fb.out.WriteString("    and rax, -8\n")
+		fb.out.WriteString("    mov rcx, rax\n")
+		fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+		fb.out.WriteString("    mov r14, rax\n")
+		fb.out.WriteString("    add rax, rcx\n")
+		fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
+		// Build the array: arr[i] = (argv[i], strlen(argv[i])).
+		fb.out.WriteString("    xor r15, r15\n")
+		argvLoop := fb.newLabel()
+		argvDone := fb.newLabel()
+		strlenLoop := fb.newLabel()
+		strlenDone := fb.newLabel()
+		fmt.Fprintf(&fb.out, "%s:\n", argvLoop)
+		fb.out.WriteString("    cmp r15, r12\n")
+		fmt.Fprintf(&fb.out, "    jge %s\n", argvDone)
+		fb.out.WriteString("    mov rbx, qword [r13+r15*8]\n")
+		fb.out.WriteString("    mov rdi, rbx\n")
+		fb.out.WriteString("    xor rcx, rcx\n")
+		fmt.Fprintf(&fb.out, "%s:\n", strlenLoop)
+		fb.out.WriteString("    cmp byte [rdi+rcx], 0\n")
+		fmt.Fprintf(&fb.out, "    je %s\n", strlenDone)
+		fb.out.WriteString("    inc rcx\n")
+		fmt.Fprintf(&fb.out, "    jmp %s\n", strlenLoop)
+		fmt.Fprintf(&fb.out, "%s:\n", strlenDone)
+		fb.out.WriteString("    lea rdi, [r14+r15*8]\n")
+		fb.out.WriteString("    lea rdi, [rdi+r15*8]\n")
+		fb.out.WriteString("    mov qword [rdi], rbx\n")
+		fb.out.WriteString("    mov qword [rdi+8], rcx\n")
+		fb.out.WriteString("    inc r15\n")
+		fmt.Fprintf(&fb.out, "    jmp %s\n", argvLoop)
+		fmt.Fprintf(&fb.out, "%s:\n", argvDone)
+		fb.out.WriteString("    mov rdi, r12\n")
+		fb.out.WriteString("    mov rsi, r14\n")
+	} else {
+		// Zero the integer argument registers the entry procedure uses.
+		intCount := 0
+		for _, lid := range entryFn.Params {
+			intCount += fb.intRegCount(fb.prog.Types.Lookup(entryFn.LocalTypes[lid]))
+		}
+		for i := 0; i < intCount && i < 6; i++ {
+			fmt.Fprintf(&fb.out, "    xor %s, %s\n", intArgReg(i), intArgReg(i))
+		}
 	}
 	fmt.Fprintf(&fb.out, "    call %s\n", fb.funcLabel(entryFn.Symbol))
 	if len(entryFn.Results) > 0 {
@@ -466,8 +662,9 @@ func (fb *fasmEmitter) assignSlots(fn *MIRFunction) {
 				fb.valueTypes[ins.Result] = ins.Type
 				layout := fb.layoutOf(t)
 				fb.valueSlots[ins.Result] = fb.allocSlot(layout.Size, layout.Align)
-				if ins.Op == MIRArrayInit {
-					// Allocate the element buffer for an array literal.
+				if ins.Op == MIRArrayInit && t.ArrayKind != ArrayDynamic {
+					// Allocate the element buffer for a static/runtime array
+					// literal. Dynamic arrays heap-allocate their buffer.
 					et := fb.prog.Types.Lookup(t.Elem)
 					elemSize := fb.sizeOf(et)
 					count := len(ins.Args)
@@ -655,8 +852,16 @@ func (fb *fasmEmitter) emitInstr(ins *MIRInstr) {
 		fb.emitDeallocate(ins)
 	case MIRCast:
 		fb.emitCast(ins)
+	case MIRConvert:
+		fb.emitConvert(ins)
 	case MIRInterpolate:
 		fb.emitInterpolate(ins)
+	case MIRPrint:
+		fb.emitPrint(ins)
+	case MIRReadFile:
+		fb.emitReadFile(ins)
+	case MIRFileExists:
+		fb.emitFileExists(ins)
 	default:
 		fb.diags.Error(ins.Span, "unsupported MIR opcode reached the fasm backend", "verify MIR before code generation")
 	}
@@ -1772,7 +1977,15 @@ func (fb *fasmEmitter) layoutOf(t IRType) Layout {
 		// String is a (data, count) pair: data at offset 0, count at offset 8.
 		layout = Layout{Size: 16, Align: 8, FieldOffsets: []int{0, 8}}
 	case TypeKindArray:
-		layout = Layout{Size: 16, Align: 8}
+		if t.ArrayKind == ArrayDynamic {
+			// Dynamic arrays are (data, count, capacity): data at offset 0,
+			// count at offset 8, capacity at offset 16.
+			layout = Layout{Size: 24, Align: 8, FieldOffsets: []int{0, 8, 16}}
+		} else {
+			// Static and runtime arrays are (data, count): data at offset 0,
+			// count at offset 8.
+			layout = Layout{Size: 16, Align: 8, FieldOffsets: []int{0, 8}}
+		}
 	case TypeKindPointer:
 		layout = Layout{Size: 8, Align: 8}
 	case TypeKindAddr:
@@ -1986,10 +2199,28 @@ func (fb *fasmEmitter) emitFieldLoad(ins *MIRInstr) {
 	baseType := fb.prog.Types.Lookup(fb.valueTypes[ins.Args[0]])
 	offsets := fb.structFieldOffsets(baseType)
 	fieldIdx := int(ins.Imm.Int)
-	if fieldIdx < 0 || fieldIdx >= len(baseType.Fields) {
+	fieldCount := len(baseType.Fields)
+	if baseType.Kind == TypeKindArray {
+		if baseType.ArrayKind == ArrayDynamic {
+			fieldCount = 3
+		} else {
+			fieldCount = 2
+		}
+	}
+	if fieldIdx < 0 || fieldIdx >= fieldCount {
 		return
 	}
-	ft := fb.prog.Types.Lookup(baseType.Fields[fieldIdx].Type)
+	var ft IRType
+	if baseType.Kind == TypeKindArray {
+		switch fieldIdx {
+		case 0:
+			ft = fb.prog.Types.Lookup(fb.prog.Types.InternPointer(baseType.Elem, false))
+		case 1, 2:
+			ft = fb.prog.Types.Lookup(fb.prog.Types.Size())
+		}
+	} else {
+		ft = fb.prog.Types.Lookup(baseType.Fields[fieldIdx].Type)
+	}
 	resSlot := fb.valueSlots[ins.Result]
 	srcSlot := fb.valueSlots[ins.Args[0]]
 	if fb.isAggregate(ft) {
@@ -2008,13 +2239,49 @@ func (fb *fasmEmitter) emitFieldLoad(ins *MIRInstr) {
 
 // emitArrayInit builds an array value from its element values. The element
 // buffer was allocated in assignSlots; each element is stored at its offset
-// and the value slot receives the buffer address and element count.
+// and the value slot receives the buffer address and element count. Dynamic
+// arrays heap-allocate their buffer and set data/count/capacity.
 func (fb *fasmEmitter) emitArrayInit(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
 	et := fb.prog.Types.Lookup(t.Elem)
 	elemSize := fb.sizeOf(et)
-	buf := fb.arrayBuffers[ins.Result]
 	resSlot := fb.valueSlots[ins.Result]
+	if t.ArrayKind == ArrayDynamic {
+		count := len(ins.Args)
+		if count == 0 {
+			count = 1
+		}
+		// Allocate a heap buffer of count*elemSize bytes; keep its address in
+		// r10 so element stores do not clobber it.
+		fmt.Fprintf(&fb.out, "    mov rax, %d\n", count*elemSize)
+		fb.out.WriteString("    add rax, 7\n")
+		fb.out.WriteString("    and rax, -8\n")
+		fb.out.WriteString("    mov rcx, rax\n")
+		fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+		fb.out.WriteString("    mov r10, rax\n")
+		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot) // data
+		fb.out.WriteString("    add rax, rcx\n")
+		fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
+		for i, a := range ins.Args {
+			dst := i * elemSize
+			if fb.isAggregate(et) {
+				fmt.Fprintf(&fb.out, "    lea rsi, [rbp-%d]\n", fb.valueSlots[a])
+				fmt.Fprintf(&fb.out, "    lea rdi, [r10+%d]\n", dst)
+				fmt.Fprintf(&fb.out, "    mov rcx, %d\n", elemSize)
+				fb.out.WriteString("    cld\n")
+				fb.out.WriteString("    rep movsb\n")
+			} else {
+				fb.emitLoad(et, fb.valueSlots[a])
+				fb.emitStoreToReg(et, fmt.Sprintf("r10+%d", dst))
+			}
+		}
+		fmt.Fprintf(&fb.out, "    mov rax, %d\n", len(ins.Args))
+		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], rax\n", resSlot) // count
+		fmt.Fprintf(&fb.out, "    mov rax, %d\n", count)
+		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+16], rax\n", resSlot) // capacity
+		return
+	}
+	buf := fb.arrayBuffers[ins.Result]
 	for i, a := range ins.Args {
 		dst := buf - i*elemSize
 		if fb.isAggregate(et) {
@@ -2047,6 +2314,19 @@ func (fb *fasmEmitter) emitArrayIndex(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
 	elemSize := fb.sizeOf(t)
 	resSlot := fb.valueSlots[ins.Result]
+	// Runtime bounds check: index must be in [0, count).
+	errLabel := fb.newLabel()
+	okLabel := fb.newLabel()
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", idxSlot)
+	fb.out.WriteString("    test rax, rax\n")
+	fmt.Fprintf(&fb.out, "    js %s\n", errLabel)
+	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d+8]\n", arrSlot)
+	fb.out.WriteString("    cmp rax, rcx\n")
+	fmt.Fprintf(&fb.out, "    jae %s\n", errLabel)
+	fmt.Fprintf(&fb.out, "    jmp %s\n", okLabel)
+	fmt.Fprintf(&fb.out, "%s:\n", errLabel)
+	fb.emitBoundsExit(ins)
+	fmt.Fprintf(&fb.out, "%s:\n", okLabel)
 	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", arrSlot)
 	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d]\n", idxSlot)
 	if elemSize != 1 {
@@ -2101,6 +2381,9 @@ func (fb *fasmEmitter) emitDerefStore(ins *MIRInstr) {
 	addrSlot := fb.valueSlots[ins.Args[0]]
 	valSlot := fb.valueSlots[ins.Args[1]]
 	t := fb.prog.Types.Lookup(ins.Type)
+	if Debug && (t.Name == "Diagnostic" || t.Name == "Token") {
+		fmt.Printf("DBG emitDerefStore type=%s kind=%d agg=%v\n", t.Name, t.Kind, fb.isAggregate(t))
+	}
 	size := fb.sizeOf(t)
 	// Preserve the address in r10 so a scalar value never clobbers it.
 	fmt.Fprintf(&fb.out, "    mov r10, qword [rbp-%d]\n", addrSlot)
@@ -2167,7 +2450,15 @@ func (fb *fasmEmitter) emitFieldAddr(ins *MIRInstr) {
 	structType := fb.prog.Types.Lookup(addrType.Elem)
 	fieldIdx := int(ins.Imm.Int)
 	resSlot := fb.valueSlots[ins.Result]
-	if fieldIdx < 0 || fieldIdx >= len(structType.Fields) {
+	fieldCount := len(structType.Fields)
+	if structType.Kind == TypeKindArray {
+		if structType.ArrayKind == ArrayDynamic {
+			fieldCount = 3
+		} else {
+			fieldCount = 2
+		}
+	}
+	if fieldIdx < 0 || fieldIdx >= fieldCount {
 		return
 	}
 	offsets := fb.structFieldOffsets(structType)
@@ -2248,6 +2539,50 @@ func (fb *fasmEmitter) emitCast(ins *MIRInstr) {
 	fb.emitStore(t, resSlot)
 }
 
+// emitConvert implements a numeric conversion between integer and
+// floating-point types. The value is preserved, not reinterpreted: integer
+// loads sign/zero-extend to 64 bits, stores truncate to the target width, and
+// int/float crossings use the SSE conversion instructions.
+func (fb *fasmEmitter) emitConvert(ins *MIRInstr) {
+	srcT := fb.prog.Types.Lookup(fb.valueTypes[ins.Args[0]])
+	dstT := fb.prog.Types.Lookup(ins.Type)
+	srcSlot := fb.valueSlots[ins.Args[0]]
+	resSlot := fb.valueSlots[ins.Result]
+	srcFloat := srcT.Kind == TypeKindFloat
+	dstFloat := dstT.Kind == TypeKindFloat
+	switch {
+	case srcFloat && dstFloat:
+		fb.emitLoad(srcT, srcSlot)
+		if srcT.Name == "F32" && dstT.Name == "F64" {
+			fb.out.WriteString("    cvtss2sd xmm0, xmm0\n")
+		} else if srcT.Name == "F64" && dstT.Name == "F32" {
+			fb.out.WriteString("    cvtsd2ss xmm0, xmm0\n")
+		}
+		fb.emitStore(dstT, resSlot)
+	case srcFloat && !dstFloat:
+		fb.emitLoad(srcT, srcSlot)
+		if srcT.Name == "F32" {
+			fb.out.WriteString("    cvttss2si rax, xmm0\n")
+		} else {
+			fb.out.WriteString("    cvttsd2si rax, xmm0\n")
+		}
+		fb.emitStore(dstT, resSlot)
+	case !srcFloat && dstFloat:
+		fb.emitLoad(srcT, srcSlot)
+		if dstT.Name == "F32" {
+			fb.out.WriteString("    cvtsi2ss xmm0, rax\n")
+		} else {
+			fb.out.WriteString("    cvtsi2sd xmm0, rax\n")
+		}
+		fb.emitStore(dstT, resSlot)
+	default:
+		// Integer to integer: the load extends to 64 bits, the store
+		// truncates to the target width.
+		fb.emitLoad(srcT, srcSlot)
+		fb.emitStore(dstT, resSlot)
+	}
+}
+
 // emitInterpolate builds a String at runtime from literal runs and interpolated
 // String values. The literal parts (ins.Imm.Strs) and the interpolated values
 // (ins.Args) interleave as literal, value, literal, value, ..., literal. A
@@ -2300,6 +2635,199 @@ func (fb *fasmEmitter) emitInterpCopy(lit string) {
 	fmt.Fprintf(&fb.out, "    mov rsi, str%d\n", idx)
 	fmt.Fprintf(&fb.out, "    mov rcx, %d\n", len(lit))
 	fb.out.WriteString("    rep movsb\n")
+}
+
+// emitPrint writes a String to stdout (fd 1). The newline flag appends a
+// newline after the value.
+func (fb *fasmEmitter) emitPrint(ins *MIRInstr) {
+	slot := fb.valueSlots[ins.Args[0]]
+	fb.out.WriteString("    mov rax, 1\n")
+	fb.out.WriteString("    mov rdi, 1\n")
+	fmt.Fprintf(&fb.out, "    mov rsi, qword [rbp-%d]\n", slot)
+	fmt.Fprintf(&fb.out, "    mov rdx, qword [rbp-%d+8]\n", slot)
+	fb.out.WriteString("    syscall\n")
+	if ins.Imm.Bool {
+		fb.out.WriteString("    mov rax, 1\n")
+		fb.out.WriteString("    mov rdi, 1\n")
+		fmt.Fprintf(&fb.out, "    lea rsi, [%s]\n", fb.newlineLabel())
+		fb.out.WriteString("    mov rdx, 1\n")
+		fb.out.WriteString("    syscall\n")
+	}
+}
+
+// emitReadFile opens the path, reads the whole file into a heap buffer, and
+// returns it as a String. A failure to open or read terminates the program
+// with a message on stderr.
+func (fb *fasmEmitter) emitReadFile(ins *MIRInstr) {
+	pathSlot := fb.valueSlots[ins.Args[0]]
+	resSlot := fb.valueSlots[ins.Result]
+	openFail := fb.newLabel()
+	// This block is emitted inline into a function that may also use the
+	// callee-saved registers r12-r15 for live values, so save and restore
+	// them around the syscall sequence.
+	fb.out.WriteString("    push r12\n")
+	fb.out.WriteString("    push r13\n")
+	fb.out.WriteString("    push r14\n")
+	fb.out.WriteString("    push r15\n")
+	// The open syscall requires a null-terminated path; Chaos strings carry
+	// (data, count) with no terminator, so copy the path to a heap buffer.
+	fb.emitNullTerminatedPath(pathSlot)
+	// open(buf, O_RDONLY) -> fd in rax.
+	fb.out.WriteString("    mov rax, 2\n")
+	fb.out.WriteString("    xor rsi, rsi\n")
+	fb.out.WriteString("    xor rdx, rdx\n")
+	fb.out.WriteString("    mov rdi, r14\n")
+	fb.out.WriteString("    syscall\n")
+	// If fd < 0, report the failure and exit.
+	fb.out.WriteString("    test rax, rax\n")
+	fmt.Fprintf(&fb.out, "    js %s\n", openFail)
+	// Save the fd in r12.
+	fb.out.WriteString("    mov r12, rax\n")
+	// fstat(fd, buf) to learn the file size; st_size is at offset 48.
+	fb.out.WriteString("    sub rsp, 144\n")
+	fb.out.WriteString("    mov rax, 5\n")
+	fb.out.WriteString("    mov rdi, r12\n")
+	fb.out.WriteString("    mov rsi, rsp\n")
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov r13, qword [rsp+48]\n")
+	fb.out.WriteString("    add rsp, 144\n")
+	// Allocate r13 bytes (aligned) from the bump allocator.
+	fb.out.WriteString("    mov rax, r13\n")
+	fb.out.WriteString("    add rax, 7\n")
+	fb.out.WriteString("    and rax, -8\n")
+	fb.out.WriteString("    mov rcx, rax\n")
+	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fb.out.WriteString("    mov r14, rax\n")
+	fb.out.WriteString("    add rax, rcx\n")
+	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
+	// read(fd, buf, size) in a loop until all bytes are read.
+	fb.out.WriteString("    xor r15, r15\n")
+	readLoop := fb.newLabel()
+	readDone := fb.newLabel()
+	fmt.Fprintf(&fb.out, "%s:\n", readLoop)
+	fb.out.WriteString("    cmp r15, r13\n")
+	fmt.Fprintf(&fb.out, "    jae %s\n", readDone)
+	fb.out.WriteString("    mov rax, 0\n")
+	fb.out.WriteString("    mov rdi, r12\n")
+	fb.out.WriteString("    lea rsi, [r14+r15]\n")
+	fb.out.WriteString("    mov rdx, r13\n")
+	fb.out.WriteString("    sub rdx, r15\n")
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    test rax, rax\n")
+	fmt.Fprintf(&fb.out, "    jle %s\n", readDone)
+	fb.out.WriteString("    add r15, rax\n")
+	fmt.Fprintf(&fb.out, "    jmp %s\n", readLoop)
+	fmt.Fprintf(&fb.out, "%s:\n", readDone)
+	// close(fd).
+	fb.out.WriteString("    mov rax, 3\n")
+	fb.out.WriteString("    mov rdi, r12\n")
+	fb.out.WriteString("    syscall\n")
+	// Store the result String (data, count).
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], r14\n", resSlot)
+	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], r15\n", resSlot)
+	fb.out.WriteString("    pop r15\n")
+	fb.out.WriteString("    pop r14\n")
+	fb.out.WriteString("    pop r13\n")
+	fb.out.WriteString("    pop r12\n")
+	done := fb.newLabel()
+	fmt.Fprintf(&fb.out, "    jmp %s\n", done)
+	// The open failed: write "cannot open file: <path>" to stderr and exit 1.
+	fmt.Fprintf(&fb.out, "%s:\n", openFail)
+	fb.out.WriteString("    pop r15\n")
+	fb.out.WriteString("    pop r14\n")
+	fb.out.WriteString("    pop r13\n")
+	fb.out.WriteString("    pop r12\n")
+	fb.emitWriteStderr(fb.openFailIndex, pathSlot)
+	fb.out.WriteString("    mov rax, 60\n")
+	fb.out.WriteString("    mov rdi, 1\n")
+	fb.out.WriteString("    syscall\n")
+	fmt.Fprintf(&fb.out, "%s:\n", done)
+}
+
+// emitFileExists opens the path read-only and reports whether it succeeded.
+func (fb *fasmEmitter) emitFileExists(ins *MIRInstr) {
+	pathSlot := fb.valueSlots[ins.Args[0]]
+	resSlot := fb.valueSlots[ins.Result]
+	openFail := fb.newLabel()
+	done := fb.newLabel()
+	// Save the callee-saved registers this block clobbers (see emitReadFile).
+	fb.out.WriteString("    push r12\n")
+	fb.out.WriteString("    push r13\n")
+	fb.out.WriteString("    push r14\n")
+	fb.out.WriteString("    push r15\n")
+	fb.emitNullTerminatedPath(pathSlot)
+	fb.out.WriteString("    mov rax, 2\n")
+	fb.out.WriteString("    xor rsi, rsi\n")
+	fb.out.WriteString("    xor rdx, rdx\n")
+	fb.out.WriteString("    mov rdi, r14\n")
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    test rax, rax\n")
+	fmt.Fprintf(&fb.out, "    js %s\n", openFail)
+	// The file opened; close it and report true.
+	fb.out.WriteString("    mov rdi, rax\n")
+	fb.out.WriteString("    mov rax, 3\n")
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov al, 1\n")
+	fmt.Fprintf(&fb.out, "    mov byte [rbp-%d], al\n", resSlot)
+	fb.out.WriteString("    pop r15\n")
+	fb.out.WriteString("    pop r14\n")
+	fb.out.WriteString("    pop r13\n")
+	fb.out.WriteString("    pop r12\n")
+	fmt.Fprintf(&fb.out, "    jmp %s\n", done)
+	// The open failed; report false.
+	fmt.Fprintf(&fb.out, "%s:\n", openFail)
+	fb.out.WriteString("    xor al, al\n")
+	fmt.Fprintf(&fb.out, "    mov byte [rbp-%d], al\n", resSlot)
+	fb.out.WriteString("    pop r15\n")
+	fb.out.WriteString("    pop r14\n")
+	fb.out.WriteString("    pop r13\n")
+	fb.out.WriteString("    pop r12\n")
+	fmt.Fprintf(&fb.out, "%s:\n", done)
+}
+
+// emitNullTerminatedPath copies the String in pathSlot to a fresh heap buffer
+// with a trailing null byte and leaves the buffer address in r14. The open
+// syscall requires a null-terminated path; Chaos strings carry (data, count)
+// with no terminator.
+func (fb *fasmEmitter) emitNullTerminatedPath(pathSlot int) {
+	fmt.Fprintf(&fb.out, "    mov r13, qword [rbp-%d+8]\n", pathSlot)
+	// Allocate count+1 bytes, aligned up to 8.
+	fb.out.WriteString("    mov rax, r13\n")
+	fb.out.WriteString("    inc rax\n")
+	fb.out.WriteString("    add rax, 7\n")
+	fb.out.WriteString("    and rax, -8\n")
+	fb.out.WriteString("    mov rcx, rax\n")
+	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fb.out.WriteString("    mov r14, rax\n")
+	fb.out.WriteString("    add rax, rcx\n")
+	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
+	// Copy the path bytes and null-terminate.
+	fmt.Fprintf(&fb.out, "    mov rsi, qword [rbp-%d]\n", pathSlot)
+	fb.out.WriteString("    mov rdi, r14\n")
+	fb.out.WriteString("    mov rcx, r13\n")
+	fb.out.WriteString("    cld\n")
+	fb.out.WriteString("    rep movsb\n")
+	fb.out.WriteString("    mov byte [r14+r13], 0\n")
+}
+
+// emitWriteStderr writes the message at string index msgIndex followed by the
+// String value in pathSlot to stderr (fd 2).
+func (fb *fasmEmitter) emitWriteStderr(msgIndex int, pathSlot int) {
+	fb.out.WriteString("    mov rax, 1\n")
+	fb.out.WriteString("    mov rdi, 2\n")
+	fmt.Fprintf(&fb.out, "    mov rsi, str%d\n", msgIndex)
+	fmt.Fprintf(&fb.out, "    mov rdx, %d\n", len(fb.strings[msgIndex]))
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov rax, 1\n")
+	fb.out.WriteString("    mov rdi, 2\n")
+	fmt.Fprintf(&fb.out, "    mov rsi, qword [rbp-%d]\n", pathSlot)
+	fmt.Fprintf(&fb.out, "    mov rdx, qword [rbp-%d+8]\n", pathSlot)
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov rax, 1\n")
+	fb.out.WriteString("    mov rdi, 2\n")
+	fmt.Fprintf(&fb.out, "    mov rsi, str%d\n", fb.newlineIndex)
+	fb.out.WriteString("    mov rdx, 1\n")
+	fb.out.WriteString("    syscall\n")
 }
 
 // emitLoadIndirect loads the value at [addrReg] into rax (integers) or xmm0

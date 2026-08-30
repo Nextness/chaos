@@ -1,0 +1,21 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl identity
+    Param x: Ident(T)
+    Results: Ident(T)
+    Block
+      ReturnStmt Ident(x)
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl a = Call(Ident(identity), Int(42)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(a) Int(42))
+        Block
+          ReturnStmt Int(1)
+      VarDecl s = Call(Ident(identity), String("hi")) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(s) String("hi"))
+        Block
+          ReturnStmt Int(2)
+      ReturnStmt Int(0)

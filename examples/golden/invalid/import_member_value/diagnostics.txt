@@ -1,0 +1,3 @@
+[ERROR] 6:12:import_member_value.chaos - procedure 'is_digit' cannot be used as a value
+     x := c.is_digit;
+            ^^^^^^^^ -> call it directly

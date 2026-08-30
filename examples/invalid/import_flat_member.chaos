@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: expression is not callable
+// A flat import does not create a namespace, so 'c.member(...)' is not callable.
+#import «core»;
+#entry main :: proc -> S64 {
+    c.is_digit(1);
+    return 0;
+}

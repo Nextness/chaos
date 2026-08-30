@@ -15,8 +15,8 @@ MIR
       v2:**S64 = addr.of l1
       store.local v2 l2
       v3:**S64 = load.local l2
-      v4:*S64 = deref.load v3
-      v5:S64 = deref.load v4
+      v4:*S64 = deref.load:*S64 v3
+      v5:S64 = deref.load:S64 v4
       v6:S64 = const 5
       v7:Bool = cmp.neq v5 v6
       branch v7, bb1, bb2
@@ -38,7 +38,7 @@ MIR
       v16:S64 = const 2
       v17:*S64 = load.local l4
       v18:*S64 = ptr.add v17 v16
-      v19:S64 = deref.load v18
+      v19:S64 = deref.load:S64 v18
       v20:S64 = const 30
       v21:Bool = cmp.neq v19 v20
       branch v21, bb4, bb5
@@ -51,7 +51,7 @@ MIR
       v23:*S64 = load.local l4
       v24:S64 = const 2
       v25:*S64 = ptr.add v23 v24
-      v26:S64 = deref.load v25
+      v26:S64 = deref.load:S64 v25
       v27:S64 = const 30
       v28:Bool = cmp.neq v26 v27
       branch v28, bb7, bb8

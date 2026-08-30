@@ -275,6 +275,12 @@ func (ml *MIRLowerer) lowerVarDecl(n *HIRVarDecl) {
 	if n.Init != nil {
 		v := ml.lowerExpr(n.Init)
 		ml.emitInit(MIRStoreLocal, n.Type, []ValueID{v}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
+	} else {
+		// An uninitialized local is zeroed so aggregate fields (including
+		// dynamic-array headers) start with defined values instead of stack
+		// garbage.
+		z := ml.emit(MIRZero, n.Type, nil, MIRImmediate{}, n.Span_)
+		ml.emitInit(MIRStoreLocal, n.Type, []ValueID{z}, MIRImmediate{Kind: MIRImmLocal, Local: lid}, n.Span_)
 	}
 }
 
@@ -507,12 +513,26 @@ func (ml *MIRLowerer) lowerExpr(e HIRExpr) ValueID {
 		// value slot typed as the target type.
 		v := ml.lowerExpr(n.Value)
 		return ml.emit(MIRCast, n.Type, []ValueID{v}, MIRImmediate{}, n.Span_)
+	case *HIRConvert:
+		// A numeric conversion preserves the value across integer and
+		// floating-point types.
+		v := ml.lowerExpr(n.Value)
+		return ml.emit(MIRConvert, n.Type, []ValueID{v}, MIRImmediate{}, n.Span_)
 	case *HIRInterpolate:
 		args := make([]ValueID, len(n.Values))
 		for i, v := range n.Values {
 			args[i] = ml.lowerExpr(v)
 		}
 		return ml.emit(MIRInterpolate, n.Type, args, MIRImmediate{Kind: MIRImmStringList, Strs: n.Literals}, n.Span_)
+	case *HIRPrint:
+		v := ml.lowerExpr(n.Value)
+		return ml.emit(MIRPrint, n.Type, []ValueID{v}, MIRImmediate{Kind: MIRImmBool, Bool: n.Newline}, n.Span_)
+	case *HIRReadFile:
+		path := ml.lowerExpr(n.Path)
+		return ml.emit(MIRReadFile, n.Type, []ValueID{path}, MIRImmediate{}, n.Span_)
+	case *HIRFileExists:
+		path := ml.lowerExpr(n.Path)
+		return ml.emit(MIRFileExists, n.Type, []ValueID{path}, MIRImmediate{}, n.Span_)
 	}
 	ml.diags.Error(e.hirSpan(), "unsupported HIR expression reached MIR lowering", "report this compiler bug")
 	return NoValue

@@ -136,6 +136,21 @@ func RenderAll(w io.Writer, diags DiagnosticList, sf *SourceFile) {
 	}
 }
 
+// RenderAllSources writes all diagnostics to w, rendering each against the
+// source file named by its span. Diagnostics whose file is not in sources
+// fall back to an empty source record so the message still renders. Drivers
+// that compile programs with imports should use this so diagnostics from
+// module files show the module's path and source context.
+func RenderAllSources(w io.Writer, diags DiagnosticList, sources map[FileID]SourceFile) {
+	for _, d := range diags {
+		sf, ok := sources[d.Span.File]
+		if !ok {
+			sf = SourceFile{ID: d.Span.File, Path: "<unknown>", LineOffsets: []int{0}}
+		}
+		d.Render(w, &sf)
+	}
+}
+
 // BuildLineOffsets builds a table of byte offsets for each line start (0-indexed).
 // lineOffsets[0] is always 0. The table is used by OffsetToLineCol.
 func BuildLineOffsets(source []byte) []int {

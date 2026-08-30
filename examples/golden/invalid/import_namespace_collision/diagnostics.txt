@@ -1,0 +1,3 @@
+[ERROR] 5:1:import_namespace_collision.chaos - declaration of 'c' shadows an existing name; use '#shadow' or rename
+ c :: proc () -> S64 { return 0; }
+ ^ -> add '#shadow' before the declaration or choose a new name

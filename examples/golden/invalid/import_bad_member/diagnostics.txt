@@ -1,0 +1,3 @@
+[ERROR] 6:7:import_bad_member.chaos - module 'core' has no member 'nonexistent'
+     c.nonexistent(1);
+       ^^^^^^^^^^^ -> use a declared member of the imported module

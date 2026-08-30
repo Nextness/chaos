@@ -1,0 +1,19 @@
+// expect-exit: 0
+// Namespaced generic calls: append/pop_last/pop_first instantiate per type.
+c :: #import «core»;
+#entry main :: proc -> S64 {
+    a: [dyn]S64;
+    c.append(*a, 10);
+    c.append(*a, 20);
+    c.append(*a, 30);
+    if a.count != 3 { return 1; }
+    if a[0] != 10 { return 2; }
+    if a[2] != 30 { return 3; }
+    last := c.pop_last(*a);
+    if last != 30 { return 4; }
+    first := c.pop_first(*a);
+    if first != 10 { return 5; }
+    if a.count != 1 { return 6; }
+    if a[0] != 20 { return 7; }
+    return 0;
+}

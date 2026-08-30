@@ -1,0 +1,999 @@
+MIR
+  Function main() -> S64
+    Local l0: [dyn]S64
+    Local l1: S64
+    Local l2: S64
+    bb0:
+      v0:[dyn]S64 = array.init
+      store.local v0 l0
+      v1:*[dyn]S64 = addr.of l0
+      v2:S64 = const 10
+      call v1 v2 append$T=S64_
+      v3:*[dyn]S64 = addr.of l0
+      v4:S64 = const 20
+      call v3 v4 append$T=S64_
+      v5:*[dyn]S64 = addr.of l0
+      v6:S64 = const 30
+      call v5 v6 append$T=S64_
+      v7:[dyn]S64 = load.local l0
+      v8:Size = field.load v7 field1
+      v9:Size = const 3
+      v10:Bool = cmp.neq v8 v9
+      branch v10, bb1, bb2
+    bb1:
+      v11:S64 = const 1
+      return v11
+    bb2:
+      jump bb3
+    bb3:
+      v12:[dyn]S64 = load.local l0
+      v13:S64 = const 0
+      v14:S64 = array.index v12 v13
+      v15:S64 = const 10
+      v16:Bool = cmp.neq v14 v15
+      branch v16, bb4, bb5
+    bb4:
+      v17:S64 = const 2
+      return v17
+    bb5:
+      jump bb6
+    bb6:
+      v18:[dyn]S64 = load.local l0
+      v19:S64 = const 2
+      v20:S64 = array.index v18 v19
+      v21:S64 = const 30
+      v22:Bool = cmp.neq v20 v21
+      branch v22, bb7, bb8
+    bb7:
+      v23:S64 = const 3
+      return v23
+    bb8:
+      jump bb9
+    bb9:
+      v24:*[dyn]S64 = addr.of l0
+      v25:S64 = call v24 pop_last$T=S64_
+      store.local v25 l1
+      v26:S64 = load.local l1
+      v27:S64 = const 30
+      v28:Bool = cmp.neq v26 v27
+      branch v28, bb10, bb11
+    bb10:
+      v29:S64 = const 4
+      return v29
+    bb11:
+      jump bb12
+    bb12:
+      v30:*[dyn]S64 = addr.of l0
+      v31:S64 = call v30 pop_first$T=S64_
+      store.local v31 l2
+      v32:S64 = load.local l2
+      v33:S64 = const 10
+      v34:Bool = cmp.neq v32 v33
+      branch v34, bb13, bb14
+    bb13:
+      v35:S64 = const 5
+      return v35
+    bb14:
+      jump bb15
+    bb15:
+      v36:[dyn]S64 = load.local l0
+      v37:Size = field.load v36 field1
+      v38:Size = const 1
+      v39:Bool = cmp.neq v37 v38
+      branch v39, bb16, bb17
+    bb16:
+      v40:S64 = const 6
+      return v40
+    bb17:
+      jump bb18
+    bb18:
+      v41:[dyn]S64 = load.local l0
+      v42:S64 = const 0
+      v43:S64 = array.index v41 v42
+      v44:S64 = const 20
+      v45:Bool = cmp.neq v43 v44
+      branch v45, bb19, bb20
+    bb19:
+      v46:S64 = const 7
+      return v46
+    bb20:
+      jump bb21
+    bb21:
+      v47:S64 = const 0
+      return v47
+  Function append$T=S64_(l0: *[dyn]S64, l1: S64)
+    Local l0: *[dyn]S64 (param)
+    Local l1: S64 (param)
+    Local l2: Size
+    Local l3: Addr
+    Local l4: *S64
+    Local l5: Size
+    bb0:
+      v0:*[dyn]S64 = load.local l0
+      v1:[dyn]S64 = deref.load:[dyn]S64 v0
+      v2:Size = field.load v1 field1
+      v3:Size = const 1
+      v4:Size = add v2 v3
+      v5:*[dyn]S64 = load.local l0
+      v6:[dyn]S64 = deref.load:[dyn]S64 v5
+      v7:Size = field.load v6 field2
+      v8:Bool = cmp.gt v4 v7
+      branch v8, bb1, bb2
+    bb1:
+      v9:*[dyn]S64 = load.local l0
+      v10:[dyn]S64 = deref.load:[dyn]S64 v9
+      v11:Size = field.load v10 field2
+      v12:Size = const 2
+      v13:Size = mul v11 v12
+      store.local v13 l2
+      v14:Size = load.local l2
+      v15:Size = const 1
+      v16:Bool = cmp.lt v14 v15
+      branch v16, bb4, bb5
+    bb2:
+      jump bb3
+    bb3:
+      v48:*[dyn]S64 = load.local l0
+      v49:[dyn]S64 = deref.load:[dyn]S64 v48
+      v50:*S64 = field.load v49 field0
+      v51:*[dyn]S64 = load.local l0
+      v52:[dyn]S64 = deref.load:[dyn]S64 v51
+      v53:Size = field.load v52 field1
+      v54:*S64 = ptr.add v50 v53
+      v55:S64 = load.local l1
+      deref.store:S64 v54 v55
+      v56:*[dyn]S64 = load.local l0
+      v57:*Size = field.addr v56 field1
+      v58:*[dyn]S64 = load.local l0
+      v59:[dyn]S64 = deref.load:[dyn]S64 v58
+      v60:Size = field.load v59 field1
+      v61:Size = const 1
+      v62:Size = add v60 v61
+      deref.store:Size v57 v62
+      return
+    bb4:
+      v17:Size = const 1
+      store.local v17 l2
+      jump bb6
+    bb5:
+      jump bb6
+    bb6:
+      v18:Size = load.local l2
+      v19:Size = const 8
+      v20:Size = mul v18 v19
+      v21:Addr = allocate v20
+      store.local v21 l3
+      v22:Addr = load.local l3
+      v23:*S64 = cast v22
+      store.local v23 l4
+      v24:Size = const 0
+      store.local v24 l5
+      jump bb7
+    bb7:
+      v25:Size = load.local l5
+      v26:*[dyn]S64 = load.local l0
+      v27:[dyn]S64 = deref.load:[dyn]S64 v26
+      v28:Size = field.load v27 field1
+      v29:Bool = cmp.lt v25 v28
+      branch v29, bb8, bb10
+    bb8:
+      v30:*S64 = load.local l4
+      v31:Size = load.local l5
+      v32:*S64 = ptr.add v30 v31
+      v33:*[dyn]S64 = load.local l0
+      v34:[dyn]S64 = deref.load:[dyn]S64 v33
+      v35:*S64 = field.load v34 field0
+      v36:Size = load.local l5
+      v37:*S64 = ptr.add v35 v36
+      v38:S64 = deref.load:S64 v37
+      deref.store:S64 v32 v38
+      v39:Size = load.local l5
+      v40:Size = const 1
+      v41:Size = add v39 v40
+      store.local v41 l5
+      jump bb9
+    bb9:
+      jump bb7
+    bb10:
+      v42:*[dyn]S64 = load.local l0
+      v43:**S64 = field.addr v42 field0
+      v44:*S64 = load.local l4
+      deref.store:*S64 v43 v44
+      v45:*[dyn]S64 = load.local l0
+      v46:*Size = field.addr v45 field2
+      v47:Size = load.local l2
+      deref.store:Size v46 v47
+      jump bb3
+  Function pop_last$T=S64_(l0: *[dyn]S64) -> S64
+    Local l0: *[dyn]S64 (param)
+    bb0:
+      v0:*[dyn]S64 = load.local l0
+      v1:*Size = field.addr v0 field1
+      v2:*[dyn]S64 = load.local l0
+      v3:[dyn]S64 = deref.load:[dyn]S64 v2
+      v4:Size = field.load v3 field1
+      v5:Size = const 1
+      v6:Size = sub v4 v5
+      deref.store:Size v1 v6
+      v7:*[dyn]S64 = load.local l0
+      v8:[dyn]S64 = deref.load:[dyn]S64 v7
+      v9:*S64 = field.load v8 field0
+      v10:*[dyn]S64 = load.local l0
+      v11:[dyn]S64 = deref.load:[dyn]S64 v10
+      v12:Size = field.load v11 field1
+      v13:*S64 = ptr.add v9 v12
+      v14:S64 = deref.load:S64 v13
+      return v14
+  Function pop_first$T=S64_(l0: *[dyn]S64) -> S64
+    Local l0: *[dyn]S64 (param)
+    Local l1: S64
+    Local l2: Size
+    bb0:
+      v0:*[dyn]S64 = load.local l0
+      v1:[dyn]S64 = deref.load:[dyn]S64 v0
+      v2:*S64 = field.load v1 field0
+      v3:S64 = const 0
+      v4:*S64 = ptr.add v2 v3
+      v5:S64 = deref.load:S64 v4
+      store.local v5 l1
+      v6:Size = const 0
+      store.local v6 l2
+      jump bb1
+    bb1:
+      v7:Size = load.local l2
+      v8:Size = const 1
+      v9:Size = add v7 v8
+      v10:*[dyn]S64 = load.local l0
+      v11:[dyn]S64 = deref.load:[dyn]S64 v10
+      v12:Size = field.load v11 field1
+      v13:Bool = cmp.lt v9 v12
+      branch v13, bb2, bb4
+    bb2:
+      v14:*[dyn]S64 = load.local l0
+      v15:[dyn]S64 = deref.load:[dyn]S64 v14
+      v16:*S64 = field.load v15 field0
+      v17:Size = load.local l2
+      v18:*S64 = ptr.add v16 v17
+      v19:*[dyn]S64 = load.local l0
+      v20:[dyn]S64 = deref.load:[dyn]S64 v19
+      v21:*S64 = field.load v20 field0
+      v22:Size = load.local l2
+      v23:Size = const 1
+      v24:Size = add v22 v23
+      v25:*S64 = ptr.add v21 v24
+      v26:S64 = deref.load:S64 v25
+      deref.store:S64 v18 v26
+      v27:Size = load.local l2
+      v28:Size = const 1
+      v29:Size = add v27 v28
+      store.local v29 l2
+      jump bb3
+    bb3:
+      jump bb1
+    bb4:
+      v30:*[dyn]S64 = load.local l0
+      v31:*Size = field.addr v30 field1
+      v32:*[dyn]S64 = load.local l0
+      v33:[dyn]S64 = deref.load:[dyn]S64 v32
+      v34:Size = field.load v33 field1
+      v35:Size = const 1
+      v36:Size = sub v34 v35
+      deref.store:Size v31 v36
+      v37:S64 = load.local l1
+      return v37
+  Function is_digit(l0: Byte) -> Bool
+    Local l0: Byte (param)
+    bb0:
+      v0:Byte = load.local l0
+      v1:Byte = const 48
+      v2:Bool = cmp.ge v0 v1
+      v3:Byte = load.local l0
+      v4:Byte = const 57
+      v5:Bool = cmp.le v3 v4
+      v6:Bool = and v2 v5
+      return v6
+  Function is_alpha(l0: Byte) -> Bool
+    Local l0: Byte (param)
+    bb0:
+      v0:Byte = load.local l0
+      v1:Byte = const 65
+      v2:Bool = cmp.ge v0 v1
+      v3:Byte = load.local l0
+      v4:Byte = const 90
+      v5:Bool = cmp.le v3 v4
+      v6:Bool = and v2 v5
+      v7:Byte = load.local l0
+      v8:Byte = const 97
+      v9:Bool = cmp.ge v7 v8
+      v10:Byte = load.local l0
+      v11:Byte = const 122
+      v12:Bool = cmp.le v10 v11
+      v13:Bool = and v9 v12
+      v14:Bool = or v6 v13
+      return v14
+  Function is_alnum(l0: Byte) -> Bool
+    Local l0: Byte (param)
+    bb0:
+      v0:Byte = load.local l0
+      v1:Bool = call v0 is_digit
+      v2:Byte = load.local l0
+      v3:Bool = call v2 is_alpha
+      v4:Bool = or v1 v3
+      return v4
+  Function is_space(l0: Byte) -> Bool
+    Local l0: Byte (param)
+    bb0:
+      v0:Byte = load.local l0
+      v1:Byte = const 32
+      v2:Bool = cmp.eq v0 v1
+      v3:Byte = load.local l0
+      v4:Byte = const 9
+      v5:Bool = cmp.eq v3 v4
+      v6:Bool = or v2 v5
+      v7:Byte = load.local l0
+      v8:Byte = const 10
+      v9:Bool = cmp.eq v7 v8
+      v10:Bool = or v6 v9
+      v11:Byte = load.local l0
+      v12:Byte = const 13
+      v13:Bool = cmp.eq v11 v12
+      v14:Bool = or v10 v13
+      v15:Byte = load.local l0
+      v16:Byte = const 11
+      v17:Bool = cmp.eq v15 v16
+      v18:Bool = or v14 v17
+      v19:Byte = load.local l0
+      v20:Byte = const 12
+      v21:Bool = cmp.eq v19 v20
+      v22:Bool = or v18 v21
+      return v22
+  Function is_upper(l0: Byte) -> Bool
+    Local l0: Byte (param)
+    bb0:
+      v0:Byte = load.local l0
+      v1:Byte = const 65
+      v2:Bool = cmp.ge v0 v1
+      v3:Byte = load.local l0
+      v4:Byte = const 90
+      v5:Bool = cmp.le v3 v4
+      v6:Bool = and v2 v5
+      return v6
+  Function is_lower(l0: Byte) -> Bool
+    Local l0: Byte (param)
+    bb0:
+      v0:Byte = load.local l0
+      v1:Byte = const 97
+      v2:Bool = cmp.ge v0 v1
+      v3:Byte = load.local l0
+      v4:Byte = const 122
+      v5:Bool = cmp.le v3 v4
+      v6:Bool = and v2 v5
+      return v6
+  Function int_to_string(l0: S64) -> String
+    Local l0: S64 (param)
+    Local l1: Addr
+    Local l2: *Byte
+    Local l3: U64
+    Local l4: Bool
+    Local l5: Size
+    Local l6: Size
+    Local l7: Size
+    Local l8: Byte
+    Local l9: Size
+    Local l10: String
+    bb0:
+      v0:S64 = const 32
+      v1:Addr = allocate v0
+      store.local v1 l1
+      v2:Addr = load.local l1
+      v3:*Byte = cast v2
+      store.local v3 l2
+      v4:S64 = load.local l0
+      v5:U64 = convert v4
+      store.local v5 l3
+      v6:Bool = const false
+      store.local v6 l4
+      v7:S64 = load.local l0
+      v8:S64 = const 0
+      v9:Bool = cmp.lt v7 v8
+      branch v9, bb1, bb2
+    bb1:
+      v10:Bool = const true
+      store.local v10 l4
+      v11:U64 = const 0
+      v12:U64 = load.local l3
+      v13:U64 = sub v11 v12
+      store.local v13 l3
+      jump bb3
+    bb2:
+      jump bb3
+    bb3:
+      v14:Size = const 0
+      store.local v14 l5
+      v15:U64 = load.local l3
+      v16:U64 = const 0
+      v17:Bool = cmp.eq v15 v16
+      branch v17, bb4, bb5
+    bb4:
+      v18:*Byte = load.local l2
+      v19:S64 = const 0
+      v20:*Byte = ptr.add v18 v19
+      v21:Byte = const 48
+      deref.store:Byte v20 v21
+      v22:Size = const 1
+      store.local v22 l5
+      jump bb6
+    bb5:
+      jump bb7
+    bb6:
+      v41:Size = const 0
+      store.local v41 l6
+      v42:Size = load.local l5
+      v43:Size = const 1
+      v44:Size = sub v42 v43
+      store.local v44 l7
+      jump bb11
+    bb7:
+      v23:U64 = load.local l3
+      v24:U64 = const 0
+      v25:Bool = cmp.gt v23 v24
+      branch v25, bb8, bb10
+    bb8:
+      v26:*Byte = load.local l2
+      v27:Size = load.local l5
+      v28:*Byte = ptr.add v26 v27
+      v29:U64 = load.local l3
+      v30:U64 = const 10
+      v31:U64 = mod v29 v30
+      v32:U64 = const 48
+      v33:U64 = add v31 v32
+      v34:Byte = convert v33
+      deref.store:Byte v28 v34
+      v35:U64 = load.local l3
+      v36:U64 = const 10
+      v37:U64 = div v35 v36
+      store.local v37 l3
+      v38:Size = load.local l5
+      v39:Size = const 1
+      v40:Size = add v38 v39
+      store.local v40 l5
+      jump bb9
+    bb9:
+      jump bb7
+    bb10:
+      jump bb6
+    bb11:
+      v45:Size = load.local l6
+      v46:Size = load.local l7
+      v47:Bool = cmp.lt v45 v46
+      branch v47, bb12, bb14
+    bb12:
+      v48:*Byte = load.local l2
+      v49:Size = load.local l6
+      v50:*Byte = ptr.add v48 v49
+      v51:Byte = deref.load:Byte v50
+      store.local v51 l8
+      v52:*Byte = load.local l2
+      v53:Size = load.local l6
+      v54:*Byte = ptr.add v52 v53
+      v55:*Byte = load.local l2
+      v56:Size = load.local l7
+      v57:*Byte = ptr.add v55 v56
+      v58:Byte = deref.load:Byte v57
+      deref.store:Byte v54 v58
+      v59:*Byte = load.local l2
+      v60:Size = load.local l7
+      v61:*Byte = ptr.add v59 v60
+      v62:Byte = load.local l8
+      deref.store:Byte v61 v62
+      v63:Size = load.local l6
+      v64:Size = const 1
+      v65:Size = add v63 v64
+      store.local v65 l6
+      v66:Size = load.local l7
+      v67:Size = const 1
+      v68:Size = sub v66 v67
+      store.local v68 l7
+      jump bb13
+    bb13:
+      jump bb11
+    bb14:
+      v69:Bool = load.local l4
+      branch v69, bb15, bb16
+    bb15:
+      v70:Size = load.local l5
+      store.local v70 l9
+      jump bb18
+    bb16:
+      jump bb17
+    bb17:
+      v93:String = zero
+      store.local v93 l10
+      v94:*String = addr.of l10
+      v95:**Byte = field.addr v94 field0
+      v96:*Byte = load.local l2
+      deref.store:*Byte v95 v96
+      v97:*String = addr.of l10
+      v98:*Size = field.addr v97 field1
+      v99:Size = load.local l5
+      deref.store:Size v98 v99
+      v100:String = load.local l10
+      return v100
+    bb18:
+      v71:Size = load.local l9
+      v72:Size = const 0
+      v73:Bool = cmp.gt v71 v72
+      branch v73, bb19, bb21
+    bb19:
+      v74:*Byte = load.local l2
+      v75:Size = load.local l9
+      v76:*Byte = ptr.add v74 v75
+      v77:*Byte = load.local l2
+      v78:Size = load.local l9
+      v79:Size = const 1
+      v80:Size = sub v78 v79
+      v81:*Byte = ptr.add v77 v80
+      v82:Byte = deref.load:Byte v81
+      deref.store:Byte v76 v82
+      v83:Size = load.local l9
+      v84:Size = const 1
+      v85:Size = sub v83 v84
+      store.local v85 l9
+      jump bb20
+    bb20:
+      jump bb18
+    bb21:
+      v86:*Byte = load.local l2
+      v87:S64 = const 0
+      v88:*Byte = ptr.add v86 v87
+      v89:Byte = const 45
+      deref.store:Byte v88 v89
+      v90:Size = load.local l5
+      v91:Size = const 1
+      v92:Size = add v90 v91
+      store.local v92 l5
+      jump bb17
+  Function string_to_int(l0: String) -> S64
+    Local l0: String (param)
+    Local l1: S64
+    Local l2: Bool
+    Local l3: Size
+    Local l4: S64
+    bb0:
+      v0:S64 = const 0
+      store.local v0 l1
+      v1:Bool = const false
+      store.local v1 l2
+      v2:Size = const 0
+      store.local v2 l3
+      v3:String = load.local l0
+      v4:Size = field.load v3 field1
+      v5:Size = const 0
+      v6:Bool = cmp.gt v4 v5
+      v7:String = load.local l0
+      v8:*Byte = field.load v7 field0
+      v9:S64 = const 0
+      v10:*Byte = ptr.add v8 v9
+      v11:Byte = deref.load:Byte v10
+      v12:Byte = const 45
+      v13:Bool = cmp.eq v11 v12
+      v14:Bool = and v6 v13
+      branch v14, bb1, bb2
+    bb1:
+      v15:Bool = const true
+      store.local v15 l2
+      v16:Size = const 1
+      store.local v16 l3
+      jump bb3
+    bb2:
+      jump bb3
+    bb3:
+      jump bb4
+    bb4:
+      v17:Size = load.local l3
+      v18:String = load.local l0
+      v19:Size = field.load v18 field1
+      v20:Bool = cmp.lt v17 v19
+      branch v20, bb5, bb7
+    bb5:
+      v21:String = load.local l0
+      v22:*Byte = field.load v21 field0
+      v23:Size = load.local l3
+      v24:*Byte = ptr.add v22 v23
+      v25:Byte = deref.load:Byte v24
+      v26:S64 = convert v25
+      store.local v26 l4
+      v27:S64 = load.local l4
+      v28:S64 = const 48
+      v29:Bool = cmp.lt v27 v28
+      v30:S64 = load.local l4
+      v31:S64 = const 57
+      v32:Bool = cmp.gt v30 v31
+      v33:Bool = or v29 v32
+      branch v33, bb8, bb9
+    bb6:
+      jump bb4
+    bb7:
+      v44:Bool = load.local l2
+      branch v44, bb11, bb12
+    bb8:
+      jump bb7
+    bb9:
+      jump bb10
+    bb10:
+      v34:S64 = load.local l1
+      v35:S64 = const 10
+      v36:S64 = mul v34 v35
+      v37:S64 = load.local l4
+      v38:S64 = const 48
+      v39:S64 = sub v37 v38
+      v40:S64 = add v36 v39
+      store.local v40 l1
+      v41:Size = load.local l3
+      v42:Size = const 1
+      v43:Size = add v41 v42
+      store.local v43 l3
+      jump bb6
+    bb11:
+      v45:S64 = load.local l1
+      v46:S64 = neg v45
+      store.local v46 l1
+      jump bb13
+    bb12:
+      jump bb13
+    bb13:
+      v47:S64 = load.local l1
+      return v47
+  Function string_to_float(l0: String) -> F64
+    Local l0: String (param)
+    Local l1: F64
+    Local l2: Bool
+    Local l3: Size
+    Local l4: S64
+    Local l5: F64
+    Local l6: S64
+    Local l7: Bool
+    Local l8: S64
+    Local l9: S64
+    Local l10: F64
+    Local l11: S64
+    Local l12: S64
+    bb0:
+      v0:F64 = const 0
+      store.local v0 l1
+      v1:Bool = const false
+      store.local v1 l2
+      v2:Size = const 0
+      store.local v2 l3
+      v3:String = load.local l0
+      v4:Size = field.load v3 field1
+      v5:Size = const 0
+      v6:Bool = cmp.gt v4 v5
+      v7:String = load.local l0
+      v8:*Byte = field.load v7 field0
+      v9:S64 = const 0
+      v10:*Byte = ptr.add v8 v9
+      v11:Byte = deref.load:Byte v10
+      v12:Byte = const 45
+      v13:Bool = cmp.eq v11 v12
+      v14:Bool = and v6 v13
+      branch v14, bb1, bb2
+    bb1:
+      v15:Bool = const true
+      store.local v15 l2
+      v16:Size = const 1
+      store.local v16 l3
+      jump bb3
+    bb2:
+      jump bb3
+    bb3:
+      jump bb4
+    bb4:
+      v17:Size = load.local l3
+      v18:String = load.local l0
+      v19:Size = field.load v18 field1
+      v20:Bool = cmp.lt v17 v19
+      branch v20, bb5, bb7
+    bb5:
+      v21:String = load.local l0
+      v22:*Byte = field.load v21 field0
+      v23:Size = load.local l3
+      v24:*Byte = ptr.add v22 v23
+      v25:Byte = deref.load:Byte v24
+      v26:S64 = convert v25
+      store.local v26 l4
+      v27:S64 = load.local l4
+      v28:S64 = const 48
+      v29:Bool = cmp.lt v27 v28
+      v30:S64 = load.local l4
+      v31:S64 = const 57
+      v32:Bool = cmp.gt v30 v31
+      v33:Bool = or v29 v32
+      branch v33, bb8, bb9
+    bb6:
+      jump bb4
+    bb7:
+      v45:Size = load.local l3
+      v46:String = load.local l0
+      v47:Size = field.load v46 field1
+      v48:Bool = cmp.lt v45 v47
+      v49:String = load.local l0
+      v50:*Byte = field.load v49 field0
+      v51:Size = load.local l3
+      v52:*Byte = ptr.add v50 v51
+      v53:Byte = deref.load:Byte v52
+      v54:Byte = const 46
+      v55:Bool = cmp.eq v53 v54
+      v56:Bool = and v48 v55
+      branch v56, bb11, bb12
+    bb8:
+      jump bb7
+    bb9:
+      jump bb10
+    bb10:
+      v34:F64 = load.local l1
+      v35:F64 = const 10
+      v36:F64 = mul v34 v35
+      v37:S64 = load.local l4
+      v38:S64 = const 48
+      v39:S64 = sub v37 v38
+      v40:F64 = convert v39
+      v41:F64 = add v36 v40
+      store.local v41 l1
+      v42:Size = load.local l3
+      v43:Size = const 1
+      v44:Size = add v42 v43
+      store.local v44 l3
+      jump bb6
+    bb11:
+      v57:Size = load.local l3
+      v58:Size = const 1
+      v59:Size = add v57 v58
+      store.local v59 l3
+      v60:F64 = const 0.1
+      store.local v60 l5
+      jump bb14
+    bb12:
+      jump bb13
+    bb13:
+      v92:Size = load.local l3
+      v93:String = load.local l0
+      v94:Size = field.load v93 field1
+      v95:Bool = cmp.lt v92 v94
+      v96:String = load.local l0
+      v97:*Byte = field.load v96 field0
+      v98:Size = load.local l3
+      v99:*Byte = ptr.add v97 v98
+      v100:Byte = deref.load:Byte v99
+      v101:Byte = const 69
+      v102:Bool = cmp.eq v100 v101
+      v103:String = load.local l0
+      v104:*Byte = field.load v103 field0
+      v105:Size = load.local l3
+      v106:*Byte = ptr.add v104 v105
+      v107:Byte = deref.load:Byte v106
+      v108:Byte = const 101
+      v109:Bool = cmp.eq v107 v108
+      v110:Bool = or v102 v109
+      v111:Bool = and v95 v110
+      branch v111, bb21, bb22
+    bb14:
+      v61:Size = load.local l3
+      v62:String = load.local l0
+      v63:Size = field.load v62 field1
+      v64:Bool = cmp.lt v61 v63
+      branch v64, bb15, bb17
+    bb15:
+      v65:String = load.local l0
+      v66:*Byte = field.load v65 field0
+      v67:Size = load.local l3
+      v68:*Byte = ptr.add v66 v67
+      v69:Byte = deref.load:Byte v68
+      v70:S64 = convert v69
+      store.local v70 l6
+      v71:S64 = load.local l6
+      v72:S64 = const 48
+      v73:Bool = cmp.lt v71 v72
+      v74:S64 = load.local l6
+      v75:S64 = const 57
+      v76:Bool = cmp.gt v74 v75
+      v77:Bool = or v73 v76
+      branch v77, bb18, bb19
+    bb16:
+      jump bb14
+    bb17:
+      jump bb13
+    bb18:
+      jump bb17
+    bb19:
+      jump bb20
+    bb20:
+      v78:F64 = load.local l1
+      v79:S64 = load.local l6
+      v80:S64 = const 48
+      v81:S64 = sub v79 v80
+      v82:F64 = convert v81
+      v83:F64 = load.local l5
+      v84:F64 = mul v82 v83
+      v85:F64 = add v78 v84
+      store.local v85 l1
+      v86:F64 = load.local l5
+      v87:F64 = const 0.1
+      v88:F64 = mul v86 v87
+      store.local v88 l5
+      v89:Size = load.local l3
+      v90:Size = const 1
+      v91:Size = add v89 v90
+      store.local v91 l3
+      jump bb16
+    bb21:
+      v112:Size = load.local l3
+      v113:Size = const 1
+      v114:Size = add v112 v113
+      store.local v114 l3
+      v115:Bool = const false
+      store.local v115 l7
+      v116:Size = load.local l3
+      v117:String = load.local l0
+      v118:Size = field.load v117 field1
+      v119:Bool = cmp.lt v116 v118
+      v120:String = load.local l0
+      v121:*Byte = field.load v120 field0
+      v122:Size = load.local l3
+      v123:*Byte = ptr.add v121 v122
+      v124:Byte = deref.load:Byte v123
+      v125:Byte = const 43
+      v126:Bool = cmp.eq v124 v125
+      v127:String = load.local l0
+      v128:*Byte = field.load v127 field0
+      v129:Size = load.local l3
+      v130:*Byte = ptr.add v128 v129
+      v131:Byte = deref.load:Byte v130
+      v132:Byte = const 45
+      v133:Bool = cmp.eq v131 v132
+      v134:Bool = or v126 v133
+      v135:Bool = and v119 v134
+      branch v135, bb24, bb25
+    bb22:
+      jump bb23
+    bb23:
+      v203:Bool = load.local l2
+      branch v203, bb47, bb48
+    bb24:
+      v136:String = load.local l0
+      v137:*Byte = field.load v136 field0
+      v138:Size = load.local l3
+      v139:*Byte = ptr.add v137 v138
+      v140:Byte = deref.load:Byte v139
+      v141:Byte = const 45
+      v142:Bool = cmp.eq v140 v141
+      store.local v142 l7
+      v143:Size = load.local l3
+      v144:Size = const 1
+      v145:Size = add v143 v144
+      store.local v145 l3
+      jump bb26
+    bb25:
+      jump bb26
+    bb26:
+      v146:S64 = const 0
+      store.local v146 l8
+      jump bb27
+    bb27:
+      v147:Size = load.local l3
+      v148:String = load.local l0
+      v149:Size = field.load v148 field1
+      v150:Bool = cmp.lt v147 v149
+      branch v150, bb28, bb30
+    bb28:
+      v151:String = load.local l0
+      v152:*Byte = field.load v151 field0
+      v153:Size = load.local l3
+      v154:*Byte = ptr.add v152 v153
+      v155:Byte = deref.load:Byte v154
+      v156:S64 = convert v155
+      store.local v156 l9
+      v157:S64 = load.local l9
+      v158:S64 = const 48
+      v159:Bool = cmp.lt v157 v158
+      v160:S64 = load.local l9
+      v161:S64 = const 57
+      v162:Bool = cmp.gt v160 v161
+      v163:Bool = or v159 v162
+      branch v163, bb31, bb32
+    bb29:
+      jump bb27
+    bb30:
+      v174:Bool = load.local l7
+      branch v174, bb34, bb35
+    bb31:
+      jump bb30
+    bb32:
+      jump bb33
+    bb33:
+      v164:S64 = load.local l8
+      v165:S64 = const 10
+      v166:S64 = mul v164 v165
+      v167:S64 = load.local l9
+      v168:S64 = const 48
+      v169:S64 = sub v167 v168
+      v170:S64 = add v166 v169
+      store.local v170 l8
+      v171:Size = load.local l3
+      v172:Size = const 1
+      v173:Size = add v171 v172
+      store.local v173 l3
+      jump bb29
+    bb34:
+      v175:S64 = load.local l8
+      v176:S64 = neg v175
+      store.local v176 l8
+      jump bb36
+    bb35:
+      jump bb36
+    bb36:
+      v177:F64 = const 1
+      store.local v177 l10
+      v178:S64 = load.local l8
+      store.local v178 l11
+      v179:S64 = load.local l11
+      v180:S64 = const 0
+      v181:Bool = cmp.lt v179 v180
+      branch v181, bb37, bb38
+    bb37:
+      v182:S64 = load.local l11
+      v183:S64 = neg v182
+      store.local v183 l11
+      jump bb39
+    bb38:
+      jump bb39
+    bb39:
+      v184:S64 = const 0
+      store.local v184 l12
+      jump bb40
+    bb40:
+      v185:S64 = load.local l12
+      v186:S64 = load.local l11
+      v187:Bool = cmp.lt v185 v186
+      branch v187, bb41, bb43
+    bb41:
+      v188:F64 = load.local l10
+      v189:F64 = const 10
+      v190:F64 = mul v188 v189
+      store.local v190 l10
+      v191:S64 = load.local l12
+      v192:S64 = const 1
+      v193:S64 = add v191 v192
+      store.local v193 l12
+      jump bb42
+    bb42:
+      jump bb40
+    bb43:
+      v194:S64 = load.local l8
+      v195:S64 = const 0
+      v196:Bool = cmp.lt v194 v195
+      branch v196, bb44, bb45
+    bb44:
+      v197:F64 = load.local l1
+      v198:F64 = load.local l10
+      v199:F64 = div v197 v198
+      store.local v199 l1
+      jump bb46
+    bb45:
+      v200:F64 = load.local l1
+      v201:F64 = load.local l10
+      v202:F64 = mul v200 v201
+      store.local v202 l1
+      jump bb46
+    bb46:
+      jump bb23
+    bb47:
+      v204:F64 = load.local l1
+      v205:F64 = neg v204
+      store.local v205 l1
+      jump bb49
+    bb48:
+      jump bb49
+    bb49:
+      v206:F64 = load.local l1
+      return v206

@@ -1,0 +1,36 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  Decl *compiler.ImportDecl
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl a: ArrayType(Ident(S64)) [mutable=true compileTime=false]
+      ExprStmt Call(Field(Ident(c), append), Unary(* Ident(a)), Int(10))
+      ExprStmt Call(Field(Ident(c), append), Unary(* Ident(a)), Int(20))
+      ExprStmt Call(Field(Ident(c), append), Unary(* Ident(a)), Int(30))
+      IfStmt condition=Binary(!= Field(Ident(a), count) Int(3))
+        Block
+          ReturnStmt Int(1)
+      IfStmt condition=Binary(!= Index(Ident(a), Int(0)) Int(10))
+        Block
+          ReturnStmt Int(2)
+      IfStmt condition=Binary(!= Index(Ident(a), Int(2)) Int(30))
+        Block
+          ReturnStmt Int(3)
+      VarDecl last = Call(Field(Ident(c), pop_last), Unary(* Ident(a))) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(last) Int(30))
+        Block
+          ReturnStmt Int(4)
+      VarDecl first = Call(Field(Ident(c), pop_first), Unary(* Ident(a))) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(first) Int(10))
+        Block
+          ReturnStmt Int(5)
+      IfStmt condition=Binary(!= Field(Ident(a), count) Int(1))
+        Block
+          ReturnStmt Int(6)
+      IfStmt condition=Binary(!= Index(Ident(a), Int(0)) Int(20))
+        Block
+          ReturnStmt Int(7)
+      ReturnStmt Int(0)

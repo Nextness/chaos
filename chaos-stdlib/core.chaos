@@ -1,0 +1,194 @@
+// core.chaos — the Chaos standard library.
+//
+// This file is imported with '#import «core»;' (flat) or
+// 'c :: #import «core»;' (namespaced). Only the functions a program actually
+// uses are emitted into the binary; unused imports are discarded.
+//
+// The dynamic-array operations are generic procedures over *[dyn]T. The
+// character-classification and conversion helpers operate on raw bytes and
+// strings, which the lexer and string-handling code use.
+
+append <T> :: proc (arr: *[dyn]T, value: T) -> Void {
+    if arr.*.count + 1 > arr.*.capacity {
+        new_cap := arr.*.capacity * 2;
+        if new_cap < 1 { new_cap = 1; }
+        new_buf: Addr = #allocate new_cap * size_of(T);
+        new_ptr: *T = new_buf.(*T);
+        i: Size = 0;
+        for i < arr.*.count {
+            new_ptr[i] = arr.*.data[i];
+            i += 1;
+        }
+        arr.*.data = new_ptr;
+        arr.*.capacity = new_cap;
+    }
+    arr.*.data[arr.*.count] = value;
+    arr.*.count += 1;
+}
+
+pop_last <T> :: proc (arr: *[dyn]T) -> T {
+    arr.*.count -= 1;
+    return arr.*.data[arr.*.count];
+}
+
+pop_first <T> :: proc (arr: *[dyn]T) -> T {
+    first := arr.*.data[0];
+    i: Size = 0;
+    for i + 1 < arr.*.count {
+        arr.*.data[i] = arr.*.data[i + 1];
+        i += 1;
+    }
+    arr.*.count -= 1;
+    return first;
+}
+
+// Character classification. Bytes are compared against ASCII codes; the
+// lexer reads source bytes through String.data, so these take Byte.
+
+is_digit :: proc (c: Byte) -> Bool {
+    return c >= 48 && c <= 57;
+}
+
+is_alpha :: proc (c: Byte) -> Bool {
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+}
+
+is_alnum :: proc (c: Byte) -> Bool {
+    return is_digit(c) || is_alpha(c);
+}
+
+is_space :: proc (c: Byte) -> Bool {
+    return c == 32 || c == 9 || c == 10 || c == 13 || c == 11 || c == 12;
+}
+
+is_upper :: proc (c: Byte) -> Bool {
+    return c >= 65 && c <= 90;
+}
+
+is_lower :: proc (c: Byte) -> Bool {
+    return c >= 97 && c <= 122;
+}
+
+// int_to_string renders an S64 as a decimal String. The buffer is allocated
+// from the bump allocator and never freed (fine for a config loader).
+int_to_string :: proc (value: S64) -> String {
+    buf: Addr = #allocate 32;
+    ptr: *Byte = buf.(*Byte);
+    u: U64 = value.(U64);
+    negative := false;
+    if value < 0 {
+        negative = true;
+        u = 0 - u;
+    }
+    i: Size = 0;
+    if u == 0 {
+        ptr[0] = 48;
+        i = 1;
+    } else {
+        for u > 0 {
+            ptr[i] = ((u % 10) + 48).(Byte);
+            u = u / 10;
+            i += 1;
+        }
+    }
+    // Reverse the digits into the correct order.
+    j: Size = 0;
+    k: Size = i - 1;
+    for j < k {
+        tmp := ptr[j];
+        ptr[j] = ptr[k];
+        ptr[k] = tmp;
+        j += 1;
+        k -= 1;
+    }
+    if negative {
+        // Shift right by one and place the sign at the front.
+        m: Size = i;
+        for m > 0 {
+            ptr[m] = ptr[m - 1];
+            m -= 1;
+        }
+        ptr[0] = 45;
+        i += 1;
+    }
+    result: String;
+    result.data = ptr;
+    result.count = i;
+    return result;
+}
+
+// string_to_int parses a decimal integer String. Parsing stops at the first
+// non-digit; a leading '-' is accepted.
+string_to_int :: proc (s: String) -> S64 {
+    result: S64 = 0;
+    negative := false;
+    i: Size = 0;
+    if s.count > 0 && s.data[0] == 45 {
+        negative = true;
+        i = 1;
+    }
+    for i < s.count {
+        c: S64 = s.data[i].(S64);
+        if c < 48 || c > 57 { break; }
+        result = result * 10 + (c - 48);
+        i += 1;
+    }
+    if negative { result = -result; }
+    return result;
+}
+
+// string_to_float parses a decimal floating-point String with an optional
+// exponent (for example "1E-10" or "0.11_00" after underscore removal).
+string_to_float :: proc (s: String) -> F64 {
+    result: F64 = 0.0;
+    negative := false;
+    i: Size = 0;
+    if s.count > 0 && s.data[0] == 45 {
+        negative = true;
+        i = 1;
+    }
+    for i < s.count {
+        c: S64 = s.data[i].(S64);
+        if c < 48 || c > 57 { break; }
+        result = result * 10.0 + (c - 48).(F64);
+        i += 1;
+    }
+    if i < s.count && s.data[i] == 46 {
+        i += 1;
+        fraction: F64 = 0.1;
+        for i < s.count {
+            c: S64 = s.data[i].(S64);
+            if c < 48 || c > 57 { break; }
+            result = result + (c - 48).(F64) * fraction;
+            fraction = fraction * 0.1;
+            i += 1;
+        }
+    }
+    if i < s.count && (s.data[i] == 69 || s.data[i] == 101) {
+        i += 1;
+        exp_neg := false;
+        if i < s.count && (s.data[i] == 43 || s.data[i] == 45) {
+            exp_neg = s.data[i] == 45;
+            i += 1;
+        }
+        exp: S64 = 0;
+        for i < s.count {
+            c: S64 = s.data[i].(S64);
+            if c < 48 || c > 57 { break; }
+            exp = exp * 10 + (c - 48);
+            i += 1;
+        }
+        if exp_neg { exp = -exp; }
+        power: F64 = 1.0;
+        e := exp;
+        if e < 0 { e = -e; }
+        j: S64 = 0;
+        for j < e {
+            power = power * 10.0;
+            j += 1;
+        }
+        if exp < 0 { result = result / power; } else { result = result * power; }
+    }
+    if negative { result = -result; }
+    return result;
+}

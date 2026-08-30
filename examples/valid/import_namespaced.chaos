@@ -1,0 +1,10 @@
+// expect-exit: 0
+// Namespaced import: members are reached through the namespace binding.
+c :: #import «core»;
+#entry main :: proc -> S64 {
+    if !c.is_digit(48) { return 1; }
+    if c.is_digit(65) { return 2; }
+    if c.int_to_string(42) != «42» { return 3; }
+    if c.string_to_int(«42») != 42 { return 4; }
+    return 0;
+}

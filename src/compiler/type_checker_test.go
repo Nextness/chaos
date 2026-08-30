@@ -550,6 +550,92 @@ func TestTypeCheckIndex(t *testing.T) {
 	}
 }
 
+func TestTypeCheckFixedArrayBounds(t *testing.T) {
+	// A constant index out of bounds on a fixed-size array is a compile-time
+	// error.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    a: [2]S64 = .{1, 2};\n    x := a[2];\n    return 0;\n}")
+	if !hasError(diags, "out of bounds") {
+		t.Errorf("expected out-of-bounds error, got %v", diags)
+	}
+	// A negative constant index is out of bounds.
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    a: [2]S64 = .{1, 2};\n    x := a[-1];\n    return 0;\n}")
+	if !hasError(diags, "out of bounds") {
+		t.Errorf("expected out-of-bounds error for negative index, got %v", diags)
+	}
+	// An in-bounds constant index is fine.
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    a: [2]S64 = .{1, 2};\n    x := a[1];\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckFixedArrayLiteralCount(t *testing.T) {
+	// A fixed-size array literal must provide exactly the declared count.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    a: [2]S64 = .{1};\n    return 0;\n}")
+	if !hasError(diags, "array literal has 1 elements but type declares 2") {
+		t.Errorf("expected literal-count error, got %v", diags)
+	}
+}
+
+func TestTypeCheckArrayFields(t *testing.T) {
+	// Arrays expose data and count; dynamic arrays also expose capacity.
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    n: Size = a.count;\n    c: Size = a.capacity;\n    p: *S64 = a.data;\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+	// A static array has no capacity field.
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    a: []S64 = .{1};\n    c: Size = a.capacity;\n    return 0;\n}")
+	if !hasError(diags, "only dynamic arrays have a 'capacity' field") {
+		t.Errorf("expected capacity error, got %v", diags)
+	}
+}
+
+func TestTypeCheckSizeOf(t *testing.T) {
+	diags := typeCheckSource(t, "main :: proc -> S64 {\n    if size_of(S64) != 8 { return 1; }\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckGenericProc(t *testing.T) {
+	// A generic procedure type-checks and instantiates at call sites.
+	diags := typeCheckSource(t, "identity <T: S64 | String> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 {\n    a := identity(42);\n    s := identity(«hi»);\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+	// A type argument outside the constraints is rejected.
+	diags = typeCheckSource(t, "identity <T: S64 | String> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 {\n    b := identity(true);\n    return 0;\n}")
+	if !hasError(diags, "does not satisfy the constraints") {
+		t.Errorf("expected constraint error, got %v", diags)
+	}
+}
+
+func TestTypeCheckGenericStruct(t *testing.T) {
+	diags := typeCheckSource(t, "Box <T: S64 | String> :: struct { v: T; }\nmain :: proc -> S64 {\n    b: Box = .{v=7};\n    if b.v == 7 { return 0; }\n    return 1;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckGenericStructPositional(t *testing.T) {
+	// Positional fields must match the declaration-order fields when inferring
+	// type arguments for a generic struct.
+	diags := typeCheckSource(t, "Pair <T: S64 | String> :: struct { first: T; second: T; }\nmain :: proc -> S64 {\n    p: Pair = .{7, 9};\n    if p.first == 7 && p.second == 9 { return 0; }\n    return 1;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckGenericProcStructType(t *testing.T) {
+	// A generic procedure whose constraint references a user-defined struct
+	// type must resolve (the instantiation mapping rebuilds nominal type
+	// expressions from their declared names).
+	src := "Token :: struct { kind: S64; text: String; }\nidentity <T: S64 | String | Token> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 {\n    t: Token;\n    t.kind = 0;\n    r := identity(t);\n    if r.kind == 0 { return 0; }\n    return 1;\n}"
+	if diags := typeCheckSource(t, src); diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
 func TestTypeCheckIncDecType(t *testing.T) {
 	// Increment/decrement requires an integer variable.
 	diags := typeCheckSource(t, "main :: proc -> S64 {\n    s := «x»;\n    s++;\n    return 0;\n}")
@@ -1361,6 +1447,21 @@ func TestTypeCheckStringFields(t *testing.T) {
 	}
 }
 
+func TestTypeCheckStringIndexing(t *testing.T) {
+	// Reading a byte at an index is valid and yields Byte.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    s := «hello»;\n    b: Byte = s[1];\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for String index read: %v", diags)
+	}
+	// Writing a byte at an index is valid.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    s := «hello»;\n    s[0] = 72;\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for String index write: %v", diags)
+	}
+	// A non-integer index is rejected.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    s := «hello»;\n    b := s[«x»];\n    return 0;\n}"); !hasError(diags, "string index must be an integer") {
+		t.Errorf("expected string index type error, got %v", diags)
+	}
+}
+
 func TestTypeCheckInterpolation(t *testing.T) {
 	// Interpolating a String is valid.
 	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    name := «world»;\n    s := «hello {name}!»;\n    return 0;\n}"); diags.HasErrors() {
@@ -1369,5 +1470,68 @@ func TestTypeCheckInterpolation(t *testing.T) {
 	// Interpolating a non-String is rejected.
 	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    n := 5;\n    s := «value {n}»;\n    return 0;\n}"); !hasError(diags, "interpolation requires a String value") {
 		t.Errorf("expected interpolation type error, got %v", diags)
+	}
+}
+
+func TestTypeCheckFlatImport(t *testing.T) {
+	// A flat import makes the module's functions directly visible.
+	src := "#import «core»;\n#entry main :: proc -> S64 {\n    if !is_digit(48) { return 1; }\n    return 0;\n}"
+	if diags := typeCheckSource(t, src); diags.HasErrors() {
+		t.Fatalf("unexpected errors for flat import: %v", diags)
+	}
+}
+
+func TestTypeCheckNamespacedImportMember(t *testing.T) {
+	// A namespaced import resolves 'c.member(...)' calls.
+	src := "c :: #import «core»;\n#entry main :: proc -> S64 {\n    if !c.is_digit(48) { return 1; }\n    if c.int_to_string(42) != «42» { return 2; }\n    return 0;\n}"
+	if diags := typeCheckSource(t, src); diags.HasErrors() {
+		t.Fatalf("unexpected errors for namespaced import: %v", diags)
+	}
+}
+
+func TestTypeCheckNamespacedImportScopeIsolation(t *testing.T) {
+	// A namespaced import does not make members visible by bare name.
+	src := "c :: #import «core»;\n#entry main :: proc -> S64 {\n    if is_digit(48) { return 1; }\n    return 0;\n}"
+	if diags := typeCheckSource(t, src); !hasError(diags, "call to unknown procedure is_digit") {
+		t.Errorf("expected bare-name isolation error, got %v", diags)
+	}
+}
+
+func TestTypeCheckImportUnknownModule(t *testing.T) {
+	src := "#import «nonexistent»;\n#entry main :: proc -> S64 { return 0; }"
+	if diags := typeCheckSource(t, src); !hasError(diags, "cannot find module") {
+		t.Errorf("expected unknown-module error, got %v", diags)
+	}
+}
+
+func TestTypeCheckImportBadMember(t *testing.T) {
+	src := "c :: #import «core»;\n#entry main :: proc -> S64 {\n    c.nonexistent(1);\n    return 0;\n}"
+	if diags := typeCheckSource(t, src); !hasError(diags, "has no member") {
+		t.Errorf("expected bad-member error, got %v", diags)
+	}
+}
+
+func TestTypeCheckImportMemberAsValue(t *testing.T) {
+	src := "c :: #import «core»;\n#entry main :: proc -> S64 {\n    x := c.is_digit;\n    return 0;\n}"
+	if diags := typeCheckSource(t, src); !hasError(diags, "cannot be used as a value") {
+		t.Errorf("expected member-as-value error, got %v", diags)
+	}
+}
+
+func TestTypeCheckNamespaceCollision(t *testing.T) {
+	// A namespace binding occupies the same declaration namespace as other
+	// top-level names, so a second 'c' is a shadow error.
+	src := "c :: #import «core»;\nc :: proc () -> S64 { return 0; }\n#entry main :: proc -> S64 { return 0; }"
+	if diags := typeCheckSource(t, src); !hasError(diags, "shadows an existing name") {
+		t.Errorf("expected namespace collision error, got %v", diags)
+	}
+}
+
+func TestTypeCheckModuleLocalDoesNotShadowMainGlobal(t *testing.T) {
+	// The module's functions are checked in isolation: a local variable named
+	// 'c' inside core.chaos must not collide with a main-program global 'c'.
+	src := "core_ns :: #import «core»;\nc: S64 = 5;\n#entry main :: proc -> S64 {\n    if c != 5 { return 1; }\n    if !core_ns.is_digit(48) { return 2; }\n    return 0;\n}"
+	if diags := typeCheckSource(t, src); diags.HasErrors() {
+		t.Fatalf("unexpected errors for module-local isolation: %v", diags)
 	}
 }

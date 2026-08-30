@@ -47,19 +47,26 @@ import (
 
 var update = flag.Bool("update", false, "regenerate golden dump files")
 
+// init points the import resolver at the repository's stdlib directory. The
+// e2e tests run from examples/, so the stdlib lives one level up.
+func init() {
+	compiler.StdlibDir = "../chaos-stdlib"
+}
+
 // stage names in pipeline order.
 var stageNames = []string{"tokenize", "parse", "type", "target", "lower", "mir", "verify", "emit"}
 
 // pipeline holds the output of every compilation stage.
 type pipeline struct {
-	tokens []compiler.Token
-	parse  compiler.ParseResult
-	hir    *compiler.HIR
-	mir    *compiler.MIRProgram
-	asm    string
-	sf     *compiler.SourceFile
-	diags  map[string]compiler.DiagnosticList // per-stage diagnostics
-	failed string                             // first stage with errors, "" if clean
+	tokens  []compiler.Token
+	parse   compiler.ParseResult
+	hir     *compiler.HIR
+	mir     *compiler.MIRProgram
+	asm     string
+	sf      *compiler.SourceFile
+	sources map[compiler.FileID]compiler.SourceFile // all files (main + imports)
+	diags   map[string]compiler.DiagnosticList      // per-stage diagnostics
+	failed  string                                  // first stage with errors, "" if clean
 }
 
 // runPipeline drives the full pipeline exactly like the chaosc CLI does and
@@ -69,6 +76,7 @@ func runPipeline(t *testing.T, name string, source []byte) *pipeline {
 	sm := &compiler.SourceManager{}
 	fileID := sm.Register(name, source)
 	p := &pipeline{sf: sm.Lookup(fileID), diags: make(map[string]compiler.DiagnosticList)}
+	p.sources = map[compiler.FileID]compiler.SourceFile{fileID: *p.sf}
 
 	tokens, diags := compiler.Tokenize(source, fileID)
 	p.tokens = tokens
@@ -81,12 +89,18 @@ func runPipeline(t *testing.T, name string, source []byte) *pipeline {
 	result := compiler.ParseProgram(tokens)
 	p.parse = result
 	p.diags["parse"] = result.Diags
+	if result.Program != nil {
+		result.Program.Sources = p.sources
+	}
 	if result.Diags.HasErrors() {
 		p.failed = "parse"
 		return p
 	}
 
 	analysis, diags := compiler.AnalyzeProgram(result.Program)
+	if analysis != nil && analysis.Program != nil {
+		p.sources = analysis.Program.Sources
+	}
 	if diags.HasErrors() {
 		p.diags["type"] = diags
 		p.failed = "type"
@@ -171,9 +185,13 @@ func checkGolden(t *testing.T, relPath, content string) {
 }
 
 // renderDiags renders a diagnostic list with source context for golden files.
-func renderDiags(diags compiler.DiagnosticList, sf *compiler.SourceFile) string {
+func renderDiags(diags compiler.DiagnosticList, p *pipeline) string {
 	var buf bytes.Buffer
-	compiler.RenderAll(&buf, diags, sf)
+	if p.sources != nil {
+		compiler.RenderAllSources(&buf, diags, p.sources)
+	} else {
+		compiler.RenderAll(&buf, diags, p.sf)
+	}
 	return buf.String()
 }
 
@@ -234,7 +252,7 @@ func TestValidExamples(t *testing.T) {
 
 			p := runPipeline(t, filepath.Base(file), source)
 			if p.failed != "" {
-				t.Fatalf("pipeline failed at stage %s:\n%s", p.failed, renderDiags(p.diags[p.failed], p.sf))
+				t.Fatalf("pipeline failed at stage %s:\n%s", p.failed, renderDiags(p.diags[p.failed], p))
 			}
 
 			// Validate the dump of every compilation step against goldens.
@@ -303,11 +321,11 @@ func TestInvalidExamples(t *testing.T) {
 				t.Fatalf("example compiled cleanly, want failure at stage %s", meta.stage)
 			}
 			if p.failed != meta.stage {
-				t.Errorf("failed at stage %s, want %s\n%s", p.failed, meta.stage, renderDiags(p.diags[p.failed], p.sf))
+				t.Errorf("failed at stage %s, want %s\n%s", p.failed, meta.stage, renderDiags(p.diags[p.failed], p))
 			}
 
 			// The expected error must appear in the failing stage's diagnostics.
-			rendered := renderDiags(p.diags[p.failed], p.sf)
+			rendered := renderDiags(p.diags[p.failed], p)
 			if !strings.Contains(rendered, meta.errorSub) {
 				t.Errorf("diagnostics do not contain %q:\n%s", meta.errorSub, rendered)
 			}

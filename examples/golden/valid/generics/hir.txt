@@ -1,0 +1,18 @@
+HIR
+  Proc main() -> S64
+    Block
+      VarDecl a: S64 = Call(identity$T=S64_, Int(42)) [mutable=true compileTime=false]
+      If condition=Binary(!= Ident(a) Int(42))
+        Block
+          Return Int(1)
+      VarDecl s: String = Call(identity$T=String_, String("hi")) [mutable=true compileTime=false]
+      If condition=Binary(!= Ident(s) String("hi"))
+        Block
+          Return Int(2)
+      Return Int(0)
+  Proc identity$T=S64_(x: S64) -> S64
+    Block
+      Return Ident(x)
+  Proc identity$T=String_(x: String) -> String
+    Block
+      Return Ident(x)

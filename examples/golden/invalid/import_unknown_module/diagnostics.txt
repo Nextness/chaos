@@ -1,0 +1,3 @@
+[ERROR] 4:1:import_unknown_module.chaos - cannot find module 'nonexistent'
+ #import «nonexistent»;
+ ^^^^^^^^^^^^^^^^^^^^^ -> place 'nonexistent.chaos' in the stdlib directory or next to the importing file

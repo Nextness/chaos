@@ -1,0 +1,169 @@
+HIR
+  Proc main() -> S64
+    Block
+      If condition=Unary(! Call(is_digit, Int(48)))
+        Block
+          Return Int(1)
+      If condition=Call(is_digit, Int(65))
+        Block
+          Return Int(2)
+      If condition=Binary(!= Call(int_to_string, Int(42)) String("42"))
+        Block
+          Return Int(3)
+      If condition=Binary(!= Call(string_to_int, String("42")) Int(42))
+        Block
+          Return Int(4)
+      Return Int(0)
+  Proc is_digit(c: Byte) -> Bool
+    Block
+      Return Binary(&& Binary(>= Ident(c) Int(48)) Binary(<= Ident(c) Int(57)))
+  Proc is_alpha(c: Byte) -> Bool
+    Block
+      Return Binary(|| Binary(&& Binary(>= Ident(c) Int(65)) Binary(<= Ident(c) Int(90))) Binary(&& Binary(>= Ident(c) Int(97)) Binary(<= Ident(c) Int(122))))
+  Proc is_alnum(c: Byte) -> Bool
+    Block
+      Return Binary(|| Call(is_digit, Ident(c)) Call(is_alpha, Ident(c)))
+  Proc is_space(c: Byte) -> Bool
+    Block
+      Return Binary(|| Binary(|| Binary(|| Binary(|| Binary(|| Binary(== Ident(c) Int(32)) Binary(== Ident(c) Int(9))) Binary(== Ident(c) Int(10))) Binary(== Ident(c) Int(13))) Binary(== Ident(c) Int(11))) Binary(== Ident(c) Int(12)))
+  Proc is_upper(c: Byte) -> Bool
+    Block
+      Return Binary(&& Binary(>= Ident(c) Int(65)) Binary(<= Ident(c) Int(90)))
+  Proc is_lower(c: Byte) -> Bool
+    Block
+      Return Binary(&& Binary(>= Ident(c) Int(97)) Binary(<= Ident(c) Int(122)))
+  Proc int_to_string(value: S64) -> String
+    Block
+      VarDecl buf: Addr = Expr(*compiler.HIRAllocate) [mutable=true compileTime=false]
+      VarDecl ptr: *Byte = Expr(*compiler.HIRCast) [mutable=true compileTime=false]
+      VarDecl u: U64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+      VarDecl negative: Bool = Bool(false) [mutable=true compileTime=false]
+      If condition=Binary(< Ident(value) Int(0))
+        Block
+          Assign negative = Bool(true)
+          Assign u = Binary(- Int(0) Ident(u))
+      VarDecl i: Size = Int(0) [mutable=true compileTime=false]
+      If condition=Binary(== Ident(u) Int(0))
+        Block
+          AddrStore Binary(+ Ident(ptr) Int(0)) = Int(48)
+          Assign i = Int(1)
+      Else
+        Block
+          For cond=Binary(> Ident(u) Int(0))
+            Block
+              AddrStore Binary(+ Ident(ptr) Ident(i)) = Expr(*compiler.HIRConvert)
+              Assign u = Binary(/ Ident(u) Int(10))
+              Assign i = Binary(+ Ident(i) Int(1))
+      VarDecl j: Size = Int(0) [mutable=true compileTime=false]
+      VarDecl k: Size = Binary(- Ident(i) Int(1)) [mutable=true compileTime=false]
+      For cond=Binary(< Ident(j) Ident(k))
+        Block
+          VarDecl tmp: Byte = Deref(Binary(+ Ident(ptr) Ident(j))) [mutable=true compileTime=false]
+          AddrStore Binary(+ Ident(ptr) Ident(j)) = Deref(Binary(+ Ident(ptr) Ident(k)))
+          AddrStore Binary(+ Ident(ptr) Ident(k)) = Ident(tmp)
+          Assign j = Binary(+ Ident(j) Int(1))
+          Assign k = Binary(- Ident(k) Int(1))
+      If condition=Ident(negative)
+        Block
+          VarDecl m: Size = Ident(i) [mutable=true compileTime=false]
+          For cond=Binary(> Ident(m) Int(0))
+            Block
+              AddrStore Binary(+ Ident(ptr) Ident(m)) = Deref(Binary(+ Ident(ptr) Binary(- Ident(m) Int(1))))
+              Assign m = Binary(- Ident(m) Int(1))
+          AddrStore Binary(+ Ident(ptr) Int(0)) = Int(45)
+          Assign i = Binary(+ Ident(i) Int(1))
+      VarDecl result: String [mutable=true compileTime=false]
+      AddrStore FieldAddr(AddrOf(Ident(result)), 0) = Ident(ptr)
+      AddrStore FieldAddr(AddrOf(Ident(result)), 1) = Ident(i)
+      Return Ident(result)
+  Proc string_to_int(s: String) -> S64
+    Block
+      VarDecl result: S64 = Int(0) [mutable=true compileTime=false]
+      VarDecl negative: Bool = Bool(false) [mutable=true compileTime=false]
+      VarDecl i: Size = Int(0) [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(> FieldLoad(Ident(s), 1) Int(0)) Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Int(0))) Int(45)))
+        Block
+          Assign negative = Bool(true)
+          Assign i = Int(1)
+      For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
+        Block
+          VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+          If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
+            Block
+              Break
+          Assign result = Binary(+ Binary(* Ident(result) Int(10)) Binary(- Ident(c) Int(48)))
+          Assign i = Binary(+ Ident(i) Int(1))
+      If condition=Ident(negative)
+        Block
+          Assign result = Unary(- Ident(result))
+      Return Ident(result)
+  Proc string_to_float(s: String) -> F64
+    Block
+      VarDecl result: F64 = Float(0.0) [mutable=true compileTime=false]
+      VarDecl negative: Bool = Bool(false) [mutable=true compileTime=false]
+      VarDecl i: Size = Int(0) [mutable=true compileTime=false]
+      If condition=Binary(&& Binary(> FieldLoad(Ident(s), 1) Int(0)) Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Int(0))) Int(45)))
+        Block
+          Assign negative = Bool(true)
+          Assign i = Int(1)
+      For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
+        Block
+          VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+          If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
+            Block
+              Break
+          Assign result = Binary(+ Binary(* Ident(result) Float(10.0)) Expr(*compiler.HIRConvert))
+          Assign i = Binary(+ Ident(i) Int(1))
+      If condition=Binary(&& Binary(< Ident(i) FieldLoad(Ident(s), 1)) Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(46)))
+        Block
+          Assign i = Binary(+ Ident(i) Int(1))
+          VarDecl fraction: F64 = Float(0.1) [mutable=true compileTime=false]
+          For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
+            Block
+              VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+              If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
+                Block
+                  Break
+              Assign result = Binary(+ Ident(result) Binary(* Expr(*compiler.HIRConvert) Ident(fraction)))
+              Assign fraction = Binary(* Ident(fraction) Float(0.1))
+              Assign i = Binary(+ Ident(i) Int(1))
+      If condition=Binary(&& Binary(< Ident(i) FieldLoad(Ident(s), 1)) Binary(|| Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(69)) Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(101))))
+        Block
+          Assign i = Binary(+ Ident(i) Int(1))
+          VarDecl exp_neg: Bool = Bool(false) [mutable=true compileTime=false]
+          If condition=Binary(&& Binary(< Ident(i) FieldLoad(Ident(s), 1)) Binary(|| Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(43)) Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(45))))
+            Block
+              Assign exp_neg = Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(45))
+              Assign i = Binary(+ Ident(i) Int(1))
+          VarDecl exp: S64 = Int(0) [mutable=true compileTime=false]
+          For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
+            Block
+              VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+              If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
+                Block
+                  Break
+              Assign exp = Binary(+ Binary(* Ident(exp) Int(10)) Binary(- Ident(c) Int(48)))
+              Assign i = Binary(+ Ident(i) Int(1))
+          If condition=Ident(exp_neg)
+            Block
+              Assign exp = Unary(- Ident(exp))
+          VarDecl power: F64 = Float(1.0) [mutable=true compileTime=false]
+          VarDecl e: S64 = Ident(exp) [mutable=true compileTime=false]
+          If condition=Binary(< Ident(e) Int(0))
+            Block
+              Assign e = Unary(- Ident(e))
+          VarDecl j: S64 = Int(0) [mutable=true compileTime=false]
+          For cond=Binary(< Ident(j) Ident(e))
+            Block
+              Assign power = Binary(* Ident(power) Float(10.0))
+              Assign j = Binary(+ Ident(j) Int(1))
+          If condition=Binary(< Ident(exp) Int(0))
+            Block
+              Assign result = Binary(/ Ident(result) Ident(power))
+          Else
+            Block
+              Assign result = Binary(* Ident(result) Ident(power))
+      If condition=Ident(negative)
+        Block
+          Assign result = Unary(- Ident(result))
+      Return Ident(result)

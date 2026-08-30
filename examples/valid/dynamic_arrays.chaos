@@ -1,0 +1,17 @@
+// expect-exit: 0
+// Dynamic arrays with append, pop_last, and pop_first from the core library.
+#import «core»;
+#entry main :: proc -> S64 {
+    a: [dyn]S64 = .{1, 2, 3};
+    append(*a, 4);
+    append(*a, 5);
+    if a.count != 5 { return 1; }
+    if a[4] != 5 { return 2; }
+    last := pop_last(*a);
+    if last != 5 { return 3; }
+    first := pop_first(*a);
+    if first != 1 { return 4; }
+    if a.count != 3 { return 5; }
+    if a[0] != 2 { return 6; }
+    return 0;
+}

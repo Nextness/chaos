@@ -1,0 +1,5 @@
+// expect-stage: parse
+// expect-error: expected ;
+// An import directive must end with a semicolon.
+#import «core»
+#entry main :: proc -> S64 { return 0; }

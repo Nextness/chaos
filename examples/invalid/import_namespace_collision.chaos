@@ -1,0 +1,6 @@
+// expect-stage: type
+// expect-error: shadows an existing name
+// A namespace binding occupies the same declaration namespace as other names.
+c :: #import «core»;
+c :: proc () -> S64 { return 0; }
+#entry main :: proc -> S64 { return 0; }

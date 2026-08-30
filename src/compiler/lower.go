@@ -7,6 +7,8 @@
 // gracefully on unresolved names.
 package compiler
 
+import "fmt"
+
 import (
 	"maps"
 	"math/big"
@@ -24,6 +26,12 @@ func LowerProgram(program *Program) (*HIR, DiagnosticList) {
 // LowerAnalyzedProgram lowers with the exact semantic facts produced by
 // AnalyzeProgram. Pipeline drivers should prefer this over re-analysis.
 func LowerAnalyzedProgram(program *Program, analysis *SemanticAnalysis) (*HIR, DiagnosticList) {
+	// Use the analyzed program (with resolved imports and generic
+	// instantiations) so lowering sees the same declarations the type checker
+	// validated.
+	if analysis != nil && analysis.Program != nil {
+		program = analysis.Program
+	}
 	if program == nil {
 		var diags DiagnosticList
 		diags.Error(Span{}, "cannot lower a nil program", "parse and analyze a source program before lowering")
@@ -53,6 +61,7 @@ func LowerAnalyzedProgram(program *Program, analysis *SemanticAnalysis) (*HIR, D
 		procAliases:       make(map[SymbolID]*ProcDecl),
 		unwrapped:         make(map[SymbolID]bool),
 		analysis:          analysis,
+		imports:           make(map[string]*ImportDecl),
 		hir:               &HIR{},
 	}
 	l.hir.Symbols = l.symbols
@@ -94,6 +103,7 @@ type Lowerer struct {
 	procValueFloor    int
 	procDepth         int
 	analysis          *SemanticAnalysis
+	imports           map[string]*ImportDecl // namespace name -> resolved import
 }
 
 func (l *Lowerer) pushScope() {
@@ -158,7 +168,20 @@ func (l *Lowerer) typeOfTypeExpr(e Expr) TypeID {
 			return id
 		}
 	case *ArrayTypeExpr:
-		return l.types.InternArray(l.typeOfTypeExpr(n.Elem))
+		elem := l.typeOfTypeExpr(n.Elem)
+		switch n.Kind {
+		case ArrayFixed:
+			if lit, ok := n.Size.(*IntExpr); ok {
+				if sz, err := strconv.Atoi(strings.ReplaceAll(lit.Value, "_", "")); err == nil {
+					return l.types.InternArrayKind(elem, ArrayFixed, sz)
+				}
+			}
+			return l.types.Unknown()
+		case ArrayDynamic:
+			return l.types.InternArrayKind(elem, ArrayDynamic, 0)
+		default:
+			return l.types.InternArray(elem)
+		}
 	case *PointerTypeExpr:
 		return l.types.InternPointer(l.typeOfTypeExpr(n.Elem), n.Nullable)
 	}
@@ -174,13 +197,22 @@ func (l *Lowerer) lowerProgram(program *Program) {
 	for _, decl := range program.Decls {
 		switch d := decl.(type) {
 		case *StructDecl:
-			l.registerStruct(d)
+			if len(d.TypeParams) == 0 {
+				l.registerStruct(d)
+			}
 		case *ProcDecl:
-			l.registerProc(d)
+			if len(d.TypeParams) == 0 {
+				l.registerProc(d)
+			}
 		case *ErrorDecl:
 			l.registerError(d)
 		case *EnumDecl:
 			l.registerEnum(d)
+		case *ImportDecl:
+			if d.Namespace != "" {
+				l.imports[d.Namespace] = d
+				l.allocateImportDecls(d)
+			}
 		case *VarDecl:
 			if previous, ok := latestGlobals[d.Name]; ok {
 				l.globalPrevious[d] = previous
@@ -246,7 +278,7 @@ func (l *Lowerer) lowerProgram(program *Program) {
 
 	// Pass 2: resolve struct field types now that every type name is known.
 	for _, decl := range program.Decls {
-		if d, ok := decl.(*StructDecl); ok {
+		if d, ok := decl.(*StructDecl); ok && len(d.TypeParams) == 0 {
 			l.finishStruct(d)
 		}
 	}
@@ -254,8 +286,14 @@ func (l *Lowerer) lowerProgram(program *Program) {
 	// Pass 3: lower globals in stable dependency order, then procedures.
 	l.lowerGlobals(program)
 	for _, decl := range program.Decls {
-		if d, ok := decl.(*ProcDecl); ok {
+		if d, ok := decl.(*ProcDecl); ok && len(d.TypeParams) == 0 {
 			l.lowerProc(d)
+		}
+	}
+	// Pass 4: lower namespaced imports in their own scopes.
+	for _, decl := range program.Decls {
+		if d, ok := decl.(*ImportDecl); ok && d.Namespace != "" {
+			l.lowerImportModule(d)
 		}
 	}
 
@@ -321,6 +359,20 @@ func (l *Lowerer) inferASTType(expr Expr) TypeID {
 		return l.types.Unknown()
 	case *FieldAccessExpr:
 		bt := l.inferASTType(n.Base)
+		if l.types.Lookup(bt).Kind == TypeKindArray {
+			switch n.Field {
+			case "data":
+				return l.types.InternPointer(l.types.Lookup(bt).Elem, false)
+			case "count":
+				return l.types.Size()
+			case "capacity":
+				if l.types.Lookup(bt).ArrayKind == ArrayDynamic {
+					return l.types.Size()
+				}
+				return l.types.Unknown()
+			}
+			return l.types.Unknown()
+		}
 		if hs, ok := l.hirStructs[bt]; ok {
 			for _, field := range hs.Fields {
 				if field.Name == n.Field {
@@ -355,9 +407,22 @@ func (l *Lowerer) inferASTType(expr Expr) TypeID {
 	case *ArrayInitExpr:
 		return l.types.InternArray(l.typeOfTypeExpr(n.Elem))
 	case *IndexExpr:
+		if Debug && l.analysis != nil {
+			if st, ok := l.analysis.ExprTypes[expr]; ok {
+				fmt.Printf("DBG inferASTType IndexExpr analysis=%q span=%d\n", string(st), expr.nodeSpan().Start)
+			}
+		}
 		base := l.types.Lookup(l.inferASTType(n.Base))
 		if base.Kind == TypeKindArray {
 			return base.Elem
+		}
+		if base.Kind == TypeKindPointer {
+			return base.Elem
+		}
+		if Debug && l.analysis != nil {
+			if st, ok := l.analysis.ExprTypes[expr]; ok {
+				fmt.Printf("DBG inferASTType IndexExpr fallthrough base=%s analysis=%q\n", base.Name, string(st))
+			}
 		}
 	case *ErrorMemberExpr:
 		if n.TypeName != "" {
@@ -382,6 +447,9 @@ func (l *Lowerer) inferASTType(expr Expr) TypeID {
 }
 
 func (l *Lowerer) semanticTypeID(t Type) TypeID {
+	if Debug && strings.Contains(string(t), "Diagnostic") {
+		fmt.Printf("DBG semanticTypeID %q\n", string(t))
+	}
 	if l.analysis != nil {
 		switch decl := l.analysis.NominalDecls[t].(type) {
 		case *StructDecl:
@@ -402,6 +470,16 @@ func (l *Lowerer) semanticTypeID(t Type) TypeID {
 	if strings.HasPrefix(name, "[]") {
 		return l.types.InternArray(l.semanticTypeID(Type(strings.TrimPrefix(name, "[]"))))
 	}
+	if strings.HasPrefix(name, "[dyn]") {
+		return l.types.InternArrayKind(l.semanticTypeID(Type(strings.TrimPrefix(name, "[dyn]"))), ArrayDynamic, 0)
+	}
+	if strings.HasPrefix(name, "[") {
+		if i := strings.IndexByte(name, ']'); i > 0 {
+			if size, err := strconv.Atoi(strings.ReplaceAll(name[1:i], "_", "")); err == nil {
+				return l.types.InternArrayKind(l.semanticTypeID(Type(name[i+1:])), ArrayFixed, size)
+			}
+		}
+	}
 	if strings.HasPrefix(name, "*") {
 		nullable := strings.HasSuffix(name, "?")
 		elem := strings.TrimSuffix(strings.TrimPrefix(name, "*"), "?")
@@ -420,6 +498,101 @@ func (l *Lowerer) registerProc(d *ProcDecl) {
 	sym := l.symbols.Declare(d.Name)
 	l.procSymbols[d] = sym
 	l.procScopes[len(l.procScopes)-1][d.Name] = d
+}
+
+// allocateImportDecls allocates symbols and types for a namespaced import's
+// declarations without making them visible by name. It runs in pass 1 so any
+// body that references the module's members has stable symbols before it is
+// lowered.
+func (l *Lowerer) allocateImportDecls(imp *ImportDecl) {
+	for _, d := range imp.Decls {
+		switch dd := d.(type) {
+		case *ProcDecl:
+			if len(dd.TypeParams) == 0 {
+				l.procSymbols[dd] = l.symbols.Declare(dd.Name)
+			}
+		case *StructDecl:
+			if len(dd.TypeParams) == 0 {
+				tid := l.types.InternScopedStruct(dd.Name)
+				l.structTypes[dd], l.structDecls[tid] = tid, dd
+				hs := &HIRStruct{Symbol: l.symbols.Declare(dd.Name), Name: dd.Name, Type: tid, Span: dd.Span_}
+				l.hirStructs[tid] = hs
+				l.hir.Structs = append(l.hir.Structs, hs)
+			}
+		case *ErrorDecl:
+			tid := l.types.InternScopedError(dd.Name)
+			l.errorTypes[dd] = tid
+			ordinals := make(map[string]int, len(dd.Members))
+			for i, member := range dd.Members {
+				ordinals[member.Name] = i
+			}
+			l.errorOrdinal[tid] = ordinals
+		case *EnumDecl:
+			if len(dd.Members) == 0 || dd.Members[0].Type == nil {
+				continue
+			}
+			underlying := l.typeOfTypeExpr(dd.Members[0].Type)
+			tid := l.types.InternScopedEnum(dd.Name, underlying)
+			l.enumTypes[dd] = tid
+			values := make(map[string]string, len(dd.Members))
+			prev := big.NewInt(0)
+			for i, member := range dd.Members {
+				value := new(big.Int).Add(prev, big.NewInt(1))
+				if i == 0 {
+					value.SetInt64(0)
+				}
+				if member.Value != nil {
+					if explicit, ok := evalEnumMemberValue(member.Value); ok {
+						value.Set(explicit)
+					}
+				}
+				values[member.Name] = value.String()
+				prev.Set(value)
+			}
+			l.enumValues[tid] = values
+		}
+	}
+}
+
+// scopeImportDecls makes a namespaced import's declarations visible in the
+// current scope without re-allocating symbols or types.
+func (l *Lowerer) scopeImportDecls(imp *ImportDecl) {
+	for _, d := range imp.Decls {
+		switch dd := d.(type) {
+		case *ProcDecl:
+			if len(dd.TypeParams) == 0 {
+				l.procScopes[len(l.procScopes)-1][dd.Name] = dd
+			}
+		case *StructDecl:
+			if len(dd.TypeParams) == 0 {
+				l.typeScopes[len(l.typeScopes)-1][dd.Name] = l.structTypes[dd]
+			}
+		case *ErrorDecl:
+			l.typeScopes[len(l.typeScopes)-1][dd.Name] = l.errorTypes[dd]
+		case *EnumDecl:
+			l.typeScopes[len(l.typeScopes)-1][dd.Name] = l.enumTypes[dd]
+		}
+	}
+}
+
+// lowerImportModule registers and lowers a namespaced import's declarations
+// in a dedicated scope. The scope is popped afterwards, so the module's
+// members are reachable only through the namespace binding. Unused functions
+// are still lowered here; the backend discards them via reachability.
+func (l *Lowerer) lowerImportModule(imp *ImportDecl) {
+	l.pushScope()
+	l.scopeImportDecls(imp)
+	for _, d := range imp.Decls {
+		if s, ok := d.(*StructDecl); ok && len(s.TypeParams) == 0 {
+			l.finishStruct(s)
+		}
+	}
+	for _, d := range imp.Decls {
+		if p, ok := d.(*ProcDecl); ok && len(p.TypeParams) == 0 {
+			l.lowerProc(p)
+		}
+	}
+	l.popScope()
 }
 
 func (l *Lowerer) registerStruct(d *StructDecl) {
@@ -735,6 +908,14 @@ func (l *Lowerer) lowerVarDecl(d *VarDecl) HIRStmt {
 	if d.DeclType != nil {
 		t = l.typeOfTypeExpr(d.DeclType)
 	}
+	// A generic struct literal resolves to its instantiated type.
+	if si, ok := d.Init.(*StructInitExpr); ok {
+		if inst, ok := l.analysis.StructLiteralTypes[si]; ok {
+			if id := l.semanticTypeID(inst); id != l.types.Unknown() {
+				t = id
+			}
+		}
+	}
 	// The initializer is lowered before the symbol is declared so that a
 	// shadowing declaration ("#shadow x := x + 1") references the outer
 	// binding, matching the type checker's scoping.
@@ -772,6 +953,10 @@ func (l *Lowerer) lowerVarDecl(d *VarDecl) HIRStmt {
 		if t == l.types.Unknown() {
 			t = init.hirType()
 		}
+	} else if t != l.types.Unknown() && l.types.Lookup(t).Kind == TypeKindArray && l.types.Lookup(t).ArrayKind == ArrayDynamic {
+		// An uninitialized dynamic array starts with capacity 1 (data points
+		// at a one-element heap buffer, count 0, capacity 1).
+		init = &HIRArrayInit{Span_: d.Span_, Type: t, Items: nil}
 	}
 	sym := l.symbols.Declare(d.Name)
 	l.declare(d.Name, sym)
@@ -999,6 +1184,11 @@ func (l *Lowerer) lowerTargetAssign(n *AssignStmt) HIRStmt {
 	if t == l.types.Unknown() {
 		t = l.inferASTType(n.Value)
 	}
+	if Debug {
+		if _, ok := n.Target.(*IndexExpr); ok {
+			fmt.Printf("DBG lowerTargetAssign IndexExpr target type=%s line=%d\n", l.types.Lookup(t).Name, n.Span_.Start)
+		}
+	}
 	value := l.lowerExprAs(n.Value, t)
 	return &HIRAddrStore{Span_: n.Span_, Addr: addr, Value: value, Type: t}
 }
@@ -1076,6 +1266,15 @@ func (l *Lowerer) addressOf(target Expr) HIRExpr {
 		arr := l.lowerExpr(n.Base)
 		idx := l.lowerExpr(n.Index)
 		elemType := l.typeOfIndexElem(n)
+		if arr.hirType() == l.types.String() {
+			// The address of "s[i]" is s.data + i (scaled by byte size).
+			dataField := &HIRFieldLoad{Span_: n.Span_, Base: arr, Field: 0, Type: l.types.InternPointer(l.types.Byte(), false)}
+			return &HIRBinary{Span_: n.Span_, Op: BinaryOpAdd, Left: dataField, Right: idx, Type: dataField.hirType()}
+		}
+		if l.types.Lookup(arr.hirType()).Kind == TypeKindPointer {
+			// The address of "p[i]" is p + i (scaled by element size).
+			return &HIRBinary{Span_: n.Span_, Op: BinaryOpAdd, Left: arr, Right: idx, Type: arr.hirType()}
+		}
 		return &HIRArrayElemAddr{Span_: n.Span_, Array: arr, Index: idx, Type: l.types.InternPointer(elemType, false)}
 	case *FieldAccessExpr:
 		baseAddr := l.addressOf(n.Base)
@@ -1098,6 +1297,20 @@ func (l *Lowerer) typeIndex(base Expr, field string) int {
 			return 0
 		case "count":
 			return 1
+		}
+		return -1
+	}
+	if l.types.Lookup(bt).Kind == TypeKindArray {
+		switch field {
+		case "data":
+			return 0
+		case "count":
+			return 1
+		case "capacity":
+			if l.types.Lookup(bt).ArrayKind == ArrayDynamic {
+				return 2
+			}
+			return -1
 		}
 		return -1
 	}
@@ -1126,6 +1339,21 @@ func (l *Lowerer) typeOfField(base Expr, field string) TypeID {
 		}
 		return l.types.Unknown()
 	}
+	if l.types.Lookup(bt).Kind == TypeKindArray {
+		elem := l.types.Lookup(bt).Elem
+		switch field {
+		case "data":
+			return l.types.InternPointer(elem, false)
+		case "count":
+			return l.types.Size()
+		case "capacity":
+			if l.types.Lookup(bt).ArrayKind == ArrayDynamic {
+				return l.types.Size()
+			}
+			return l.types.Unknown()
+		}
+		return l.types.Unknown()
+	}
 	hs, ok := l.hirStructs[bt]
 	if !ok {
 		return l.types.Unknown()
@@ -1138,11 +1366,20 @@ func (l *Lowerer) typeOfField(base Expr, field string) TypeID {
 	return l.types.Unknown()
 }
 
-// typeOfIndexElem returns the element type of the indexed array.
+// typeOfIndexElem returns the element type of the indexed array or pointer.
 func (l *Lowerer) typeOfIndexElem(n *IndexExpr) TypeID {
 	at := l.inferASTType(n.Base)
-	if at != l.types.Unknown() && l.types.Lookup(at).Kind == TypeKindArray {
-		return l.types.Lookup(at).Elem
+	if at == l.types.String() {
+		return l.types.Byte()
+	}
+	if at != l.types.Unknown() {
+		rt := l.types.Lookup(at)
+		if rt.Kind == TypeKindArray {
+			return rt.Elem
+		}
+		if rt.Kind == TypeKindPointer {
+			return rt.Elem
+		}
 	}
 	return l.inferASTType(n)
 }
@@ -1463,8 +1700,27 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		return l.lowerCall(n)
 	case *AllocateExpr:
 		return &HIRAllocate{Span_: n.Span_, Size: l.lowerExpr(n.Size), Type: l.types.Addr()}
+	case *SizeOfExpr:
+		// size_of resolves its operand as a type expression; if that fails it
+		// is a value expression whose type is measured.
+		t := l.typeOfTypeExpr(n.Type)
+		if t == l.types.Unknown() {
+			t = l.inferASTType(n.Type)
+		}
+		size := l.typeSize(t)
+		return &HIRConst{Span_: n.Span_, Type: l.types.Size(), Kind: ConstInt, Int: int64(size), Str: strconv.Itoa(size)}
 	case *CastExpr:
-		return &HIRCast{Span_: n.Span_, Value: l.lowerExpr(n.Value), Type: l.typeOfTypeExpr(n.Type)}
+		value := l.lowerExpr(n.Value)
+		target := l.typeOfTypeExpr(n.Type)
+		// A cast between two numeric types is a numeric conversion (the value
+		// is preserved, not the bit pattern). Everything else is a
+		// representation-preserving reinterpretation.
+		src := l.types.Lookup(value.hirType())
+		dst := l.types.Lookup(target)
+		if value.hirType() != target && isNumericIRType(src) && isNumericIRType(dst) {
+			return &HIRConvert{Span_: n.Span_, Value: value, Type: target}
+		}
+		return &HIRCast{Span_: n.Span_, Value: value, Type: target}
 	case *InterpolatedStringExpr:
 		var literals []string
 		var values []HIRExpr
@@ -1500,8 +1756,23 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 	case *ErrorExpr:
 		return l.poison(n.Span_, "parser recovery expression reached lowering")
 	case *ArrayInitExpr:
-		elemType := l.typeOfTypeExpr(n.Elem)
-		arrType := l.types.InternArray(elemType)
+		elemType := l.typeOfTypeExpr(n.Elem.Elem)
+		var arrType TypeID
+		switch n.Elem.Kind {
+		case ArrayFixed:
+			if lit, ok := n.Elem.Size.(*IntExpr); ok {
+				if sz, err := strconv.Atoi(strings.ReplaceAll(lit.Value, "_", "")); err == nil {
+					arrType = l.types.InternArrayKind(elemType, ArrayFixed, sz)
+				}
+			}
+			if arrType == 0 {
+				arrType = l.types.Unknown()
+			}
+		case ArrayDynamic:
+			arrType = l.types.InternArrayKind(elemType, ArrayDynamic, 0)
+		default:
+			arrType = l.types.InternArray(elemType)
+		}
 		items := make([]HIRExpr, len(n.Items))
 		for i, item := range n.Items {
 			items[i] = l.lowerExprAs(item, elemType)
@@ -1510,6 +1781,19 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 	case *IndexExpr:
 		base := l.lowerExpr(n.Base)
 		idx := l.lowerExpr(n.Index)
+		if base.hirType() == l.types.String() {
+			// String indexing "s[i]" is pointer indexing on the data field:
+			// *(s.data + i).
+			dataField := &HIRFieldLoad{Span_: n.Span_, Base: base, Field: 0, Type: l.types.InternPointer(l.types.Byte(), false)}
+			addr := &HIRBinary{Span_: n.Span_, Op: BinaryOpAdd, Left: dataField, Right: idx, Type: dataField.hirType()}
+			return &HIRDeref{Span_: n.Span_, Operand: addr, Type: l.types.Byte()}
+		}
+		if l.types.Lookup(base.hirType()).Kind == TypeKindPointer {
+			// Pointer indexing "p[i]" is *(p + i): a deref of a pointer-add.
+			elemType := l.types.Lookup(base.hirType()).Elem
+			addr := &HIRBinary{Span_: n.Span_, Op: BinaryOpAdd, Left: base, Right: idx, Type: base.hirType()}
+			return &HIRDeref{Span_: n.Span_, Operand: addr, Type: elemType}
+		}
 		elemType := l.types.Lookup(base.hirType()).Elem
 		return &HIRIndex{Span_: n.Span_, Base: base, Index: idx, Type: elemType}
 	case *DerefExpr:
@@ -1558,6 +1842,9 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 // target when compatible.
 func (l *Lowerer) lowerExprAs(e Expr, target TypeID) HIRExpr {
 	if si, ok := e.(*StructInitExpr); ok && si.Type == nil {
+		if l.types.Lookup(target).Kind == TypeKindArray {
+			return l.lowerArrayInitFromStruct(si, target)
+		}
 		return l.lowerStructInit(si, target)
 	}
 	if em, ok := e.(*ErrorMemberExpr); ok && em.TypeName == "" {
@@ -1575,6 +1862,18 @@ func (l *Lowerer) lowerExprAs(e Expr, target TypeID) HIRExpr {
 		}
 	}
 	return l.adaptLiteral(lowered, target)
+}
+
+// lowerArrayInitFromStruct lowers an inferred ".{...}" literal assigned to an
+// array type. The parser produces a StructInitExpr for ".{...}"; its positional
+// values become the array elements.
+func (l *Lowerer) lowerArrayInitFromStruct(si *StructInitExpr, target TypeID) HIRExpr {
+	elemType := l.types.Lookup(target).Elem
+	items := make([]HIRExpr, 0, len(si.Fields))
+	for _, field := range si.Fields {
+		items = append(items, l.lowerExprAs(field.Value, elemType))
+	}
+	return &HIRArrayInit{Span_: si.Span_, Type: target, Items: items}
 }
 
 // lowerErrorMember lowers an error member reference to its ordinal constant.
@@ -1653,6 +1952,16 @@ func (l *Lowerer) lowerBinary(n *BinaryExpr) HIRExpr {
 		return &HIRBinary{Span_: n.Span_, OpSpan: n.OpSpan, Op: n.Op, Left: left, Right: right, Type: t}
 	case BinaryOpLt, BinaryOpGt, BinaryOpLe, BinaryOpGe, BinaryOpEq, BinaryOpNeq:
 		left, right = l.adaptLiteralTypes(left, right)
+		// When both operands are literals (for example 'size_of(T) != 8'),
+		// adapt each to the type recorded by the type checker.
+		if isHIRLiteral(left) && isHIRLiteral(right) {
+			if lt := l.analysis.ExprTypes[n.Left]; lt != TypeUnknown {
+				left = l.adaptLiteral(left, l.semanticTypeID(lt))
+			}
+			if rt := l.analysis.ExprTypes[n.Right]; rt != TypeUnknown {
+				right = l.adaptLiteral(right, l.semanticTypeID(rt))
+			}
+		}
 		return &HIRBinary{Span_: n.Span_, OpSpan: n.OpSpan, Op: n.Op, Left: left, Right: right, Type: l.types.Bool()}
 	case BinaryOpAnd, BinaryOpOr:
 		return &HIRBinary{Span_: n.Span_, OpSpan: n.OpSpan, Op: n.Op, Left: left, Right: right, Type: l.types.Bool()}
@@ -1702,21 +2011,65 @@ func (l *Lowerer) lowerIfx(n *IfxExpr) HIRExpr {
 }
 
 func (l *Lowerer) lowerCall(n *CallExpr) HIRExpr {
-	ident, ok := n.Func.(*IdentExpr)
-	if !ok {
+	// A generic call resolves to its instantiated copy recorded by the type
+	// checker, regardless of how the callee is spelled.
+	if instance, ok := l.analysis.CallInstances[n]; ok {
+		return l.lowerCallTo(instance, n)
+	}
+	var name string
+	var proc *ProcDecl
+	var ok bool
+	switch f := n.Func.(type) {
+	case *IdentExpr:
+		name = f.Name
+		if expr, builtin := l.lowerBuiltinCall(n, f); builtin {
+			return expr
+		}
+		proc, ok = l.lookupProc(f.Name)
+		if sym := l.lookup(f.Name); sym != NoSymbol {
+			if alias := l.procAliases[sym]; alias != nil {
+				proc, ok = alias, true
+			} else {
+				ok = false
+			}
+		}
+	case *FieldAccessExpr:
+		// 'namespace.member(...)' where namespace is an imported module.
+		if imp, found := l.importNamespace(f.Base); found {
+			name = f.Field
+			proc, ok = l.findImportProc(imp, f.Field)
+		}
+	default:
 		return l.poison(n.Span_, "non-identifier callable")
 	}
-	proc, ok := l.lookupProc(ident.Name)
-	if sym := l.lookup(ident.Name); sym != NoSymbol {
-		if alias := l.procAliases[sym]; alias != nil {
-			proc, ok = alias, true
-		} else {
-			ok = false
+	if !ok {
+		return l.poison(n.Span_, "unresolved procedure '"+name+"'")
+	}
+	return l.lowerCallTo(proc, n)
+}
+
+// importNamespace reports whether base is an identifier naming an imported
+// module namespace, and returns the resolved import.
+func (l *Lowerer) importNamespace(base Expr) (*ImportDecl, bool) {
+	id, ok := base.(*IdentExpr)
+	if !ok {
+		return nil, false
+	}
+	imp, ok := l.imports[id.Name]
+	return imp, ok
+}
+
+// findImportProc looks up a procedure by name in an import's declarations.
+func (l *Lowerer) findImportProc(imp *ImportDecl, name string) (*ProcDecl, bool) {
+	for _, d := range imp.Decls {
+		if p, ok := d.(*ProcDecl); ok && p.Name == name {
+			return p, true
 		}
 	}
-	if !ok {
-		return l.poison(n.Span_, "unresolved procedure '"+ident.Name+"'")
-	}
+	return nil, false
+}
+
+func (l *Lowerer) lowerCallTo(proc *ProcDecl, n *CallExpr) HIRExpr {
 	sym := l.procSymbols[proc]
 	args := make([]HIRExpr, len(n.Args))
 	for i, arg := range n.Args {
@@ -1731,6 +2084,23 @@ func (l *Lowerer) lowerCall(n *CallExpr) HIRExpr {
 		t = l.unionTypeID(t, l.procErrorType(proc))
 	}
 	return &HIRCall{Span_: n.Span_, Func: sym, Args: args, Type: t}
+}
+
+// lowerBuiltinCall lowers a call to a compiler builtin procedure. It returns
+// the lowered expression and true when the name is a builtin.
+func (l *Lowerer) lowerBuiltinCall(n *CallExpr, ident *IdentExpr) (HIRExpr, bool) {
+	switch ident.Name {
+	case "print", "println":
+		arg := l.lowerExprAs(n.Args[0], l.types.String())
+		return &HIRPrint{Span_: n.Span_, Value: arg, Newline: ident.Name == "println", Type: l.types.Void()}, true
+	case "read_file":
+		arg := l.lowerExprAs(n.Args[0], l.types.String())
+		return &HIRReadFile{Span_: n.Span_, Path: arg, Type: l.types.String()}, true
+	case "file_exists":
+		arg := l.lowerExprAs(n.Args[0], l.types.String())
+		return &HIRFileExists{Span_: n.Span_, Path: arg, Type: l.types.Bool()}, true
+	}
+	return nil, false
 }
 
 func (l *Lowerer) lowerStructInit(n *StructInitExpr, structType TypeID) HIRExpr {
@@ -1867,4 +2237,49 @@ func parseFloatLiteral(s string) (float64, bool) {
 		return 0, false
 	}
 	return v, true
+}
+
+// typeSize computes the size in bytes of a resolved type. It mirrors the
+// backend layout rules so 'size_of' yields the same value the backend uses.
+func (l *Lowerer) typeSize(t TypeID) int {
+	rt := l.types.Lookup(t)
+	switch rt.Kind {
+	case TypeKindVoid:
+		return 0
+	case TypeKindBool:
+		return 1
+	case TypeKindInt:
+		if info, ok := LookupBuiltinType(rt.Name); ok && info.Kind == BuiltinInteger {
+			return info.Bits / 8
+		}
+		return 0
+	case TypeKindFloat:
+		if info, ok := LookupBuiltinType(rt.Name); ok && info.Kind == BuiltinFloat {
+			return info.Bits / 8
+		}
+		return 0
+	case TypeKindString:
+		return 16
+	case TypeKindArray:
+		if rt.ArrayKind == ArrayDynamic {
+			return 24
+		}
+		return 16
+	case TypeKindPointer, TypeKindAddr:
+		return 8
+	case TypeKindError:
+		return 2
+	case TypeKindEnum:
+		return l.typeSize(rt.Underlying)
+	case TypeKindStruct, TypeKindTuple:
+		size := 0
+		for _, f := range rt.Fields {
+			size += l.typeSize(f.Type)
+		}
+		if size == 0 {
+			size = 1
+		}
+		return size
+	}
+	return 0
 }

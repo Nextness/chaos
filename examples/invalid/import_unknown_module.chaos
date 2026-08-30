@@ -1,0 +1,5 @@
+// expect-stage: type
+// expect-error: cannot find module
+// Importing a module that does not exist anywhere on the search path.
+#import «nonexistent»;
+#entry main :: proc -> S64 { return 0; }

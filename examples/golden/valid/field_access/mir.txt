@@ -27,14 +27,14 @@ MIR
       v13:*Point = addr.of l0
       v14:*S64 = field.addr v13 field0
       v15:S64 = const 10
-      deref.store v14 v15
+      deref.store:S64 v14 v15
       v16:*Point = addr.of l0
       v17:*S64 = field.addr v16 field1
       v18:Point = load.local l0
       v19:S64 = field.load v18 field1
       v20:S64 = const 5
       v21:S64 = add v19 v20
-      deref.store v17 v21
+      deref.store:S64 v17 v21
       v22:Point = load.local l0
       v23:S64 = field.load v22 field0
       v24:S64 = const 10
@@ -57,14 +57,14 @@ MIR
       v35:S64 = field.load v34 field0
       v36:S64 = const 1
       v37:S64 = add v35 v36
-      deref.store v33 v37
+      deref.store:S64 v33 v37
       v38:*Point = addr.of l0
       v39:*S64 = field.addr v38 field1
       v40:Point = load.local l0
       v41:S64 = field.load v40 field1
       v42:S64 = const 1
       v43:S64 = sub v41 v42
-      deref.store v39 v43
+      deref.store:S64 v39 v43
       v44:Point = load.local l0
       v45:S64 = field.load v44 field0
       v46:S64 = const 11
@@ -91,11 +91,11 @@ MIR
       v60:*Point = field.addr v59 field0
       v61:*S64 = field.addr v60 field0
       v62:S64 = const 9
-      deref.store v61 v62
+      deref.store:S64 v61 v62
       v63:*Outer = addr.of l1
       v64:*String = field.addr v63 field1
       v65:String = const "bye"
-      deref.store v64 v65
+      deref.store:String v64 v65
       v66:Outer = load.local l1
       v67:Point = field.load v66 field0
       v68:S64 = field.load v67 field0
@@ -123,7 +123,7 @@ MIR
       v83:*Point = array.elem.addr v81 v82
       v84:*S64 = field.addr v83 field0
       v85:S64 = const 5
-      deref.store v84 v85
+      deref.store:S64 v84 v85
       v86:[]Point = load.local l2
       v87:S64 = const 0
       v88:Point = array.index v86 v87

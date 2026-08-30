@@ -393,10 +393,33 @@ func TestFasmRuntime(t *testing.T) {
 		{"string data count read", "#entry main :: proc -> S64 {\n    s := «hello»;\n    if s.count == 5 { return 5; }\n    return 0;\n}", 5},
 		{"string data count write", "#entry main :: proc -> S64 {\n    new_var := «hello world»;\n    a: String;\n    a.data = new_var.data;\n    a.count = new_var.count;\n    if a.count == 11 { return 11; }\n    return 0;\n}", 11},
 		{"string data pointer", "#entry main :: proc -> S64 {\n    s := «abc»;\n    p: *Byte = s.data;\n    if p.* == 97 { return 97; }\n    return 0;\n}", 97},
+		{"string index read", "#entry main :: proc -> S64 {\n    s := «abc»;\n    if s[0] == 97 && s[1] == 98 && s[2] == 99 { return 99; }\n    return 0;\n}", 99},
+		{"string index write", "#entry main :: proc -> S64 {\n    s := «abc»;\n    s[0] = 122;\n    if s[0] == 122 && s == «zbc» { return 122; }\n    return 0;\n}", 122},
+		{"numeric convert", "#entry main :: proc -> S64 {\n    b: Byte = 65;\n    n: S64 = b.(S64);\n    f: F64 = n.(F64);\n    back: S64 = f.(S64);\n    big: S64 = 300;\n    small: Byte = big.(Byte);\n    if n == 65 && f == 65.0 && back == 65 && small == 44 { return 0; }\n    return 1;\n}", 0},
 		{"string interpolation", "#entry main :: proc -> S64 {\n    name := «world»;\n    s := «hello {name}!»;\n    if s == «hello world!» { return 12; }\n    return 0;\n}", 12},
 		{"string interpolation multiple", "#entry main :: proc -> S64 {\n    a := «foo»;\n    b := «bar»;\n    s := «{a}-{b}-{a}»;\n    if s == «foo-bar-foo» { return 9; }\n    return 0;\n}", 9},
 		{"string interpolation leading", "#entry main :: proc -> S64 {\n    name := «x»;\n    s := «{name}»;\n    if s == «x» { return 3; }\n    return 0;\n}", 3},
 		{"string interpolation empty", "#entry main :: proc -> S64 {\n    name := «»;\n    s := «a{name}b»;\n    if s == «ab» { return 2; }\n    return 0;\n}", 2},
+		{"fixed array literal", "#entry main :: proc -> S64 {\n    a: [2]S64 = .{10, 20};\n    if a[0] == 10 && a[1] == 20 && a.count == 2 { return 2; }\n    return 0;\n}", 2},
+		{"dynamic array literal", "#entry main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    if a.count == 3 && a.capacity == 3 && a[2] == 3 { return 3; }\n    return 0;\n}", 3},
+		{"dynamic array uninit capacity", "#entry main :: proc -> S64 {\n    a: [dyn]S64;\n    if a.count == 0 && a.capacity == 1 { return 1; }\n    return 0;\n}", 1},
+		{"dynamic array field write", "#entry main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    a.count = 5;\n    a.capacity = 10;\n    if a.count == 5 && a.capacity == 10 { return 5; }\n    return 0;\n}", 5},
+		{"dynamic array string", "#entry main :: proc -> S64 {\n    a: [dyn]String = .{«a», «b», «c»};\n    if a[0] == «a» && a[2] == «c» { return 3; }\n    return 0;\n}", 3},
+		{"size_of", "#entry main :: proc -> S64 {\n    if size_of(S64) != 8 { return 1; }\n    if size_of(String) != 16 { return 2; }\n    if size_of([dyn]S64) != 24 { return 3; }\n    x: S64 = 5;\n    if size_of(x) != 8 { return 4; }\n    return 0;\n}", 0},
+		{"pointer index read write", "#entry main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    p: *S64 = a.data;\n    v := p[1];\n    p[2] = 30;\n    if v == 2 && a[2] == 30 { return 30; }\n    return 0;\n}", 30},
+		{"generic proc", "identity <T: S64 | String> :: proc (x: T) -> T { return x; }\n#entry main :: proc -> S64 {\n    a := identity(42);\n    s := identity(«hi»);\n    if a == 42 && s == «hi» { return 42; }\n    return 0;\n}", 42},
+		{"generic struct", "Box <T: S64 | String> :: struct { v: T; }\n#entry main :: proc -> S64 {\n    b: Box = .{v=7};\n    if b.v == 7 { return 7; }\n    return 0;\n}", 7},
+		{"append grow", "#import «core»;\n#entry main :: proc -> S64 {\n    a: [dyn]S64;\n    append(*a, 10); append(*a, 20); append(*a, 30); append(*a, 40);\n    if a.count == 4 && a[0] == 10 && a[3] == 40 && a.capacity >= 4 { return 4; }\n    return 0;\n}", 4},
+		{"append pop", "#import «core»;\n#entry main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    last := pop_last(*a);\n    first := pop_first(*a);\n    if last == 3 && first == 1 && a.count == 1 && a[0] == 2 { return 2; }\n    return 0;\n}", 2},
+		{"append string", "#import «core»;\n#entry main :: proc -> S64 {\n    a: [dyn]String = .{«a», «b»};\n    append(*a, «c»); append(*a, «d»);\n    if a.count == 4 && a[0] == «a» && a[3] == «d» { return 4; }\n    return 0;\n}", 4},
+		{"char classification", "#import «core»;\n#entry main :: proc -> S64 {\n    if !is_digit(48) { return 1; }\n    if is_digit(65) { return 2; }\n    if !is_alpha(65) { return 3; }\n    if !is_space(32) { return 4; }\n    if !is_alnum(57) { return 5; }\n    if !is_upper(90) { return 6; }\n    if !is_lower(97) { return 7; }\n    return 0;\n}", 0},
+		{"int to string", "#import «core»;\n#entry main :: proc -> S64 {\n    if int_to_string(-12345) != «-12345» { return 1; }\n    if int_to_string(0) != «0» { return 2; }\n    if int_to_string(987654321) != «987654321» { return 3; }\n    return 0;\n}", 0},
+		{"string to int", "#import «core»;\n#entry main :: proc -> S64 {\n    if string_to_int(«-9876») != -9876 { return 1; }\n    if string_to_int(«42») != 42 { return 2; }\n    if string_to_int(«0») != 0 { return 3; }\n    return 0;\n}", 0},
+		{"string to float", "#import «core»;\n#entry main :: proc -> S64 {\n    if string_to_float(«1.5E2») != 150.0 { return 1; }\n    if string_to_float(«0.25») != 0.25 { return 2; }\n    if string_to_float(«-2.5») != -2.5 { return 3; }\n    return 0;\n}", 0},
+		{"append struct", "#import «core»;\nToken :: struct { kind: S64; text: String; }\n#entry main :: proc -> S64 {\n    lx: [dyn]Token;\n    t: Token;\n    t.kind = 1;\n    t.text = «hello»;\n    append(*lx, t);\n    if lx.count == 1 && lx[0].kind == 1 && lx[0].text == «hello» { return 1; }\n    return 0;\n}", 1},
+		{"append struct field zero cap", "#import «core»;\nToken :: struct { kind: S64; text: String; }\nHolder :: struct { tag: S64; items: [dyn]Token; }\n#entry main :: proc -> S64 {\n    h: Holder;\n    h.tag = 1;\n    t0: Token;\n    t0.kind = 7;\n    t0.text = «alpha»;\n    append(*h.items, t0);\n    buf: Addr = #allocate 8;\n    p: *Byte = buf.(*Byte);\n    p[0] = 58;\n    t1: Token;\n    t1.kind = 9;\n    t1.text = «beta»;\n    append(*h.items, t1);\n    if h.items.count == 2 && h.items[0].kind == 7 && h.items[0].text == «alpha» && h.items[1].kind == 9 { return 9; }\n    return 0;\n}", 9},
+		{"append struct with string field", "#import «core»;\nRec :: struct { kind: S64; text: String; }\nHolder :: struct { tag: S64; items: [dyn]Rec; }\n#entry main :: proc -> S64 {\n    h: Holder;\n    h.tag = 1;\n    r: Rec;\n    r.kind = 3;\n    r.text = «hello world»;\n    append(*h.items, r);\n    buf: Addr = #allocate 8;\n    p: *Byte = buf.(*Byte);\n    p[0] = 65;\n    got := h.items[0];\n    if got.kind == 3 && got.text == «hello world» { return 3; }\n    return 0;\n}", 3},
+		{"generic proc struct type", "Token :: struct { kind: S64; }\nidentity <T: S64 | String | Token> :: proc (x: T) -> T { return x; }\n#entry main :: proc -> S64 {\n    t: Token;\n    t.kind = 5;\n    r := identity(t);\n    if r.kind == 5 { return 5; }\n    return 0;\n}", 5},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -429,6 +452,98 @@ func TestFasmRuntime(t *testing.T) {
 			}
 			if tt.want != 0 {
 				t.Errorf("exit code = 0, want %d", tt.want)
+			}
+		})
+	}
+}
+
+// TestFasmArgv assembles a program whose entry procedure takes the process
+// argument vector and checks that argc and argv are passed correctly.
+func TestFasmArgv(t *testing.T) {
+	fasmPath, err := exec.LookPath("fasm")
+	if err != nil {
+		t.Skip("fasm not found; skipping runtime tests")
+	}
+	src := "#entry main :: proc (argc: S64, argv: *String) -> S64 {\n    if argc != 3 { return 1; }\n    if argv[1] != «alpha» { return 3; }\n    if argv[2] != «beta» { return 4; }\n    return 0;\n}"
+	asm, diags := emitSource(t, src)
+	if diags.HasErrors() {
+		t.Fatalf("emit errors: %v", diags)
+	}
+	dir := t.TempDir()
+	asmPath := filepath.Join(dir, "out.asm")
+	binPath := filepath.Join(dir, "out.bin")
+	if err := os.WriteFile(asmPath, []byte(asm), 0o600); err != nil {
+		t.Fatalf("write asm: %v", err)
+	}
+	if out, err := exec.Command(fasmPath, asmPath, binPath).CombinedOutput(); err != nil {
+		t.Fatalf("fasm failed: %v\n%s", err, out)
+	}
+	if err := os.Chmod(binPath, 0o700); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	cmd := exec.Command(binPath, "alpha", "beta")
+	if err := cmd.Run(); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			t.Errorf("exit code = %d, want 0", ee.ExitCode())
+			return
+		}
+		t.Fatalf("run failed: %v", err)
+	}
+}
+
+// TestFasmPrintAndFileIO assembles programs that use the print, read_file, and
+// file_exists builtins and checks their stdout output and exit codes.
+func TestFasmPrintAndFileIO(t *testing.T) {
+	fasmPath, err := exec.LookPath("fasm")
+	if err != nil {
+		t.Skip("fasm not found; skipping runtime tests")
+	}
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "data.txt")
+	if err := os.WriteFile(filePath, []byte("file contents\n"), 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
+	}
+	tests := []struct {
+		name string
+		src  string
+		want string
+		code int
+	}{
+		{"print", "#entry main :: proc -> S64 {\n    print(«hello»);\n    println(«world»);\n    return 0;\n}", "helloworld\n", 0},
+		{"file exists", "#entry main :: proc -> S64 {\n    if file_exists(«" + filePath + "») { println(«yes»); } else { println(«no»); }\n    if file_exists(«/nonexistent/path.xyz») { println(«bad»); } else { println(«missing»); }\n    return 0;\n}", "yes\nmissing\n", 0},
+		{"read file", "#entry main :: proc -> S64 {\n    content := read_file(«" + filePath + "»);\n    print(content);\n    return 0;\n}", "file contents\n", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			asm, diags := emitSource(t, tt.src)
+			if diags.HasErrors() {
+				t.Fatalf("emit errors: %v", diags)
+			}
+			asmPath := filepath.Join(dir, tt.name+".asm")
+			binPath := filepath.Join(dir, tt.name+".bin")
+			if err := os.WriteFile(asmPath, []byte(asm), 0o600); err != nil {
+				t.Fatalf("write asm: %v", err)
+			}
+			if out, err := exec.Command(fasmPath, asmPath, binPath).CombinedOutput(); err != nil {
+				t.Fatalf("fasm failed: %v\n%s", err, out)
+			}
+			if err := os.Chmod(binPath, 0o700); err != nil {
+				t.Fatalf("chmod: %v", err)
+			}
+			out, err := exec.Command(binPath).CombinedOutput()
+			if err != nil {
+				var ee *exec.ExitError
+				if errors.As(err, &ee) {
+					if got := ee.ExitCode(); got != tt.code {
+						t.Errorf("exit code = %d, want %d", got, tt.code)
+					}
+				} else {
+					t.Fatalf("run failed: %v", err)
+				}
+			}
+			if string(out) != tt.want {
+				t.Errorf("stdout = %q, want %q", string(out), tt.want)
 			}
 		})
 	}

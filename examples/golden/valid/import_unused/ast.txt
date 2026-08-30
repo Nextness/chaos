@@ -1,0 +1,12 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  Decl *compiler.ImportDecl
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      IfStmt condition=Unary(! Call(Ident(is_digit), Int(48)))
+        Block
+          ReturnStmt Int(1)
+      ReturnStmt Int(0)

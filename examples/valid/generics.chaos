@@ -1,0 +1,13 @@
+// expect-exit: 0
+// Generic procedures with type parameters and constraints.
+identity <T: S64 | String> :: proc (x: T) -> T {
+    return x;
+}
+
+#entry main :: proc -> S64 {
+    a := identity(42);
+    if a != 42 { return 1; }
+    s := identity(«hi»);
+    if s != «hi» { return 2; }
+    return 0;
+}

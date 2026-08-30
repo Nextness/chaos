@@ -1,0 +1,16 @@
+// expect-exit: 0
+// Flat import of the core library: functions are directly visible.
+#import «core»;
+#entry main :: proc -> S64 {
+    if !is_digit(48) { return 1; }
+    if is_digit(65) { return 2; }
+    if !is_alpha(65) { return 3; }
+    if !is_space(32) { return 4; }
+    if !is_alnum(57) { return 5; }
+    if !is_upper(90) { return 6; }
+    if !is_lower(97) { return 7; }
+    if int_to_string(-12345) != «-12345» { return 8; }
+    if string_to_int(«-9876») != -9876 { return 9; }
+    if string_to_float(«0.25») != 0.25 { return 10; }
+    return 0;
+}
