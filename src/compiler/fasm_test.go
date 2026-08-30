@@ -548,3 +548,77 @@ func TestFasmPrintAndFileIO(t *testing.T) {
 		})
 	}
 }
+
+// TestFasmGenericAppendPreservesStructFields verifies that appending a struct
+// with a String field through a generic procedure preserves every field after
+// the dynamic array grows. This is a regression test for generic
+// instantiation sharing IdentExpr nodes, which left stale type facts that
+// corrupted the aggregate copy in append's growth path.
+func TestFasmGenericAppendPreservesStructFields(t *testing.T) {
+	fasmPath, err := exec.LookPath("fasm")
+	if err != nil {
+		t.Skip("fasm not found; skipping runtime tests")
+	}
+	src := `#import «core»;
+Item :: struct { kind: S64; text: String; line: S64; column: S64; }
+#entry main :: proc -> S64 {
+    arr: [dyn]Item;
+    it: Item;
+    it.kind = 1;
+    it.text = «hello»;
+    it.line = 7;
+    it.column = 9;
+    append(*arr, it);
+    it.kind = 2;
+    it.text = «world»;
+    it.line = 8;
+    it.column = 10;
+    append(*arr, it);
+    it.kind = 3;
+    it.text = «foo»;
+    it.line = 9;
+    it.column = 11;
+    append(*arr, it);
+    it.kind = 4;
+    it.text = «bar»;
+    it.line = 10;
+    it.column = 12;
+    append(*arr, it);
+    if arr.count != 4 { return 1; }
+    if arr[0].kind != 1 { return 2; }
+    if arr[0].text != «hello» { return 3; }
+    if arr[0].line != 7 { return 4; }
+    if arr[1].kind != 2 { return 5; }
+    if arr[1].text != «world» { return 6; }
+    if arr[1].line != 8 { return 7; }
+    if arr[2].text != «foo» { return 8; }
+    if arr[3].text != «bar» { return 9; }
+    if arr[3].line != 10 { return 10; }
+    if arr[3].column != 12 { return 11; }
+    return 0;
+}`
+	asm, diags := emitSource(t, src)
+	if diags.HasErrors() {
+		t.Fatalf("emit errors: %v", diags)
+	}
+	dir := t.TempDir()
+	asmPath := filepath.Join(dir, "out.asm")
+	binPath := filepath.Join(dir, "out.bin")
+	if err := os.WriteFile(asmPath, []byte(asm), 0o600); err != nil {
+		t.Fatalf("write asm: %v", err)
+	}
+	if out, err := exec.Command(fasmPath, asmPath, binPath).CombinedOutput(); err != nil {
+		t.Fatalf("fasm failed: %v\n%s", err, out)
+	}
+	if err := os.Chmod(binPath, 0o700); err != nil {
+		t.Fatalf("chmod: %v", err)
+	}
+	if err := exec.Command(binPath).Run(); err != nil {
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			t.Errorf("exit code = %d, want 0", ee.ExitCode())
+			return
+		}
+		t.Fatalf("run failed: %v", err)
+	}
+}

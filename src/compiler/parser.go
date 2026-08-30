@@ -565,6 +565,24 @@ func (p *Parser) parseProcOrVarDecl(nameTok Token, name string, compileTime bool
 
 // parseInferVarDecl parses: ident ":=" expr ";"
 func (p *Parser) parseInferVarDecl(nameTok Token, name string) (Decl, bool) {
+	// 'name := ...;' is ambiguous: '...' means "initialize later", which
+	// requires an explicit type. Inference cannot both infer a type and defer
+	// initialization, so this is rejected with a helpful message.
+	if p.at(TkEllipsis) {
+		p.bump() // consume "..."
+		p.diags.Error(p.peek().Span, "cannot infer the type of a variable that is initialized later", "declare a type with 'name : Type = ...;' or provide an expression with 'name := expr;'")
+		p.syncStmt()
+		if p.at(TkSemicolon) {
+			p.bump()
+		}
+		return &VarDecl{
+			Span_:       nameTok.Span,
+			Name:        name,
+			NameSpan:    nameTok.Span,
+			Mutable:     true,
+			CompileTime: false,
+		}, true
+	}
 	init := p.parseExpr(0)
 	if init == nil {
 		// If we can't parse an expression, emit error and try to recover
@@ -635,10 +653,18 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 
 	var init Expr
 	compileTime := false
+	initLater := false
 	if p.match(TkAssign) {
-		init = p.parseExpr(0)
-		if init == nil {
-			p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
+		// 'name : Type = ...;' declares the variable to be initialized later.
+		// The ellipsis is a marker, not an expression.
+		if p.at(TkEllipsis) {
+			p.bump() // consume "..."
+			initLater = true
+		} else {
+			init = p.parseExpr(0)
+			if init == nil {
+				p.diags.Error(p.peek().Span, "expected expression after '='", "add an expression after '='")
+			}
 		}
 	} else if p.at(TkColon) {
 		// name : Type : value — compile-time constant with explicit type.
@@ -667,6 +693,7 @@ func (p *Parser) parseTypedVarDecl(nameTok Token, name string) (Decl, bool) {
 		NameSpan:    nameTok.Span,
 		DeclType:    typeExpr,
 		Init:        init,
+		InitLater:   initLater,
 		Mutable:     !compileTime,
 		CompileTime: compileTime,
 	}
@@ -802,9 +829,9 @@ func (p *Parser) parseProcDecl(nameTok Token, name string, typeParams []TypePara
 			if !p.at(TkComma) {
 				break
 			}
-			commaTok := p.bump()
+			p.bump() // consume ","
 			if p.at(TkRParen) {
-				p.diags.Error(commaTok.Span, "trailing comma after parameter", "remove the trailing comma")
+				// Trailing comma: "proc (a: S64,)" is valid.
 				break
 			}
 		}
@@ -1433,6 +1460,24 @@ func (p *Parser) parseIdentStmt() Stmt {
 				return nil
 			}
 			return decl
+		}
+		// 'name := ...;' is ambiguous: '...' means "initialize later", which
+		// requires an explicit type. Inference cannot both infer a type and
+		// defer initialization, so this is rejected with a helpful message.
+		if p.at(TkEllipsis) {
+			p.bump() // consume "..."
+			p.diags.Error(p.peek().Span, "cannot infer the type of a variable that is initialized later", "declare a type with 'name : Type = ...;' or provide an expression with 'name := expr;'")
+			p.syncStmt()
+			if p.at(TkSemicolon) {
+				p.bump()
+			}
+			return &VarDecl{
+				Span_:       nameTok.Span,
+				Name:        name,
+				NameSpan:    nameTok.Span,
+				Mutable:     true,
+				CompileTime: false,
+			}
 		}
 		init := p.parseExpr(0)
 		if init == nil {
@@ -2704,9 +2749,9 @@ func (p *Parser) parseArrayInit(arrType *ArrayTypeExpr) Expr {
 		if !p.at(TkComma) {
 			break
 		}
-		commaTok := p.bump()
+		p.bump() // consume ","
 		if p.at(TkRBrace) {
-			p.diags.Error(commaTok.Span, "trailing comma in array literal", "remove the trailing comma")
+			// Trailing comma: "item," is valid.
 			break
 		}
 	}
@@ -2736,9 +2781,9 @@ func (p *Parser) parseCallArgs(fn Expr, openSpan Span) *CallExpr {
 		if !p.at(TkComma) {
 			break
 		}
-		commaTok := p.bump()
+		p.bump() // consume ","
 		if p.at(TkRParen) {
-			p.diags.Error(commaTok.Span, "trailing comma in call argument", "remove the trailing comma")
+			// Trailing comma: "f(arg,)" is valid.
 			break
 		}
 	}
@@ -2797,9 +2842,9 @@ func (p *Parser) parseStructInit(typeName Expr, dotSpan Span) Expr {
 		if !p.at(TkComma) {
 			break
 		}
-		commaTok := p.bump()
+		p.bump() // consume ","
 		if p.at(TkRBrace) {
-			p.diags.Error(commaTok.Span, "trailing comma in struct literal", "remove the trailing comma")
+			// Trailing comma: "field = value," is valid.
 			break
 		}
 	}

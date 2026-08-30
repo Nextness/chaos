@@ -477,6 +477,7 @@ type VarDecl struct {
 	NameSpan    Span
 	DeclType    Expr // type annotation (nil for inferred)
 	Init        Expr // initializer (nil for uninitialized)
+	InitLater   bool // '= ...' declares the variable to be initialized later
 	Mutable     bool // can be reassigned
 	CompileTime bool // compile-time constant (::)
 	Shadow      bool // explicit '#shadow' directive allows reusing an outer name

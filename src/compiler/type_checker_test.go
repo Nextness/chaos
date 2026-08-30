@@ -894,21 +894,21 @@ func TestTypeCheckDefiniteInitializationAcrossControlFlow(t *testing.T) {
 	}{
 		{
 			name: "both branches initialize",
-			src:  "f :: proc (flag: Bool) -> S64 { x: S64; if flag { x = 1; } else { x = 2; } return x; }",
+			src:  "f :: proc (flag: Bool) -> S64 { x: S64 = ...; if flag { x = 1; } else { x = 2; } return x; }",
 		},
 		{
 			name: "one branch initializes",
-			src:  "f :: proc (flag: Bool) -> S64 { x: S64; if flag { x = 1; } return x; }",
+			src:  "f :: proc (flag: Bool) -> S64 { x: S64 = ...; if flag { x = 1; } return x; }",
 			want: true,
 		},
 		{
 			name: "loop may execute zero times",
-			src:  "f :: proc -> S64 { x: S64; for false { x = 1; } return x; }",
+			src:  "f :: proc -> S64 { x: S64 = ...; for false { x = 1; } return x; }",
 			want: true,
 		},
 		{
 			name: "c loop initializer executes",
-			src:  "f :: proc -> S64 { x: S64; for x = 1; false; x += 1 { } return x; }",
+			src:  "f :: proc -> S64 { x: S64 = ...; for x = 1; false; x += 1 { } return x; }",
 		},
 	}
 	for _, tt := range tests {
@@ -1429,6 +1429,49 @@ func TestTypeCheckAddrAndAllocate(t *testing.T) {
 	// #deallocate requires an address.
 	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    #deallocate 5;\n    return 0;\n}"); !hasError(diags, "#deallocate requires an address") {
 		t.Errorf("expected #deallocate error, got %v", diags)
+	}
+}
+
+func TestTypeCheckAddrOfUninitialized(t *testing.T) {
+	// Taking the address of an uninitialized variable is valid: address-of
+	// does not read the value, and the backend zero-initializes every local.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: S64;\n    set_val(*a, 42);\n    return 0;\n}\nset_val :: proc (p: *S64, v: S64) { p.* = v; }"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for address-of uninitialized: %v", diags)
+	}
+	// A struct with a dynamic-array field can be passed by address uninitialized.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    p: Parser;\n    set_pos(*p, 5);\n    return 0;\n}\nParser :: struct { items: [dyn]S64; pos: Size; }\nset_pos :: proc (p: *Parser, n: Size) { p.*.pos = n; }"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for address-of uninitialized struct: %v", diags)
+	}
+	// Reading a plain declaration is valid (zero-initialized).
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: S64;\n    return a;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for reading a zero-initialized declaration: %v", diags)
+	}
+	// Reading an '= ...' declaration (initialize later) is rejected.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: S64 = ...;\n    return a;\n}"); !hasError(diags, "is not initialized") {
+		t.Errorf("expected read-of-init-later error, got %v", diags)
+	}
+}
+
+func TestTypeCheckInitLaterSemantics(t *testing.T) {
+	// A plain declaration is zero-initialized and readable.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: S64;\n    if a == 0 { return 0; }\n    return 1;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for zero-initialized declaration: %v", diags)
+	}
+	// A plain declaration is comparable with any operator.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: S64;\n    if a != 0 { return 1; }\n    if a < 1 { return 2; }\n    if a >= 0 { return 3; }\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for comparisons on zero-initialized declaration: %v", diags)
+	}
+	// '= ...' declares initialize-later: reading before assignment is rejected.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: S64 = ...;\n    if a == 0 { return 1; }\n    return 0;\n}"); !hasError(diags, "is not initialized") {
+		t.Errorf("expected init-later read error, got %v", diags)
+	}
+	// Assigning before reading is valid.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: S64 = ...;\n    a = 42;\n    if a != 42 { return 1; }\n    return 0;\n}"); diags.HasErrors() {
+		t.Fatalf("unexpected errors for init-later then assign: %v", diags)
+	}
+	// A dynamic array declared with '= ...' is not initialized.
+	if diags := typeCheckSource(t, "#entry main :: proc -> S64 {\n    a: [dyn]S64 = ...;\n    if a.count == 0 { return 1; }\n    return 0;\n}"); !hasError(diags, "is not initialized") {
+		t.Errorf("expected init-later dynamic array read error, got %v", diags)
 	}
 }
 

@@ -841,12 +841,10 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		tc.checkShadow(n.Name, n.NameSpan, n.Shadow)
 		t := tc.checkVarDecl(n)
 		tc.analysis.DeclTypes[n] = t
-		initialized := n.Init != nil
-		// An uninitialized dynamic array is still initialized: the backend
-		// gives it a one-element buffer with capacity 1.
-		if !initialized && t != TypeUnknown && arrayKindOf(t) == ArrayDynamic {
-			initialized = true
-		}
+		// A plain declaration ('a: S64;') is zero-initialized and therefore
+		// initialized. An explicit 'a: S64 = ...;' declares the variable to be
+		// initialized later, so it stays uninitialized until assigned.
+		initialized := n.Init != nil || !n.InitLater
 		binding := Binding{Type: t, TypeValue: tc.constTypeValue(n.Init), Mutable: n.Mutable, Initialized: initialized, CompileTime: n.CompileTime, ConstExpr: n.Init, Span: n.NameSpan}
 		if n.Init != nil {
 			binding.NullState = tc.exprNullState(n.Init)
@@ -2318,6 +2316,19 @@ func (tc *TypeChecker) inferExpr(e Expr) Type {
 	return t
 }
 
+// inferLvalueType resolves the type of an lvalue expression without the
+// initialization check. It is used for address-of, which does not read the
+// operand's value. For an identifier it returns the binding type directly;
+// other lvalues recurse through the normal inference.
+func (tc *TypeChecker) inferLvalueType(e Expr) Type {
+	if id, ok := e.(*IdentExpr); ok {
+		if binding, _, found := tc.lookupBinding(id.Name); found {
+			return binding.Type
+		}
+	}
+	return tc.inferExpr(e)
+}
+
 func (tc *TypeChecker) inferExprInner(e Expr) Type {
 	switch n := e.(type) {
 	case *IntExpr:
@@ -3188,19 +3199,13 @@ func (tc *TypeChecker) checkBinaryExpr(n *BinaryExpr) Type {
 }
 
 func (tc *TypeChecker) checkUnaryExpr(n *UnaryExpr) Type {
-	ot := tc.inferExpr(n.Operand)
 	switch n.Op {
-	case UnaryOpNeg:
-		if !isIntegerType(ot) && !isFloatType(ot) {
-			tc.diags.Error(n.Span_, "operator - requires a numeric operand, got "+tc.formatType(ot), "use an integer or floating-point value")
-		}
-		return ot
-	case UnaryOpNot:
-		if ot != TypeUnknown && ot != TypeBool {
-			tc.diags.Error(n.Span_, "operator ! requires a Bool operand, got "+tc.formatType(ot), "use a boolean operand")
-		}
-		return TypeBool
 	case UnaryOpAddr:
+		// Taking the address of a variable does not read its value, and the
+		// backend zero-initializes every local, so an uninitialized operand is
+		// a valid address target. Resolve its type without the
+		// initialization check.
+		ot := tc.inferLvalueType(n.Operand)
 		if ot == TypeUnknown {
 			return TypeUnknown
 		}
@@ -3214,6 +3219,19 @@ func (tc *TypeChecker) checkUnaryExpr(n *UnaryExpr) Type {
 		}
 		// The result is the address of storage, which is never null.
 		return pointerType(ot, false)
+	}
+	ot := tc.inferExpr(n.Operand)
+	switch n.Op {
+	case UnaryOpNeg:
+		if !isIntegerType(ot) && !isFloatType(ot) {
+			tc.diags.Error(n.Span_, "operator - requires a numeric operand, got "+tc.formatType(ot), "use an integer or floating-point value")
+		}
+		return ot
+	case UnaryOpNot:
+		if ot != TypeUnknown && ot != TypeBool {
+			tc.diags.Error(n.Span_, "operator ! requires a Bool operand, got "+tc.formatType(ot), "use a boolean operand")
+		}
+		return TypeBool
 	}
 	return TypeUnknown
 }

@@ -47,7 +47,13 @@ func substituteExpr(e Expr, mapping map[string]Expr) Expr {
 		return nil
 	}
 	switch n := e.(type) {
-	case *IdentExpr, *IntExpr, *FloatExpr, *StringExpr, *BoolExpr, *NullLitExpr,
+	case *IdentExpr:
+		// Copy the identifier so each generic instance owns its node. Sharing
+		// the original would let one instance's type-check overwrite the
+		// ExprTypes entry that another instance reads during lowering.
+		cp := *n
+		return &cp
+	case *IntExpr, *FloatExpr, *StringExpr, *BoolExpr, *NullLitExpr,
 		*LoopBuiltinExpr, *ErrorExpr:
 		return n
 	case *BinaryExpr:

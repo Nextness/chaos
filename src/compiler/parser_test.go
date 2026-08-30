@@ -208,6 +208,38 @@ func TestParseTypedVarDeclNoInit(t *testing.T) {
 	if d.Init != nil {
 		t.Errorf("Init = %v, want nil", d.Init)
 	}
+	if d.InitLater {
+		t.Error("InitLater = true, want false for a plain declaration")
+	}
+}
+
+func TestParseTypedVarDeclInitLater(t *testing.T) {
+	// 'x : S64 = ...;' declares the variable to be initialized later.
+	decl := parseOneDecl(t, "x : S64 = ...;")
+	d, ok := decl.(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", decl)
+	}
+	if d.Name != "x" {
+		t.Errorf("Name = %q, want %q", d.Name, "x")
+	}
+	if d.Init != nil {
+		t.Errorf("Init = %v, want nil", d.Init)
+	}
+	if !d.InitLater {
+		t.Error("InitLater = false, want true for '= ...'")
+	}
+}
+
+func TestParseInferVarDeclEllipsisError(t *testing.T) {
+	// 'x := ...;' is ambiguous and rejected with a helpful message.
+	result := parseTestCase(t, "main :: proc {\n    x := ...;\n}")
+	if !result.Diags.HasErrors() {
+		t.Fatal("expected error for ':= ...'")
+	}
+	if !strings.Contains(result.Diags[0].Message, "cannot infer the type of a variable that is initialized later") {
+		t.Errorf("message = %q, want the init-later inference error", result.Diags[0].Message)
+	}
 }
 
 func TestParseTypedCompileTimeVarDecl(t *testing.T) {
@@ -2634,21 +2666,12 @@ func TestRegressionElseIfSpan(t *testing.T) {
 }
 
 func TestRegressionTrailingCommaParam(t *testing.T) {
-	// Trailing comma in parameter list should produce an error
-	// pointing at the comma, not at the closing parenthesis.
+	// Trailing comma in a parameter list is valid and parses the parameter.
 	source := "f :: proc (x: S64,) { }"
 	result := parseTestCase(t, source)
-	if !result.Diags.HasErrors() {
-		t.Fatal("expected error for trailing comma in parameter list")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors for trailing comma in parameter list: %v", result.Diags)
 	}
-	// The diagnostic should point at the comma (offset 17)
-	if result.Diags[0].Span.Start != 17 || result.Diags[0].Span.End != 18 {
-		t.Errorf("diagnostic span = %#v, want offset 17-18 (the comma)", result.Diags[0].Span)
-	}
-	if result.Diags[0].Message != "trailing comma after parameter" {
-		t.Errorf("diagnostic message = %q, want %q", result.Diags[0].Message, "trailing comma after parameter")
-	}
-	// Verify the parameter was still parsed (error recovery)
 	proc, ok := result.Program.Decls[0].(*ProcDecl)
 	if !ok {
 		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
@@ -2662,21 +2685,12 @@ func TestRegressionTrailingCommaParam(t *testing.T) {
 }
 
 func TestRegressionTrailingCommaArg(t *testing.T) {
-	// Trailing comma in call argument list should produce an error
-	// pointing at the comma, not at the closing parenthesis.
+	// Trailing comma in a call argument list is valid and parses the argument.
 	source := "main :: proc { f(1,); }"
 	result := parseTestCase(t, source)
-	if !result.Diags.HasErrors() {
-		t.Fatal("expected error for trailing comma in call argument")
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors for trailing comma in call argument: %v", result.Diags)
 	}
-	// The diagnostic should point at the comma (offset 18)
-	if result.Diags[0].Span.Start != 18 || result.Diags[0].Span.End != 19 {
-		t.Errorf("diagnostic span = %#v, want offset 18-19 (the comma)", result.Diags[0].Span)
-	}
-	if result.Diags[0].Message != "trailing comma in call argument" {
-		t.Errorf("diagnostic message = %q, want %q", result.Diags[0].Message, "trailing comma in call argument")
-	}
-	// Verify the argument was still parsed (error recovery)
 	proc, ok := result.Program.Decls[0].(*ProcDecl)
 	if !ok {
 		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
@@ -2694,6 +2708,54 @@ func TestRegressionTrailingCommaArg(t *testing.T) {
 	}
 	if len(call.Args) != 1 {
 		t.Fatalf("Args = %d, want 1", len(call.Args))
+	}
+}
+
+func TestTrailingCommaStructLiteral(t *testing.T) {
+	// A trailing comma after the last field is valid.
+	source := "Point :: struct { x: S64; y: S64; }\nmain :: proc { p := Point.{ x = 1, y = 2, }; }"
+	result := parseTestCase(t, source)
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors for trailing comma in struct literal: %v", result.Diags)
+	}
+	proc, ok := result.Program.Decls[1].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[1])
+	}
+	vd, ok := proc.Body.Stmts[0].(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", proc.Body.Stmts[0])
+	}
+	si, ok := vd.Init.(*StructInitExpr)
+	if !ok {
+		t.Fatalf("expected *StructInitExpr, got %T", vd.Init)
+	}
+	if len(si.Fields) != 2 {
+		t.Fatalf("Fields = %d, want 2", len(si.Fields))
+	}
+}
+
+func TestTrailingCommaArrayLiteral(t *testing.T) {
+	// A trailing comma after the last element is valid.
+	source := "main :: proc { a := [2]S64.{ 10, 20, }; }"
+	result := parseTestCase(t, source)
+	if result.Diags.HasErrors() {
+		t.Fatalf("unexpected errors for trailing comma in array literal: %v", result.Diags)
+	}
+	proc, ok := result.Program.Decls[0].(*ProcDecl)
+	if !ok {
+		t.Fatalf("expected *ProcDecl, got %T", result.Program.Decls[0])
+	}
+	vd, ok := proc.Body.Stmts[0].(*VarDecl)
+	if !ok {
+		t.Fatalf("expected *VarDecl, got %T", proc.Body.Stmts[0])
+	}
+	ai, ok := vd.Init.(*ArrayInitExpr)
+	if !ok {
+		t.Fatalf("expected *ArrayInitExpr, got %T", vd.Init)
+	}
+	if len(ai.Items) != 2 {
+		t.Fatalf("Items = %d, want 2", len(ai.Items))
 	}
 }
 
