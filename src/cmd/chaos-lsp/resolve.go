@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 
 	"chaos_compiler/compiler"
@@ -13,6 +15,7 @@ import (
 const (
 	completionKindFunction   = 3
 	completionKindVariable   = 6
+	completionKindModule     = 9
 	completionKindEnum       = 13
 	completionKindConstant   = 14
 	completionKindEnumMember = 20
@@ -34,6 +37,7 @@ type symbol struct {
 	enumDecl     *compiler.EnumDecl
 	enumMember   *compiler.EnumMember
 	enumType     string // owning enum type name for an enum member
+	importDecl   *compiler.ImportDecl
 	param        *compiler.Param
 	structField  *compiler.StructField
 	structType   string
@@ -61,23 +65,24 @@ type occurrence struct {
 
 // resolver is a per-document symbol index built from the tolerant parse.
 type resolver struct {
-	sf           *compiler.SourceFile
-	uri          string
-	program      *compiler.Program
-	analysis     *compiler.SemanticAnalysis
-	tokens       []compiler.Token
-	decls        []*symbol
-	global       *scope
-	occurrences  []*occurrence
-	errorMembers map[string]map[string]*symbol // error type name -> member name -> symbol
-	enumMembers  map[string]map[string]*symbol // enum type name -> member name -> symbol
-	structFields map[*compiler.StructDecl]map[string]*symbol
-	errorByDecl  map[*compiler.ErrorDecl]map[string]*symbol
-	enumByDecl   map[*compiler.EnumDecl]map[string]*symbol
+	sf            *compiler.SourceFile
+	uri           string
+	program       *compiler.Program
+	analysis      *compiler.SemanticAnalysis
+	tokens        []compiler.Token
+	decls         []*symbol
+	global        *scope
+	occurrences   []*occurrence
+	errorMembers  map[string]map[string]*symbol // error type name -> member name -> symbol
+	enumMembers   map[string]map[string]*symbol // enum type name -> member name -> symbol
+	structFields  map[*compiler.StructDecl]map[string]*symbol
+	errorByDecl   map[*compiler.ErrorDecl]map[string]*symbol
+	enumByDecl    map[*compiler.EnumDecl]map[string]*symbol
+	importMembers map[*compiler.ImportDecl]map[string]*symbol
 }
 
 func newResolver(doc *Document) *resolver {
-	r := &resolver{sf: doc.sf, uri: doc.URI, program: doc.program, analysis: doc.analysis, tokens: doc.tokens, errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol), structFields: make(map[*compiler.StructDecl]map[string]*symbol), errorByDecl: make(map[*compiler.ErrorDecl]map[string]*symbol), enumByDecl: make(map[*compiler.EnumDecl]map[string]*symbol)}
+	r := &resolver{sf: doc.sf, uri: doc.URI, program: doc.program, analysis: doc.analysis, tokens: doc.tokens, errorMembers: make(map[string]map[string]*symbol), enumMembers: make(map[string]map[string]*symbol), structFields: make(map[*compiler.StructDecl]map[string]*symbol), errorByDecl: make(map[*compiler.ErrorDecl]map[string]*symbol), enumByDecl: make(map[*compiler.EnumDecl]map[string]*symbol), importMembers: make(map[*compiler.ImportDecl]map[string]*symbol)}
 	r.buildScopes()
 	r.collectOccurrences()
 	return r
@@ -89,10 +94,8 @@ func buildResolver(doc *Document) *resolver { return doc.resolver }
 func (r *resolver) buildScopes() {
 	r.global = &scope{start: 0, end: len(r.sf.Source)}
 	for _, decl := range r.program.Decls {
-		// Only index declarations in the current file. Imported declarations
-		// have spans in other files and must not be added to this document's
-		// symbol index.
 		if declSpanFile(decl) != r.sf.ID {
+			r.addImportedGlobal(decl)
 			continue
 		}
 		switch d := decl.(type) {
@@ -135,8 +138,61 @@ func (r *resolver) buildScopes() {
 			r.global.symbols = append(r.global.symbols, sym)
 			r.decls = append(r.decls, sym)
 			r.collectEnumMembers(d)
+		case *compiler.ImportDecl:
+			if d.Namespace == "" {
+				continue
+			}
+			span := compiler.Span{File: d.Span_.File, Start: d.Span_.Start, End: d.Span_.Start + len(d.Namespace)}
+			sym := &symbol{name: d.Namespace, kind: completionKindModule, span: span, importDecl: d, scope: r.global}
+			r.global.symbols = append(r.global.symbols, sym)
+			r.decls = append(r.decls, sym)
+			r.collectImportMembers(d)
 		}
 	}
+}
+
+// addImportedGlobal exposes a flat import's declarations to name resolution
+// and completion without treating the imported body as a local lexical scope.
+func (r *resolver) addImportedGlobal(decl compiler.Decl) {
+	var sym *symbol
+	switch d := decl.(type) {
+	case *compiler.ProcDecl:
+		sym = &symbol{name: d.Name, kind: completionKindFunction, span: d.NameSpan, proc: d, scope: r.global}
+	case *compiler.VarDecl:
+		kind := completionKindVariable
+		if d.CompileTime {
+			kind = completionKindConstant
+		}
+		sym = &symbol{name: d.Name, kind: kind, span: d.NameSpan, varDecl: d, scope: r.global, semanticType: r.declType(d)}
+	case *compiler.StructDecl:
+		sym = &symbol{name: d.Name, kind: completionKindStruct, span: d.NameSpan, structDecl: d, scope: r.global}
+		r.collectStructFields(d)
+	case *compiler.ErrorDecl:
+		sym = &symbol{name: d.Name, kind: completionKindEnum, span: d.NameSpan, errorDecl: d, scope: r.global}
+		r.collectErrorMembers(d)
+	case *compiler.EnumDecl:
+		sym = &symbol{name: d.Name, kind: completionKindEnum, span: d.NameSpan, enumDecl: d, scope: r.global}
+		r.collectEnumMembers(d)
+	}
+	if sym != nil {
+		r.global.symbols = append(r.global.symbols, sym)
+		r.decls = append(r.decls, sym)
+	}
+}
+
+func (r *resolver) collectImportMembers(imp *compiler.ImportDecl) {
+	if r.importMembers == nil {
+		r.importMembers = make(map[*compiler.ImportDecl]map[string]*symbol)
+	}
+	members := make(map[string]*symbol)
+	for _, decl := range imp.Decls {
+		if proc, ok := decl.(*compiler.ProcDecl); ok {
+			sym := &symbol{name: proc.Name, kind: completionKindFunction, span: proc.NameSpan, proc: proc, scope: r.global}
+			members[proc.Name] = sym
+			r.decls = append(r.decls, sym)
+		}
+	}
+	r.importMembers[imp] = members
 }
 
 // collectErrorMembers records each error member as an occurrence and indexes
@@ -496,9 +552,15 @@ func (r *resolver) collectOccurrences() {
 			// value and the field resolves through the struct declaration.
 			walkExpr(e.Base)
 			if ident, ok := e.Base.(*compiler.IdentExpr); ok {
-				if owner := r.resolveName(ident.Name, ident.Span_.Start); owner != nil && owner.enumDecl != nil {
-					r.occurrences = append(r.occurrences, &occurrence{name: e.Field, span: e.FieldSpan, sym: r.enumByDecl[owner.enumDecl][e.Field]})
-					break
+				if owner := r.resolveName(ident.Name, ident.Span_.Start); owner != nil {
+					if owner.importDecl != nil {
+						r.occurrences = append(r.occurrences, &occurrence{name: e.Field, span: e.FieldSpan, sym: r.importMembers[owner.importDecl][e.Field]})
+						break
+					}
+					if owner.enumDecl != nil {
+						r.occurrences = append(r.occurrences, &occurrence{name: e.Field, span: e.FieldSpan, sym: r.enumByDecl[owner.enumDecl][e.Field]})
+						break
+					}
 				}
 			}
 			var fsym *symbol
@@ -767,7 +829,7 @@ func (r *resolver) symbolVisibleAt(sym *symbol, sc *scope, offset int) bool {
 // occurrenceAt returns the occurrence whose span contains the byte offset.
 func (r *resolver) occurrenceAt(offset int) *occurrence {
 	for _, occ := range r.occurrences {
-		if offset >= occ.span.Start && offset < occ.span.End {
+		if occ.span.File == r.sf.ID && offset >= occ.span.Start && offset < occ.span.End {
 			return occ
 		}
 	}
@@ -785,6 +847,24 @@ func (r *resolver) definitionAt(offset int) *symbol {
 		return occ.sym
 	}
 	return r.resolveName(occ.name, offset)
+}
+
+func (r *resolver) location(span compiler.Span) (Location, bool) {
+	if span.File == r.sf.ID {
+		return Location{URI: r.uri, Range: toLSPRange(compiler.SpanToRange(span, r.sf))}, true
+	}
+	if r.program == nil {
+		return Location{}, false
+	}
+	source, ok := r.program.Sources[span.File]
+	if !ok {
+		return Location{}, false
+	}
+	uri := source.Path
+	if !strings.HasPrefix(uri, "file://") {
+		uri = (&url.URL{Scheme: "file", Path: uri}).String()
+	}
+	return Location{URI: uri, Range: toLSPRange(compiler.SpanToRange(span, &source))}, true
 }
 
 func (r *resolver) resolveOccurrence(occ *occurrence) *symbol {
@@ -862,8 +942,27 @@ func (r *resolver) completionAt(offset int) []CompletionItem {
 		}
 		sc = sc.parent
 	}
+	for _, builtin := range compiler.BuiltinProcedures() {
+		if seen[builtin.Name] {
+			continue
+		}
+		seen[builtin.Name] = true
+		out = append(out, CompletionItem{
+			Label:  builtin.Name,
+			Kind:   completionKindFunction,
+			Detail: builtinProcSignature(builtin),
+		})
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Label < out[j].Label })
 	return out
+}
+
+func builtinProcSignature(info compiler.BuiltinProcInfo) string {
+	params := make([]string, len(info.Params))
+	for i, param := range info.Params {
+		params[i] = "arg" + strconv.Itoa(i+1) + ": " + param
+	}
+	return info.Name + " :: proc (" + strings.Join(params, ", ") + ") -> " + info.Result
 }
 
 // memberCompletion accepts both "Type." and a partially typed "Type.PRE".
@@ -896,6 +995,8 @@ func (r *resolver) memberCompletion(offset int) []CompletionItem {
 			members = r.errorByDecl[owner.errorDecl]
 		case owner.enumDecl != nil:
 			members = r.enumByDecl[owner.enumDecl]
+		case owner.importDecl != nil:
+			members = r.importMembers[owner.importDecl]
 		case owner.structDecl != nil:
 			members = r.structFields[owner.structDecl]
 		case owner.semanticType != "":
@@ -964,21 +1065,41 @@ func isIdentStop(b byte) bool {
 	return false
 }
 
-// exprText returns the source text of an identifier type expression.
+// exprText renders a type expression using Chaos source syntax.
 func exprText(e compiler.Expr) string {
-	switch value := e.(type) {
-	case *compiler.IdentExpr:
-		return value.Name
-	case *compiler.ArrayTypeExpr:
-		return "[]" + exprText(value.Elem)
+	return compiler.FormatTypeExpr(e)
+}
+
+func typeParamsText(params []compiler.TypeParam) string {
+	if len(params) == 0 {
+		return ""
 	}
-	return ""
+	var b strings.Builder
+	b.WriteString(" <")
+	for i, param := range params {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(param.Name)
+		if len(param.Constraints) > 0 {
+			b.WriteString(": ")
+			for j, constraint := range param.Constraints {
+				if j > 0 {
+					b.WriteString(" | ")
+				}
+				b.WriteString(exprText(constraint))
+			}
+		}
+	}
+	b.WriteString(">")
+	return b.String()
 }
 
 // procSignature renders a procedure signature, e.g. "add(a: S64, b: S64) -> S64".
 func procSignature(proc *compiler.ProcDecl) string {
 	var b strings.Builder
 	b.WriteString(proc.Name)
+	b.WriteString(typeParamsText(proc.TypeParams))
 	b.WriteString("(")
 	for i, param := range proc.Params {
 		if i > 0 {
@@ -1025,6 +1146,7 @@ func procSignature(proc *compiler.ProcDecl) string {
 func structSignature(st *compiler.StructDecl) string {
 	var b strings.Builder
 	b.WriteString(st.Name)
+	b.WriteString(typeParamsText(st.TypeParams))
 	b.WriteString(" :: struct {\n")
 	for _, field := range st.Fields {
 		b.WriteString("\t")
@@ -1104,6 +1226,8 @@ func (r *resolver) symbolHover(sym *symbol) string {
 		return "```chaos\n" + enumSignature(sym.enumDecl) + "\n```"
 	case sym.enumMember != nil:
 		return "```chaos\n" + sym.enumType + "." + sym.name + " : " + sym.enumType + "\n```"
+	case sym.importDecl != nil:
+		return "```chaos\n" + sym.name + " :: #import «" + sym.importDecl.Module + "»\n```"
 	case sym.varDecl != nil:
 		if sym.semanticType != "" {
 			return "```chaos\n" + sym.name + " : " + sym.semanticType + "\n```"
@@ -1170,7 +1294,11 @@ func (s *Server) handleDefinition(msg message) Response {
 	if sym == nil {
 		return Response{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage("null")}
 	}
-	out, err := json.Marshal(Location{URI: doc.URI, Range: toLSPRange(compiler.SpanToRange(sym.span, doc.sf))})
+	location, ok := buildResolver(doc).location(sym.span)
+	if !ok {
+		return Response{JSONRPC: "2.0", ID: msg.ID, Result: json.RawMessage("null")}
+	}
+	out, err := json.Marshal(location)
 	if err != nil {
 		return errorResponse(msg.ID, -32603, "internal error")
 	}
@@ -1185,6 +1313,10 @@ func (s *Server) handleReferences(msg message) Response {
 	}
 	s.mu.Lock()
 	doc := s.documents[params.TextDocument.URI]
+	documents := make([]*Document, 0, len(s.documents))
+	for _, document := range s.documents {
+		documents = append(documents, document)
+	}
 	s.mu.Unlock()
 	if doc == nil {
 		return errorResponse(msg.ID, -32603, "document not open")
@@ -1193,19 +1325,53 @@ func (s *Server) handleReferences(msg message) Response {
 	if !ok {
 		return errorResponse(msg.ID, -32602, "position is outside the document or splits a UTF-16 character")
 	}
-	occs := buildResolver(doc).referencesAt(offset)
+	target := buildResolver(doc).definitionAt(offset)
+	if target == nil {
+		out, _ := json.Marshal([]Location{})
+		return Response{JSONRPC: "2.0", ID: msg.ID, Result: out}
+	}
+	targetLocation, ok := buildResolver(doc).location(target.span)
+	if !ok {
+		out, _ := json.Marshal([]Location{})
+		return Response{JSONRPC: "2.0", ID: msg.ID, Result: out}
+	}
+	targetKey := locationIdentity(targetLocation)
 	var locs []Location
-	for _, occ := range occs {
-		if !params.Context.IncludeDeclaration && occ.sym != nil && occ.span == occ.sym.span {
-			continue
+	seen := make(map[string]bool)
+	for _, document := range documents {
+		resolver := buildResolver(document)
+		for _, occurrence := range resolver.occurrences {
+			resolved := resolver.resolveOccurrence(occurrence)
+			if resolved == nil {
+				continue
+			}
+			resolvedLocation, ok := resolver.location(resolved.span)
+			if !ok || locationIdentity(resolvedLocation) != targetKey {
+				continue
+			}
+			if !params.Context.IncludeDeclaration && occurrence.sym != nil && occurrence.span == occurrence.sym.span {
+				continue
+			}
+			location, ok := resolver.location(occurrence.span)
+			if !ok {
+				continue
+			}
+			key := locationIdentity(location)
+			if !seen[key] {
+				seen[key] = true
+				locs = append(locs, location)
+			}
 		}
-		locs = append(locs, Location{URI: doc.URI, Range: toLSPRange(compiler.SpanToRange(occ.span, doc.sf))})
 	}
 	out, err := json.Marshal(locs)
 	if err != nil {
 		return errorResponse(msg.ID, -32603, "internal error")
 	}
 	return Response{JSONRPC: "2.0", ID: msg.ID, Result: out}
+}
+
+func locationIdentity(location Location) string {
+	return location.URI + ":" + strconv.Itoa(location.Range.Start.Line) + ":" + strconv.Itoa(location.Range.Start.Character) + ":" + strconv.Itoa(location.Range.End.Line) + ":" + strconv.Itoa(location.Range.End.Character)
 }
 
 // handleDocumentHighlight handles textDocument/documentHighlight.
@@ -1227,6 +1393,9 @@ func (s *Server) handleDocumentHighlight(msg message) Response {
 	occs := buildResolver(doc).referencesAt(offset)
 	var highlights []DocumentHighlight
 	for _, occ := range occs {
+		if occ.span.File != doc.sf.ID {
+			continue
+		}
 		highlights = append(highlights, DocumentHighlight{Range: toLSPRange(compiler.SpanToRange(occ.span, doc.sf)), Kind: 1})
 	}
 	out, err := json.Marshal(highlights)

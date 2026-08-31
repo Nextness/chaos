@@ -105,3 +105,17 @@ func TestReadMessageRejectsOversizedHeaderLine(t *testing.T) {
 		t.Fatalf("oversized-header error = %v", err)
 	}
 }
+
+func TestReadMessageRejectsUnterminatedOversizedHeaderLine(t *testing.T) {
+	input := strings.Repeat("x", maxHeaderLine+1)
+	if _, err := readMessage(bufio.NewReader(strings.NewReader(input))); err == nil || !strings.Contains(err.Error(), "header line") {
+		t.Fatalf("unterminated oversized-header error = %v", err)
+	}
+}
+
+func TestReadMessageRejectsTruncatedBody(t *testing.T) {
+	input := "Content-Length: 5\r\n\r\nabc"
+	if _, err := readMessage(bufio.NewReader(strings.NewReader(input))); err == nil {
+		t.Fatal("expected truncated body error")
+	}
+}

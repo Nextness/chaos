@@ -82,9 +82,9 @@ plus `diagnostic.go` and `position.go`.
 - `src/cmd/chaos-lsp/` — language server (package `main`).
 - `main.chaos` — the owner's personal/manual scratch file; it is not an
   automated compiler fixture and agents must not rewrite it as part of tests.
-- `language_design/` — speculative design sketches. **Not implemented.**
-  Features here (generics, async, C interop, modules, self-hosted compiler) do
-  not exist in the compiler.
+- `language_design/` — speculative design sketches, not authoritative syntax.
+  Generics, imports, and pointers have implemented subsets, while maps, async,
+  C interop, and the self-hosted compiler do not exist in the compiler.
 
 ## Compiler quirks
 

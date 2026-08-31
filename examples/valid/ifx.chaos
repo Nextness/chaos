@@ -1,4 +1,6 @@
 // expect-exit: 7
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // ifx is a ternary expression. Unlike other languages it is only valid as the
 // complete value of an assignment or return; the 'then' keyword is optional,
 // the 'else' branch is required, and the condition must be Bool.

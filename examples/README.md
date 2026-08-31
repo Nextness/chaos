@@ -16,7 +16,7 @@ make e2e            # from the repository root
 cd examples && go test -count=1 ./...
 ```
 
-The runtime check (assembly, execution, exit status, stderr) is skipped when `fasm` is not installed; compilation and dump validation always run.
+The runtime check (assembly, execution, exit status, stdout, and stderr) is skipped when `fasm` is not installed; compilation and dump validation always run.
 
 To regenerate the golden files after an intentional change to the compiler output:
 
@@ -28,16 +28,18 @@ cd examples && go test -count=1 -update ./...
 
 ```chaos
 // expect-exit: 42
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 #entry main :: proc -> S64 {
     return 42;
 }
 ```
 
-The `expect-exit` header declares the expected exit status. `expect-stderr` (optional) declares the exact expected stderr content. The harness then:
+The `expect-exit` header declares the expected exit status. Every valid example also declares exact stdout and stderr expectations. Use `<empty>` for intentional empty output or a quoted Go string such as `"line\n"` for escaped content. The harness then:
 
 1. Tokenizes, parses, type-checks, target-validates, lowers to HIR and MIR, verifies, and emits fasm assembly, failing if any stage reports an error.
 2. Compares the dump of each step (tokens, AST, HIR, MIR, asm) against the golden files.
-3. Assembles the emitted assembly with fasm, runs the binary, and checks the exit status and stderr.
+3. Assembles the emitted assembly with fasm, runs the binary, and checks the exit status, stdout, and stderr independently.
 
 ## How an invalid example looks
 

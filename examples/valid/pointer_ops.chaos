@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Advanced pointer operations: double pointers with chained dereference,
 // integer-on-the-left arithmetic, ordering comparisons, and a null literal
 // on the left side of a comparison.

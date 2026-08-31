@@ -1,0 +1,60 @@
+format ELF64 executable 3
+
+segment readable writable
+str0:
+    db 0x6f,0x75,0x74
+str1:
+    db 0x0a
+str2:
+    db 0x65,0x72,0x72
+
+segment readable executable
+
+entry _start
+
+_start:
+    call chaos_fn_0
+    mov rdi, rax
+    mov rax, 60
+    syscall
+
+chaos_fn_0:
+    push rbp
+    mov rbp, rsp
+    sub rsp, 80
+    mov qword [rbp-8], rbx
+    mov qword [rbp-16], r12
+    mov qword [rbp-24], r13
+    mov qword [rbp-32], r14
+    mov qword [rbp-40], r15
+L0:
+    mov rax, str0
+    mov qword [rbp-56], rax
+    mov rax, 3
+    mov qword [rbp-56+8], rax
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, qword [rbp-56]
+    mov rdx, qword [rbp-56+8]
+    syscall
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [str1]
+    mov rdx, 1
+    syscall
+    mov rax, 3
+    mov qword [rbp-64], rax
+    mov rax, str2
+    mov qword [rbp-80], rax
+    mov rax, 3
+    mov qword [rbp-80+8], rax
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, qword [rbp-80]
+    mov rdx, qword [rbp-80+8]
+    syscall
+    mov rax, qword [rbp-64]
+    mov rdi, rax
+    mov rax, 60
+    syscall
+

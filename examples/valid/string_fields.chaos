@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // String is a struct-like aggregate with 'data' (*Byte) and 'count' (Size)
 // fields. Both are readable and writable directly.
 #entry main :: proc -> S64 {

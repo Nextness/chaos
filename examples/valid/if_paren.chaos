@@ -1,4 +1,6 @@
 // expect-exit: 9
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Parenthesized conditions are valid in if statements, both with a block
 // body and with a 'then' single-statement body.
 #entry main :: proc -> S64 {

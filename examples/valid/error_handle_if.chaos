@@ -1,4 +1,6 @@
 // expect-exit: 10
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // 'if result catch' checks a previously bound value-or-error pair; after the
 // check the variable holds the unwrapped value.
 Some_Error :: error {

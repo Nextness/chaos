@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Flat import of the core library: functions are directly visible.
 #import «core»;
 #entry main :: proc -> S64 {

@@ -1,7 +1,9 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // '#allocate <size>' returns an Addr to a heap block. Addr accepts any pointer
 // value implicitly and is cast back to a pointer with '.(*T)'. '#deallocate'
-// frees the block.
+// is currently accepted but does not reclaim bump-arena storage.
 #entry main :: proc -> S64 {
     buf := #allocate 16;
     p: *S64 = buf.(*S64);

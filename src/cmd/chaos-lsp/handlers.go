@@ -2,6 +2,8 @@ package main
 
 import (
 	"encoding/json"
+
+	"chaos_compiler/compiler"
 )
 
 // semanticTokenTypes is the legend declared in initialize and used by
@@ -102,7 +104,7 @@ func (s *Server) handleInitialize(msg message) Response {
 			HoverProvider:             true,
 			CompletionProvider:        &CompletionOptions{TriggerCharacters: []string{"."}},
 		},
-		ServerInfo: ServerInfo{Name: "chaos-lsp", Version: "0.1.0"},
+		ServerInfo: ServerInfo{Name: "chaos-lsp", Version: compiler.Version},
 	}
 	out, err := json.Marshal(result)
 	if err != nil {
@@ -117,11 +119,21 @@ func (s *Server) handleDidOpen(msg message) {
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return
 	}
-	doc := newDocument(params.TextDocument.URI, params.TextDocument.Version, params.TextDocument.Text)
 	s.mu.Lock()
-	s.documents[doc.URI] = doc
+	inputs := make(map[string]documentInput, len(s.documents)+1)
+	for uri, document := range s.documents {
+		inputs[uri] = documentInput{version: document.Version, text: document.Text}
+	}
+	inputs[params.TextDocument.URI] = documentInput{version: params.TextDocument.Version, text: params.TextDocument.Text}
+	s.documents = rebuildDocuments(inputs)
+	documents := make([]*Document, 0, len(s.documents))
+	for _, document := range s.documents {
+		documents = append(documents, document)
+	}
 	s.mu.Unlock()
-	s.publishDiagnostics(doc)
+	for _, document := range documents {
+		s.publishDiagnostics(document)
+	}
 }
 
 // handleDidChange applies incremental edits, re-registers the document, and
@@ -146,10 +158,20 @@ func (s *Server) handleDidChange(msg message) {
 		s.logf("chaos-lsp: rejected invalid incremental edit for %s; waiting for a full valid update\n", params.TextDocument.URI)
 		return
 	}
-	doc := newDocument(old.URI, params.TextDocument.Version, text)
-	s.documents[doc.URI] = doc
+	inputs := make(map[string]documentInput, len(s.documents))
+	for uri, document := range s.documents {
+		inputs[uri] = documentInput{version: document.Version, text: document.Text}
+	}
+	inputs[old.URI] = documentInput{version: params.TextDocument.Version, text: text}
+	s.documents = rebuildDocuments(inputs)
+	documents := make([]*Document, 0, len(s.documents))
+	for _, document := range s.documents {
+		documents = append(documents, document)
+	}
 	s.mu.Unlock()
-	s.publishDiagnostics(doc)
+	for _, document := range documents {
+		s.publishDiagnostics(document)
+	}
 }
 
 // handleDidClose removes the document and clears its diagnostics.
@@ -160,11 +182,23 @@ func (s *Server) handleDidClose(msg message) {
 	}
 	s.mu.Lock()
 	delete(s.documents, params.TextDocument.URI)
+	inputs := make(map[string]documentInput, len(s.documents))
+	for uri, document := range s.documents {
+		inputs[uri] = documentInput{version: document.Version, text: document.Text}
+	}
+	s.documents = rebuildDocuments(inputs)
+	documents := make([]*Document, 0, len(s.documents))
+	for _, document := range s.documents {
+		documents = append(documents, document)
+	}
 	s.mu.Unlock()
 	s.sendNotification("textDocument/publishDiagnostics", PublishDiagnosticsParams{
 		URI:         params.TextDocument.URI,
 		Diagnostics: []Diagnostic{},
 	})
+	for _, document := range documents {
+		s.publishDiagnostics(document)
+	}
 }
 
 // publishDiagnostics tokenizes and parses the document in tolerant mode and

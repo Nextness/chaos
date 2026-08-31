@@ -174,6 +174,11 @@ func dumpHIRStmt(b *strings.Builder, hir *HIR, s HIRStmt, depth int) {
 	case *HIRContinue:
 		dumpIndent(b, depth)
 		b.WriteString("Continue\n")
+	case *HIRDeallocate:
+		dumpIndent(b, depth)
+		b.WriteString("Deallocate ")
+		dumpHIRExpr(b, hir, n.Addr)
+		b.WriteString("\n")
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Stmt %T\n", s)
@@ -274,6 +279,51 @@ func dumpHIRExpr(b *strings.Builder, hir *HIR, e HIRExpr) {
 		dumpHIRExpr(b, hir, n.Then)
 		b.WriteString(" else ")
 		dumpHIRExpr(b, hir, n.Else)
+		b.WriteString(")")
+	case *HIRZero:
+		fmt.Fprintf(b, "Zero(%s)", hir.typeName(n.Type))
+	case *HIRPoison:
+		fmt.Fprintf(b, "Poison(%s)", hir.typeName(n.Type))
+	case *HIRAllocate:
+		b.WriteString("Allocate(")
+		dumpHIRExpr(b, hir, n.Size)
+		b.WriteString(")")
+	case *HIRCast:
+		b.WriteString("Cast(")
+		dumpHIRExpr(b, hir, n.Value)
+		fmt.Fprintf(b, " as %s)", hir.typeName(n.Type))
+	case *HIRInterpolate:
+		b.WriteString("Interpolate(")
+		for i, literal := range n.Literals {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			fmt.Fprintf(b, "%q", literal)
+			if i < len(n.Values) {
+				b.WriteString(", ")
+				dumpHIRExpr(b, hir, n.Values[i])
+			}
+		}
+		b.WriteString(")")
+	case *HIRConvert:
+		b.WriteString("Convert(")
+		dumpHIRExpr(b, hir, n.Value)
+		fmt.Fprintf(b, " to %s)", hir.typeName(n.Type))
+	case *HIRPrint:
+		if n.Newline {
+			b.WriteString("Println(")
+		} else {
+			b.WriteString("Print(")
+		}
+		dumpHIRExpr(b, hir, n.Value)
+		b.WriteString(")")
+	case *HIRReadFile:
+		b.WriteString("ReadFile(")
+		dumpHIRExpr(b, hir, n.Path)
+		b.WriteString(")")
+	case *HIRFileExists:
+		b.WriteString("FileExists(")
+		dumpHIRExpr(b, hir, n.Path)
 		b.WriteString(")")
 	default:
 		fmt.Fprintf(b, "Expr(%T)", e)

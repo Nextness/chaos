@@ -1,4 +1,6 @@
 // expect-exit: 120
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Recursion: factorial computed through a recursive procedure call.
 fact :: proc (n: S64) -> S64 {
     if n <= 1 { return 1; }

@@ -1,4 +1,6 @@
 // expect-exit: 4
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Integer arithmetic: every binary operator, precedence, and grouping.
 // (10 + 2) * 3 / 4 = 9; 9 % 5 = 4.
 #entry main :: proc -> S64 {

@@ -3,12 +3,12 @@ HIR
     Block
       If condition=Binary(== Ident(input1) String(""))
         Block
-          Return StructInit(value, value=Expr(*compiler.HIRZero), error=Error(0), hasError=Bool(false))
-      Return StructInit(value, value=Expr(*compiler.HIRZero), error=Error(GENERIC), hasError=Bool(true))
+          Return StructInit(value, value=Zero(Void), error=Error(0), hasError=Bool(false))
+      Return StructInit(value, value=Zero(Void), error=Error(GENERIC), hasError=Bool(true))
   Proc fallthrough() -> Void<>Some_Error
     Block
       VarDecl marker: S64 = Int(1) [mutable=true compileTime=false]
-      Return StructInit(value, value=Expr(*compiler.HIRZero), error=Error(0), hasError=Bool(false))
+      Return StructInit(value, value=Zero(Void), error=Error(0), hasError=Bool(false))
   Proc main() -> S64
     Block
       IfCatch Call(fallthrough)

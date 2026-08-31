@@ -58,6 +58,7 @@ type TypeChecker struct {
 	rangeElemType          Type // element type of the innermost range loop ("" when none)
 	rangeIndexType         Type // index type of the innermost range loop ("" when none)
 	procValueFloor         int  // outer runtime locals below this scope are not capturable
+	procGlobalScope        int  // root or namespaced-module scope visible to procedures
 	procDepth              int
 	analysis               *SemanticAnalysis
 	nominalTypes           map[Decl]Type
@@ -201,7 +202,17 @@ func CheckProgram(program *Program) DiagnosticList {
 // AnalyzeProgram type-checks a program and returns facts consumed by lowering
 // and editor tooling, so those stages do not establish a competing type truth.
 func AnalyzeProgram(program *Program) (*SemanticAnalysis, DiagnosticList) {
-	program, importDiags := ResolveImports(program, StdlibDir)
+	return analyzeProgram(program, nil)
+}
+
+// AnalyzeProgramWithImportOverlay analyzes against unsaved imported sources
+// keyed by canonical file path. The ordinary compiler path remains disk-based.
+func AnalyzeProgramWithImportOverlay(program *Program, overlay map[string][]byte) (*SemanticAnalysis, DiagnosticList) {
+	return analyzeProgram(program, overlay)
+}
+
+func analyzeProgram(program *Program, overlay map[string][]byte) (*SemanticAnalysis, DiagnosticList) {
+	program, importDiags := ResolveImportsWithOverlay(program, StdlibDir, overlay)
 	analysis := &SemanticAnalysis{
 		ExprTypes:          make(map[Expr]Type),
 		TypeExprTypes:      make(map[Expr]Type),
@@ -295,7 +306,7 @@ func (tc *TypeChecker) lookup(name string) (Type, bool) {
 func (tc *TypeChecker) lookupBinding(name string) (Binding, int, bool) {
 	for i := len(tc.scopes) - 1; i >= 0; i-- {
 		if binding, ok := tc.scopes[i][name]; ok {
-			if tc.procDepth > 0 && i > 0 && i < tc.procValueFloor && !binding.CompileTime {
+			if tc.procDepth > 0 && i > tc.procGlobalScope && i < tc.procValueFloor && !binding.CompileTime {
 				continue
 			}
 			return binding, i, true
@@ -509,7 +520,7 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 			declType = tc.resolveTypeExpr(d.DeclType)
 		}
 		tc.globalTypes[d] = declType
-		tc.declareBinding(d.Name, Binding{Type: declType, Mutable: d.Mutable, Initialized: true, CompileTime: d.CompileTime, ConstExpr: d.Init, Span: d.NameSpan})
+		tc.declareBinding(d.Name, Binding{Type: declType, Mutable: d.Mutable, Initialized: tc.declarationInitialized(d, declType), CompileTime: d.CompileTime, ConstExpr: d.Init, Span: d.NameSpan})
 	}
 	for _, decl := range program.Decls {
 		switch d := decl.(type) {
@@ -527,7 +538,7 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 	tc.checkGlobals(program, latestGlobals)
 	// Procedures see the final global binding regardless of source order.
 	for name, decl := range latestGlobals {
-		tc.scopes[0][name] = Binding{Type: tc.globalTypes[decl], TypeValue: tc.constTypeValue(decl.Init), Mutable: decl.Mutable, Initialized: true, CompileTime: decl.CompileTime, ConstExpr: decl.Init, Span: decl.NameSpan}
+		tc.scopes[0][name] = Binding{Type: tc.globalTypes[decl], TypeValue: tc.constTypeValue(decl.Init), Mutable: decl.Mutable, Initialized: tc.declarationInitialized(decl, tc.globalTypes[decl]), CompileTime: decl.CompileTime, ConstExpr: decl.Init, Span: decl.NameSpan}
 	}
 	// Struct defaults can refer to forward top-level compile-time values, so
 	// validate them only after global dependency/type resolution is complete.
@@ -551,7 +562,19 @@ func (tc *TypeChecker) checkProgram(program *Program) {
 // module's members are reachable only through the namespace binding.
 func (tc *TypeChecker) checkImportModule(imp *ImportDecl) {
 	tc.pushScope()
+	previousGlobalScope := tc.procGlobalScope
+	tc.procGlobalScope = len(tc.scopes) - 1
+	seenNames := make(map[string]Span)
 	for _, d := range imp.Decls {
+		name, span, shadow := declarationName(d)
+		if name != "" {
+			if isBuiltinTypeName(name) || isReservedInternalName(name) {
+				tc.diags.Error(span, "declaration of '"+name+"' collides with a reserved compiler name", "choose a different name")
+			} else if _, exists := seenNames[name]; exists && !shadow {
+				tc.diags.Error(span, "declaration of '"+name+"' shadows an existing name; use '#shadow' or rename", "add '#shadow' before the declaration or choose a new name")
+			}
+			seenNames[name] = span
+		}
 		switch dd := d.(type) {
 		case *ProcDecl:
 			tc.registerProc(dd)
@@ -563,6 +586,36 @@ func (tc *TypeChecker) checkImportModule(imp *ImportDecl) {
 			tc.registerEnum(dd)
 		}
 	}
+	latestGlobals := make(map[string]*VarDecl)
+	for _, d := range imp.Decls {
+		global, ok := d.(*VarDecl)
+		if !ok {
+			continue
+		}
+		if previous := latestGlobals[global.Name]; previous != nil {
+			tc.globalPrevious[global] = previous
+		}
+		latestGlobals[global.Name] = global
+		declType := TypeUnknown
+		if global.DeclType != nil {
+			declType = tc.resolveTypeExpr(global.DeclType)
+		}
+		tc.globalTypes[global] = declType
+		tc.declareBinding(global.Name, Binding{Type: declType, Mutable: global.Mutable, Initialized: tc.declarationInitialized(global, declType), CompileTime: global.CompileTime, ConstExpr: global.Init, Span: global.NameSpan})
+	}
+	for _, d := range imp.Decls {
+		switch dd := d.(type) {
+		case *ErrorDecl:
+			tc.checkErrorDecl(dd)
+		case *EnumDecl:
+			tc.checkEnum(dd)
+		}
+	}
+	tc.checkStructCycles()
+	tc.checkGlobalsInScope(imp.Decls, latestGlobals, len(tc.scopes)-1)
+	for name, decl := range latestGlobals {
+		tc.scopes[len(tc.scopes)-1][name] = Binding{Type: tc.globalTypes[decl], TypeValue: tc.constTypeValue(decl.Init), Mutable: decl.Mutable, Initialized: tc.declarationInitialized(decl, tc.globalTypes[decl]), CompileTime: decl.CompileTime, ConstExpr: decl.Init, Span: decl.NameSpan}
+	}
 	for _, d := range imp.Decls {
 		if s, ok := d.(*StructDecl); ok {
 			tc.checkStructDecl(s)
@@ -573,10 +626,15 @@ func (tc *TypeChecker) checkImportModule(imp *ImportDecl) {
 			tc.checkProc(p)
 		}
 	}
+	tc.procGlobalScope = previousGlobalScope
 	tc.popScope()
 }
 
 func (tc *TypeChecker) checkGlobals(program *Program, latest map[string]*VarDecl) {
+	tc.checkGlobalsInScope(program.Decls, latest, 0)
+}
+
+func (tc *TypeChecker) checkGlobalsInScope(decls []Decl, latest map[string]*VarDecl, scopeIndex int) {
 	state := make(map[*VarDecl]uint8)
 	path := make([]*VarDecl, 0)
 	var visit func(*VarDecl)
@@ -611,18 +669,18 @@ func (tc *TypeChecker) checkGlobals(program *Program, latest map[string]*VarDecl
 		path = path[:len(path)-1]
 
 		if previous := tc.globalPrevious[decl]; previous != nil {
-			tc.scopes[0][decl.Name] = Binding{Type: tc.globalTypes[previous], TypeValue: tc.constTypeValue(previous.Init), Mutable: previous.Mutable, Initialized: true, CompileTime: previous.CompileTime, ConstExpr: previous.Init, Span: previous.NameSpan}
+			tc.scopes[scopeIndex][decl.Name] = Binding{Type: tc.globalTypes[previous], TypeValue: tc.constTypeValue(previous.Init), Mutable: previous.Mutable, Initialized: tc.declarationInitialized(previous, tc.globalTypes[previous]), CompileTime: previous.CompileTime, ConstExpr: previous.Init, Span: previous.NameSpan}
 		} else {
-			tc.scopes[0][decl.Name] = Binding{Type: tc.globalTypes[decl], Mutable: decl.Mutable, Initialized: true, CompileTime: decl.CompileTime, ConstExpr: decl.Init, Span: decl.NameSpan}
+			tc.scopes[scopeIndex][decl.Name] = Binding{Type: tc.globalTypes[decl], Mutable: decl.Mutable, Initialized: tc.declarationInitialized(decl, tc.globalTypes[decl]), CompileTime: decl.CompileTime, ConstExpr: decl.Init, Span: decl.NameSpan}
 		}
 		t := tc.checkVarDecl(decl)
 		tc.globalTypes[decl] = t
 		tc.analysis.DeclTypes[decl] = t
-		tc.scopes[0][decl.Name] = Binding{Type: t, TypeValue: tc.constTypeValue(decl.Init), Mutable: decl.Mutable, Initialized: true, CompileTime: decl.CompileTime, ConstExpr: decl.Init, Span: decl.NameSpan}
+		tc.scopes[scopeIndex][decl.Name] = Binding{Type: t, TypeValue: tc.constTypeValue(decl.Init), Mutable: decl.Mutable, Initialized: tc.declarationInitialized(decl, t), CompileTime: decl.CompileTime, ConstExpr: decl.Init, Span: decl.NameSpan}
 		state[decl] = 2
 		tc.analysis.GlobalOrder = append(tc.analysis.GlobalOrder, decl)
 	}
-	for _, decl := range program.Decls {
+	for _, decl := range decls {
 		if global, ok := decl.(*VarDecl); ok {
 			visit(global)
 		}
@@ -756,7 +814,11 @@ func (tc *TypeChecker) checkProc(p *ProcDecl) {
 			tc.currentErrorReturnType = rt
 		}
 	}
-	if p.Body != nil {
+	// Generic templates contain abstract type parameters whose operations can
+	// only be validated after monomorphization. Every reachable instance is
+	// checked by checkGenericCall; checking the template body here would reject
+	// valid constrained operations before their concrete types are known.
+	if p.Body != nil && len(p.TypeParams) == 0 {
 		tc.checkBlock(p.Body)
 		if tc.currentReturnType != TypeVoid && !blockDiverges(p.Body) {
 			tc.diags.Error(p.Body.Span_, "not every path returns a value from procedure '"+p.Name+"'", "return "+tc.formatTypes(tc.currentReturnTypes)+" on every reachable path")
@@ -844,7 +906,7 @@ func (tc *TypeChecker) checkStmt(s Stmt) {
 		// A plain declaration ('a: S64;') is zero-initialized and therefore
 		// initialized. An explicit 'a: S64 = ...;' declares the variable to be
 		// initialized later, so it stays uninitialized until assigned.
-		initialized := n.Init != nil || !n.InitLater
+		initialized := n.Init != nil || (!n.InitLater && !tc.typeRequiresExplicitInitialization(t, make(map[Type]bool)))
 		binding := Binding{Type: t, TypeValue: tc.constTypeValue(n.Init), Mutable: n.Mutable, Initialized: initialized, CompileTime: n.CompileTime, ConstExpr: n.Init, Span: n.NameSpan}
 		if n.Init != nil {
 			binding.NullState = tc.exprNullState(n.Init)
@@ -1113,44 +1175,47 @@ func (tc *TypeChecker) checkIf(n *IfStmt) {
 	branches = append(branches, cloneBindingScopes(tc.scopes))
 	diverges = append(diverges, blockDiverges(n.Body))
 
-	lastName, lastElseState, lastNarrows := name, elseState, narrows
+	// The next condition executes only when this condition was false. Carry
+	// that false-path state through every elif instead of resetting each
+	// condition to the original scope or leaking a completed branch body.
+	remaining := cloneBindingScopes(base)
+	if narrows {
+		tc.scopes = remaining
+		tc.setBindingNullState(name, elseState, 0)
+		remaining = cloneBindingScopes(tc.scopes)
+	}
 	for _, elif := range n.Elif {
+		tc.scopes = cloneBindingScopes(remaining)
 		et := tc.inferExpr(elif.Condition)
 		if et != TypeUnknown && et != TypeBool {
 			tc.diags.Error(elif.Condition.nodeSpan(), "elif condition must be Bool, got "+tc.formatType(et), "use a boolean condition")
 		}
-		tc.scopes = cloneBindingScopes(base)
+		conditionBase := cloneBindingScopes(tc.scopes)
 		ename, ethen, eelse, eok := tc.nullConditionVar(elif.Condition)
+		tc.scopes = cloneBindingScopes(conditionBase)
 		if eok {
 			tc.setBindingNullState(ename, ethen, 0)
 		}
 		tc.checkBlock(elif.Body)
 		branches = append(branches, cloneBindingScopes(tc.scopes))
 		diverges = append(diverges, blockDiverges(elif.Body))
-		lastName, lastElseState, lastNarrows = ename, eelse, eok
-		tc.scopes = cloneBindingScopes(base)
+		remaining = cloneBindingScopes(conditionBase)
+		if eok {
+			tc.scopes = remaining
+			tc.setBindingNullState(ename, eelse, 0)
+			remaining = cloneBindingScopes(tc.scopes)
+		}
 	}
 
 	if n.ElseBody != nil {
-		tc.scopes = cloneBindingScopes(base)
-		if lastNarrows {
-			tc.setBindingNullState(lastName, lastElseState, 0)
-		}
+		tc.scopes = cloneBindingScopes(remaining)
 		tc.checkBlock(n.ElseBody)
 		branches = append(branches, cloneBindingScopes(tc.scopes))
 		diverges = append(diverges, blockDiverges(n.ElseBody))
 	} else {
-		// No else: the implicit else path is the inverted narrowing of the
-		// last condition (the condition did not hold).
-		els := cloneBindingScopes(base)
-		if lastNarrows {
-			saved := tc.scopes
-			tc.scopes = els
-			tc.setBindingNullState(lastName, lastElseState, 0)
-			els = cloneBindingScopes(tc.scopes)
-			tc.scopes = saved
-		}
-		branches = append(branches, els)
+		// No else: the implicit branch is the accumulated false path of every
+		// condition in the chain.
+		branches = append(branches, cloneBindingScopes(remaining))
 		diverges = append(diverges, false)
 	}
 
@@ -2064,6 +2129,9 @@ func (tc *TypeChecker) checkVarDecl(d *VarDecl) Type {
 		if d.CompileTime {
 			tc.diags.Error(d.NameSpan, "compile-time binding '"+d.Name+"' requires an initializer", "assign a compile-time-known value after '::'")
 		}
+		if !d.InitLater && tc.typeRequiresExplicitInitialization(declType, make(map[Type]bool)) {
+			tc.diags.Error(d.NameSpan, "binding '"+d.Name+"' contains a non-nullable pointer and requires an initializer", "initialize it with a non-null pointer value or declare it with '= ...' before assigning it")
+		}
 		return declType
 	}
 	if d.CompileTime && !tc.isConstExpr(d.Init, make(map[string]bool)) {
@@ -2116,6 +2184,35 @@ func (tc *TypeChecker) checkVarDecl(d *VarDecl) Type {
 		tc.diags.Error(d.Span_, "Void is only valid as a function result type", "remove the declaration or use a value type")
 	}
 	return t
+}
+
+// typeRequiresExplicitInitialization reports whether zero initialization
+// would synthesize a null value for a non-nullable pointer. Struct fields with
+// valid defaults are initialized by lowering and therefore do not inherit the
+// requirement from their field type.
+func (tc *TypeChecker) typeRequiresExplicitInitialization(t Type, visiting map[Type]bool) bool {
+	if isPointerType(t) {
+		return !pointerNullable(t)
+	}
+	if visiting[t] {
+		return false
+	}
+	visiting[t] = true
+	defer delete(visiting, t)
+	st, ok := tc.structDeclForType(t)
+	if !ok {
+		return false
+	}
+	for _, field := range st.Fields {
+		if field.Default == nil && tc.typeRequiresExplicitInitialization(tc.resolveTypeExpr(field.Type), visiting) {
+			return true
+		}
+	}
+	return false
+}
+
+func (tc *TypeChecker) declarationInitialized(decl *VarDecl, t Type) bool {
+	return decl.Init != nil || (!decl.InitLater && !tc.typeRequiresExplicitInitialization(t, make(map[Type]bool)))
 }
 
 func (tc *TypeChecker) typeContainsArray(t Type, visiting map[Type]bool) bool {
@@ -2416,6 +2513,9 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 		baseType := tc.inferExpr(n.Base)
 		if isPointerType(baseType) {
 			// Pointer indexing "p[i]" reads/writes the element at offset i.
+			if pointerNullable(baseType) && !tc.exprIsNonNull(n.Base) {
+				tc.diags.Error(n.Base.nodeSpan(), "cannot index "+pointerName(n.Base)+" because it may be null", "check the pointer against null before indexing it")
+			}
 			idxType := tc.inferExpr(n.Index)
 			if idxType != TypeUnknown && !isIntegerType(idxType) {
 				tc.diags.Error(n.Index.nodeSpan(), "pointer index must be an integer, got "+tc.formatType(idxType), "use an integer index")
@@ -2474,10 +2574,14 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 		}
 		return TypeAddr
 	case *SizeOfExpr:
-		// size_of resolves its operand as a type expression; if that fails it
-		// is a value expression whose type is measured. The result is Size.
-		t := tc.resolveTypeExpr(n.Type)
-		if t == TypeUnknown {
+		// size_of accepts either a known type expression or a value expression.
+		// An unknown identifier must go through value lookup instead of being
+		// mistaken for a zero-sized nominal type.
+		t := TypeUnknown
+		if tc.isKnownTypeExpr(n.Type) {
+			tc.checkTypeExprValid(n.Type)
+			t = tc.resolveTypeExpr(n.Type)
+		} else {
 			t = tc.inferExpr(n.Type)
 		}
 		if t == TypeUnknown {
@@ -2507,6 +2611,32 @@ func (tc *TypeChecker) inferExprInner(e Expr) Type {
 		return tc.checkIfxExpr(n)
 	}
 	return TypeUnknown
+}
+
+// isKnownTypeExpr reports whether an expression resolves through the current
+// lexical type namespace. It intentionally does not treat an arbitrary
+// identifier spelling as a type.
+func (tc *TypeChecker) isKnownTypeExpr(e Expr) bool {
+	switch n := e.(type) {
+	case *IdentExpr:
+		if _, ok := tc.lookupTypeParam(n.Name); ok || isBuiltinTypeName(n.Name) {
+			return true
+		}
+		if binding, _, ok := tc.lookupBinding(n.Name); ok && binding.CompileTime && binding.Type == "Type" && binding.TypeValue != TypeUnknown {
+			return true
+		}
+		_, structOK := tc.lookupStruct(n.Name)
+		_, errorOK := tc.lookupError(n.Name)
+		_, enumOK := tc.lookupEnum(n.Name)
+		return structOK || errorOK || enumOK
+	case *ArrayTypeExpr:
+		return tc.isKnownTypeExpr(n.Elem)
+	case *PointerTypeExpr:
+		return tc.isKnownTypeExpr(n.Elem)
+	case *ParenExpr:
+		return tc.isKnownTypeExpr(n.Inner)
+	}
+	return false
 }
 
 // checkDeref checks "operand.*". The operand must be a pointer, and a
@@ -2680,6 +2810,9 @@ func (tc *TypeChecker) checkAssignableTarget(target Expr) (Type, bool) {
 	case *IndexExpr:
 		baseType := tc.inferExpr(n.Base)
 		if isPointerType(baseType) {
+			if pointerNullable(baseType) && !tc.exprIsNonNull(n.Base) {
+				tc.diags.Error(n.Base.nodeSpan(), "cannot index "+pointerName(n.Base)+" because it may be null", "check the pointer against null before indexing it")
+			}
 			idxType := tc.inferExpr(n.Index)
 			if idxType != TypeUnknown && !isIntegerType(idxType) {
 				tc.diags.Error(n.Index.nodeSpan(), "pointer index must be an integer, got "+tc.formatType(idxType), "use an integer index")
@@ -2752,8 +2885,12 @@ func (tc *TypeChecker) checkExprAssign(span Span, target Expr, value Expr) {
 	if fa, isField := target.(*FieldAccessExpr); isField {
 		if ident, ok := unwrapParens(fa.Base).(*IdentExpr); ok {
 			if b, _, found := tc.lookupBinding(ident.Name); found && !b.Initialized {
-				b.Initialized = true
-				tc.setBinding(ident.Name, b)
+				// A single field write cannot initialize other non-nullable
+				// pointer fields that would otherwise contain address zero.
+				if !tc.typeRequiresExplicitInitialization(b.Type, make(map[Type]bool)) {
+					b.Initialized = true
+					tc.setBinding(ident.Name, b)
+				}
 			}
 		}
 	}
@@ -3327,30 +3464,18 @@ func (tc *TypeChecker) findImportProc(imp *ImportDecl, name string) *ProcDecl {
 // returns the call's result type and true when the name is a builtin. Builtins
 // are recognized by name and cannot be shadowed by user declarations.
 func (tc *TypeChecker) checkBuiltinCall(n *CallExpr, ident *IdentExpr) (Type, bool) {
-	switch ident.Name {
-	case "print", "println":
-		if len(n.Args) != 1 {
-			tc.diags.Error(n.Span_, "call to "+ident.Name+" expects 1 argument, got "+strconv.Itoa(len(n.Args)), "pass a String value")
-			return TypeVoid, true
-		}
-		tc.checkAssign(n.Args[0].nodeSpan(), TypeString, n.Args[0])
-		return TypeVoid, true
-	case "read_file":
-		if len(n.Args) != 1 {
-			tc.diags.Error(n.Span_, "call to read_file expects 1 argument, got "+strconv.Itoa(len(n.Args)), "pass a file path String")
-			return TypeString, true
-		}
-		tc.checkAssign(n.Args[0].nodeSpan(), TypeString, n.Args[0])
-		return TypeString, true
-	case "file_exists":
-		if len(n.Args) != 1 {
-			tc.diags.Error(n.Span_, "call to file_exists expects 1 argument, got "+strconv.Itoa(len(n.Args)), "pass a file path String")
-			return TypeBool, true
-		}
-		tc.checkAssign(n.Args[0].nodeSpan(), TypeString, n.Args[0])
-		return TypeBool, true
+	info, ok := LookupBuiltinProcedure(ident.Name)
+	if !ok {
+		return TypeUnknown, false
 	}
-	return TypeUnknown, false
+	if len(n.Args) != len(info.Params) {
+		tc.diags.Error(n.Span_, "call to "+ident.Name+" expects "+strconv.Itoa(len(info.Params))+" argument, got "+strconv.Itoa(len(n.Args)), "pass the declared builtin arguments")
+		return Type(info.Result), true
+	}
+	for i, param := range info.Params {
+		tc.checkAssign(n.Args[i].nodeSpan(), Type(param), n.Args[i])
+	}
+	return Type(info.Result), true
 }
 
 // checkGenericCall instantiates a generic procedure at a call site: it infers
@@ -3386,14 +3511,16 @@ func (tc *TypeChecker) checkGenericCall(n *CallExpr, proc *ProcDecl) Type {
 	}
 	instance := instantiateProc(proc, mapping)
 	instance.Name = proc.Name + "$" + suffix
-	// Type-check the instantiated body and register it for lowering.
-	tc.checkProc(instance)
-	tc.registerProc(instance)
+	// Cache the instance before checking its body. Recursive calls with the
+	// same concrete arguments must resolve back to this in-progress instance
+	// instead of recursively creating another copy.
 	tc.genericInstances[proc] = append(tc.genericInstances[proc], instance)
+	tc.registerProc(instance)
 	if tc.program != nil {
 		tc.program.Decls = append(tc.program.Decls, instance)
 	}
 	tc.analysis.CallInstances[n] = instance
+	tc.checkProc(instance)
 	// Type-check the call against the instantiated signature.
 	return tc.genericCallResult(instance, n)
 }
@@ -3432,6 +3559,11 @@ func (tc *TypeChecker) inferTypeArgs(proc *ProcDecl, argTypes []Type) (map[strin
 		}
 		paramType := tc.resolveTypeExpr(proc.Params[i].Type)
 		if !tc.matchType(paramType, arg, mapping) {
+			return nil, false
+		}
+	}
+	for _, param := range proc.TypeParams {
+		if _, ok := mapping[param.Name]; !ok {
 			return nil, false
 		}
 	}
@@ -3599,6 +3731,16 @@ func (tc *TypeChecker) checkArrayInitFromStruct(span Span, target Type, si *Stru
 }
 
 func (tc *TypeChecker) checkStructInit(si *StructInitExpr, structType Type) {
+	if structType == TypeString {
+		tc.checkBuiltinRecordInit(si, "String", []struct {
+			name  string
+			type_ Type
+		}{
+			{name: "data", type_: pointerType(Type("Byte"), false)},
+			{name: "count", type_: Type("Size")},
+		})
+		return
+	}
 	st, ok := tc.structDeclForType(structType)
 	if !ok {
 		tc.diags.Error(si.Span_, "unknown struct type "+tc.formatType(structType), "use a declared struct type")
@@ -3645,6 +3787,61 @@ func (tc *TypeChecker) checkStructInit(si *StructInitExpr, structType Type) {
 			tc.diags.Error(field.Span_, "too many fields in struct literal for "+tc.formatType(structType), "remove the extra field")
 		}
 	}
+	tc.checkMissingRequiredFields(si, st.Fields, assigned, tc.formatType(structType))
+}
+
+// checkBuiltinRecordInit validates an inferred literal for a built-in
+// record-like value such as String. Its field contract is part of the built-in
+// type registry rather than a source StructDecl.
+func (tc *TypeChecker) checkBuiltinRecordInit(si *StructInitExpr, typeName string, fields []struct {
+	name  string
+	type_ Type
+}) {
+	indexes := make(map[string]int, len(fields))
+	for i, field := range fields {
+		indexes[field.name] = i
+	}
+	assigned := make(map[int]bool, len(si.Fields))
+	positional := 0
+	for _, field := range si.Fields {
+		index := positional
+		if field.Name != "" {
+			var ok bool
+			index, ok = indexes[field.Name]
+			if !ok {
+				tc.diags.Error(field.Span_, "unknown field "+field.Name+" in "+typeName, "use a declared field name")
+				continue
+			}
+		} else {
+			positional++
+			if index >= len(fields) {
+				tc.diags.Error(field.Span_, "too many fields in struct literal for "+typeName, "remove the extra field")
+				continue
+			}
+		}
+		if assigned[index] {
+			tc.diags.Error(field.NameSpan, "field '"+fields[index].name+"' is initialized more than once", "remove the duplicate field initializer")
+			continue
+		}
+		assigned[index] = true
+		tc.checkAssign(field.Span_, fields[index].type_, field.Value)
+	}
+	for i, field := range fields {
+		if !assigned[i] && tc.typeRequiresExplicitInitialization(field.type_, make(map[Type]bool)) {
+			tc.diags.Error(si.Span_, "field '"+field.name+"' in "+typeName+" requires a non-null initializer", "initialize the field with a non-null pointer value")
+		}
+	}
+}
+
+func (tc *TypeChecker) checkMissingRequiredFields(si *StructInitExpr, fields []StructField, assigned map[int]bool, displayName string) {
+	for i, field := range fields {
+		if assigned[i] || field.Default != nil {
+			continue
+		}
+		if tc.typeRequiresExplicitInitialization(tc.resolveTypeExpr(field.Type), make(map[Type]bool)) {
+			tc.diags.Error(si.Span_, "field '"+field.Name+"' in struct "+displayName+" requires a non-null initializer", "initialize the field with a non-null pointer value")
+		}
+	}
 }
 
 // checkGenericStructInit instantiates a generic struct at a use site by
@@ -3656,6 +3853,7 @@ func (tc *TypeChecker) checkGenericStructInit(si *StructInitExpr, st *StructDecl
 	// Infer type arguments by matching each field's declared type (which may
 	// contain type parameters) against the field value's concrete type.
 	typeArgs := make(map[string]Type)
+	inferenceOK := true
 	positional := 0
 	for _, field := range si.Fields {
 		var fieldDecl *StructField
@@ -3678,14 +3876,24 @@ func (tc *TypeChecker) checkGenericStructInit(si *StructInitExpr, st *StructDecl
 		}
 		paramType := tc.resolveTypeExpr(fieldDecl.Type)
 		argType := tc.concreteArgType(field.Value)
-		if argType != TypeUnknown {
-			tc.matchType(paramType, argType, typeArgs)
+		if argType != TypeUnknown && !tc.matchType(paramType, argType, typeArgs) {
+			inferenceOK = false
 		}
 	}
-	// Check constraints.
 	for _, tp := range st.TypeParams {
-		arg, found := typeArgs[tp.Name]
-		if !found || len(tp.Constraints) == 0 {
+		if _, found := typeArgs[tp.Name]; !found {
+			tc.diags.Error(si.Span_, "cannot infer type parameter '"+tp.Name+"' for generic struct "+st.Name, "initialize a field whose type determines '"+tp.Name+"'")
+			inferenceOK = false
+		}
+	}
+	if !inferenceOK {
+		return
+	}
+	// Check constraints.
+	constraintsOK := true
+	for _, tp := range st.TypeParams {
+		arg := typeArgs[tp.Name]
+		if len(tp.Constraints) == 0 {
 			continue
 		}
 		satisfied := false
@@ -3697,18 +3905,36 @@ func (tc *TypeChecker) checkGenericStructInit(si *StructInitExpr, st *StructDecl
 		}
 		if !satisfied {
 			tc.diags.Error(si.Span_, "type argument "+tc.formatType(arg)+" does not satisfy the constraints of type parameter '"+tp.Name+"'", "use one of the allowed constraint types")
+			constraintsOK = false
 		}
+	}
+	if !constraintsOK {
+		return
 	}
 	// Build the concrete type-expression mapping and substitute field types.
 	mapping := make(map[string]Expr, len(typeArgs))
 	for name, t := range typeArgs {
 		mapping[name] = tc.typeToExpr(t)
 	}
+	// Reuse one nominal instance for each declaration and complete argument
+	// tuple. Separate generic declarations remain nominally distinct.
+	suffix := tc.instanceSuffix(typeArgs)
+	instanceName := st.Name + "$" + suffix
+	for _, existing := range tc.structInstances[st] {
+		if existing.Name == instanceName {
+			instType := tc.instanceTypes[existing]
+			tc.structLiteralTypes[si] = instType
+			tc.analysis.StructLiteralTypes[si] = instType
+			tc.checkConcreteStructInit(si, existing, st.Name)
+			return
+		}
+	}
+
 	// Create an instantiated struct type with the substituted field types and
 	// record it so field access resolves to the concrete types.
 	instance := &StructDecl{
 		Span_:    st.Span_,
-		Name:     st.Name + "$" + tc.instanceSuffix(typeArgs),
+		Name:     instanceName,
 		NameSpan: st.NameSpan,
 		Fields:   make([]StructField, len(st.Fields)),
 	}
@@ -3726,6 +3952,10 @@ func (tc *TypeChecker) checkGenericStructInit(si *StructInitExpr, st *StructDecl
 	if tc.program != nil {
 		tc.program.Decls = append(tc.program.Decls, instance)
 	}
+	tc.checkConcreteStructInit(si, instance, st.Name)
+}
+
+func (tc *TypeChecker) checkConcreteStructInit(si *StructInitExpr, instance *StructDecl, displayName string) {
 	fieldTypes := make(map[string]Type, len(instance.Fields))
 	fieldIndexes := make(map[string]int, len(instance.Fields))
 	for i, f := range instance.Fields {
@@ -3733,12 +3963,12 @@ func (tc *TypeChecker) checkGenericStructInit(si *StructInitExpr, st *StructDecl
 		fieldIndexes[f.Name] = i
 	}
 	assigned := make(map[int]bool, len(si.Fields))
-	positional = 0
+	positional := 0
 	for _, field := range si.Fields {
 		if field.Name != "" {
 			ft, ok := fieldTypes[field.Name]
 			if !ok {
-				tc.diags.Error(field.Span_, "unknown field "+field.Name+" in struct "+st.Name, "use a declared field name")
+				tc.diags.Error(field.Span_, "unknown field "+field.Name+" in struct "+displayName, "use a declared field name")
 				continue
 			}
 			index := fieldIndexes[field.Name]
@@ -3756,9 +3986,10 @@ func (tc *TypeChecker) checkGenericStructInit(si *StructInitExpr, st *StructDecl
 			tc.checkAssign(field.Span_, ft, field.Value)
 			positional++
 		} else {
-			tc.diags.Error(field.Span_, "too many fields in struct literal for "+st.Name, "remove the extra field")
+			tc.diags.Error(field.Span_, "too many fields in struct literal for "+displayName, "remove the extra field")
 		}
 	}
+	tc.checkMissingRequiredFields(si, instance.Fields, assigned, displayName)
 }
 
 // typeOfTypeExpr extracts the type name from a type expression: an identifier
@@ -4000,7 +4231,11 @@ func (tc *TypeChecker) checkPointerBinary(b *BinaryExpr, lt, rt Type) (Type, boo
 			return lt, true // scaled by sizeof(element)
 		}
 		if rightPtr && isIntegerType(lt) {
-			return rt, true
+			if b.Op == BinaryOpAdd {
+				return rt, true // addition is commutative
+			}
+			tc.diags.Error(b.Span_, "cannot subtract a pointer from an integer", "subtract an integer offset from the pointer: 'p - n'")
+			return TypeUnknown, true
 		}
 		if leftPtr || rightPtr {
 			other := lt

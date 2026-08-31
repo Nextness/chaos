@@ -1,4 +1,6 @@
 // expect-exit: 55
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // A c-style loop: init; condition; after with a compound assignment.
 #entry main :: proc -> S64 {
     sum: S64 = 0;

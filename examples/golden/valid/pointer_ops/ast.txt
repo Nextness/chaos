@@ -11,7 +11,7 @@ Program
       IfStmt condition=Binary(!= Deref(Deref(Ident(pp))) Int(5))
         Block
           ReturnStmt Int(1)
-      VarDecl arr = ArrayInit(Ident(S64), Int(10), Int(20), Int(30)) [mutable=true compileTime=false]
+      VarDecl arr = ArrayInit(ArrayType(runtime elem=Ident(S64)), Int(10), Int(20), Int(30)) [mutable=true compileTime=false]
       VarDecl base: Pointer(*Ident(S64)) = Unary(* Index(Ident(arr), Int(0))) [mutable=true compileTime=false]
       IfStmt condition=Binary(!= Deref(Paren(Binary(+ Int(2) Ident(base)))) Int(30))
         Block

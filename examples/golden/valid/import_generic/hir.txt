@@ -37,8 +37,8 @@ HIR
           If condition=Binary(< Ident(new_cap) Int(1))
             Block
               Assign new_cap = Int(1)
-          VarDecl new_buf: Addr = Expr(*compiler.HIRAllocate) [mutable=true compileTime=false]
-          VarDecl new_ptr: *S64 = Expr(*compiler.HIRCast) [mutable=true compileTime=false]
+          VarDecl new_buf: Addr = Allocate(Binary(* Ident(new_cap) Int(8))) [mutable=true compileTime=false]
+          VarDecl new_ptr: *S64 = Cast(Ident(new_buf) as *S64) [mutable=true compileTime=false]
           VarDecl i: Size = Int(0) [mutable=true compileTime=false]
           For cond=Binary(< Ident(i) FieldLoad(Deref(Ident(arr)), 1))
             Block
@@ -82,9 +82,9 @@ HIR
       Return Binary(&& Binary(>= Ident(c) Int(97)) Binary(<= Ident(c) Int(122)))
   Proc int_to_string(value: S64) -> String
     Block
-      VarDecl buf: Addr = Expr(*compiler.HIRAllocate) [mutable=true compileTime=false]
-      VarDecl ptr: *Byte = Expr(*compiler.HIRCast) [mutable=true compileTime=false]
-      VarDecl u: U64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+      VarDecl buf: Addr = Allocate(Int(32)) [mutable=true compileTime=false]
+      VarDecl ptr: *Byte = Cast(Ident(buf) as *Byte) [mutable=true compileTime=false]
+      VarDecl u: U64 = Convert(Ident(value) to U64) [mutable=true compileTime=false]
       VarDecl negative: Bool = Bool(false) [mutable=true compileTime=false]
       If condition=Binary(< Ident(value) Int(0))
         Block
@@ -99,7 +99,7 @@ HIR
         Block
           For cond=Binary(> Ident(u) Int(0))
             Block
-              AddrStore Binary(+ Ident(ptr) Ident(i)) = Expr(*compiler.HIRConvert)
+              AddrStore Binary(+ Ident(ptr) Ident(i)) = Convert(Binary(+ Binary(% Ident(u) Int(10)) Int(48)) to Byte)
               Assign u = Binary(/ Ident(u) Int(10))
               Assign i = Binary(+ Ident(i) Int(1))
       VarDecl j: Size = Int(0) [mutable=true compileTime=false]
@@ -120,9 +120,7 @@ HIR
               Assign m = Binary(- Ident(m) Int(1))
           AddrStore Binary(+ Ident(ptr) Int(0)) = Int(45)
           Assign i = Binary(+ Ident(i) Int(1))
-      VarDecl result: String [mutable=true compileTime=false]
-      AddrStore FieldAddr(AddrOf(Ident(result)), 0) = Ident(ptr)
-      AddrStore FieldAddr(AddrOf(Ident(result)), 1) = Ident(i)
+      VarDecl result: String = StructInit(is_digit, =Ident(ptr), =Ident(i)) [mutable=true compileTime=false]
       Return Ident(result)
   Proc string_to_int(s: String) -> S64
     Block
@@ -135,7 +133,7 @@ HIR
           Assign i = Int(1)
       For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
         Block
-          VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+          VarDecl c: S64 = Convert(Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) to S64) [mutable=true compileTime=false]
           If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
             Block
               Break
@@ -156,11 +154,11 @@ HIR
           Assign i = Int(1)
       For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
         Block
-          VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+          VarDecl c: S64 = Convert(Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) to S64) [mutable=true compileTime=false]
           If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
             Block
               Break
-          Assign result = Binary(+ Binary(* Ident(result) Float(10.0)) Expr(*compiler.HIRConvert))
+          Assign result = Binary(+ Binary(* Ident(result) Float(10.0)) Convert(Binary(- Ident(c) Int(48)) to F64))
           Assign i = Binary(+ Ident(i) Int(1))
       If condition=Binary(&& Binary(< Ident(i) FieldLoad(Ident(s), 1)) Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(46)))
         Block
@@ -168,11 +166,11 @@ HIR
           VarDecl fraction: F64 = Float(0.1) [mutable=true compileTime=false]
           For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
             Block
-              VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+              VarDecl c: S64 = Convert(Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) to S64) [mutable=true compileTime=false]
               If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
                 Block
                   Break
-              Assign result = Binary(+ Ident(result) Binary(* Expr(*compiler.HIRConvert) Ident(fraction)))
+              Assign result = Binary(+ Ident(result) Binary(* Convert(Binary(- Ident(c) Int(48)) to F64) Ident(fraction)))
               Assign fraction = Binary(* Ident(fraction) Float(0.1))
               Assign i = Binary(+ Ident(i) Int(1))
       If condition=Binary(&& Binary(< Ident(i) FieldLoad(Ident(s), 1)) Binary(|| Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(69)) Binary(== Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) Int(101))))
@@ -186,7 +184,7 @@ HIR
           VarDecl exp: S64 = Int(0) [mutable=true compileTime=false]
           For cond=Binary(< Ident(i) FieldLoad(Ident(s), 1))
             Block
-              VarDecl c: S64 = Expr(*compiler.HIRConvert) [mutable=true compileTime=false]
+              VarDecl c: S64 = Convert(Deref(Binary(+ FieldLoad(Ident(s), 0) Ident(i))) to S64) [mutable=true compileTime=false]
               If condition=Binary(|| Binary(< Ident(c) Int(48)) Binary(> Ident(c) Int(57)))
                 Block
                   Break
@@ -205,12 +203,7 @@ HIR
             Block
               Assign power = Binary(* Ident(power) Float(10.0))
               Assign j = Binary(+ Ident(j) Int(1))
-          If condition=Binary(< Ident(exp) Int(0))
-            Block
-              Assign result = Binary(/ Ident(result) Ident(power))
-          Else
-            Block
-              Assign result = Binary(* Ident(result) Ident(power))
+          Assign result = Ifx(Binary(< Ident(exp) Int(0)) then Binary(/ Ident(result) Ident(power)) else Binary(* Ident(result) Ident(power)))
       If condition=Ident(negative)
         Block
           Assign result = Unary(- Ident(result))

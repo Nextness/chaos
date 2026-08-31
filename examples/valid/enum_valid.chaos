@@ -1,4 +1,6 @@
 // expect-exit: 42
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Enum declaration, member values, assignment, and comparison.
 Another_Enum :: enum {
     FOO: S64 = 0;

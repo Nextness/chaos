@@ -73,8 +73,11 @@ The production stage entry points are:
 
 ## Driver and compilation modes
 
-`src/cmd/chaosc/main.go` owns the production pipeline. It accepts exactly one source file per invocation and registers that file in a fresh source manager. There is no module loader, separate compilation, object-file writer, or linker
-stage yet.
+`src/cmd/chaosc/main.go` owns the production pipeline. It accepts one root
+source file per invocation and registers it in a fresh source manager. Import
+resolution adds flat or namespaced source modules from paths relative to the
+importer and from the configured standard-library directory. There is no
+separate compilation, object-file writer, or linker stage.
 
 The driver always tokenizes, parses, and analyzes before selecting its final output:
 
@@ -133,7 +136,10 @@ The parser constructs declarations, statements, and expressions without resolvin
 Two parser modes share the same implemented grammar:
 
 - `ParseProgram` is the strict compiler path. Unknown syntax is diagnosed.
-- `ParseProgramTolerant` is the editor path. It creates normal nodes for every implemented construct and performs broader recovery around incomplete or unknown input. Unsupported generic declarations are skipped as recovery forms rather than being represented as ordinary declarations.
+- `ParseProgramTolerant` is the editor path. It creates normal nodes for every
+  implemented construct and performs broader recovery around incomplete or
+  unknown input. Malformed generic declarations are skipped as recovery forms
+  rather than being represented as ordinary declarations.
 
 Both parsers recover after errors and guarantee forward progress. Tolerant parsing is not used to compile executables.
 
@@ -282,7 +288,9 @@ The backend uses a System V AMD64-shaped internal calling convention:
 - `F32`/`F64` values use up to eight XMM argument registers;
 - excess arguments use aligned outgoing stack space;
 - records are passed by address and returned through a hidden result pointer;
-- strings, arrays, and 128-bit integers occupy two machine words;
+- strings and 128-bit integers occupy two machine words;
+- dynamic arrays occupy three machine words and aggregate arguments are passed
+  by address;
 - scalar results use `RAX`, floating results use `XMM0`, and two-word results
   use `RAX:RDX`;
 - callee-saved registers and 16-byte call alignment are preserved.
@@ -297,10 +305,16 @@ One `Layout` calculation is shared by global storage, stack slots, fields, array
 | error | 16-bit ordinal |
 | `F32` / `F64` | 4 / 8 bytes |
 | string | pointer and byte length |
-| array | element pointer and element count |
+| runtime/fixed array | element pointer and element count |
+| dynamic array | element pointer, element count, and capacity |
 | struct / tuple | aligned fields in declaration order |
 
-Array literal buffers currently live in function stack frames. Semantic analysis rejects array escapes through globals and procedure results until an owned storage model exists. Indexing is emitted without bounds checks. Struct and array equality use generated recursive, element-wise helpers.
+Fixed and runtime array literal buffers live in function stack frames; dynamic
+array buffers use the checked bump arena. Semantic analysis rejects unsupported
+array escapes until an ownership model exists. Every element-address operation,
+including reads, writes, compound writes, increments, and address-taking,
+checks negative and upper bounds. Struct and array equality use generated
+recursive, element-wise helpers.
 
 Integer arithmetic emits fixed-width wrapping operations. Exact integer text survives to emission so 128-bit and boundary values can be encoded correctly. Division and modulo emit a zero check; the failure path writes a message with the preserved source path, line, and column to stderr and exits with status 1.
 
@@ -346,13 +360,20 @@ immutable Document snapshot
 
 `src/cmd/chaos-lsp/jsonrpc.go` implements `Content-Length` framed JSON-RPC 2.0 with bounded header and body sizes. `main.go` owns the initialize/shutdown/exit lifecycle. Protocol output goes to stdout; logging goes to stderr.
 
-`newDocument` in `server.go` builds one immutable analyzed snapshot for every accepted document version. It tokenizes and tolerantly parses the complete text. Semantic analysis runs when tokenization and parsing have no errors; otherwise an empty fact set is installed so syntax-based editor features can still operate safely. The snapshot also precomputes its resolver, document outline, and semantic-token encoding.
+`newDocument` in `server.go` builds one immutable analyzed snapshot for every
+accepted document version. It tokenizes and tolerantly parses the complete
+text, then runs semantic analysis even when recoverable editor diagnostics are
+present so independent valid regions retain useful facts. The snapshot also
+precomputes its resolver, document outline, and semantic-token encoding.
 
 Incremental changes are checked against the current version and translated from UTF-16 positions to byte offsets. Invalid edits and stale versions are rejected without replacing the last good snapshot. A mutex protects the document map, lifecycle state, and writer error state.
 
 The resolver in `resolve.go` builds a lexical scope tree and occurrence index from the tolerant AST and semantic facts. It powers definition, references, document highlights, hover, and completion. `semantic.go` combines lexical tokens with AST classifications, sorts them, and emits the LSP delta encoding. `symbols.go` builds the document outline.
 
-The current server is document-oriented: it analyzes each open file independently and has no workspace/module index. Supported requests are:
+The server keeps a document-oriented index rather than a persistent workspace
+database. Open documents form an in-memory import overlay; changes rebuild
+dependent snapshots, and import-aware navigation can resolve symbols across
+those modules. Supported requests are:
 
 - document symbols;
 - full semantic tokens;
@@ -393,14 +414,15 @@ The main intended extension points are:
 
 The current architectural boundaries are:
 
-- one source file per CLI compilation;
-- no module resolution, object files, linker integration, or standard library;
+- one root source file per CLI compilation, with source-level imports;
+- no object files or linker integration;
 - one backend: fasm for Linux x86-64 ELF64;
 - no standalone optimization pass;
 - compile-time folding, but no execution of ordinary procedures at compile time;
-- stack-backed arrays with no bounds checks and no escaping ownership model;
+- checked fixed/runtime array indexing and bump-allocated dynamic arrays, but
+  no settled escaping ownership or copy/aliasing model;
 - `F16` and `F128` known to the front end but rejected for fasm emission;
-- document-local LSP analysis with no workspace symbol graph.
+- open-document import overlays without a persistent workspace symbol graph.
 
 ## Source map
 

@@ -3,14 +3,17 @@ format ELF64 executable 3
 segment readable writable
 chaos_heap:
     rb 1048576
+chaos_heap_end:
 chaos_heap_ptr:
     dq chaos_heap
 str0:
     db 0x34,0x32
 str1:
-    db 0x64,0x69,0x76,0x69,0x73,0x69,0x6f,0x6e,0x20,0x62,0x79,0x20,0x7a,0x65,0x72,0x6f,0x20,0x61,0x74,0x20,0x2e,0x2e,0x2f,0x63,0x68,0x61,0x6f,0x73,0x2d,0x73,0x74,0x64,0x6c,0x69,0x62,0x2f,0x63,0x6f,0x72,0x65,0x2e,0x63,0x68,0x61,0x6f,0x73,0x3a,0x38,0x39,0x3a,0x32,0x36,0x0a
+    db 0x64,0x69,0x76,0x69,0x73,0x69,0x6f,0x6e,0x20,0x62,0x79,0x20,0x7a,0x65,0x72,0x6f,0x20,0x61,0x74,0x20,0x2f,0x68,0x6f,0x6d,0x65,0x2f,0x6e,0x65,0x78,0x74,0x6e,0x65,0x73,0x73,0x2f,0x77,0x6f,0x72,0x6b,0x73,0x70,0x61,0x63,0x65,0x2f,0x6e,0x65,0x78,0x74,0x6e,0x65,0x73,0x73,0x2f,0x63,0x68,0x61,0x6f,0x73,0x2f,0x63,0x68,0x61,0x6f,0x73,0x2d,0x73,0x74,0x64,0x6c,0x69,0x62,0x2f,0x63,0x6f,0x72,0x65,0x2e,0x63,0x68,0x61,0x6f,0x73,0x3a,0x38,0x39,0x3a,0x32,0x36,0x0a
 str2:
-    db 0x64,0x69,0x76,0x69,0x73,0x69,0x6f,0x6e,0x20,0x62,0x79,0x20,0x7a,0x65,0x72,0x6f,0x20,0x61,0x74,0x20,0x2e,0x2e,0x2f,0x63,0x68,0x61,0x6f,0x73,0x2d,0x73,0x74,0x64,0x6c,0x69,0x62,0x2f,0x63,0x6f,0x72,0x65,0x2e,0x63,0x68,0x61,0x6f,0x73,0x3a,0x39,0x30,0x3a,0x31,0x39,0x0a
+    db 0x64,0x69,0x76,0x69,0x73,0x69,0x6f,0x6e,0x20,0x62,0x79,0x20,0x7a,0x65,0x72,0x6f,0x20,0x61,0x74,0x20,0x2f,0x68,0x6f,0x6d,0x65,0x2f,0x6e,0x65,0x78,0x74,0x6e,0x65,0x73,0x73,0x2f,0x77,0x6f,0x72,0x6b,0x73,0x70,0x61,0x63,0x65,0x2f,0x6e,0x65,0x78,0x74,0x6e,0x65,0x73,0x73,0x2f,0x63,0x68,0x61,0x6f,0x73,0x2f,0x63,0x68,0x61,0x6f,0x73,0x2d,0x73,0x74,0x64,0x6c,0x69,0x62,0x2f,0x63,0x6f,0x72,0x65,0x2e,0x63,0x68,0x61,0x6f,0x73,0x3a,0x39,0x30,0x3a,0x31,0x39,0x0a
+str3:
+    db 0x61,0x6c,0x6c,0x6f,0x63,0x61,0x74,0x69,0x6f,0x6e,0x20,0x66,0x61,0x69,0x6c,0x65,0x64,0x0a
 
 segment readable executable
 
@@ -20,6 +23,31 @@ _start:
     call chaos_fn_9
     mov rdi, rax
     mov rax, 60
+    syscall
+
+chaos_alloc:
+    test rax, rax
+    js chaos_alloc_fail
+    add rax, 7
+    jc chaos_alloc_fail
+    and rax, -8
+    mov rcx, qword [chaos_heap_ptr]
+    mov rdx, rcx
+    add rdx, rax
+    jc chaos_alloc_fail
+    cmp rdx, chaos_heap_end
+    ja chaos_alloc_fail
+    mov qword [chaos_heap_ptr], rdx
+    mov rax, rcx
+    ret
+chaos_alloc_fail:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, str3
+    mov rdx, 18
+    syscall
+    mov rax, 60
+    mov rdi, 1
     syscall
 
 chaos_fn_9:
@@ -220,7 +248,7 @@ L16:
 chaos_fn_6:
     push rbp
     mov rbp, rsp
-    sub rsp, 960
+    sub rsp, 928
     mov qword [rbp-8], rbx
     mov qword [rbp-16], r12
     mov qword [rbp-24], r13
@@ -232,13 +260,8 @@ L17:
     mov rax, 32
     mov qword [rbp-144], rax
     mov rax, qword [rbp-144]
-    add rax, 7
-    and rax, -8
-    mov rcx, rax
-    mov rax, qword [chaos_heap_ptr]
+    call chaos_alloc
     mov qword [rbp-152], rax
-    add rax, rcx
-    mov qword [chaos_heap_ptr], rax
     mov rax, qword [rbp-152]
     mov qword [rbp-56], rax
     mov rax, qword [rbp-56]
@@ -372,7 +395,7 @@ L25:
     mov rax, 1
     mov rdi, 2
     mov rsi, str1
-    mov rdx, 53
+    mov rdx, 90
     syscall
     mov rax, 60
     mov rdi, 1
@@ -403,7 +426,7 @@ L39:
     mov rax, 1
     mov rdi, 2
     mov rsi, str2
-    mov rdx, 53
+    mov rdx, 90
     syscall
     mov rax, 60
     mov rdi, 1
@@ -527,42 +550,31 @@ L32:
 L33:
     jmp L34
 L34:
-    lea rdi, [rbp-712]
+    mov rax, qword [rbp-64]
+    mov qword [rbp-704], rax
+    mov rax, qword [rbp-88]
+    mov qword [rbp-712], rax
+    lea rdi, [rbp-728]
     xor eax, eax
     mov rcx, 16
     cld
     rep stosb
-    lea rsi, [rbp-712]
+    mov rax, qword [rbp-704]
+    mov qword [rbp-728], rax
+    mov rax, qword [rbp-712]
+    mov qword [rbp-720], rax
+    lea rsi, [rbp-728]
     lea rdi, [rbp-136]
     mov rcx, 16
     cld
     rep movsb
-    lea rax, [rbp-136]
-    mov qword [rbp-720], rax
-    mov rax, qword [rbp-720]
-    mov qword [rbp-728], rax
-    mov rax, qword [rbp-64]
-    mov qword [rbp-736], rax
-    mov r10, qword [rbp-728]
-    mov rax, qword [rbp-736]
-    mov qword [r10], rax
-    lea rax, [rbp-136]
-    mov qword [rbp-744], rax
-    mov rax, qword [rbp-744]
-    add rax, 8
-    mov qword [rbp-752], rax
-    mov rax, qword [rbp-88]
-    mov qword [rbp-760], rax
-    mov r10, qword [rbp-752]
-    mov rax, qword [rbp-760]
-    mov qword [r10], rax
     lea rsi, [rbp-136]
-    lea rdi, [rbp-776]
+    lea rdi, [rbp-744]
     mov rcx, 16
     cld
     rep movsb
-    mov rax, qword [rbp-776]
-    mov rdx, qword [rbp-776+8]
+    mov rax, qword [rbp-744]
+    mov rdx, qword [rbp-744+8]
     mov rbx, qword [rbp-8]
     mov r12, qword [rbp-16]
     mov r13, qword [rbp-24]
@@ -572,79 +584,79 @@ L34:
     ret
 L35:
     mov rax, qword [rbp-120]
-    mov qword [rbp-784], rax
+    mov qword [rbp-752], rax
     mov rax, 0
-    mov qword [rbp-792], rax
-    mov rax, qword [rbp-784]
-    cmp rax, qword [rbp-792]
+    mov qword [rbp-760], rax
+    mov rax, qword [rbp-752]
+    cmp rax, qword [rbp-760]
     seta al
-    mov byte [rbp-793], al
-    movzx rax, byte [rbp-793]
+    mov byte [rbp-761], al
+    movzx rax, byte [rbp-761]
     test al, al
     jnz L36
     jmp L38
 L36:
     mov rax, qword [rbp-64]
-    mov qword [rbp-808], rax
+    mov qword [rbp-776], rax
     mov rax, qword [rbp-120]
+    mov qword [rbp-784], rax
+    mov rax, qword [rbp-776]
+    mov rcx, qword [rbp-784]
+    add rax, rcx
+    mov qword [rbp-792], rax
+    mov rax, qword [rbp-64]
+    mov qword [rbp-800], rax
+    mov rax, qword [rbp-120]
+    mov qword [rbp-808], rax
+    mov rax, 1
     mov qword [rbp-816], rax
     mov rax, qword [rbp-808]
-    mov rcx, qword [rbp-816]
-    add rax, rcx
+    sub rax, qword [rbp-816]
     mov qword [rbp-824], rax
-    mov rax, qword [rbp-64]
-    mov qword [rbp-832], rax
-    mov rax, qword [rbp-120]
-    mov qword [rbp-840], rax
-    mov rax, 1
-    mov qword [rbp-848], rax
-    mov rax, qword [rbp-840]
-    sub rax, qword [rbp-848]
-    mov qword [rbp-856], rax
-    mov rax, qword [rbp-832]
-    mov rcx, qword [rbp-856]
+    mov rax, qword [rbp-800]
+    mov rcx, qword [rbp-824]
     add rax, rcx
-    mov qword [rbp-864], rax
-    mov rax, qword [rbp-864]
+    mov qword [rbp-832], rax
+    mov rax, qword [rbp-832]
     movzx rax, byte [rax]
-    mov byte [rbp-865], al
-    mov r10, qword [rbp-824]
-    movzx rax, byte [rbp-865]
+    mov byte [rbp-833], al
+    mov r10, qword [rbp-792]
+    movzx rax, byte [rbp-833]
     mov byte [r10], al
     mov rax, qword [rbp-120]
-    mov qword [rbp-880], rax
+    mov qword [rbp-848], rax
     mov rax, 1
-    mov qword [rbp-888], rax
-    mov rax, qword [rbp-880]
-    sub rax, qword [rbp-888]
-    mov qword [rbp-896], rax
-    mov rax, qword [rbp-896]
+    mov qword [rbp-856], rax
+    mov rax, qword [rbp-848]
+    sub rax, qword [rbp-856]
+    mov qword [rbp-864], rax
+    mov rax, qword [rbp-864]
     mov qword [rbp-120], rax
     jmp L37
 L37:
     jmp L35
 L38:
     mov rax, qword [rbp-64]
-    mov qword [rbp-904], rax
+    mov qword [rbp-872], rax
     mov rax, 0
-    mov qword [rbp-912], rax
-    mov rax, qword [rbp-904]
-    mov rcx, qword [rbp-912]
+    mov qword [rbp-880], rax
+    mov rax, qword [rbp-872]
+    mov rcx, qword [rbp-880]
     add rax, rcx
-    mov qword [rbp-920], rax
+    mov qword [rbp-888], rax
     mov rax, 45
-    mov byte [rbp-921], al
-    mov r10, qword [rbp-920]
-    movzx rax, byte [rbp-921]
+    mov byte [rbp-889], al
+    mov r10, qword [rbp-888]
+    movzx rax, byte [rbp-889]
     mov byte [r10], al
     mov rax, qword [rbp-88]
-    mov qword [rbp-936], rax
+    mov qword [rbp-904], rax
     mov rax, 1
-    mov qword [rbp-944], rax
-    mov rax, qword [rbp-936]
-    add rax, qword [rbp-944]
-    mov qword [rbp-952], rax
-    mov rax, qword [rbp-952]
+    mov qword [rbp-912], rax
+    mov rax, qword [rbp-904]
+    add rax, qword [rbp-912]
+    mov qword [rbp-920], rax
+    mov rax, qword [rbp-920]
     mov qword [rbp-88], rax
     jmp L34
 

@@ -42,6 +42,9 @@ func DumpParseResult(result ParseResult) string {
 func DumpAST(program *Program) string {
 	var b strings.Builder
 	b.WriteString("Program\n")
+	if program == nil {
+		return b.String()
+	}
 	for _, d := range program.Decls {
 		dumpDecl(&b, d, 1)
 	}
@@ -58,7 +61,9 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 	switch n := d.(type) {
 	case *ProcDecl:
 		dumpIndent(b, depth)
-		fmt.Fprintf(b, "ProcDecl %s\n", n.Name)
+		fmt.Fprintf(b, "ProcDecl %s", n.Name)
+		dumpTypeParams(b, n.TypeParams)
+		b.WriteString("\n")
 		for _, p := range n.Params {
 			dumpIndent(b, depth+1)
 			fmt.Fprintf(b, "Param %s: ", p.Name)
@@ -83,11 +88,17 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 		dumpBlock(b, n.Body, depth+1)
 	case *StructDecl:
 		dumpIndent(b, depth)
-		fmt.Fprintf(b, "StructDecl %s\n", n.Name)
+		fmt.Fprintf(b, "StructDecl %s", n.Name)
+		dumpTypeParams(b, n.TypeParams)
+		b.WriteString("\n")
 		for _, f := range n.Fields {
 			dumpIndent(b, depth+1)
 			fmt.Fprintf(b, "Field %s: ", f.Name)
 			dumpExpr(b, f.Type)
+			if f.Default != nil {
+				b.WriteString(" = ")
+				dumpExpr(b, f.Default)
+			}
 			b.WriteString("\n")
 		}
 	case *ErrorDecl:
@@ -123,21 +134,53 @@ func dumpDecl(b *strings.Builder, d Decl, depth int) {
 		if n.Init != nil {
 			b.WriteString(" = ")
 			dumpExpr(b, n.Init)
+		} else if n.InitLater {
+			b.WriteString(" = ...")
 		}
 		fmt.Fprintf(b, " [mutable=%v compileTime=%v", n.Mutable, n.CompileTime)
 		if n.Shadow {
 			b.WriteString(" shadow=true")
 		}
 		b.WriteString("]\n")
+	case *ImportDecl:
+		dumpIndent(b, depth)
+		fmt.Fprintf(b, "ImportDecl module=%q", n.Module)
+		if n.Namespace != "" {
+			fmt.Fprintf(b, " namespace=%s", n.Namespace)
+		}
+		fmt.Fprintf(b, " declarations=%d\n", len(n.Decls))
 	default:
 		dumpIndent(b, depth)
 		fmt.Fprintf(b, "Decl %T\n", d)
 	}
 }
 
+func dumpTypeParams(b *strings.Builder, params []TypeParam) {
+	if len(params) == 0 {
+		return
+	}
+	b.WriteString(" <")
+	for i, param := range params {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(param.Name)
+		if len(param.Constraints) > 0 {
+			b.WriteString(": ")
+			for j, constraint := range param.Constraints {
+				if j > 0 {
+					b.WriteString(" | ")
+				}
+				dumpExpr(b, constraint)
+			}
+		}
+	}
+	b.WriteString(">")
+}
+
 func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 	switch n := s.(type) {
-	case *VarDecl, *ProcDecl, *StructDecl, *ErrorDecl:
+	case *VarDecl, *ProcDecl, *StructDecl, *ErrorDecl, *EnumDecl:
 		dumpDecl(b, n.(Decl), depth)
 	case *AssignStmt:
 		dumpIndent(b, depth)
@@ -153,9 +196,9 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 	case *ReturnStmt:
 		dumpIndent(b, depth)
 		b.WriteString("ReturnStmt")
-		if n.Value != nil {
+		for _, value := range n.Values {
 			b.WriteString(" ")
-			dumpExpr(b, n.Value)
+			dumpExpr(b, value)
 		}
 		b.WriteString("\n")
 	case *ExitStmt:
@@ -198,8 +241,11 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 	case *UnlessCatchStmt:
 		dumpIndent(b, depth)
 		b.WriteString("UnlessCatchStmt")
-		if n.Target != "" {
-			fmt.Fprintf(b, " %s", n.Target)
+		for i, target := range n.Targets {
+			if i > 0 {
+				b.WriteString(",")
+			}
+			fmt.Fprintf(b, " %s", target)
 		}
 		if n.Shadow {
 			b.WriteString(" [shadow=true]")
@@ -252,6 +298,16 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 	case *ContinueStmt:
 		dumpIndent(b, depth)
 		b.WriteString("ContinueStmt\n")
+	case *DeallocateStmt:
+		dumpIndent(b, depth)
+		b.WriteString("DeallocateStmt ")
+		dumpExpr(b, n.Addr)
+		b.WriteString("\n")
+	case *MultiVarDecl:
+		dumpIndent(b, depth)
+		fmt.Fprintf(b, "MultiVarDecl %s = ", strings.Join(n.Names, ", "))
+		dumpExpr(b, n.Init)
+		fmt.Fprintf(b, " [mutable=%v compileTime=%v shadow=%v]\n", n.Mutable, n.CompileTime, n.Shadow)
 	case *CompoundAssignStmt:
 		dumpIndent(b, depth)
 		b.WriteString("CompoundAssignStmt ")
@@ -281,6 +337,9 @@ func dumpStmt(b *strings.Builder, s Stmt, depth int) {
 func dumpBlock(b *strings.Builder, blk *BlockStmt, depth int) {
 	dumpIndent(b, depth)
 	b.WriteString("Block\n")
+	if blk == nil {
+		return
+	}
 	for _, s := range blk.Stmts {
 		dumpStmt(b, s, depth+1)
 	}
@@ -366,11 +425,21 @@ func dumpExpr(b *strings.Builder, e Expr) {
 		b.WriteString(")")
 	case *ArrayTypeExpr:
 		b.WriteString("ArrayType(")
+		switch n.Kind {
+		case ArrayFixed:
+			b.WriteString("fixed size=")
+			dumpExpr(b, n.Size)
+			b.WriteString(" elem=")
+		case ArrayDynamic:
+			b.WriteString("dynamic elem=")
+		default:
+			b.WriteString("runtime elem=")
+		}
 		dumpExpr(b, n.Elem)
 		b.WriteString(")")
 	case *ArrayInitExpr:
 		b.WriteString("ArrayInit(")
-		dumpExpr(b, n.Elem.Elem)
+		dumpExpr(b, n.Elem)
 		for _, item := range n.Items {
 			b.WriteString(", ")
 			dumpExpr(b, item)

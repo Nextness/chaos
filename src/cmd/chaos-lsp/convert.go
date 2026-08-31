@@ -29,6 +29,11 @@ func severityToLSP(s compiler.Severity) int {
 func convertDiagnostics(diags compiler.DiagnosticList, sf *compiler.SourceFile) []Diagnostic {
 	out := []Diagnostic{}
 	for _, d := range diags {
+		// Imported modules are analyzed with the root document, but diagnostics
+		// for their FileID are published when that document is itself open.
+		if d.Span.File != sf.ID {
+			continue
+		}
 		r := compiler.SpanToRange(d.Span, sf)
 		msg := d.Message
 		if d.Suggestion != "" {

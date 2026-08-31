@@ -88,6 +88,115 @@ func TestFasmRuntimeDivisionByZeroLocation(t *testing.T) {
 	}
 }
 
+func TestFasmRuntimeArrayBoundsLocation(t *testing.T) {
+	fasmPath, err := exec.LookPath("fasm")
+	if err != nil {
+		t.Skip("fasm not available")
+	}
+	tests := []struct {
+		name, index, statement string
+	}{
+		{"negative read", "-1", "value := a[i];"},
+		{"upper read", "3", "value := a[i];"},
+		{"upper write", "3", "a[i] = 9;"},
+		{"compound write", "3", "a[i] += 1;"},
+		{"increment", "3", "a[i]++;"},
+		{"address", "3", "p := *a[i];"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := "#entry main :: proc -> S64 {\n    a: [3]S64 = .{1, 2, 3};\n    i: S64 = " + tt.index + ";\n    " + tt.statement + "\n    return 0;\n}"
+			asm, diags := emitSource(t, source)
+			if diags.HasErrors() {
+				t.Fatalf("emit errors: %v", diags)
+			}
+			dir := t.TempDir()
+			asmPath := filepath.Join(dir, "out.asm")
+			binPath := filepath.Join(dir, "out.bin")
+			if err := os.WriteFile(asmPath, []byte(asm), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if out, err := exec.Command(fasmPath, asmPath, binPath).CombinedOutput(); err != nil {
+				t.Fatalf("fasm failed: %v\n%s", err, out)
+			}
+			if err := os.Chmod(binPath, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			var stderr bytes.Buffer
+			cmd := exec.Command(binPath)
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+				t.Fatalf("run error = %v, want exit status 1", err)
+			}
+			line := "    " + tt.statement
+			want := "array index out of bounds at test.chaos:4:" + strconv.Itoa(strings.Index(line, "a[")+1) + "\n"
+			if got := stderr.String(); got != want {
+				t.Fatalf("stderr = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+func TestFasmCheckedHeapAllocation(t *testing.T) {
+	fasmPath, err := exec.LookPath("fasm")
+	if err != nil {
+		t.Skip("fasm not available")
+	}
+	tests := []struct {
+		name, source string
+		fails        bool
+	}{
+		{"exact bound", "#entry main :: proc -> S64 { p := #allocate 1048576; return 0; }", false},
+		{"negative", "#entry main :: proc -> S64 { p := #allocate -1; return 0; }", true},
+		{"exhaustion", "#entry main :: proc -> S64 { p := #allocate 1048576; q := #allocate 1; return 0; }", true},
+		{"alignment exhaustion", "#entry main :: proc -> S64 { p := #allocate 1048575; q := #allocate 1; return 0; }", true},
+		{"interpolation exhaustion", "#entry main :: proc -> S64 { p := #allocate 1048568; value := «123456789»; joined := «{value}»; return 0; }", true},
+		{"dynamic array exhaustion", "#entry main :: proc -> S64 { p := #allocate 1048568; values: [dyn]S64 = .{1, 2}; return 0; }", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			asm, diags := emitSource(t, tt.source)
+			if diags.HasErrors() {
+				t.Fatalf("emit errors: %v", diags)
+			}
+			dir := t.TempDir()
+			asmPath := filepath.Join(dir, "out.asm")
+			binPath := filepath.Join(dir, "out.bin")
+			if err := os.WriteFile(asmPath, []byte(asm), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if out, err := exec.Command(fasmPath, asmPath, binPath).CombinedOutput(); err != nil {
+				t.Fatalf("fasm failed: %v\n%s", err, out)
+			}
+			if err := os.Chmod(binPath, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			var stderr bytes.Buffer
+			cmd := exec.Command(binPath)
+			cmd.Stderr = &stderr
+			err := cmd.Run()
+			if !tt.fails {
+				if err != nil {
+					t.Fatalf("run error = %v, stderr = %q", err, stderr.String())
+				}
+				if stderr.Len() != 0 {
+					t.Fatalf("stderr = %q, want empty", stderr.String())
+				}
+				return
+			}
+			var exitErr *exec.ExitError
+			if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+				t.Fatalf("run error = %v, want exit status 1", err)
+			}
+			if got, want := stderr.String(), "allocation failed\n"; got != want {
+				t.Fatalf("stderr = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
 func TestFasmEmitSimple(t *testing.T) {
 	asm, diags := emitSource(t, "#entry main :: proc -> S64 {\n    return 42;\n}")
 	if diags.HasErrors() {
@@ -406,9 +515,14 @@ func TestFasmRuntime(t *testing.T) {
 		{"dynamic array field write", "#entry main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    a.count = 5;\n    a.capacity = 10;\n    if a.count == 5 && a.capacity == 10 { return 5; }\n    return 0;\n}", 5},
 		{"dynamic array string", "#entry main :: proc -> S64 {\n    a: [dyn]String = .{«a», «b», «c»};\n    if a[0] == «a» && a[2] == «c» { return 3; }\n    return 0;\n}", 3},
 		{"size_of", "#entry main :: proc -> S64 {\n    if size_of(S64) != 8 { return 1; }\n    if size_of(String) != 16 { return 2; }\n    if size_of([dyn]S64) != 24 { return 3; }\n    x: S64 = 5;\n    if size_of(x) != 8 { return 4; }\n    return 0;\n}", 0},
+		{"size_of aligned struct", "Padded :: struct { flag: Bool; value: S64; }\n#entry main :: proc -> S64 { return size_of(Padded).(S64); }", 16},
+		{"dynamic array by value", "capacity :: proc (a: [dyn]S64) -> Size { return a.capacity; }\n#entry main :: proc -> S64 { a: [dyn]S64 = .{1, 2, 3}; return capacity(a).(S64); }", 3},
+		{"dynamic array by value on stack", "capacity :: proc (a: S64, b: S64, c: S64, d: S64, e: S64, f: S64, values: [dyn]S64) -> Size { return values.capacity; }\n#entry main :: proc -> S64 { values: [dyn]S64 = .{1, 2, 3, 4}; return capacity(1, 2, 3, 4, 5, 6, values).(S64); }", 4},
 		{"pointer index read write", "#entry main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    p: *S64 = a.data;\n    v := p[1];\n    p[2] = 30;\n    if v == 2 && a[2] == 30 { return 30; }\n    return 0;\n}", 30},
 		{"generic proc", "identity <T: S64 | String> :: proc (x: T) -> T { return x; }\n#entry main :: proc -> S64 {\n    a := identity(42);\n    s := identity(«hi»);\n    if a == 42 && s == «hi» { return 42; }\n    return 0;\n}", 42},
 		{"generic struct", "Box <T: S64 | String> :: struct { v: T; }\n#entry main :: proc -> S64 {\n    b: Box = .{v=7};\n    if b.v == 7 { return 7; }\n    return 0;\n}", 7},
+		{"generic recursive proc", "countdown <T: S64> :: proc (n: T) -> T { if n == 0 { return n; } return countdown(n - 1); }\n#entry main :: proc -> S64 { return countdown(5); }", 0},
+		{"generic struct instance reuse", "Box <T: S64 | String> :: struct { v: T; }\n#entry main :: proc -> S64 { a: Box = .{v=7}; b: Box = .{v=9}; a = b; return a.v; }", 9},
 		{"append grow", "#import «core»;\n#entry main :: proc -> S64 {\n    a: [dyn]S64;\n    append(*a, 10); append(*a, 20); append(*a, 30); append(*a, 40);\n    if a.count == 4 && a[0] == 10 && a[3] == 40 && a.capacity >= 4 { return 4; }\n    return 0;\n}", 4},
 		{"append pop", "#import «core»;\n#entry main :: proc -> S64 {\n    a: [dyn]S64 = .{1, 2, 3};\n    last := pop_last(*a);\n    first := pop_first(*a);\n    if last == 3 && first == 1 && a.count == 1 && a[0] == 2 { return 2; }\n    return 0;\n}", 2},
 		{"append string", "#import «core»;\n#entry main :: proc -> S64 {\n    a: [dyn]String = .{«a», «b»};\n    append(*a, «c»); append(*a, «d»);\n    if a.count == 4 && a[0] == «a» && a[3] == «d» { return 4; }\n    return 0;\n}", 4},
@@ -504,6 +618,15 @@ func TestFasmPrintAndFileIO(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte("file contents\n"), 0o600); err != nil {
 		t.Fatalf("write fixture: %v", err)
 	}
+	emptyPath := filepath.Join(dir, "empty.txt")
+	if err := os.WriteFile(emptyPath, nil, 0o600); err != nil {
+		t.Fatalf("write empty fixture: %v", err)
+	}
+	largePath := filepath.Join(dir, "large.txt")
+	if err := os.WriteFile(largePath, bytes.Repeat([]byte{'x'}, 131072), 0o600); err != nil {
+		t.Fatalf("write large fixture: %v", err)
+	}
+	missingPath := filepath.Join(dir, "missing.txt")
 	tests := []struct {
 		name string
 		src  string
@@ -513,6 +636,10 @@ func TestFasmPrintAndFileIO(t *testing.T) {
 		{"print", "#entry main :: proc -> S64 {\n    print(«hello»);\n    println(«world»);\n    return 0;\n}", "helloworld\n", 0},
 		{"file exists", "#entry main :: proc -> S64 {\n    if file_exists(«" + filePath + "») { println(«yes»); } else { println(«no»); }\n    if file_exists(«/nonexistent/path.xyz») { println(«bad»); } else { println(«missing»); }\n    return 0;\n}", "yes\nmissing\n", 0},
 		{"read file", "#entry main :: proc -> S64 {\n    content := read_file(«" + filePath + "»);\n    print(content);\n    return 0;\n}", "file contents\n", 0},
+		{"read empty file", "#entry main :: proc -> S64 {\n    content := read_file(«" + emptyPath + "»);\n    if content.count != 0 { return 2; }\n    return 0;\n}", "", 0},
+		{"read large file", "#entry main :: proc -> S64 {\n    content := read_file(«" + largePath + "»);\n    if content.count != 131072 { return 2; }\n    return 0;\n}", "", 0},
+		{"read missing file", "#entry main :: proc -> S64 {\n    content := read_file(«" + missingPath + "»);\n    return 0;\n}", "cannot open file: " + missingPath + "\n", 1},
+		{"read directory", "#entry main :: proc -> S64 {\n    content := read_file(«" + dir + "»);\n    return 0;\n}", "cannot read file: " + dir + "\n", 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

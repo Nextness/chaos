@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Namespaced import: members are reached through the namespace binding.
 c :: #import «core»;
 #entry main :: proc -> S64 {

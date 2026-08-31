@@ -1,4 +1,6 @@
 // expect-exit: 18
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // 128-bit integers: division and modulo across the full width.
 #entry main :: proc -> S64 {
     x: U128 = 100;

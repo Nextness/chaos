@@ -76,20 +76,12 @@ type fasmEmitter struct {
 	boundsMessages   map[*MIRInstr]int
 	newlineIndex     int // index of the "\n" constant in strings
 	openFailIndex    int // index of the "cannot open file: " constant in strings
+	readFailIndex    int // index of the "cannot read file: " constant in strings
+	allocFailIndex   int // index of the allocation failure constant in strings
 	globalLabels     map[SymbolID]string
-	layouts          map[TypeID]Layout
-	layoutVisiting   map[TypeID]bool
 	equalityTypes    map[TypeID]bool
 	needsHeap        bool
 	reachable        map[SymbolID]bool // functions reachable from the entry point
-}
-
-// Layout is the single backend storage contract used for stack slots,
-// globals, aggregate fields, array strides, calls, and comparisons.
-type Layout struct {
-	Size         int
-	Align        int
-	FieldOffsets []int
 }
 
 // floatConst is a float constant with its storage size (4 for F32, 8 for
@@ -218,6 +210,9 @@ func (fb *fasmEmitter) emit() {
 	fb.emitData()
 	fb.out.WriteString("segment readable executable\n\n")
 	fb.emitEntry()
+	if fb.needsHeap {
+		fb.emitHeapAllocator()
+	}
 	for _, fn := range fb.prog.Functions {
 		if fb.reachable[fn.Symbol] {
 			fb.emitFunction(fn)
@@ -295,13 +290,15 @@ func (fb *fasmEmitter) collectStringConsts() {
 	fb.boundsMessages = make(map[*MIRInstr]int)
 	fb.newlineIndex = -1
 	fb.openFailIndex = -1
+	fb.readFailIndex = -1
+	fb.allocFailIndex = -1
 	for _, fn := range fb.prog.Functions {
 		if !fb.reachable[fn.Symbol] {
 			continue
 		}
 		for _, b := range fn.Blocks {
 			for _, ins := range b.Instrs {
-				if ins.Op == MIRArrayIndex {
+				if ins.Op == MIRArrayIndex || ins.Op == MIRArrayElemAddr {
 					message := fb.boundsMessage(ins.Span)
 					index, ok := fb.stringIndexes[message]
 					if !ok {
@@ -358,9 +355,13 @@ func (fb *fasmEmitter) collectStringConsts() {
 				}
 				if ins.Op == MIRReadFile {
 					fb.ensureString("cannot open file: ", &fb.openFailIndex)
+					fb.ensureString("cannot read file: ", &fb.readFailIndex)
 				}
 			}
 		}
+	}
+	if fb.needsHeap {
+		fb.ensureString("allocation failed\n", &fb.allocFailIndex)
 	}
 }
 
@@ -445,11 +446,11 @@ func (fb *fasmEmitter) emitData() {
 		fmt.Fprintf(&fb.out, "%s:\n    rb %d\n", fb.globalLabel(g.Symbol), size)
 	}
 	if fb.needsHeap {
-		// A static bump allocator: chaos_heap is the reserved arena and
-		// chaos_heap_ptr tracks the next free byte. #allocate bumps the
-		// pointer; #deallocate is a no-op for now (a bump allocator cannot
-		// reclaim individual blocks).
+		// A bounded static bump allocator. chaos_alloc is the only code that
+		// advances chaos_heap_ptr and rejects negative, overflowing, or
+		// out-of-arena requests before returning an address.
 		fb.out.WriteString("chaos_heap:\n    rb 1048576\n")
+		fb.out.WriteString("chaos_heap_end:\n")
 		fb.out.WriteString("chaos_heap_ptr:\n    dq chaos_heap\n")
 	}
 	for i, fc := range fb.floatConsts {
@@ -542,16 +543,15 @@ func (fb *fasmEmitter) emitEntry() {
 		fb.needsHeap = true
 		fb.out.WriteString("    mov r12, qword [rsp]\n")
 		fb.out.WriteString("    lea r13, [rsp+8]\n")
-		// Allocate argc*16 bytes (aligned) from the bump allocator.
+		// Allocate argc*16 bytes. Reject the multiplication before it can
+		// wrap into an apparently small allocation.
 		fb.out.WriteString("    mov rax, r12\n")
+		fb.out.WriteString("    mov rdx, 576460752303423487\n")
+		fb.out.WriteString("    cmp rax, rdx\n")
+		fb.out.WriteString("    ja chaos_alloc_fail\n")
 		fb.out.WriteString("    shl rax, 4\n")
-		fb.out.WriteString("    add rax, 7\n")
-		fb.out.WriteString("    and rax, -8\n")
-		fb.out.WriteString("    mov rcx, rax\n")
-		fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+		fb.out.WriteString("    call chaos_alloc\n")
 		fb.out.WriteString("    mov r14, rax\n")
-		fb.out.WriteString("    add rax, rcx\n")
-		fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
 		// Build the array: arr[i] = (argv[i], strlen(argv[i])).
 		fb.out.WriteString("    xor r15, r15\n")
 		argvLoop := fb.newLabel()
@@ -608,6 +608,38 @@ func (fb *fasmEmitter) emitEntry() {
 		fb.out.WriteString("    xor edi, edi\n")
 	}
 	fb.out.WriteString("    mov rax, 60\n")
+	fb.out.WriteString("    syscall\n\n")
+}
+
+// emitHeapAllocator emits the single checked allocation path used by every
+// compiler-generated heap request. The requested signed byte count arrives in
+// rax and the allocation address is returned in rax. Allocation failure is a
+// deterministic stderr diagnostic followed by exit status 1.
+func (fb *fasmEmitter) emitHeapAllocator() {
+	message := fb.strings[fb.allocFailIndex]
+	fb.out.WriteString("chaos_alloc:\n")
+	fb.out.WriteString("    test rax, rax\n")
+	fb.out.WriteString("    js chaos_alloc_fail\n")
+	fb.out.WriteString("    add rax, 7\n")
+	fb.out.WriteString("    jc chaos_alloc_fail\n")
+	fb.out.WriteString("    and rax, -8\n")
+	fb.out.WriteString("    mov rcx, qword [chaos_heap_ptr]\n")
+	fb.out.WriteString("    mov rdx, rcx\n")
+	fb.out.WriteString("    add rdx, rax\n")
+	fb.out.WriteString("    jc chaos_alloc_fail\n")
+	fb.out.WriteString("    cmp rdx, chaos_heap_end\n")
+	fb.out.WriteString("    ja chaos_alloc_fail\n")
+	fb.out.WriteString("    mov qword [chaos_heap_ptr], rdx\n")
+	fb.out.WriteString("    mov rax, rcx\n")
+	fb.out.WriteString("    ret\n")
+	fb.out.WriteString("chaos_alloc_fail:\n")
+	fb.out.WriteString("    mov rax, 1\n")
+	fb.out.WriteString("    mov rdi, 2\n")
+	fmt.Fprintf(&fb.out, "    mov rsi, str%d\n", fb.allocFailIndex)
+	fmt.Fprintf(&fb.out, "    mov rdx, %d\n", len(message))
+	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov rax, 60\n")
+	fb.out.WriteString("    mov rdi, 1\n")
 	fb.out.WriteString("    syscall\n\n")
 }
 
@@ -1859,6 +1891,10 @@ func (fb *fasmEmitter) classifyABI(types []IRType, sret bool) ([]abiArgLocation,
 			}
 			locations[i] = loc
 			continue
+		case t.Kind == TypeKindArray && t.ArrayKind == ArrayDynamic:
+			// A dynamic array is three words. Pass it by address like other
+			// aggregates so caller and callee copy the complete value.
+			loc.kind = argStruct
 		case t.Kind == TypeKindString || t.Kind == TypeKindArray:
 			loc.kind, intUnits, stackBytes = argString, 2, 16
 		case isRecordKind(t.Kind):
@@ -1938,81 +1974,7 @@ func (fb *fasmEmitter) emitTerminator(b *MIRBlock) {
 }
 
 func (fb *fasmEmitter) layoutOf(t IRType) Layout {
-	if t.Kind == TypeKindUnknown {
-		return Layout{Align: 1}
-	}
-	if fb.layouts == nil {
-		fb.layouts = make(map[TypeID]Layout)
-		fb.layoutVisiting = make(map[TypeID]bool)
-	}
-	if layout, ok := fb.layouts[t.ID]; ok {
-		return layout
-	}
-	if fb.layoutVisiting[t.ID] {
-		return Layout{Align: 1}
-	}
-	fb.layoutVisiting[t.ID] = true
-	defer delete(fb.layoutVisiting, t.ID)
-	layout := Layout{Align: 1}
-	switch t.Kind {
-	case TypeKindVoid:
-		layout = Layout{Align: 1}
-	case TypeKindBool:
-		layout = Layout{Size: 1, Align: 1}
-	case TypeKindInt:
-		if info, ok := LookupBuiltinType(t.Name); ok && info.Kind == BuiltinInteger {
-			size := info.Bits / 8
-			align := size
-			if align > 8 {
-				align = 8
-			}
-			layout = Layout{Size: size, Align: align}
-		}
-	case TypeKindFloat:
-		if info, ok := LookupBuiltinType(t.Name); ok && info.Kind == BuiltinFloat {
-			size := info.Bits / 8
-			layout = Layout{Size: size, Align: size}
-		}
-	case TypeKindString:
-		// String is a (data, count) pair: data at offset 0, count at offset 8.
-		layout = Layout{Size: 16, Align: 8, FieldOffsets: []int{0, 8}}
-	case TypeKindArray:
-		if t.ArrayKind == ArrayDynamic {
-			// Dynamic arrays are (data, count, capacity): data at offset 0,
-			// count at offset 8, capacity at offset 16.
-			layout = Layout{Size: 24, Align: 8, FieldOffsets: []int{0, 8, 16}}
-		} else {
-			// Static and runtime arrays are (data, count): data at offset 0,
-			// count at offset 8.
-			layout = Layout{Size: 16, Align: 8, FieldOffsets: []int{0, 8}}
-		}
-	case TypeKindPointer:
-		layout = Layout{Size: 8, Align: 8}
-	case TypeKindAddr:
-		layout = Layout{Size: 8, Align: 8}
-	case TypeKindError:
-		layout = Layout{Size: 2, Align: 2}
-	case TypeKindEnum:
-		layout = fb.layoutOf(fb.prog.Types.Lookup(t.Underlying))
-	case TypeKindStruct, TypeKindTuple:
-		layout.FieldOffsets = make([]int, len(t.Fields))
-		offset, maxAlign := 0, 1
-		for i, field := range t.Fields {
-			fieldLayout := fb.layoutOf(fb.prog.Types.Lookup(field.Type))
-			offset = align(offset, fieldLayout.Align)
-			layout.FieldOffsets[i] = offset
-			offset += fieldLayout.Size
-			if fieldLayout.Align > maxAlign {
-				maxAlign = fieldLayout.Align
-			}
-		}
-		if offset == 0 {
-			offset = 1
-		}
-		layout.Size, layout.Align = align(offset, maxAlign), maxAlign
-	}
-	fb.layouts[t.ID] = layout
-	return layout
+	return fb.prog.Types.LayoutOf(t.ID)
 }
 
 func (fb *fasmEmitter) sizeOf(t IRType) int { return fb.layoutOf(t).Size }
@@ -2091,6 +2053,9 @@ func (fb *fasmEmitter) intRegCount(t IRType) int {
 	case t.Kind == TypeKindString:
 		return 2
 	case t.Kind == TypeKindArray:
+		if t.ArrayKind == ArrayDynamic {
+			return 1 // passed by address
+		}
 		return 2
 	case isRecordKind(t.Kind):
 		return 1 // passed by address
@@ -2254,14 +2219,9 @@ func (fb *fasmEmitter) emitArrayInit(ins *MIRInstr) {
 		// Allocate a heap buffer of count*elemSize bytes; keep its address in
 		// r10 so element stores do not clobber it.
 		fmt.Fprintf(&fb.out, "    mov rax, %d\n", count*elemSize)
-		fb.out.WriteString("    add rax, 7\n")
-		fb.out.WriteString("    and rax, -8\n")
-		fb.out.WriteString("    mov rcx, rax\n")
-		fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+		fb.out.WriteString("    call chaos_alloc\n")
 		fb.out.WriteString("    mov r10, rax\n")
 		fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot) // data
-		fb.out.WriteString("    add rax, rcx\n")
-		fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
 		for i, a := range ins.Args {
 			dst := i * elemSize
 			if fb.isAggregate(et) {
@@ -2314,19 +2274,7 @@ func (fb *fasmEmitter) emitArrayIndex(ins *MIRInstr) {
 	t := fb.prog.Types.Lookup(ins.Type)
 	elemSize := fb.sizeOf(t)
 	resSlot := fb.valueSlots[ins.Result]
-	// Runtime bounds check: index must be in [0, count).
-	errLabel := fb.newLabel()
-	okLabel := fb.newLabel()
-	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", idxSlot)
-	fb.out.WriteString("    test rax, rax\n")
-	fmt.Fprintf(&fb.out, "    js %s\n", errLabel)
-	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d+8]\n", arrSlot)
-	fb.out.WriteString("    cmp rax, rcx\n")
-	fmt.Fprintf(&fb.out, "    jae %s\n", errLabel)
-	fmt.Fprintf(&fb.out, "    jmp %s\n", okLabel)
-	fmt.Fprintf(&fb.out, "%s:\n", errLabel)
-	fb.emitBoundsExit(ins)
-	fmt.Fprintf(&fb.out, "%s:\n", okLabel)
+	fb.emitArrayBoundsCheck(ins, arrSlot, idxSlot)
 	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", arrSlot)
 	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d]\n", idxSlot)
 	if elemSize != 1 {
@@ -2343,6 +2291,23 @@ func (fb *fasmEmitter) emitArrayIndex(ins *MIRInstr) {
 	}
 	fb.emitLoadIndirect(t, "rax")
 	fb.emitStore(t, resSlot)
+}
+
+// emitArrayBoundsCheck enforces the shared array indexing contract before a
+// value load or an element address can reach the backing buffer.
+func (fb *fasmEmitter) emitArrayBoundsCheck(ins *MIRInstr, arrSlot, idxSlot int) {
+	errLabel := fb.newLabel()
+	okLabel := fb.newLabel()
+	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", idxSlot)
+	fb.out.WriteString("    test rax, rax\n")
+	fmt.Fprintf(&fb.out, "    js %s\n", errLabel)
+	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d+8]\n", arrSlot)
+	fb.out.WriteString("    cmp rax, rcx\n")
+	fmt.Fprintf(&fb.out, "    jae %s\n", errLabel)
+	fmt.Fprintf(&fb.out, "    jmp %s\n", okLabel)
+	fmt.Fprintf(&fb.out, "%s:\n", errLabel)
+	fb.emitBoundsExit(ins)
+	fmt.Fprintf(&fb.out, "%s:\n", okLabel)
 }
 
 // emitAddrOf materializes the address of a local slot or a global.
@@ -2433,6 +2398,7 @@ func (fb *fasmEmitter) emitArrayElemAddr(ins *MIRInstr) {
 	elemType := fb.prog.Types.Lookup(ptrType.Elem)
 	elemSize := fb.sizeOf(elemType)
 	resSlot := fb.valueSlots[ins.Result]
+	fb.emitArrayBoundsCheck(ins, arrSlot, idxSlot)
 	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", arrSlot)
 	fmt.Fprintf(&fb.out, "    mov rcx, qword [rbp-%d]\n", idxSlot)
 	if elemSize != 1 {
@@ -2512,13 +2478,8 @@ func (fb *fasmEmitter) emitAllocate(ins *MIRInstr) {
 	sizeSlot := fb.valueSlots[ins.Args[0]]
 	resSlot := fb.valueSlots[ins.Result]
 	fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d]\n", sizeSlot)
-	fb.out.WriteString("    add rax, 7\n")
-	fb.out.WriteString("    and rax, -8\n")
-	fb.out.WriteString("    mov rcx, rax\n")
-	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fb.out.WriteString("    call chaos_alloc\n")
 	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
-	fb.out.WriteString("    add rax, rcx\n")
-	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
 }
 
 // emitDeallocate implements '#deallocate <addr>'. A bump allocator cannot
@@ -2594,20 +2555,17 @@ func (fb *fasmEmitter) emitInterpolate(ins *MIRInstr) {
 	for _, lit := range ins.Imm.Strs {
 		fmt.Fprintf(&fb.out, "    mov rax, %d\n", len(lit))
 		fb.out.WriteString("    add rbx, rax\n")
+		fb.out.WriteString("    jc chaos_alloc_fail\n")
 	}
 	for _, a := range ins.Args {
 		fmt.Fprintf(&fb.out, "    mov rax, qword [rbp-%d+8]\n", fb.valueSlots[a])
 		fb.out.WriteString("    add rbx, rax\n")
+		fb.out.WriteString("    jc chaos_alloc_fail\n")
 	}
-	// Allocate a buffer of the aligned size.
+	// Allocate a buffer through the checked shared allocator.
 	fb.out.WriteString("    mov rax, rbx\n")
-	fb.out.WriteString("    add rax, 7\n")
-	fb.out.WriteString("    and rax, -8\n")
-	fb.out.WriteString("    mov rcx, rax\n")
-	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fb.out.WriteString("    call chaos_alloc\n")
 	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], rax\n", resSlot)
-	fb.out.WriteString("    add rax, rcx\n")
-	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
 	// Copy each part into the buffer.
 	fmt.Fprintf(&fb.out, "    mov rdi, qword [rbp-%d]\n", resSlot)
 	fb.out.WriteString("    cld\n")
@@ -2662,6 +2620,8 @@ func (fb *fasmEmitter) emitReadFile(ins *MIRInstr) {
 	pathSlot := fb.valueSlots[ins.Args[0]]
 	resSlot := fb.valueSlots[ins.Result]
 	openFail := fb.newLabel()
+	readFail := fb.newLabel()
+	readFailNoClose := fb.newLabel()
 	// This block is emitted inline into a function that may also use the
 	// callee-saved registers r12-r15 for live values, so save and restore
 	// them around the syscall sequence.
@@ -2689,17 +2649,15 @@ func (fb *fasmEmitter) emitReadFile(ins *MIRInstr) {
 	fb.out.WriteString("    mov rdi, r12\n")
 	fb.out.WriteString("    mov rsi, rsp\n")
 	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    mov r15, rax\n")
 	fb.out.WriteString("    mov r13, qword [rsp+48]\n")
 	fb.out.WriteString("    add rsp, 144\n")
-	// Allocate r13 bytes (aligned) from the bump allocator.
+	fb.out.WriteString("    test r15, r15\n")
+	fmt.Fprintf(&fb.out, "    js %s\n", readFail)
+	// Allocate r13 bytes through the checked shared allocator.
 	fb.out.WriteString("    mov rax, r13\n")
-	fb.out.WriteString("    add rax, 7\n")
-	fb.out.WriteString("    and rax, -8\n")
-	fb.out.WriteString("    mov rcx, rax\n")
-	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fb.out.WriteString("    call chaos_alloc\n")
 	fb.out.WriteString("    mov r14, rax\n")
-	fb.out.WriteString("    add rax, rcx\n")
-	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
 	// read(fd, buf, size) in a loop until all bytes are read.
 	fb.out.WriteString("    xor r15, r15\n")
 	readLoop := fb.newLabel()
@@ -2713,8 +2671,11 @@ func (fb *fasmEmitter) emitReadFile(ins *MIRInstr) {
 	fb.out.WriteString("    mov rdx, r13\n")
 	fb.out.WriteString("    sub rdx, r15\n")
 	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    cmp rax, -4\n")
+	fmt.Fprintf(&fb.out, "    je %s\n", readLoop)
 	fb.out.WriteString("    test rax, rax\n")
-	fmt.Fprintf(&fb.out, "    jle %s\n", readDone)
+	fmt.Fprintf(&fb.out, "    js %s\n", readFail)
+	fmt.Fprintf(&fb.out, "    jz %s\n", readFail)
 	fb.out.WriteString("    add r15, rax\n")
 	fmt.Fprintf(&fb.out, "    jmp %s\n", readLoop)
 	fmt.Fprintf(&fb.out, "%s:\n", readDone)
@@ -2722,6 +2683,8 @@ func (fb *fasmEmitter) emitReadFile(ins *MIRInstr) {
 	fb.out.WriteString("    mov rax, 3\n")
 	fb.out.WriteString("    mov rdi, r12\n")
 	fb.out.WriteString("    syscall\n")
+	fb.out.WriteString("    test rax, rax\n")
+	fmt.Fprintf(&fb.out, "    js %s\n", readFailNoClose)
 	// Store the result String (data, count).
 	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d], r14\n", resSlot)
 	fmt.Fprintf(&fb.out, "    mov qword [rbp-%d+8], r15\n", resSlot)
@@ -2738,6 +2701,21 @@ func (fb *fasmEmitter) emitReadFile(ins *MIRInstr) {
 	fb.out.WriteString("    pop r13\n")
 	fb.out.WriteString("    pop r12\n")
 	fb.emitWriteStderr(fb.openFailIndex, pathSlot)
+	fb.out.WriteString("    mov rax, 60\n")
+	fb.out.WriteString("    mov rdi, 1\n")
+	fb.out.WriteString("    syscall\n")
+	// A stat, read, short-read, or close failure is deterministic and never
+	// returns partial file contents. Retry only an interrupted read.
+	fmt.Fprintf(&fb.out, "%s:\n", readFail)
+	fb.out.WriteString("    mov rax, 3\n")
+	fb.out.WriteString("    mov rdi, r12\n")
+	fb.out.WriteString("    syscall\n")
+	fmt.Fprintf(&fb.out, "%s:\n", readFailNoClose)
+	fb.out.WriteString("    pop r15\n")
+	fb.out.WriteString("    pop r14\n")
+	fb.out.WriteString("    pop r13\n")
+	fb.out.WriteString("    pop r12\n")
+	fb.emitWriteStderr(fb.readFailIndex, pathSlot)
 	fb.out.WriteString("    mov rax, 60\n")
 	fb.out.WriteString("    mov rdi, 1\n")
 	fb.out.WriteString("    syscall\n")
@@ -2794,13 +2772,9 @@ func (fb *fasmEmitter) emitNullTerminatedPath(pathSlot int) {
 	// Allocate count+1 bytes, aligned up to 8.
 	fb.out.WriteString("    mov rax, r13\n")
 	fb.out.WriteString("    inc rax\n")
-	fb.out.WriteString("    add rax, 7\n")
-	fb.out.WriteString("    and rax, -8\n")
-	fb.out.WriteString("    mov rcx, rax\n")
-	fb.out.WriteString("    mov rax, qword [chaos_heap_ptr]\n")
+	fb.out.WriteString("    jc chaos_alloc_fail\n")
+	fb.out.WriteString("    call chaos_alloc\n")
 	fb.out.WriteString("    mov r14, rax\n")
-	fb.out.WriteString("    add rax, rcx\n")
-	fb.out.WriteString("    mov qword [chaos_heap_ptr], rax\n")
 	// Copy the path bytes and null-terminate.
 	fmt.Fprintf(&fb.out, "    mov rsi, qword [rbp-%d]\n", pathSlot)
 	fb.out.WriteString("    mov rdi, r14\n")

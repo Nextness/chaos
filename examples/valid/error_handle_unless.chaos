@@ -1,4 +1,6 @@
 // expect-exit: 7
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // 'unless catch err' binds the error so it can be inspected and handled
 // differently per error value.
 Some_Error :: error {

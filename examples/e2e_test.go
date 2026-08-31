@@ -6,7 +6,7 @@
 //   - examples/valid/   must compile cleanly through every stage. Their dumps
 //     (tokens, AST, HIR, MIR, and fasm assembly) are compared against golden
 //     files, and the emitted binary is assembled and executed to check the
-//     exit status and stderr output.
+//     exit status, stdout, and stderr output.
 //   - examples/invalid/ must fail. Each file declares the stage where the
 //     failure must occur (tokenize, parse, type, target, lower, mir, verify,
 //     emit)
@@ -17,7 +17,8 @@
 // Example metadata lives in the leading comment block of each file:
 //
 //	// expect-exit: 42        (valid) expected exit status of the binary
-//	// expect-stderr: boom    (valid) optional exact stderr content
+//	// expect-stdout: <empty> (valid) exact stdout content
+//	// expect-stderr: boom    (valid) exact stderr content
 //	// expect-stage: target   (invalid) stage that must fail
 //	// expect-error: substring (invalid) substring of the diagnostic message
 //
@@ -197,11 +198,14 @@ func renderDiags(diags compiler.DiagnosticList, p *pipeline) string {
 
 // exampleMeta is the parsed metadata from a file's leading comment block.
 type exampleMeta struct {
-	hasExit  bool
-	exit     int
-	stderr   string
-	stage    string
-	errorSub string
+	hasExit   bool
+	exit      int
+	hasStdout bool
+	stdout    string
+	hasStderr bool
+	stderr    string
+	stage     string
+	errorSub  string
 }
 
 var metaRe = regexp.MustCompile(`^\s*//\s*expect-([a-z-]+):\s*(.+)\s*$`)
@@ -224,7 +228,11 @@ func parseMeta(t *testing.T, source []byte) exampleMeta {
 			m.exit = n
 			m.hasExit = true
 		case "stderr":
-			m.stderr = value
+			m.stderr = parseExpectedStream(t, "stderr", value)
+			m.hasStderr = true
+		case "stdout":
+			m.stdout = parseExpectedStream(t, "stdout", value)
+			m.hasStdout = true
 		case "stage":
 			m.stage = value
 		case "error":
@@ -232,6 +240,21 @@ func parseMeta(t *testing.T, source []byte) exampleMeta {
 		}
 	}
 	return m
+}
+
+func parseExpectedStream(t *testing.T, name, value string) string {
+	t.Helper()
+	if value == "<empty>" {
+		return ""
+	}
+	if strings.HasPrefix(value, "\"") {
+		decoded, err := strconv.Unquote(value)
+		if err != nil {
+			t.Fatalf("bad expect-%s %q: %v", name, value, err)
+		}
+		return decoded
+	}
+	return value
 }
 
 func TestValidExamples(t *testing.T) {
@@ -260,7 +283,8 @@ func TestValidExamples(t *testing.T) {
 				checkGolden(t, filepath.Join("valid", name, step+".txt"), dump)
 			}
 
-			// Assemble and run the binary, checking exit status and stderr.
+			// Assemble and run the binary, checking exit status and both
+			// output streams, including intentional empty output.
 			if fasmPath == "" {
 				t.Skip("fasm not available; compilation and dumps validated")
 			}
@@ -276,8 +300,9 @@ func TestValidExamples(t *testing.T) {
 			if err := os.Chmod(binPath, 0o700); err != nil {
 				t.Fatalf("chmod: %v", err)
 			}
-			var stderr bytes.Buffer
+			var stdout, stderr bytes.Buffer
 			cmd := exec.Command(binPath)
+			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 			err = cmd.Run()
 			exitCode := 0
@@ -291,7 +316,10 @@ func TestValidExamples(t *testing.T) {
 			if exitCode != meta.exit {
 				t.Errorf("exit code = %d, want %d", exitCode, meta.exit)
 			}
-			if meta.stderr != "" && stderr.String() != meta.stderr {
+			if stdout.String() != meta.stdout {
+				t.Errorf("stdout = %q, want %q", stdout.String(), meta.stdout)
+			}
+			if stderr.String() != meta.stderr {
 				t.Errorf("stderr = %q, want %q", stderr.String(), meta.stderr)
 			}
 		})
@@ -355,6 +383,12 @@ func TestExampleMetadata(t *testing.T) {
 				}
 				if !meta.hasExit {
 					t.Errorf("%s: valid example must declare expect-exit", file)
+				}
+				if !meta.hasStdout {
+					t.Errorf("%s: valid example must declare expect-stdout", file)
+				}
+				if !meta.hasStderr {
+					t.Errorf("%s: valid example must declare expect-stderr", file)
 				}
 			case "invalid":
 				if meta.hasExit {

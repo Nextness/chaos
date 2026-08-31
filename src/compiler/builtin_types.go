@@ -80,3 +80,53 @@ func isBuiltinTypeName(name string) bool {
 	_, ok := builtinTypeByName[name]
 	return ok
 }
+
+type builtinProcKind uint8
+
+const (
+	builtinPrint builtinProcKind = iota
+	builtinPrintln
+	builtinReadFile
+	builtinFileExists
+)
+
+// BuiltinProcInfo is the shared signature contract for a compiler-provided
+// procedure. Semantic checking and lowering dispatch use this registry.
+type BuiltinProcInfo struct {
+	Name   string
+	Params []string
+	Result string
+	kind   builtinProcKind
+}
+
+var builtinProcs = []BuiltinProcInfo{
+	{Name: "print", Params: []string{"String"}, Result: "Void", kind: builtinPrint},
+	{Name: "println", Params: []string{"String"}, Result: "Void", kind: builtinPrintln},
+	{Name: "read_file", Params: []string{"String"}, Result: "String", kind: builtinReadFile},
+	{Name: "file_exists", Params: []string{"String"}, Result: "Bool", kind: builtinFileExists},
+}
+
+var builtinProcByName = func() map[string]BuiltinProcInfo {
+	result := make(map[string]BuiltinProcInfo, len(builtinProcs))
+	for _, info := range builtinProcs {
+		result[info.Name] = info
+	}
+	return result
+}()
+
+func BuiltinProcedures() []BuiltinProcInfo {
+	result := make([]BuiltinProcInfo, len(builtinProcs))
+	for i, info := range builtinProcs {
+		result[i] = info
+		result[i].Params = append([]string(nil), info.Params...)
+	}
+	return result
+}
+
+func LookupBuiltinProcedure(name string) (BuiltinProcInfo, bool) {
+	info, ok := builtinProcByName[name]
+	if ok {
+		info.Params = append([]string(nil), info.Params...)
+	}
+	return info, ok
+}

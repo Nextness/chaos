@@ -1,6 +1,9 @@
 package main
 
 import (
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -310,6 +313,43 @@ func TestHoverReturnsVoidErrorSignature(t *testing.T) {
 	}
 }
 
+func TestTypeExpressionAndGenericSignatureRendering(t *testing.T) {
+	ident := func(name string) compiler.Expr { return &compiler.IdentExpr{Name: name} }
+	fixedPointer := &compiler.ArrayTypeExpr{
+		Kind: compiler.ArrayFixed,
+		Size: &compiler.IntExpr{Value: "4"},
+		Elem: &compiler.PointerTypeExpr{Elem: ident("String"), Nullable: true},
+	}
+	for _, tt := range []struct {
+		expr compiler.Expr
+		want string
+	}{
+		{ident("S64"), "S64"},
+		{&compiler.PointerTypeExpr{Elem: ident("Byte")}, "*Byte"},
+		{&compiler.PointerTypeExpr{Elem: ident("Byte"), Nullable: true}, "*Byte?"},
+		{&compiler.ArrayTypeExpr{Kind: compiler.ArrayRuntime, Elem: ident("S64")}, "[]S64"},
+		{&compiler.ArrayTypeExpr{Kind: compiler.ArrayDynamic, Elem: ident("String")}, "[dyn]String"},
+		{fixedPointer, "[4]*String?"},
+		{&compiler.ParenExpr{Inner: fixedPointer}, "([4]*String?)"},
+	} {
+		if got := exprText(tt.expr); got != tt.want {
+			t.Errorf("exprText() = %q, want %q", got, tt.want)
+		}
+	}
+	proc := &compiler.ProcDecl{
+		Name: "select_value",
+		TypeParams: []compiler.TypeParam{
+			{Name: "T", Constraints: []compiler.Expr{ident("S64"), ident("String")}},
+		},
+		Params:  []compiler.Param{{Name: "values", Type: fixedPointer}},
+		Results: []compiler.Expr{ident("T"), &compiler.PointerTypeExpr{Elem: ident("T"), Nullable: true}},
+	}
+	want := "select_value <T: S64 | String>(values: [4]*String?) -> (T, *T?)"
+	if got := procSignature(proc); got != want {
+		t.Fatalf("procSignature() = %q, want %q", got, want)
+	}
+}
+
 func TestHoverInitLaterVariable(t *testing.T) {
 	// 'a: S64 = ...;' declares a variable initialized later. Hover must
 	// report the declared type even though there is no initializer.
@@ -325,6 +365,89 @@ func TestHoverInitLaterVariable(t *testing.T) {
 	if !strings.Contains(content, "a : S64") {
 		t.Errorf("hover at use = %q, want a : S64", content)
 	}
+}
+
+func TestIncompleteDocumentRetainsIndependentSemanticFacts(t *testing.T) {
+	source := "helper :: proc -> S64 { return 1; }\nmain :: proc -> S64 { return helper(); }\nunfinished :: proc ("
+	doc := newDocument("file:///incomplete.chaos", 1, source)
+	if !doc.diags.HasErrors() {
+		t.Fatal("incomplete document should retain its parse diagnostic")
+	}
+	if doc.analysis == nil || len(doc.analysis.ProcDecls) == 0 {
+		t.Fatalf("semantic analysis facts were discarded: %+v", doc.analysis)
+	}
+	ref := strings.LastIndex(source, "helper")
+	sym := doc.resolver.definitionAt(ref)
+	if sym == nil || sym.proc == nil || sym.name != "helper" {
+		t.Fatalf("definition in independent valid region = %+v, want helper", sym)
+	}
+}
+
+func TestImportAwareDefinitionHoverCompletionAndReferences(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "math.chaos")
+	moduleSource := "double :: proc (value: S64) -> S64 { return value * 2; }"
+	if err := os.WriteFile(modulePath, []byte(moduleSource), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mainPath := filepath.Join(dir, "main.chaos")
+	mainURI := (&url.URL{Scheme: "file", Path: mainPath}).String()
+
+	t.Run("flat", func(t *testing.T) {
+		source := "#import «math»;\n#entry main :: proc -> S64 { return double(2); }"
+		doc := newDocument(mainURI, 1, source)
+		if doc.diags.HasErrors() {
+			t.Fatalf("analysis errors: %v", doc.diags)
+		}
+		ref := strings.LastIndex(source, "double")
+		sym := doc.resolver.definitionAt(ref)
+		if sym == nil || sym.proc == nil {
+			t.Fatalf("flat import definition = %+v", sym)
+		}
+		location, ok := doc.resolver.location(sym.span)
+		if !ok || location.URI != (&url.URL{Scheme: "file", Path: modulePath}).String() || location.Range.Start.Line != 0 {
+			t.Fatalf("flat import location = %+v, ok=%v", location, ok)
+		}
+		if hover := doc.resolver.hoverAt(ref); !strings.Contains(hover, "double(value: S64) -> S64") {
+			t.Fatalf("flat import hover = %q", hover)
+		}
+		items := doc.resolver.completionAt(len(source) - 2)
+		found := false
+		for _, item := range items {
+			found = found || item.Label == "double"
+		}
+		if !found {
+			t.Fatalf("flat import completion omits double: %+v", items)
+		}
+		if symbols := documentSymbols(doc.program, doc.sf); len(symbols) != 1 || symbols[0].Name != "main" {
+			t.Fatalf("local document symbols include imports: %+v", symbols)
+		}
+	})
+
+	t.Run("namespaced", func(t *testing.T) {
+		source := "math :: #import «math»;\n#entry main :: proc -> S64 { return math.double(2); }"
+		doc := newDocument(mainURI, 1, source)
+		if doc.diags.HasErrors() {
+			t.Fatalf("analysis errors: %v", doc.diags)
+		}
+		ref := strings.LastIndex(source, "double")
+		sym := doc.resolver.definitionAt(ref)
+		if sym == nil || sym.proc == nil {
+			t.Fatalf("namespaced import definition = %+v", sym)
+		}
+		items := doc.resolver.memberCompletion(strings.LastIndex(source, "math.double") + len("math."))
+		if len(items) != 1 || items[0].Label != "double" {
+			t.Fatalf("namespace completion = %+v", items)
+		}
+		refs := doc.resolver.referencesAt(ref)
+		files := make(map[compiler.FileID]bool)
+		for _, occurrence := range refs {
+			files[occurrence.span.File] = true
+		}
+		if len(files) != 2 {
+			t.Fatalf("namespace references do not include declaration and use: %+v", refs)
+		}
+	})
 }
 
 func TestCompletionNamesInScope(t *testing.T) {
@@ -343,6 +466,21 @@ func TestCompletionNamesInScope(t *testing.T) {
 	for _, not := range []string{"a", "b"} {
 		if names[not] {
 			t.Errorf("completion should not include %q", not)
+		}
+	}
+}
+
+func TestCompletionUsesBuiltinProcedureRegistry(t *testing.T) {
+	source := "main :: proc { }"
+	r := buildResolverFor(t, source)
+	items := r.completionAt(strings.Index(source, "}"))
+	got := make(map[string]string)
+	for _, item := range items {
+		got[item.Label] = item.Detail
+	}
+	for _, builtin := range compiler.BuiltinProcedures() {
+		if got[builtin.Name] != builtinProcSignature(builtin) {
+			t.Errorf("completion for %q = %q, want %q", builtin.Name, got[builtin.Name], builtinProcSignature(builtin))
 		}
 	}
 }

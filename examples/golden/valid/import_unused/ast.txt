@@ -2,7 +2,7 @@ Diagnostics:
   (none)
 AST:
 Program
-  Decl *compiler.ImportDecl
+  ImportDecl module="core" declarations=0
   ProcDecl main
     Results: Ident(S64)
     Block

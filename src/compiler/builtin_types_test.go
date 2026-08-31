@@ -32,3 +32,25 @@ func TestBuiltinTypeRegistryIsCompleteAndConsistent(t *testing.T) {
 		}
 	}
 }
+
+func TestBuiltinProcedureRegistryIsCompleteAndConsistent(t *testing.T) {
+	seen := make(map[string]bool)
+	for _, info := range BuiltinProcedures() {
+		if seen[info.Name] {
+			t.Fatalf("duplicate builtin procedure %q", info.Name)
+		}
+		seen[info.Name] = true
+		lookup, ok := LookupBuiltinProcedure(info.Name)
+		if !ok || lookup.Name != info.Name || lookup.Result != info.Result || len(lookup.Params) != len(info.Params) {
+			t.Fatalf("lookup for %q = %+v, %v; want %+v", info.Name, lookup, ok, info)
+		}
+		if _, ok := LookupBuiltinType(info.Result); !ok {
+			t.Fatalf("builtin %q has unknown result type %q", info.Name, info.Result)
+		}
+		for _, param := range info.Params {
+			if _, ok := LookupBuiltinType(param); !ok {
+				t.Fatalf("builtin %q has unknown parameter type %q", info.Name, param)
+			}
+		}
+	}
+}

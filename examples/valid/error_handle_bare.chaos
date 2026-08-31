@@ -1,4 +1,6 @@
 // expect-exit: 42
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // The bare 'expr unless catch' form discards the value and only handles the
 // error.
 Some_Error :: error {

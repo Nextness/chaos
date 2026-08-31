@@ -5,7 +5,8 @@ listed under an explicit semantic version.
 
 ## Versioning
 
-- The current version is `0.8.1`.
+- The authoritative current development version is `compiler.Version`. This
+  file records the released feature history and currently ends at `0.11.0`.
 - Every new addition increments the minor version (`0.2.0` → `0.3.0`).
 - Compatible fixes that do not add functionality may increment the patch
   version (`0.3.0` → `0.3.1`).

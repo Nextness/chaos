@@ -41,7 +41,7 @@ Program
       IfStmt condition=Binary(!= Ident(a) Int(12))
         Block
           ReturnStmt Int(2)
-      VarDecl arr = ArrayInit(Ident(S64), Int(1), Int(2), Int(3)) [mutable=true compileTime=false]
+      VarDecl arr = ArrayInit(ArrayType(runtime elem=Ident(S64)), Int(1), Int(2), Int(3)) [mutable=true compileTime=false]
       VarDecl head: Pointer(*Ident(S64)) = Unary(* Index(Ident(arr), Int(0))) [mutable=true compileTime=false]
       VarDecl tail = Binary(+ Ident(head) Int(2)) [mutable=true compileTime=false]
       IfStmt condition=Binary(|| Binary(!= Deref(Ident(tail)) Int(3)) Binary(!= Binary(- Ident(tail) Ident(head)) Int(2)))

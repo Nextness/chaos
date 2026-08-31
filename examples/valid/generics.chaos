@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Generic procedures with type parameters and constraints.
 identity <T: S64 | String> :: proc (x: T) -> T {
     return x;

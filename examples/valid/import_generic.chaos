@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Namespaced generic calls: append/pop_last/pop_first instantiate per type.
 c :: #import «core»;
 #entry main :: proc -> S64 {

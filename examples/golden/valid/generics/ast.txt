@@ -2,7 +2,7 @@ Diagnostics:
   (none)
 AST:
 Program
-  ProcDecl identity
+  ProcDecl identity <T: Ident(S64) | Ident(String)>
     Param x: Ident(T)
     Results: Ident(T)
     Block

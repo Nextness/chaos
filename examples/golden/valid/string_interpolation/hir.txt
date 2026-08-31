@@ -3,7 +3,7 @@ HIR
     Block
       VarDecl first: String = String("hello") [mutable=true compileTime=false]
       VarDecl last: String = String("world") [mutable=true compileTime=false]
-      VarDecl greeting: String = Expr(*compiler.HIRInterpolate) [mutable=true compileTime=false]
+      VarDecl greeting: String = Interpolate("", Ident(first), " ", Ident(last), "!") [mutable=true compileTime=false]
       If condition=Binary(!= Ident(greeting) String("hello world!"))
         Block
           Return Int(1)
@@ -11,17 +11,17 @@ HIR
         Block
           Return Int(2)
       VarDecl name: String = String("ada") [mutable=true compileTime=false]
-      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("ada"))
+      If condition=Binary(!= Interpolate("", Ident(name), "") String("ada"))
         Block
           Return Int(3)
-      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("[ada]"))
+      If condition=Binary(!= Interpolate("[", Ident(name), "]") String("[ada]"))
         Block
           Return Int(4)
-      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("ada-ada"))
+      If condition=Binary(!= Interpolate("", Ident(name), "-", Ident(name), "") String("ada-ada"))
         Block
           Return Int(5)
       VarDecl empty: String = String("") [mutable=true compileTime=false]
-      If condition=Binary(!= Expr(*compiler.HIRInterpolate) String("ab"))
+      If condition=Binary(!= Interpolate("a", Ident(empty), "b") String("ab"))
         Block
           Return Int(6)
       Return Int(0)

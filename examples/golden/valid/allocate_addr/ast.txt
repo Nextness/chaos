@@ -16,5 +16,5 @@ Program
       IfStmt condition=Binary(!= Deref(Ident(q)) Int(42))
         Block
           ReturnStmt Int(2)
-      Stmt *compiler.DeallocateStmt
+      DeallocateStmt Ident(buf)
       ReturnStmt Int(0)

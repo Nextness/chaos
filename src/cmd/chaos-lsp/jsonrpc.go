@@ -61,10 +61,11 @@ func readMessage(r *bufio.Reader) ([]byte, error) {
 	contentLength := -1
 	headerBytes := 0
 	for {
-		line, err := r.ReadString('\n')
+		lineBytes, err := readHeaderLine(r)
 		if err != nil {
 			return nil, err
 		}
+		line := string(lineBytes)
 		headerBytes += len(line)
 		if headerBytes > maxHeaderBytes {
 			return nil, fmt.Errorf("header section exceeds %d bytes", maxHeaderBytes)
@@ -104,6 +105,28 @@ func readMessage(r *bufio.Reader) ([]byte, error) {
 		return nil, err
 	}
 	return body, nil
+}
+
+// readHeaderLine reads through a bounded accumulator. ReadString cannot be
+// used here because it allocates until a newline appears, which would make the
+// configured header limit ineffective for an unterminated line.
+func readHeaderLine(r *bufio.Reader) ([]byte, error) {
+	line := make([]byte, 0, 128)
+	for {
+		fragment, err := r.ReadSlice('\n')
+		if len(line)+len(fragment) > maxHeaderLine {
+			return nil, fmt.Errorf("header line exceeds %d bytes", maxHeaderLine)
+		}
+		line = append(line, fragment...)
+		switch err {
+		case nil:
+			return line, nil
+		case bufio.ErrBufferFull:
+			continue
+		default:
+			return nil, err
+		}
+	}
 }
 
 // writeMessage writes a Content-Length framed JSON-RPC message body.

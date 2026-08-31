@@ -595,6 +595,10 @@ func TestTypeCheckSizeOf(t *testing.T) {
 	if diags.HasErrors() {
 		t.Errorf("unexpected errors: %v", diags)
 	}
+	diags = typeCheckSource(t, "main :: proc -> S64 { return size_of(Does_Not_Exist).(S64); }")
+	if !hasError(diags, "undeclared variable Does_Not_Exist") {
+		t.Errorf("expected unknown size_of operand error, got %v", diags)
+	}
 }
 
 func TestTypeCheckGenericProc(t *testing.T) {
@@ -610,10 +614,99 @@ func TestTypeCheckGenericProc(t *testing.T) {
 	}
 }
 
+func TestTypeCheckGenericProcRequiresCompleteInference(t *testing.T) {
+	diags := typeCheckSource(t, "first <T: S64, U: String> :: proc (value: T) -> T { return value; }\nmain :: proc -> S64 { return first(1); }")
+	if !hasError(diags, "cannot infer type arguments for generic procedure first") {
+		t.Errorf("expected incomplete inference error, got %v", diags)
+	}
+}
+
+func TestTypeCheckRecursiveGenericProcTerminates(t *testing.T) {
+	src := "countdown <T: S64> :: proc (n: T) -> T { if n == 0 { return n; } return countdown(n - 1); }\nmain :: proc -> S64 { return countdown(5); }"
+	if diags := typeCheckSource(t, src); diags.HasErrors() {
+		t.Fatalf("recursive generic produced errors: %v", diags)
+	}
+}
+
 func TestTypeCheckGenericStruct(t *testing.T) {
 	diags := typeCheckSource(t, "Box <T: S64 | String> :: struct { v: T; }\nmain :: proc -> S64 {\n    b: Box = .{v=7};\n    if b.v == 7 { return 0; }\n    return 1;\n}")
 	if diags.HasErrors() {
 		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckGenericStructReusesConcreteType(t *testing.T) {
+	src := "Box <T: S64 | String> :: struct { v: T; }\nmain :: proc -> S64 { a: Box = .{v=1}; b: Box = .{v=2}; a = b; return a.v; }"
+	if diags := typeCheckSource(t, src); diags.HasErrors() {
+		t.Fatalf("same generic struct instance should be assignable: %v", diags)
+	}
+}
+
+func TestTypeCheckGenericStructRequiresCompleteInference(t *testing.T) {
+	src := "Pair <T: S64, U: String> :: struct { first: T; second: U; }\nmain :: proc -> S64 { p: Pair = .{first=1}; return p.first; }"
+	if diags := typeCheckSource(t, src); !hasError(diags, "cannot infer type parameter 'U'") {
+		t.Fatalf("expected incomplete generic struct inference error, got %v", diags)
+	}
+}
+
+func TestTypeCheckElifUsesFalsePathState(t *testing.T) {
+	src := "f :: proc (take: Bool) -> S64 { x: S64 = ...; if take { x = 1; } elif x == 1 { return x; } return 0; }"
+	if diags := typeCheckSource(t, src); !hasError(diags, "is not initialized") {
+		t.Fatalf("expected elif false-path initialization error, got %v", diags)
+	}
+}
+
+func TestTypeCheckRejectsIntegerMinusPointer(t *testing.T) {
+	src := "main :: proc -> S64 { x := 1; p: *S64 = *x; q := 2 - p; return 0; }"
+	if diags := typeCheckSource(t, src); !hasError(diags, "cannot subtract a pointer from an integer") {
+		t.Fatalf("expected integer-minus-pointer error, got %v", diags)
+	}
+}
+
+func TestTypeCheckRequiresNonNullPointerInitialization(t *testing.T) {
+	tests := []struct {
+		name, source, message string
+	}{
+		{"local pointer", "main :: proc -> S64 { p: *S64; return p.*; }", "requires an initializer"},
+		{"global pointer", "p: *S64; main :: proc -> S64 { return p.*; }", "requires an initializer"},
+		{"plain pointer struct", "Holder :: struct { value: *S64; } main :: proc -> S64 { h: Holder; return 0; }", "contains a non-nullable pointer"},
+		{"omitted pointer field", "Holder :: struct { value: *S64; tag: S64; } main :: proc -> S64 { x := 1; h: Holder = .{tag=2}; return 0; }", "field 'value' in struct Holder requires a non-null initializer"},
+		{"omitted builtin pointer field", "main :: proc -> S64 { s: String = .{count=0}; return 0; }", "field 'data' in String requires a non-null initializer"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if diags := typeCheckSource(t, tt.source); !hasError(diags, tt.message) {
+				t.Fatalf("expected %q diagnostic, got %v", tt.message, diags)
+			}
+		})
+	}
+	for _, source := range []string{
+		"main :: proc -> S64 { x := 7; p: *S64 = *x; return p.*; }",
+		"main :: proc -> S64 { x := 7; p: *S64 = ...; p = *x; return p.*; }",
+		"Holder :: struct { value: *S64; tag: S64; } main :: proc -> S64 { x := 7; h: Holder = .{value=*x, tag=2}; return h.value.*; }",
+	} {
+		if diags := typeCheckSource(t, source); diags.HasErrors() {
+			t.Fatalf("valid initialized pointer source produced errors: %v", diags)
+		}
+	}
+}
+
+func TestTypeCheckNullablePointerIndexRequiresProof(t *testing.T) {
+	for _, operation := range []string{
+		"value := p[0];",
+		"p[0] = 1;",
+		"p[0] += 1;",
+		"p[0]++;",
+		"address := *p[0];",
+	} {
+		source := "main :: proc -> S64 { p: *S64? = null; " + operation + " return 0; }"
+		if diags := typeCheckSource(t, source); !hasError(diags, "cannot index 'p' because it may be null") {
+			t.Fatalf("operation %q should require a non-null proof, got %v", operation, diags)
+		}
+	}
+	source := "main :: proc (p: *S64?) -> S64 { if p == null { return 0; } value := p[0]; p[0] = value + 1; return p[0]; }"
+	if diags := typeCheckSource(t, source); diags.HasErrors() {
+		t.Fatalf("narrowed nullable pointer index produced errors: %v", diags)
 	}
 }
 

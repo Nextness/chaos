@@ -1,4 +1,6 @@
 // expect-exit: 42
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Minimal program: the entry procedure returns a constant exit status.
 #entry main :: proc -> S64 {
     return 42;

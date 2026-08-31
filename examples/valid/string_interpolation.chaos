@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // String interpolation: '{expr}' segments inside a string literal are replaced
 // by the interpolated String values at runtime. Only String values can be
 // interpolated.

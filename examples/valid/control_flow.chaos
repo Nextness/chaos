@@ -1,4 +1,6 @@
 // expect-exit: 20
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Branching: if, elif, else chains select a result.
 #entry main :: proc -> S64 {
     x: S64 = 2;

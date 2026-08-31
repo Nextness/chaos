@@ -3,8 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"chaos_compiler/compiler"
 )
 
 func newTestServer() (*Server, *bytes.Buffer) {
@@ -36,6 +41,9 @@ func TestInitializeReturnsCapabilities(t *testing.T) {
 	if result.ServerInfo.Name != "chaos-lsp" {
 		t.Errorf("serverInfo name = %q, want chaos-lsp", result.ServerInfo.Name)
 	}
+	if result.ServerInfo.Version != compiler.Version {
+		t.Errorf("serverInfo version = %q, want %q", result.ServerInfo.Version, compiler.Version)
+	}
 }
 
 func TestDidChangePublishesDiagnostics(t *testing.T) {
@@ -58,6 +66,30 @@ func TestDidChangePublishesDiagnostics(t *testing.T) {
 	}
 	if !strings.Contains(out, "unexpected character") {
 		t.Errorf("output missing error diagnostic: %q", out)
+	}
+}
+
+func TestOpenImportOverlayReanalyzesDependents(t *testing.T) {
+	dir := t.TempDir()
+	modulePath := filepath.Join(dir, "values.chaos")
+	if err := os.WriteFile(modulePath, []byte("answer :: proc -> S64 { return 42; }"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	moduleURI := (&url.URL{Scheme: "file", Path: modulePath}).String()
+	mainURI := (&url.URL{Scheme: "file", Path: filepath.Join(dir, "main.chaos")}).String()
+	mainSource := "#import «values»;\n#entry main :: proc -> S64 { return answer(); }"
+	inputs := map[string]documentInput{
+		mainURI:   {version: 1, text: mainSource},
+		moduleURI: {version: 2, text: "answer :: proc -> String { return «changed»; }"},
+	}
+	documents := rebuildDocuments(inputs)
+	if !documents[mainURI].diags.HasErrors() {
+		t.Fatal("dependent document ignored the unsaved imported signature")
+	}
+	inputs[moduleURI] = documentInput{version: 3, text: "answer :: proc -> S64 { return 42; }"}
+	documents = rebuildDocuments(inputs)
+	if documents[mainURI].diags.HasErrors() {
+		t.Fatalf("dependent document did not recover after import update: %v", documents[mainURI].diags)
 	}
 }
 

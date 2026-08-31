@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Dynamic arrays with append, pop_last, and pop_first from the core library.
 #import «core»;
 #entry main :: proc -> S64 {

@@ -242,6 +242,107 @@ func TestVerifyStructInitArity(t *testing.T) {
 	}
 }
 
+func TestVerifyAddrOfRequiresExistingMatchingEntity(t *testing.T) {
+	tt := NewTypeTable()
+	st := NewSymbolTable()
+	ptrByte := tt.InternPointer(tt.Byte(), false)
+	fn := &MIRFunction{
+		Symbol:       st.Declare("main"),
+		Name:         "main",
+		Locals:       []LocalID{0},
+		LocalTypes:   []TypeID{tt.S64()},
+		LocalMutable: []bool{true},
+		Blocks: []*MIRBlock{{
+			ID: 0,
+			Instrs: []*MIRInstr{
+				{Result: 0, Op: MIRAddrOf, Type: ptrByte, Imm: MIRImmediate{Kind: MIRImmLocal, Local: 0}},
+				{Result: 1, Op: MIRAddrOf, Type: ptrByte, Imm: MIRImmediate{Kind: MIRImmLocal, Local: 7}},
+			},
+			Term: MIRTerminator{Kind: MIRReturn, Value: NoValue},
+		}},
+	}
+	diags := VerifyMIR(&MIRProgram{Symbols: st, Types: tt, Functions: []*MIRFunction{fn}})
+	for _, message := range []string{"pointee type does not match", "references an unknown local"} {
+		if !hasError(diags, message) {
+			t.Errorf("expected %q error, got %v", message, diags)
+		}
+	}
+}
+
+func TestVerifyArrayElemAddrContract(t *testing.T) {
+	tt := NewTypeTable()
+	st := NewSymbolTable()
+	array := tt.InternArray(tt.S64())
+	fn := &MIRFunction{
+		Symbol: st.Declare("main"),
+		Name:   "main",
+		Blocks: []*MIRBlock{{
+			ID: 0,
+			Instrs: []*MIRInstr{
+				{Result: 0, Op: MIRZero, Type: array},
+				{Result: 1, Op: MIRConst, Type: tt.String(), Imm: MIRImmediate{Kind: MIRImmString, Str: "bad"}},
+				{Result: 2, Op: MIRArrayElemAddr, Type: tt.S64(), Args: []ValueID{0, 1}},
+			},
+			Term: MIRTerminator{Kind: MIRReturn, Value: NoValue},
+		}},
+	}
+	diags := VerifyMIR(&MIRProgram{Symbols: st, Types: tt, Functions: []*MIRFunction{fn}})
+	for _, message := range []string{"index must be an integer", "result must be a pointer"} {
+		if !hasError(diags, message) {
+			t.Errorf("expected %q error, got %v", message, diags)
+		}
+	}
+}
+
+func TestVerifyFieldAddrRequiresFieldImmediate(t *testing.T) {
+	tt := NewTypeTable()
+	st := NewSymbolTable()
+	field := st.Declare("value")
+	record := tt.InternStruct("Record")
+	tt.SetStructFields(record, []TypeField{{Symbol: field, Name: "value", Type: tt.S64()}})
+	ptrRecord := tt.InternPointer(record, false)
+	ptrS64 := tt.InternPointer(tt.S64(), false)
+	fn := &MIRFunction{
+		Symbol: st.Declare("main"),
+		Name:   "main",
+		Blocks: []*MIRBlock{{
+			ID: 0,
+			Instrs: []*MIRInstr{
+				{Result: 0, Op: MIRZero, Type: ptrRecord},
+				{Result: 1, Op: MIRFieldAddr, Type: ptrS64, Args: []ValueID{0}},
+			},
+			Term: MIRTerminator{Kind: MIRReturn, Value: NoValue},
+		}},
+	}
+	diags := VerifyMIR(&MIRProgram{Symbols: st, Types: tt, Functions: []*MIRFunction{fn}})
+	if !hasError(diags, "requires a field operand") {
+		t.Fatalf("expected field immediate error, got %v", diags)
+	}
+}
+
+func TestVerifyDerefStoreInstructionType(t *testing.T) {
+	tt := NewTypeTable()
+	st := NewSymbolTable()
+	ptrS64 := tt.InternPointer(tt.S64(), false)
+	fn := &MIRFunction{
+		Symbol: st.Declare("main"),
+		Name:   "main",
+		Blocks: []*MIRBlock{{
+			ID: 0,
+			Instrs: []*MIRInstr{
+				{Result: 0, Op: MIRZero, Type: ptrS64},
+				{Result: 1, Op: MIRConst, Type: tt.S64(), Imm: MIRImmediate{Kind: MIRImmInt, Int: 1}},
+				{Result: NoValue, Op: MIRDerefStore, Type: tt.Byte(), Args: []ValueID{0, 1}},
+			},
+			Term: MIRTerminator{Kind: MIRReturn, Value: NoValue},
+		}},
+	}
+	diags := VerifyMIR(&MIRProgram{Symbols: st, Types: tt, Functions: []*MIRFunction{fn}})
+	if !hasError(diags, "instruction type Byte does not match pointed-to type S64") {
+		t.Fatalf("expected deref.store type error, got %v", diags)
+	}
+}
+
 func TestVerifyJumpUndefinedBlock(t *testing.T) {
 	tt := NewTypeTable()
 	st := NewSymbolTable()

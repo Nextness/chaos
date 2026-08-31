@@ -74,3 +74,30 @@ func TestDumpMIRBroad(t *testing.T) {
 		}
 	}
 }
+
+func TestDumpHIRCoversImplementedRuntimeNodes(t *testing.T) {
+	source := "Box :: struct { value: S64; }\n#entry main :: proc -> S64 {\n    box := Box.{};\n    zero: S64;\n    addr := #allocate 8;\n    pointer: *S64 = addr.(*S64);\n    pointer.* = zero;\n    name := «x»;\n    text := «hello {name}»;\n    print(text);\n    println(text);\n    exists := file_exists(«/tmp»);\n    content := read_file(«/tmp/value»);\n    converted := zero.(F64);\n    #deallocate addr;\n    return 0;\n}"
+	hir, _ := lowerSource(t, source)
+	hir.Globals = append(hir.Globals, &HIRGlobal{Name: "void_zero", Type: hir.Types.Void(), Init: &HIRZero{Type: hir.Types.Void()}})
+	out := DumpHIR(hir)
+	for _, want := range []string{
+		"Zero(Void)",
+		"Allocate(Int(8))",
+		"Cast(Ident(addr) as *S64)",
+		"AddrStore",
+		"Interpolate(\"hello \", Ident(name), \"\")",
+		"Print(Ident(text))",
+		"Println(Ident(text))",
+		"FileExists(String(\"/tmp\"))",
+		"ReadFile(String(\"/tmp/value\"))",
+		"Convert(Ident(zero) to F64)",
+		"Deallocate Ident(addr)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("DumpHIR output missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Stmt *compiler.") || strings.Contains(out, "Expr(*compiler.") {
+		t.Errorf("DumpHIR used a generic fallback:\n%s", out)
+	}
+}

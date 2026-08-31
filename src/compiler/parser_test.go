@@ -1817,6 +1817,29 @@ func TestParseInterpolatedStringLeading(t *testing.T) {
 	}
 }
 
+func TestParseInterpolationRequiresOneCompleteExpression(t *testing.T) {
+	source := "dummy :: proc { x := «{a b}»; }"
+	result := parseTestCase(t, source)
+	if !hasError(result.Diags, "unexpected token after interpolation expression") {
+		t.Fatalf("expected trailing interpolation token error, got %v", result.Diags)
+	}
+}
+
+func TestParseInterpolationRebasesTokenizerDiagnostic(t *testing.T) {
+	source := "dummy :: proc {\n    x := «{$}»;\n}"
+	result := parseTestCase(t, source)
+	want := strings.Index(source, "$")
+	for _, diag := range result.Diags {
+		if strings.Contains(diag.Message, "unexpected character") {
+			if diag.Span.Start != want {
+				t.Fatalf("tokenizer diagnostic start = %d, want %d", diag.Span.Start, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("expected interpolation tokenizer diagnostic, got %v", result.Diags)
+}
+
 func TestParseAllocateExpr(t *testing.T) {
 	expr := parseExpr(t, "#allocate 16")
 	alloc, ok := expr.(*AllocateExpr)
@@ -3224,12 +3247,12 @@ func TestProcedureItemLimitIsOneHundred(t *testing.T) {
 	}
 	params101 := makeList(101, func(i int) string { return "a" + strconv.Itoa(i) + ": S64" })
 	result := parseTestCase(t, "f :: proc ("+params101+") { }")
-	if !hasError(result.Diags, "Dumb bitch") {
-		t.Fatalf("expected profane 101-input diagnostic, got %v", result.Diags)
+	if !hasError(result.Diags, "more than 100 arguments") {
+		t.Fatalf("expected 101-input limit diagnostic, got %v", result.Diags)
 	}
 	results101 := makeList(101, func(int) string { return "S64" })
 	result = parseTestCase(t, "f :: proc -> ("+results101+") { return; }")
-	if !hasError(result.Diags, "Dumb bitch") {
-		t.Fatalf("expected profane 101-result diagnostic, got %v", result.Diags)
+	if !hasError(result.Diags, "more than 100 things to be returned") {
+		t.Fatalf("expected 101-result limit diagnostic, got %v", result.Diags)
 	}
 }

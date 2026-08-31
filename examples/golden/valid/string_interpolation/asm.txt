@@ -3,6 +3,7 @@ format ELF64 executable 3
 segment readable writable
 chaos_heap:
     rb 1048576
+chaos_heap_end:
 chaos_heap_ptr:
     dq chaos_heap
 str0:
@@ -35,6 +36,8 @@ str13:
     db 0x62
 str14:
     db 0x61,0x62
+str15:
+    db 0x61,0x6c,0x6c,0x6f,0x63,0x61,0x74,0x69,0x6f,0x6e,0x20,0x66,0x61,0x69,0x6c,0x65,0x64,0x0a
 
 segment readable executable
 
@@ -44,6 +47,31 @@ _start:
     call chaos_fn_0
     mov rdi, rax
     mov rax, 60
+    syscall
+
+chaos_alloc:
+    test rax, rax
+    js chaos_alloc_fail
+    add rax, 7
+    jc chaos_alloc_fail
+    and rax, -8
+    mov rcx, qword [chaos_heap_ptr]
+    mov rdx, rcx
+    add rdx, rax
+    jc chaos_alloc_fail
+    cmp rdx, chaos_heap_end
+    ja chaos_alloc_fail
+    mov qword [chaos_heap_ptr], rdx
+    mov rax, rcx
+    ret
+chaos_alloc_fail:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, str15
+    mov rdx, 18
+    syscall
+    mov rax, 60
+    mov rdi, 1
     syscall
 
 chaos_fn_0:
@@ -87,22 +115,22 @@ L0:
     xor ebx, ebx
     mov rax, 0
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, 1
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, 1
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, qword [rbp-168+8]
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, qword [rbp-184+8]
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, rbx
-    add rax, 7
-    and rax, -8
-    mov rcx, rax
-    mov rax, qword [chaos_heap_ptr]
+    call chaos_alloc
     mov qword [rbp-200], rax
-    add rax, rcx
-    mov qword [chaos_heap_ptr], rax
     mov rdi, qword [rbp-200]
     cld
     mov rsi, str2
@@ -221,18 +249,16 @@ L6:
     xor ebx, ebx
     mov rax, 0
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, 0
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, qword [rbp-328+8]
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, rbx
-    add rax, 7
-    and rax, -8
-    mov rcx, rax
-    mov rax, qword [chaos_heap_ptr]
+    call chaos_alloc
     mov qword [rbp-344], rax
-    add rax, rcx
-    mov qword [chaos_heap_ptr], rax
     mov rdi, qword [rbp-344]
     cld
     mov rsi, str2
@@ -295,18 +321,16 @@ L9:
     xor ebx, ebx
     mov rax, 1
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, 1
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, qword [rbp-392+8]
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, rbx
-    add rax, 7
-    and rax, -8
-    mov rcx, rax
-    mov rax, qword [chaos_heap_ptr]
+    call chaos_alloc
     mov qword [rbp-408], rax
-    add rax, rcx
-    mov qword [chaos_heap_ptr], rax
     mov rdi, qword [rbp-408]
     cld
     mov rsi, str7
@@ -374,22 +398,22 @@ L12:
     xor ebx, ebx
     mov rax, 0
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, 1
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, 0
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, qword [rbp-456+8]
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, qword [rbp-472+8]
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, rbx
-    add rax, 7
-    and rax, -8
-    mov rcx, rax
-    mov rax, qword [chaos_heap_ptr]
+    call chaos_alloc
     mov qword [rbp-488], rax
-    add rax, rcx
-    mov qword [chaos_heap_ptr], rax
     mov rdi, qword [rbp-488]
     cld
     mov rsi, str2
@@ -467,18 +491,16 @@ L15:
     xor ebx, ebx
     mov rax, 1
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, 1
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, qword [rbp-552+8]
     add rbx, rax
+    jc chaos_alloc_fail
     mov rax, rbx
-    add rax, 7
-    and rax, -8
-    mov rcx, rax
-    mov rax, qword [chaos_heap_ptr]
+    call chaos_alloc
     mov qword [rbp-568], rax
-    add rax, rcx
-    mov qword [chaos_heap_ptr], rax
     mov rdi, qword [rbp-568]
     cld
     mov rsi, str12

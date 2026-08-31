@@ -1,0 +1,9 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      ExprStmt Call(Ident(println), String("out"))
+      ExitStmt status=Int(3) message=String("err")

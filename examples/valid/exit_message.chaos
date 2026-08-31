@@ -1,4 +1,5 @@
 // expect-exit: 3
+// expect-stdout: <empty>
 // expect-stderr: boom
 // exit: message is written to stderr before exiting with the status.
 #entry main :: proc -> S64 {

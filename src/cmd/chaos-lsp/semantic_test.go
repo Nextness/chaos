@@ -388,6 +388,19 @@ func TestSemanticTokensGenericTypeParamsHighlighted(t *testing.T) {
 	}
 }
 
+func TestSemanticTokensGenericTypeParamsAreLexicallyScoped(t *testing.T) {
+	source := "identity <T: S64> :: proc (value: T) -> T { return value; }\nmain :: proc { outside: T; }"
+	tokens := decodeSemanticData(semanticData(t, source))
+	for _, position := range [][2]int{{0, 10}, {0, 34}, {0, 40}} {
+		if tok, ok := tokenAt(tokens, position[0], position[1]); !ok || tok.typeIndex != semTypeType {
+			t.Errorf("generic type token at %d:%d = %+v, ok=%v", position[0], position[1], tok, ok)
+		}
+	}
+	if tok, ok := tokenAt(tokens, 1, 24); ok && tok.typeIndex == semTypeType {
+		t.Fatalf("out-of-scope T was highlighted as a type: %+v", tok)
+	}
+}
+
 func TestSemanticTokensErrorDecl(t *testing.T) {
 	// An error type name is highlighted as a type, its members as constants,
 	// and the 'error' keyword as a keyword.
@@ -664,6 +677,26 @@ func TestSemanticTokensStringFieldsAndInterpolation(t *testing.T) {
 		tok, ok := tokenAt(tokens, check.line, check.start)
 		if !ok || tok.typeIndex != check.want {
 			t.Errorf("token at %d:%d = %+v, want type %d", check.line, check.start, tok, check.want)
+		}
+	}
+}
+
+func TestSemanticTokensInterpolationUsesActualBracePositions(t *testing.T) {
+	source := "main :: proc {\n    name := «ok»;\n    text := «α { name } β {name}»;\n}"
+	tokens := decodeSemanticData(semanticData(t, source))
+	for _, column := range []int{15, 22, 26, 31} {
+		if tok, ok := tokenAt(tokens, 2, column); !ok || tok.typeIndex != semTypeDelimiter || tok.length != 1 {
+			t.Errorf("brace token at 2:%d = %+v, ok=%v", column, tok, ok)
+		}
+	}
+	for _, column := range []int{17, 27} {
+		if tok, ok := tokenAt(tokens, 2, column); !ok || tok.typeIndex != semTypeVariable {
+			t.Errorf("interpolated name at 2:%d = %+v, ok=%v", column, tok, ok)
+		}
+	}
+	for _, column := range []int{16, 21} {
+		if tok, ok := tokenAt(tokens, 2, column); ok && tok.typeIndex == semTypeDelimiter {
+			t.Errorf("whitespace at 2:%d was colored as a delimiter: %+v", column, tok)
 		}
 	}
 }

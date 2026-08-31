@@ -1,4 +1,6 @@
 // expect-exit: 10
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Error-returning results: '-> (S64 <> Some_Error)' and the equivalent
 // 'Some_Error <> S64' order, returning either a value or an error literal.
 Some_Error :: error {

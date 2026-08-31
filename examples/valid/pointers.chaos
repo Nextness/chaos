@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Pointers: '*T' address-of and '.*' dereference, nullable '*T?' pointers with
 // mandatory null checks, pointer arithmetic, pointer fields, and pointers in
 // procedure signatures and error results.

@@ -68,8 +68,29 @@ func LowerAnalyzedProgram(program *Program, analysis *SemanticAnalysis) (*HIR, D
 	l.hir.Types = l.types
 	l.hir.Entry = NoSymbol
 	l.hir.Sources = program.Sources
+	l.initializeBuiltinRecordMetadata()
 	l.lowerProgram(program)
 	return l.hir, l.diags
+}
+
+// initializeBuiltinRecordMetadata gives record-like built-ins stable field
+// symbols so inferred literals can use the ordinary struct-init lowering path.
+func (l *Lowerer) initializeBuiltinRecordMetadata() {
+	stringID := l.types.String()
+	stringType := l.types.Lookup(stringID)
+	fields := make([]TypeField, len(stringType.Fields))
+	hirFields := make([]HIRField, len(stringType.Fields))
+	for i, field := range stringType.Fields {
+		// Built-in fields need identity only within this record. Keep them out
+		// of the user symbol table so literal support does not renumber user
+		// declarations.
+		symbol := NoSymbol - SymbolID(i+1)
+		fields[i] = field
+		fields[i].Symbol = symbol
+		hirFields[i] = HIRField{Symbol: symbol, Name: field.Name, Type: field.Type}
+	}
+	l.types.SetStructFields(stringID, fields)
+	l.hirStructs[stringID] = &HIRStruct{Name: "String", Type: stringID, Fields: hirFields}
 }
 
 // Lowerer lowers an AST into the HIR. It maintains a stack of lexical scopes
@@ -101,6 +122,7 @@ type Lowerer struct {
 	rangeThis         HIRExpr  // expression for '#this' in the innermost range loop
 	rangeIndex        SymbolID // symbol for '#index' in the innermost range loop
 	procValueFloor    int
+	procGlobalScope   int
 	procDepth         int
 	analysis          *SemanticAnalysis
 	imports           map[string]*ImportDecl // namespace name -> resolved import
@@ -127,7 +149,7 @@ func (l *Lowerer) declare(name string, sym SymbolID) {
 func (l *Lowerer) lookup(name string) SymbolID {
 	for i := len(l.scopes) - 1; i >= 0; i-- {
 		if sym, ok := l.scopes[i][name]; ok {
-			if l.procDepth > 0 && i > 0 && i < l.procValueFloor && !l.symbolCompileTime[sym] {
+			if l.procDepth > 0 && i > l.procGlobalScope && i < l.procValueFloor && !l.symbolCompileTime[sym] {
 				continue
 			}
 			return sym
@@ -302,8 +324,14 @@ func (l *Lowerer) lowerProgram(program *Program) {
 
 func (l *Lowerer) lowerGlobals(program *Program) {
 	seen := make(map[*VarDecl]bool)
+	belongs := make(map[*VarDecl]bool)
+	for _, decl := range program.Decls {
+		if global, ok := decl.(*VarDecl); ok {
+			belongs[global] = true
+		}
+	}
 	for _, decl := range l.analysis.GlobalOrder {
-		if _, belongsToProgram := l.globalSymbols[decl]; belongsToProgram && !seen[decl] {
+		if belongs[decl] && !seen[decl] {
 			l.lowerGlobal(decl)
 			seen[decl] = true
 		}
@@ -505,6 +533,7 @@ func (l *Lowerer) registerProc(d *ProcDecl) {
 // body that references the module's members has stable symbols before it is
 // lowered.
 func (l *Lowerer) allocateImportDecls(imp *ImportDecl) {
+	latestGlobals := make(map[string]SymbolID)
 	for _, d := range imp.Decls {
 		switch dd := d.(type) {
 		case *ProcDecl:
@@ -550,6 +579,14 @@ func (l *Lowerer) allocateImportDecls(imp *ImportDecl) {
 				prev.Set(value)
 			}
 			l.enumValues[tid] = values
+		case *VarDecl:
+			if previous, ok := latestGlobals[dd.Name]; ok {
+				l.globalPrevious[dd] = previous
+			}
+			sym := l.symbols.Declare(dd.Name)
+			l.globalSymbols[dd] = sym
+			latestGlobals[dd.Name] = sym
+			l.symbolCompileTime[sym] = dd.CompileTime
 		}
 	}
 }
@@ -571,6 +608,52 @@ func (l *Lowerer) scopeImportDecls(imp *ImportDecl) {
 			l.typeScopes[len(l.typeScopes)-1][dd.Name] = l.errorTypes[dd]
 		case *EnumDecl:
 			l.typeScopes[len(l.typeScopes)-1][dd.Name] = l.enumTypes[dd]
+		case *VarDecl:
+			l.declare(dd.Name, l.globalSymbols[dd])
+		}
+	}
+	for pass := 0; pass < len(imp.Decls); pass++ {
+		changed := false
+		for _, d := range imp.Decls {
+			global, ok := d.(*VarDecl)
+			if !ok || !global.CompileTime {
+				continue
+			}
+			if _, exists := l.typeScopes[len(l.typeScopes)-1][global.Name]; exists {
+				continue
+			}
+			if target, ok := l.typeAliasTarget(global.Init); ok {
+				l.typeScopes[len(l.typeScopes)-1][global.Name] = target
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	for _, d := range imp.Decls {
+		if global, ok := d.(*VarDecl); ok && global.DeclType != nil {
+			l.varTypes[l.globalSymbols[global]] = l.typeOfTypeExpr(global.DeclType)
+		}
+	}
+	for pass := 0; pass < len(imp.Decls); pass++ {
+		changed := false
+		for _, d := range imp.Decls {
+			global, ok := d.(*VarDecl)
+			if !ok {
+				continue
+			}
+			sym := l.globalSymbols[global]
+			if l.varTypes[sym] != 0 && l.varTypes[sym] != l.types.Unknown() {
+				continue
+			}
+			if typ := l.inferASTType(global.Init); typ != l.types.Unknown() {
+				l.varTypes[sym] = typ
+				changed = true
+			}
+		}
+		if !changed {
+			break
 		}
 	}
 }
@@ -581,17 +664,21 @@ func (l *Lowerer) scopeImportDecls(imp *ImportDecl) {
 // are still lowered here; the backend discards them via reachability.
 func (l *Lowerer) lowerImportModule(imp *ImportDecl) {
 	l.pushScope()
+	previousGlobalScope := l.procGlobalScope
+	l.procGlobalScope = len(l.scopes) - 1
 	l.scopeImportDecls(imp)
 	for _, d := range imp.Decls {
 		if s, ok := d.(*StructDecl); ok && len(s.TypeParams) == 0 {
 			l.finishStruct(s)
 		}
 	}
+	l.lowerGlobals(&Program{Decls: imp.Decls})
 	for _, d := range imp.Decls {
 		if p, ok := d.(*ProcDecl); ok && len(p.TypeParams) == 0 {
 			l.lowerProc(p)
 		}
 	}
+	l.procGlobalScope = previousGlobalScope
 	l.popScope()
 }
 
@@ -2089,18 +2176,22 @@ func (l *Lowerer) lowerCallTo(proc *ProcDecl, n *CallExpr) HIRExpr {
 // lowerBuiltinCall lowers a call to a compiler builtin procedure. It returns
 // the lowered expression and true when the name is a builtin.
 func (l *Lowerer) lowerBuiltinCall(n *CallExpr, ident *IdentExpr) (HIRExpr, bool) {
-	switch ident.Name {
-	case "print", "println":
+	info, ok := LookupBuiltinProcedure(ident.Name)
+	if !ok {
+		return nil, false
+	}
+	switch info.kind {
+	case builtinPrint, builtinPrintln:
 		arg := l.lowerExprAs(n.Args[0], l.types.String())
-		return &HIRPrint{Span_: n.Span_, Value: arg, Newline: ident.Name == "println", Type: l.types.Void()}, true
-	case "read_file":
+		return &HIRPrint{Span_: n.Span_, Value: arg, Newline: info.kind == builtinPrintln, Type: l.types.Void()}, true
+	case builtinReadFile:
 		arg := l.lowerExprAs(n.Args[0], l.types.String())
 		return &HIRReadFile{Span_: n.Span_, Path: arg, Type: l.types.String()}, true
-	case "file_exists":
+	case builtinFileExists:
 		arg := l.lowerExprAs(n.Args[0], l.types.String())
 		return &HIRFileExists{Span_: n.Span_, Path: arg, Type: l.types.Bool()}, true
 	}
-	return nil, false
+	return nil, true
 }
 
 func (l *Lowerer) lowerStructInit(n *StructInitExpr, structType TypeID) HIRExpr {
@@ -2242,44 +2333,5 @@ func parseFloatLiteral(s string) (float64, bool) {
 // typeSize computes the size in bytes of a resolved type. It mirrors the
 // backend layout rules so 'size_of' yields the same value the backend uses.
 func (l *Lowerer) typeSize(t TypeID) int {
-	rt := l.types.Lookup(t)
-	switch rt.Kind {
-	case TypeKindVoid:
-		return 0
-	case TypeKindBool:
-		return 1
-	case TypeKindInt:
-		if info, ok := LookupBuiltinType(rt.Name); ok && info.Kind == BuiltinInteger {
-			return info.Bits / 8
-		}
-		return 0
-	case TypeKindFloat:
-		if info, ok := LookupBuiltinType(rt.Name); ok && info.Kind == BuiltinFloat {
-			return info.Bits / 8
-		}
-		return 0
-	case TypeKindString:
-		return 16
-	case TypeKindArray:
-		if rt.ArrayKind == ArrayDynamic {
-			return 24
-		}
-		return 16
-	case TypeKindPointer, TypeKindAddr:
-		return 8
-	case TypeKindError:
-		return 2
-	case TypeKindEnum:
-		return l.typeSize(rt.Underlying)
-	case TypeKindStruct, TypeKindTuple:
-		size := 0
-		for _, f := range rt.Fields {
-			size += l.typeSize(f.Type)
-		}
-		if size == 0 {
-			size = 1
-		}
-		return size
-	}
-	return 0
+	return l.types.LayoutOf(t).Size
 }

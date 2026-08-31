@@ -1,0 +1,8 @@
+// expect-exit: 3
+// expect-stdout: "out\n"
+// expect-stderr: err
+
+#entry main :: proc -> S64 {
+    println(«out»);
+    exit 3, «err»;
+}

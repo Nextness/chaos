@@ -1,4 +1,6 @@
 // expect-exit: 7
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // A 'Void <> Error' procedure returns bare on success (no value) or an error
 // value; the caller handles the error with the bare 'unless catch' form.
 Some_Error :: error {

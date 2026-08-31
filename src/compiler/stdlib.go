@@ -31,6 +31,17 @@ var StdlibDir = "chaos-stdlib"
 // except for the resolved imports, and its Sources map includes every module
 // file so diagnostics render against the right source.
 func ResolveImports(program *Program, stdlibDir string) (*Program, DiagnosticList) {
+	return resolveImports(program, stdlibDir, nil)
+}
+
+// ResolveImportsWithOverlay resolves imports while preferring the supplied
+// canonical-path source bytes. Editor tooling uses this to analyze unsaved
+// changes in open imported documents without modifying files on disk.
+func ResolveImportsWithOverlay(program *Program, stdlibDir string, overlay map[string][]byte) (*Program, DiagnosticList) {
+	return resolveImports(program, stdlibDir, overlay)
+}
+
+func resolveImports(program *Program, stdlibDir string, overlay map[string][]byte) (*Program, DiagnosticList) {
 	if program == nil {
 		return program, nil
 	}
@@ -42,7 +53,7 @@ func ResolveImports(program *Program, stdlibDir string) (*Program, DiagnosticLis
 		stdlibDir: stdlibDir,
 		loaded:    make(map[string]*Program),
 		loading:   make(map[string]bool),
-		seen:      make(map[Decl]bool),
+		overlay:   overlay,
 		sources:   sources,
 		nextFile:  nextFileID(sources),
 	}
@@ -60,9 +71,9 @@ func ResolveImports(program *Program, stdlibDir string) (*Program, DiagnosticLis
 // importResolver carries the state of one import-resolution pass.
 type importResolver struct {
 	stdlibDir string
-	loaded    map[string]*Program // module name -> resolved declarations
-	loading   map[string]bool     // modules currently being resolved (cycle guard)
-	seen      map[Decl]bool       // declarations already spliced (pointer identity)
+	loaded    map[string]*Program // canonical path -> resolved declarations
+	loading   map[string]bool     // canonical paths currently being resolved
+	overlay   map[string][]byte   // canonical path -> unsaved source
 	sources   map[FileID]SourceFile
 	nextFile  FileID
 	diags     DiagnosticList
@@ -72,10 +83,17 @@ type importResolver struct {
 // imports and keeping namespaced imports as resolved ImportDecl nodes.
 func (r *importResolver) resolveDecls(decls []Decl, fromDir string) []Decl {
 	out := make([]Decl, 0, len(decls))
+	seen := make(map[Decl]bool)
+	appendDecl := func(decl Decl) {
+		if !seen[decl] {
+			seen[decl] = true
+			out = append(out, decl)
+		}
+	}
 	for _, decl := range decls {
 		imp, ok := decl.(*ImportDecl)
 		if !ok {
-			out = append(out, decl)
+			appendDecl(decl)
 			continue
 		}
 		mod := r.resolveModule(imp.Module, fromDir, imp.Span_)
@@ -83,15 +101,15 @@ func (r *importResolver) resolveDecls(decls []Decl, fromDir string) []Decl {
 			continue // a diagnostic was already reported
 		}
 		if imp.Namespace == "" {
-			// Flat import: splice the module's declarations once.
+			// Flat import: splice each declaration once in this declaration
+			// list. Cached modules share declaration pointers, so this also
+			// removes transitive duplicates without hiding declarations from
+			// the parent module that imports this list.
 			for _, d := range mod.Decls {
-				if !r.seen[d] {
-					r.seen[d] = true
-					out = append(out, d)
-				}
+				appendDecl(d)
 			}
 		} else {
-			out = append(out, &ImportDecl{
+			appendDecl(&ImportDecl{
 				Span_:     imp.Span_,
 				Module:    imp.Module,
 				Namespace: imp.Namespace,
@@ -103,28 +121,40 @@ func (r *importResolver) resolveDecls(decls []Decl, fromDir string) []Decl {
 }
 
 // resolveModule loads, parses, and recursively resolves one module. The
-// result is cached by module name so repeated imports share one parse.
+// result is cached by canonical path so repeated path aliases share one parse
+// while distinct modules with the same basename remain distinct.
 func (r *importResolver) resolveModule(name, fromDir string, span Span) *Program {
-	if mod, ok := r.loaded[name]; ok {
-		return mod
-	}
-	if r.loading[name] {
-		r.diags.Error(span, "cyclic import of module '"+name+"'", "break the import cycle")
-		return nil
-	}
 	path := r.findModule(name, fromDir)
 	if path == "" {
 		r.diags.Error(span, "cannot find module '"+name+"'", "place '"+name+".chaos' in the stdlib directory or next to the importing file")
 		return nil
 	}
-	source, err := os.ReadFile(path)
+	canonical, err := canonicalModulePath(path)
 	if err != nil {
-		r.diags.Error(span, "cannot read module '"+name+"': "+err.Error(), "check file permissions")
+		r.diags.Error(span, "cannot resolve module '"+name+"': "+err.Error(), "use a valid module path")
 		return nil
+	}
+	if mod, ok := r.loaded[canonical]; ok {
+		return mod
+	}
+	if r.loading[canonical] {
+		r.diags.Error(span, "cyclic import of module '"+name+"'", "break the import cycle")
+		return nil
+	}
+	r.loading[canonical] = true
+	defer delete(r.loading, canonical)
+	source, ok := r.overlay[canonical]
+	if !ok {
+		var err error
+		source, err = os.ReadFile(canonical)
+		if err != nil {
+			r.diags.Error(span, "cannot read module '"+name+"': "+err.Error(), "check file permissions")
+			return nil
+		}
 	}
 	fileID := r.nextFile
 	r.nextFile++
-	r.sources[fileID] = SourceFile{ID: fileID, Path: path, Source: source, LineOffsets: BuildLineOffsets(source)}
+	r.sources[fileID] = SourceFile{ID: fileID, Path: canonical, Source: source, LineOffsets: BuildLineOffsets(source)}
 	tokens, tokDiags := Tokenize(source, fileID)
 	r.diags = append(r.diags, tokDiags...)
 	if tokDiags.HasErrors() {
@@ -135,10 +165,8 @@ func (r *importResolver) resolveModule(name, fromDir string, span Span) *Program
 	if result.Program == nil {
 		return nil
 	}
-	r.loading[name] = true
-	mod := &Program{Decls: r.resolveDecls(result.Program.Decls, filepath.Dir(path))}
-	r.loading[name] = false
-	r.loaded[name] = mod
+	mod := &Program{Decls: r.resolveDecls(result.Program.Decls, filepath.Dir(canonical))}
+	r.loaded[canonical] = mod
 	return mod
 }
 
@@ -150,11 +178,29 @@ func (r *importResolver) findModule(name, fromDir string) string {
 			continue
 		}
 		candidate := filepath.Join(dir, name+".chaos")
+		canonical, err := canonicalModulePath(candidate)
+		if err == nil {
+			if _, ok := r.overlay[canonical]; ok {
+				return canonical
+			}
+		}
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
 	}
 	return ""
+}
+
+func canonicalModulePath(path string) (string, error) {
+	canonical, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	canonical = filepath.Clean(canonical)
+	if evaluated, evalErr := filepath.EvalSymlinks(canonical); evalErr == nil {
+		canonical = evaluated
+	}
+	return canonical, nil
 }
 
 // sourceDir returns the directory of the program's main source file, derived

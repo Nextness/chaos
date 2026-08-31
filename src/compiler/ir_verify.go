@@ -528,8 +528,30 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		}
 		if ins.Imm.Kind != MIRImmLocal && ins.Imm.Kind != MIRImmSymbol {
 			v.diags.Error(ins.Span, "addr.of requires a local or symbol operand", "add the addressed entity")
-		} else if v.prog.Types.Lookup(ins.Type).Kind != TypeKindPointer {
-			v.diags.Error(ins.Span, "addr.of result must be a pointer type", "use the pointer to the addressed entity")
+		} else {
+			var addressed TypeID
+			var exists bool
+			if ins.Imm.Kind == MIRImmLocal {
+				addressed, exists = v.localTypes[ins.Imm.Local]
+				if !exists {
+					v.diags.Error(ins.Span, "addr.of references an unknown local", "use a declared local")
+				}
+			} else {
+				global, ok := v.globals[ins.Imm.Symbol]
+				exists = ok
+				addressed = global.Type
+				if !exists {
+					v.diags.Error(ins.Span, "addr.of references an unknown global", "use a declared global")
+				}
+			}
+			pt := v.prog.Types.Lookup(ins.Type)
+			if pt.Kind != TypeKindPointer {
+				v.diags.Error(ins.Span, "addr.of result must be a pointer type", "use the pointer to the addressed entity")
+			} else if exists && pt.Elem != addressed {
+				v.diags.Error(ins.Span, "addr.of result pointee type does not match the addressed entity", "use the pointer to the addressed entity's type")
+			} else if strings.HasSuffix(pt.Name, "?") {
+				v.diags.Error(ins.Span, "addr.of result must be non-nullable", "use a non-null pointer type")
+			}
 		}
 	case MIRDerefLoad:
 		if len(ins.Args) != 1 {
@@ -548,6 +570,9 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 		if len(ins.Args) != 2 {
 			v.diags.Error(ins.Span, "deref.store requires two value arguments", "add the address and the stored value")
 		} else if pt := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); pt.Kind == TypeKindPointer {
+			if ins.Type != pt.Elem {
+				v.diags.Error(ins.Span, "deref.store instruction type "+v.typeName(ins.Type)+" does not match pointed-to type "+v.typeName(pt.Elem), "use the pointed-to type")
+			}
 			if vt := v.valueTypes[ins.Args[1]]; vt != pt.Elem && vt != v.prog.Types.Unknown() {
 				v.diags.Error(ins.Span, "deref.store value type "+v.typeName(vt)+" does not match pointed-to type "+v.typeName(pt.Elem), "store a value of the pointed-to type")
 			}
@@ -560,10 +585,20 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 	case MIRArrayElemAddr:
 		if len(ins.Args) != 2 {
 			v.diags.Error(ins.Span, "array.elem.addr requires two value arguments", "add the array and index values")
-		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind != TypeKindArray && at.Kind != TypeKindUnknown {
-			v.diags.Error(ins.Span, "array.elem.addr base type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not an array", "use an array value")
-		} else if pt := v.prog.Types.Lookup(ins.Type); pt.Kind == TypeKindPointer && at.Kind == TypeKindArray && pt.Elem != at.Elem {
-			v.diags.Error(ins.Span, "array.elem.addr result type does not point at the array element type", "use the pointer-to-element type")
+		} else {
+			at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]])
+			if at.Kind != TypeKindArray && at.Kind != TypeKindUnknown {
+				v.diags.Error(ins.Span, "array.elem.addr base type "+v.typeName(v.valueTypes[ins.Args[0]])+" is not an array", "use an array value")
+			}
+			if it := v.prog.Types.Lookup(v.valueTypes[ins.Args[1]]); it.Kind != TypeKindInt && it.Kind != TypeKindUnknown {
+				v.diags.Error(ins.Span, "array.elem.addr index must be an integer", "use an integer index")
+			}
+			pt := v.prog.Types.Lookup(ins.Type)
+			if pt.Kind != TypeKindPointer {
+				v.diags.Error(ins.Span, "array.elem.addr result must be a pointer", "use the pointer-to-element type")
+			} else if at.Kind == TypeKindArray && pt.Elem != at.Elem {
+				v.diags.Error(ins.Span, "array.elem.addr result type does not point at the array element type", "use the pointer-to-element type")
+			}
 		}
 		if ins.Imm.Kind != MIRImmNone {
 			v.diags.Error(ins.Span, "array.elem.addr takes no immediate operand", "remove the immediate")
@@ -571,7 +606,18 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 	case MIRFieldAddr:
 		if len(ins.Args) != 1 {
 			v.diags.Error(ins.Span, "field.addr requires one value argument", "add the base address")
-		} else if at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]]); at.Kind == TypeKindPointer {
+		}
+		if ins.Imm.Kind != MIRImmField {
+			v.diags.Error(ins.Span, "field.addr requires a field operand", "add a field index")
+		} else if len(ins.Args) == 1 {
+			at := v.prog.Types.Lookup(v.valueTypes[ins.Args[0]])
+			if at.Kind != TypeKindPointer && at.Kind != TypeKindUnknown {
+				v.diags.Error(ins.Span, "field.addr base is not a pointer", "use the address of a struct")
+				break
+			}
+			if at.Kind != TypeKindPointer {
+				break
+			}
 			st := v.prog.Types.Lookup(at.Elem)
 			fi := int(ins.Imm.Int)
 			fieldCount := len(st.Fields)
@@ -599,8 +645,6 @@ func (v *MIRVerifier) verifyInstr(fn *MIRFunction, b *MIRBlock, index int, ins *
 			} else if pt := v.prog.Types.Lookup(ins.Type); pt.Kind != TypeKindPointer || pt.Elem != fieldType {
 				v.diags.Error(ins.Span, "field.addr result does not point at the field type", "use the pointer-to-field type")
 			}
-		} else if ins.Imm.Kind != MIRImmNone {
-			v.diags.Error(ins.Span, "field.addr takes no immediate operand", "remove the immediate")
 		}
 	case MIRPtrAdd, MIRPtrSub, MIRPtrDiff:
 		if len(ins.Args) != 2 {
@@ -898,8 +942,8 @@ func (v *MIRVerifier) checkCall(fn *MIRFunction, ins *MIRInstr) {
 
 func (v *MIRVerifier) checkStructInit(ins *MIRInstr) {
 	st := v.prog.Types.Lookup(ins.Type)
-	if !isRecordKind(st.Kind) {
-		v.diags.Error(ins.Span, "struct.init result type "+v.typeName(ins.Type)+" is not a record", "use a struct or tuple type")
+	if !isRecordKind(st.Kind) && st.Kind != TypeKindString {
+		v.diags.Error(ins.Span, "struct.init result type "+v.typeName(ins.Type)+" is not a record", "use a struct, tuple, or record-like built-in type")
 		return
 	}
 	if ins.Imm.Kind != MIRImmNone {

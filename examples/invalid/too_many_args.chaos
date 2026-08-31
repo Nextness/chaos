@@ -1,5 +1,5 @@
 // expect-stage: parse
-// expect-error: Why do you need so many arguments?
+// expect-error: procedure has more than 100 arguments
 // Chaos permits up to 100 procedure parameters and call arguments.
 sum :: proc (a1: S64, a2: S64, a3: S64, a4: S64, a5: S64, a6: S64, a7: S64, a8: S64, a9: S64, a10: S64, a11: S64, a12: S64, a13: S64, a14: S64, a15: S64, a16: S64, a17: S64, a18: S64, a19: S64, a20: S64, a21: S64, a22: S64, a23: S64, a24: S64, a25: S64, a26: S64, a27: S64, a28: S64, a29: S64, a30: S64, a31: S64, a32: S64, a33: S64, a34: S64, a35: S64, a36: S64, a37: S64, a38: S64, a39: S64, a40: S64, a41: S64, a42: S64, a43: S64, a44: S64, a45: S64, a46: S64, a47: S64, a48: S64, a49: S64, a50: S64, a51: S64, a52: S64, a53: S64, a54: S64, a55: S64, a56: S64, a57: S64, a58: S64, a59: S64, a60: S64, a61: S64, a62: S64, a63: S64, a64: S64, a65: S64, a66: S64, a67: S64, a68: S64, a69: S64, a70: S64, a71: S64, a72: S64, a73: S64, a74: S64, a75: S64, a76: S64, a77: S64, a78: S64, a79: S64, a80: S64, a81: S64, a82: S64, a83: S64, a84: S64, a85: S64, a86: S64, a87: S64, a88: S64, a89: S64, a90: S64, a91: S64, a92: S64, a93: S64, a94: S64, a95: S64, a96: S64, a97: S64, a98: S64, a99: S64, a100: S64, a101: S64) -> S64 {
     return a1;

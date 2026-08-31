@@ -1,4 +1,6 @@
 // expect-exit: 126
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Range loops over arrays: element binding, index binding, and the '#this'
 // and '#index' builtins. Sums the elements twice (60+60) and the indices
 // twice (3+3).

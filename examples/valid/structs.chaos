@@ -1,4 +1,6 @@
 // expect-exit: 11
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Structs: literal construction, copy, and equality.
 Point :: struct { x: S64; y: S64; }
 

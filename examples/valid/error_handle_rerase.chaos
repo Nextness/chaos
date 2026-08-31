@@ -1,4 +1,6 @@
 // expect-exit: 5
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // A matching value-or-error pair can be re-raised with 'return r;'.
 Some_Error :: error {
     GENERIC;

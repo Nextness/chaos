@@ -1,4 +1,6 @@
 // expect-exit: 1
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Error types: declaration, the ': Error :' annotation form, members with
 // the '!' literal marker, nominal equality, and a compile-time error const.
 Hash_Table_Error :: error {

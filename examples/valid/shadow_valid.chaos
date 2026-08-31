@@ -1,4 +1,6 @@
 // expect-exit: 42
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // The '#shadow' directive explicitly allows reusing an outer name. The
 // initializer of a shadowing declaration references the outer binding.
 BASE :: 10;

@@ -3,7 +3,9 @@ package main
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"chaos_compiler/compiler"
@@ -26,6 +28,10 @@ type Document struct {
 
 // newDocument builds one immutable analyzed snapshot for a document version.
 func newDocument(uri string, version int, text string) *Document {
+	return newDocumentWithImportOverlay(uri, version, text, nil)
+}
+
+func newDocumentWithImportOverlay(uri string, version int, text string, overlay map[string][]byte) *Document {
 	d := &Document{URI: uri, Version: version, Text: text}
 	sm := &compiler.SourceManager{}
 	fileID := sm.Register(d.URI, []byte(d.Text))
@@ -37,9 +43,9 @@ func newDocument(uri string, version int, text string) *Document {
 		d.program.Sources = map[compiler.FileID]compiler.SourceFile{d.sf.ID: *d.sf}
 	}
 	d.diags = append(d.diags, result.Diags...)
-	if !d.diags.HasErrors() {
+	if d.program != nil {
 		var semanticDiags compiler.DiagnosticList
-		d.analysis, semanticDiags = compiler.AnalyzeProgram(d.program)
+		d.analysis, semanticDiags = compiler.AnalyzeProgramWithImportOverlay(d.program, overlay)
 		d.diags = append(d.diags, semanticDiags...)
 		// AnalyzeProgram resolves imports and returns the resolved program
 		// (imported declarations spliced in) as analysis.Program. Use it for
@@ -48,7 +54,8 @@ func newDocument(uri string, version int, text string) *Document {
 		if d.analysis != nil && d.analysis.Program != nil {
 			d.program = d.analysis.Program
 		}
-	} else {
+	}
+	if d.analysis == nil {
 		d.analysis = &compiler.SemanticAnalysis{
 			ExprTypes:     make(map[compiler.Expr]compiler.Type),
 			TypeExprTypes: make(map[compiler.Expr]compiler.Type),
@@ -62,6 +69,41 @@ func newDocument(uri string, version int, text string) *Document {
 	allSemantic := append(tokenSemanticTokens(d.tokens, d.sf), astSemanticTokens(d.program, d.sf)...)
 	d.semantic = encodeSemanticTokens(allSemantic)
 	return d
+}
+
+type documentInput struct {
+	version int
+	text    string
+}
+
+func rebuildDocuments(inputs map[string]documentInput) map[string]*Document {
+	overlay := make(map[string][]byte, len(inputs))
+	for uri, input := range inputs {
+		if path, ok := canonicalFileURIPath(uri); ok {
+			overlay[path] = []byte(input.text)
+		}
+	}
+	documents := make(map[string]*Document, len(inputs))
+	for uri, input := range inputs {
+		documents[uri] = newDocumentWithImportOverlay(uri, input.version, input.text, overlay)
+	}
+	return documents
+}
+
+func canonicalFileURIPath(uri string) (string, bool) {
+	parsed, err := url.Parse(uri)
+	if err != nil || parsed.Scheme != "file" {
+		return "", false
+	}
+	path, err := filepath.Abs(filepath.FromSlash(parsed.Path))
+	if err != nil {
+		return "", false
+	}
+	path = filepath.Clean(path)
+	if evaluated, evalErr := filepath.EvalSymlinks(path); evalErr == nil {
+		path = evaluated
+	}
+	return path, true
 }
 
 type serverState uint8

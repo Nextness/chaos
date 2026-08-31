@@ -140,20 +140,51 @@ func knownTypeNames(program *compiler.Program) map[string]bool {
 		switch d := decl.(type) {
 		case *compiler.StructDecl:
 			types[d.Name] = true
-			for _, tp := range d.TypeParams {
-				types[tp.Name] = true
-			}
 		case *compiler.ErrorDecl:
 			types[d.Name] = true
 		case *compiler.EnumDecl:
 			types[d.Name] = true
-		case *compiler.ProcDecl:
-			for _, tp := range d.TypeParams {
-				types[tp.Name] = true
-			}
 		}
 	}
 	return types
+}
+
+func cloneKnownTypes(source map[string]bool) map[string]bool {
+	result := make(map[string]bool, len(source)+1)
+	for name, known := range source {
+		result[name] = known
+	}
+	return result
+}
+
+func findLastSourceByte(source []byte, start, end int, target byte) int {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(source) {
+		end = len(source)
+	}
+	for i := end - 1; i >= start; i-- {
+		if source[i] == target {
+			return i
+		}
+	}
+	return -1
+}
+
+func findNextSourceByte(source []byte, start, end int, target byte) int {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(source) {
+		end = len(source)
+	}
+	for i := start; i < end; i++ {
+		if source[i] == target {
+			return i
+		}
+	}
+	return -1
 }
 
 // typeToken emits a type token for an identifier type expression, but only if
@@ -291,31 +322,39 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		case *compiler.LoopBuiltinExpr:
 			// Builtin directive; no highlight.
 		case *compiler.InterpolatedStringExpr:
-			// Emit a string token for each literal segment (including the
-			// opening « and closing ») and walk the inner expressions, so the
-			// interpolation is highlighted as its real type instead of being
-			// swallowed by the whole-string token.
+			// Derive delimiter positions from the source. Expression spans do
+			// not include whitespace inside "{ expr }", so guessing one byte
+			// around them would color spaces as braces.
 			file := e.Span_.File
-			// Opening « (2 bytes).
 			out = append(out, spanToTokenRows(compiler.Span{File: file, Start: e.Span_.Start, End: e.Span_.Start + 2}, sf, semTypeString)...)
-			cursor := e.Span_.Start + 2 // after the opening «
+			cursor := e.Span_.Start + 2
+			contentEnd := e.Span_.End - 2
 			for _, part := range e.Parts {
 				if part.Expr != nil {
 					exprSpan := compiler.NodeSpan(part.Expr)
-					// The '{' before and '}' after the interpolation are
-					// delimiters, colored like braces outside strings.
-					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: exprSpan.Start - 1, End: exprSpan.Start}, sf, semTypeDelimiter)...)
+					open := findLastSourceByte(sf.Source, cursor, exprSpan.Start, '{')
+					if open < 0 {
+						walkExpr(part.Expr)
+						cursor = exprSpan.End
+						continue
+					}
+					if cursor < open {
+						out = append(out, spanToTokenRows(compiler.Span{File: file, Start: cursor, End: open}, sf, semTypeString)...)
+					}
+					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: open, End: open + 1}, sf, semTypeDelimiter)...)
 					walkExpr(part.Expr)
-					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: exprSpan.End, End: exprSpan.End + 1}, sf, semTypeDelimiter)...)
-					// Skip the expression and its closing '}'.
-					cursor = exprSpan.End + 1
-				} else {
-					end := cursor + len(part.Literal)
-					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: cursor, End: end}, sf, semTypeString)...)
-					cursor = end
+					close := findNextSourceByte(sf.Source, exprSpan.End, contentEnd, '}')
+					if close < 0 {
+						cursor = exprSpan.End
+						continue
+					}
+					out = append(out, spanToTokenRows(compiler.Span{File: file, Start: close, End: close + 1}, sf, semTypeDelimiter)...)
+					cursor = close + 1
 				}
 			}
-			// Closing » (2 bytes).
+			if cursor < contentEnd {
+				out = append(out, spanToTokenRows(compiler.Span{File: file, Start: cursor, End: contentEnd}, sf, semTypeString)...)
+			}
 			out = append(out, spanToTokenRows(compiler.Span{File: file, Start: e.Span_.End - 2, End: e.Span_.End}, sf, semTypeString)...)
 		case *compiler.AllocateExpr:
 			walkExpr(e.Size)
@@ -456,8 +495,16 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 
 	walkProc = func(proc *compiler.ProcDecl) {
 		out = append(out, spanToTokenRows(proc.NameSpan, sf, semTypeFunction)...)
+		outerKnown := known
+		known = cloneKnownTypes(known)
 		for _, tp := range proc.TypeParams {
+			known[tp.Name] = true
 			out = append(out, spanToTokenRows(tp.NameSpan, sf, semTypeType)...)
+		}
+		for _, tp := range proc.TypeParams {
+			for _, constraint := range tp.Constraints {
+				typeToken(constraint, sf, known, &out)
+			}
 		}
 		for _, param := range proc.Params {
 			out = append(out, spanToTokenRows(param.NameSpan, sf, semTypeParameter)...)
@@ -472,12 +519,21 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		if proc.Body != nil {
 			walkBlock(proc.Body)
 		}
+		known = outerKnown
 	}
 
 	walkStruct = func(st *compiler.StructDecl) {
 		out = append(out, spanToTokenRows(st.NameSpan, sf, semTypeType)...)
+		outerKnown := known
+		known = cloneKnownTypes(known)
 		for _, tp := range st.TypeParams {
+			known[tp.Name] = true
 			out = append(out, spanToTokenRows(tp.NameSpan, sf, semTypeType)...)
+		}
+		for _, tp := range st.TypeParams {
+			for _, constraint := range tp.Constraints {
+				typeToken(constraint, sf, known, &out)
+			}
 		}
 		for _, field := range st.Fields {
 			out = append(out, spanToTokenRows(field.NameSpan, sf, semTypeVariable)...)
@@ -486,6 +542,7 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				walkExpr(field.Default)
 			}
 		}
+		known = outerKnown
 	}
 
 	walkError = func(ed *compiler.ErrorDecl) {

@@ -1,4 +1,6 @@
 // expect-exit: 11
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // A String-valued error-returning procedure: the unwrapped value is compared
 // after the error is handled.
 Some_Error :: error {

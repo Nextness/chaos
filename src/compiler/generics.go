@@ -53,9 +53,33 @@ func substituteExpr(e Expr, mapping map[string]Expr) Expr {
 		// ExprTypes entry that another instance reads during lowering.
 		cp := *n
 		return &cp
-	case *IntExpr, *FloatExpr, *StringExpr, *BoolExpr, *NullLitExpr,
-		*LoopBuiltinExpr, *ErrorExpr:
-		return n
+	case *IntExpr:
+		cp := *n
+		return &cp
+	case *FloatExpr:
+		cp := *n
+		return &cp
+	case *StringExpr:
+		cp := *n
+		return &cp
+	case *BoolExpr:
+		cp := *n
+		return &cp
+	case *NullLitExpr:
+		cp := *n
+		return &cp
+	case *LoopBuiltinExpr:
+		cp := *n
+		return &cp
+	case *ErrorExpr:
+		cp := *n
+		return &cp
+	case *ErrorMemberExpr:
+		cp := *n
+		return &cp
+	case *EnumMemberExpr:
+		cp := *n
+		return &cp
 	case *BinaryExpr:
 		cp := *n
 		cp.Left = substituteExpr(n.Left, mapping)
@@ -208,8 +232,12 @@ func substituteStmt(s Stmt, mapping map[string]Expr) Stmt {
 		cp.Range = substituteExpr(n.Range, mapping)
 		cp.Body = substituteBlock(n.Body, mapping)
 		return &cp
-	case *BreakStmt, *ContinueStmt:
-		return n
+	case *BreakStmt:
+		cp := *n
+		return &cp
+	case *ContinueStmt:
+		cp := *n
+		return &cp
 	case *CompoundAssignStmt:
 		cp := *n
 		cp.Target = substituteExpr(n.Target, mapping)
@@ -225,9 +253,90 @@ func substituteStmt(s Stmt, mapping map[string]Expr) Stmt {
 		return &cp
 	case *BlockStmt:
 		return substituteBlock(n, mapping)
+	case *ExprStmt:
+		cp := *n
+		cp.Expr = substituteExpr(n.Expr, mapping)
+		return &cp
+	case *MultiVarDecl:
+		cp := *n
+		cp.Names = append([]string(nil), n.Names...)
+		cp.NameSpans = append([]Span(nil), n.NameSpans...)
+		cp.Init = substituteExpr(n.Init, mapping)
+		return &cp
+	case *ProcDecl:
+		return substituteProcDecl(n, mapping)
+	case *StructDecl:
+		return substituteStructDecl(n, mapping)
+	case *ErrorDecl:
+		cp := *n
+		cp.Members = append([]ErrorMember(nil), n.Members...)
+		return &cp
+	case *EnumDecl:
+		cp := *n
+		cp.Members = make([]EnumMember, len(n.Members))
+		for i, member := range n.Members {
+			cp.Members[i] = member
+			cp.Members[i].Type = substituteTypeExpr(member.Type, mapping)
+			cp.Members[i].Value = substituteExpr(member.Value, mapping)
+		}
+		return &cp
 	default:
 		return s
 	}
+}
+
+func substituteProcDecl(proc *ProcDecl, mapping map[string]Expr) *ProcDecl {
+	scoped := mappingWithoutTypeParams(mapping, proc.TypeParams)
+	cp := *proc
+	cp.TypeParams = substituteTypeParams(proc.TypeParams, scoped)
+	cp.Params = make([]Param, len(proc.Params))
+	for i, param := range proc.Params {
+		cp.Params[i] = param
+		cp.Params[i].Type = substituteTypeExpr(param.Type, scoped)
+	}
+	cp.Results = make([]Expr, len(proc.Results))
+	for i, result := range proc.Results {
+		cp.Results[i] = substituteTypeExpr(result, scoped)
+	}
+	cp.ErrorResult = substituteTypeExpr(proc.ErrorResult, scoped)
+	cp.Body = substituteBlock(proc.Body, scoped)
+	return &cp
+}
+
+func substituteStructDecl(st *StructDecl, mapping map[string]Expr) *StructDecl {
+	scoped := mappingWithoutTypeParams(mapping, st.TypeParams)
+	cp := *st
+	cp.TypeParams = substituteTypeParams(st.TypeParams, scoped)
+	cp.Fields = make([]StructField, len(st.Fields))
+	for i, field := range st.Fields {
+		cp.Fields[i] = field
+		cp.Fields[i].Type = substituteTypeExpr(field.Type, scoped)
+		cp.Fields[i].Default = substituteExpr(field.Default, scoped)
+	}
+	return &cp
+}
+
+func substituteTypeParams(params []TypeParam, mapping map[string]Expr) []TypeParam {
+	result := make([]TypeParam, len(params))
+	for i, param := range params {
+		result[i] = param
+		result[i].Constraints = make([]Expr, len(param.Constraints))
+		for j, constraint := range param.Constraints {
+			result[i].Constraints[j] = substituteTypeExpr(constraint, mapping)
+		}
+	}
+	return result
+}
+
+func mappingWithoutTypeParams(mapping map[string]Expr, params []TypeParam) map[string]Expr {
+	result := make(map[string]Expr, len(mapping))
+	for name, expr := range mapping {
+		result[name] = expr
+	}
+	for _, param := range params {
+		delete(result, param.Name)
+	}
+	return result
 }
 
 func substituteBlock(b *BlockStmt, mapping map[string]Expr) *BlockStmt {

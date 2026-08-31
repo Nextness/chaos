@@ -1,4 +1,6 @@
 // expect-exit: 40
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // A range loop index binding is scoped to the loop body and does not replace
 // an outer binding with a different name.
 #entry main :: proc -> S64 {

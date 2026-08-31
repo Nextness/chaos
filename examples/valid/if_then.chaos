@@ -1,4 +1,6 @@
 // expect-exit: 5
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Single-line if bodies: 'then' with a single statement, 'then' followed by
 // an elif block, the full single-line if/elif/else chain, and a statement
 // after a single-line body (which belongs to the enclosing scope).

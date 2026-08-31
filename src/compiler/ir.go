@@ -119,6 +119,16 @@ type IRType struct {
 	ArraySize  int       // compile-time size for TypeKindArray with ArrayKind == ArrayFixed
 }
 
+// Layout is the target-independent storage contract currently shared by the
+// lowerer and the x86-64 backend. All implemented targets use these widths and
+// alignments, so size_of, stack slots, field offsets, and ABI classification
+// must derive from this one calculation.
+type Layout struct {
+	Size         int
+	Align        int
+	FieldOffsets []int
+}
+
 // TypeTable interns types by name.
 type TypeTable struct {
 	types  []IRType
@@ -196,11 +206,95 @@ func (tt *TypeTable) internUnindexed(name string, kind TypeKind) TypeID {
 	return id
 }
 
-// SetStructFields sets the field list of a struct type.
+// SetStructFields sets the field list of a record-like type. String uses the
+// same field metadata for its exposed data/count pair.
 func (tt *TypeTable) SetStructFields(id TypeID, fields []TypeField) {
-	if int(id) < len(tt.types) && (tt.types[id].Kind == TypeKindStruct || tt.types[id].Kind == TypeKindTuple) {
+	if int(id) < len(tt.types) && (tt.types[id].Kind == TypeKindStruct || tt.types[id].Kind == TypeKindTuple || tt.types[id].Kind == TypeKindString) {
 		tt.types[id].Fields = fields
 	}
+}
+
+// LayoutOf returns the canonical storage layout for a resolved type.
+func (tt *TypeTable) LayoutOf(id TypeID) Layout {
+	cache := make(map[TypeID]Layout)
+	visiting := make(map[TypeID]bool)
+	var layoutOf func(TypeID) Layout
+	layoutOf = func(id TypeID) Layout {
+		t := tt.Lookup(id)
+		if t.Kind == TypeKindUnknown {
+			return Layout{Align: 1}
+		}
+		if layout, ok := cache[id]; ok {
+			return layout
+		}
+		if visiting[id] {
+			return Layout{Align: 1}
+		}
+		visiting[id] = true
+		defer delete(visiting, id)
+
+		layout := Layout{Align: 1}
+		switch t.Kind {
+		case TypeKindVoid:
+			layout = Layout{Align: 1}
+		case TypeKindBool:
+			layout = Layout{Size: 1, Align: 1}
+		case TypeKindInt:
+			if info, ok := LookupBuiltinType(t.Name); ok && info.Kind == BuiltinInteger {
+				size := info.Bits / 8
+				alignment := size
+				if alignment > 8 {
+					alignment = 8
+				}
+				layout = Layout{Size: size, Align: alignment}
+			}
+		case TypeKindFloat:
+			if info, ok := LookupBuiltinType(t.Name); ok && info.Kind == BuiltinFloat {
+				size := info.Bits / 8
+				layout = Layout{Size: size, Align: size}
+			}
+		case TypeKindString:
+			layout = Layout{Size: 16, Align: 8, FieldOffsets: []int{0, 8}}
+		case TypeKindArray:
+			if t.ArrayKind == ArrayDynamic {
+				layout = Layout{Size: 24, Align: 8, FieldOffsets: []int{0, 8, 16}}
+			} else {
+				layout = Layout{Size: 16, Align: 8, FieldOffsets: []int{0, 8}}
+			}
+		case TypeKindPointer, TypeKindAddr:
+			layout = Layout{Size: 8, Align: 8}
+		case TypeKindError:
+			layout = Layout{Size: 2, Align: 2}
+		case TypeKindEnum:
+			layout = layoutOf(t.Underlying)
+		case TypeKindStruct, TypeKindTuple:
+			layout.FieldOffsets = make([]int, len(t.Fields))
+			offset, maxAlign := 0, 1
+			for i, field := range t.Fields {
+				fieldLayout := layoutOf(field.Type)
+				offset = alignLayout(offset, fieldLayout.Align)
+				layout.FieldOffsets[i] = offset
+				offset += fieldLayout.Size
+				if fieldLayout.Align > maxAlign {
+					maxAlign = fieldLayout.Align
+				}
+			}
+			if offset == 0 {
+				offset = 1
+			}
+			layout.Size, layout.Align = alignLayout(offset, maxAlign), maxAlign
+		}
+		cache[id] = layout
+		return layout
+	}
+	return layoutOf(id)
+}
+
+func alignLayout(value, alignment int) int {
+	if alignment <= 1 {
+		return value
+	}
+	return (value + alignment - 1) &^ (alignment - 1)
 }
 
 // InternError interns an error type name. Error values are nominal: each

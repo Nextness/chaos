@@ -62,7 +62,7 @@ type Parser struct {
 const maxProcedureItems = 100
 
 func tooManyProcedureItems(kind string) string {
-	return "Why do you need so many " + kind + "? Have you ever considered another profession? Use a struct, or rewrite your code like a sane person. Dumb bitch"
+	return "procedure has more than 100 " + kind
 }
 
 func (p *Parser) setEntry(name string, span Span, decl *ProcDecl) {
@@ -298,11 +298,9 @@ func (p *Parser) skipToMatchedBrace() {
 	}
 }
 
-// parseGenericClause consumes an unsupported generic parameter list while
-// tolerant recovery skips the enclosing declaration. Nested '<' '>' pairs
-// (for example Array<S64>) are tracked so recovery finds the matching '>'. It
-// deliberately does not return generic parameters that could be mistaken for
-// implemented semantic declarations.
+// parseGenericClause consumes a generic parameter list while tolerant recovery
+// skips a declaration form that could not be parsed normally. Nested '<' '>'
+// pairs are tracked so recovery finds the matching '>'.
 func (p *Parser) parseGenericClause() bool {
 	if !p.at(TkLt) {
 		return false
@@ -1248,7 +1246,8 @@ func (p *Parser) parseStmt() Stmt {
 		if p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "shadow" {
 			return p.parseShadowVarDecl()
 		}
-		// '#deallocate <addr>' frees a heap block returned by '#allocate'.
+		// '#deallocate <addr>' marks an allocated address for deallocation. The
+		// current backend accepts it but does not reclaim bump-arena storage.
 		if p.peekN(1).Kind == TkDirec && p.peekN(1).Value == "deallocate" {
 			hashTok := p.bump() // consume "#"
 			p.bump()            // consume TkDirec("deallocate")
@@ -1390,8 +1389,8 @@ func (p *Parser) parseIdentStmt() Stmt {
 	nameTok := p.bump()
 	name := nameTok.Text()
 
-	// See parseDecl: unsupported generic declarations are recovery-only and do
-	// not become ordinary declarations in the tolerant AST.
+	// See parseDecl: malformed generic declarations are recovery-only and do not
+	// become ordinary declarations in the tolerant AST.
 	if p.tolerant && p.at(TkLt) {
 		p.parseGenericClause()
 		p.skipToMatchedBraces()
@@ -2371,8 +2370,16 @@ func (p *Parser) parseInterpolationExpr(text string, span Span, exprOffset int) 
 		tokens[i].Span.Start += exprOffset
 		tokens[i].Span.End += exprOffset
 	}
+	for i := range diags {
+		diags[i].Span.Start += exprOffset
+		diags[i].Span.End += exprOffset
+	}
 	sub := &Parser{tokens: tokens, program: p.program}
 	expr := sub.parseExpr(0)
+	if expr != nil && !sub.at(TkEOF) {
+		tok := sub.peek()
+		sub.diags.Error(tok.Span, "unexpected token after interpolation expression", "keep exactly one expression inside '{...}'")
+	}
 	p.diags = append(p.diags, diags...)
 	p.diags = append(p.diags, sub.diags...)
 	if expr == nil {

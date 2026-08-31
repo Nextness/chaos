@@ -3,8 +3,11 @@ format ELF64 executable 3
 segment readable writable
 chaos_heap:
     rb 1048576
+chaos_heap_end:
 chaos_heap_ptr:
     dq chaos_heap
+str0:
+    db 0x61,0x6c,0x6c,0x6f,0x63,0x61,0x74,0x69,0x6f,0x6e,0x20,0x66,0x61,0x69,0x6c,0x65,0x64,0x0a
 
 segment readable executable
 
@@ -14,6 +17,31 @@ _start:
     call chaos_fn_0
     mov rdi, rax
     mov rax, 60
+    syscall
+
+chaos_alloc:
+    test rax, rax
+    js chaos_alloc_fail
+    add rax, 7
+    jc chaos_alloc_fail
+    and rax, -8
+    mov rcx, qword [chaos_heap_ptr]
+    mov rdx, rcx
+    add rdx, rax
+    jc chaos_alloc_fail
+    cmp rdx, chaos_heap_end
+    ja chaos_alloc_fail
+    mov qword [chaos_heap_ptr], rdx
+    mov rax, rcx
+    ret
+chaos_alloc_fail:
+    mov rax, 1
+    mov rdi, 2
+    mov rsi, str0
+    mov rdx, 18
+    syscall
+    mov rax, 60
+    mov rdi, 1
     syscall
 
 chaos_fn_0:
@@ -29,13 +57,8 @@ L0:
     mov rax, 16
     mov qword [rbp-80], rax
     mov rax, qword [rbp-80]
-    add rax, 7
-    and rax, -8
-    mov rcx, rax
-    mov rax, qword [chaos_heap_ptr]
+    call chaos_alloc
     mov qword [rbp-88], rax
-    add rax, rcx
-    mov qword [chaos_heap_ptr], rax
     mov rax, qword [rbp-88]
     mov qword [rbp-48], rax
     mov rax, qword [rbp-48]

@@ -1,4 +1,6 @@
 // expect-exit: 6
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Strings: literal, comparison, and ordering.
 #entry main :: proc -> S64 {
     s := «hello»;

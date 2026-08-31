@@ -1,0 +1,8 @@
+MIR
+  Function main() -> S64
+    bb0:
+      v0:String = const "out"
+      v1:Void = print v0 true
+      v2:S64 = const 3
+      v3:String = const "err"
+      exit status=v2 message=v3

@@ -31,7 +31,7 @@ Program
       IfStmt condition=Binary(|| Binary(!= Field(Field(Ident(o), inner), x) Int(9)) Binary(!= Field(Ident(o), label) String("bye")))
         Block
           ReturnStmt Int(4)
-      VarDecl arr = ArrayInit(Ident(Point), StructInit(Ident(Point), x=Int(1), y=Int(2))) [mutable=true compileTime=false]
+      VarDecl arr = ArrayInit(ArrayType(runtime elem=Ident(Point)), StructInit(Ident(Point), x=Int(1), y=Int(2))) [mutable=true compileTime=false]
       AssignStmt Field(Index(Ident(arr), Int(0)), x) = Int(5)
       IfStmt condition=Binary(!= Field(Index(Ident(arr), Int(0)), x) Int(5))
         Block

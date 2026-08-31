@@ -1,0 +1,5 @@
+HIR
+  Proc main() -> S64
+    Block
+      ExprStmt Println(String("out"))
+      Exit status=Int(3) message=String("err")

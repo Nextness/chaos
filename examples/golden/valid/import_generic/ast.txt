@@ -2,11 +2,11 @@ Diagnostics:
   (none)
 AST:
 Program
-  Decl *compiler.ImportDecl
+  ImportDecl module="core" namespace=c declarations=0
   ProcDecl main
     Results: Ident(S64)
     Block
-      VarDecl a: ArrayType(Ident(S64)) [mutable=true compileTime=false]
+      VarDecl a: ArrayType(dynamic elem=Ident(S64)) [mutable=true compileTime=false]
       ExprStmt Call(Field(Ident(c), append), Unary(* Ident(a)), Int(10))
       ExprStmt Call(Field(Ident(c), append), Unary(* Ident(a)), Int(20))
       ExprStmt Call(Field(Ident(c), append), Unary(* Ident(a)), Int(30))

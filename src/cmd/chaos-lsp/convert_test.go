@@ -71,6 +71,21 @@ func TestConvertDiagnosticsClampsOutOfRange(t *testing.T) {
 	}
 }
 
+func TestConvertDiagnosticsExcludesImportedFiles(t *testing.T) {
+	sm := &compiler.SourceManager{}
+	rootID := sm.Register("root.chaos", []byte("value"))
+	importID := sm.Register("module.chaos", []byte("bad"))
+	sf := sm.Lookup(rootID)
+	diags := compiler.DiagnosticList{
+		{Severity: compiler.SeverityError, Span: compiler.Span{File: rootID, Start: 0, End: 5}, Message: "root"},
+		{Severity: compiler.SeverityError, Span: compiler.Span{File: importID, Start: 0, End: 3}, Message: "import"},
+	}
+	out := convertDiagnostics(diags, sf)
+	if len(out) != 1 || out[0].Message != "root" {
+		t.Fatalf("convertDiagnostics() = %+v, want only the root diagnostic", out)
+	}
+}
+
 func TestApplyEdits(t *testing.T) {
 	// Full-document replacement.
 	if got := applyEdits("old", []TextDocumentContentChangeEvent{{Text: "new"}}); got != "new" {

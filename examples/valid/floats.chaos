@@ -1,4 +1,6 @@
 // expect-exit: 4
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Floats: F64 constants, arithmetic, and comparison.
 #entry main :: proc -> S64 {
     x: F64 = 2.5;

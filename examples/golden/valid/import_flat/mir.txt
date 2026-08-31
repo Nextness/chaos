@@ -225,18 +225,12 @@ MIR
     bb16:
       jump bb17
     bb17:
-      v93:String = zero
-      store.local v93 l10
-      v94:*String = addr.of l10
-      v95:**Byte = field.addr v94 field0
-      v96:*Byte = load.local l2
-      deref.store:*Byte v95 v96
-      v97:*String = addr.of l10
-      v98:*Size = field.addr v97 field1
-      v99:Size = load.local l5
-      deref.store:Size v98 v99
-      v100:String = load.local l10
-      return v100
+      v93:*Byte = load.local l2
+      v94:Size = load.local l5
+      v95:String = struct.init v93 v94
+      store.local v95 l10
+      v96:String = load.local l10
+      return v96
     bb18:
       v71:Size = load.local l9
       v72:Size = const 0
@@ -376,6 +370,7 @@ MIR
     Local l10: F64
     Local l11: S64
     Local l12: S64
+    Local l13: F64
     bb0:
       v0:F64 = const 0
       store.local v0 l1
@@ -575,8 +570,8 @@ MIR
     bb22:
       jump bb23
     bb23:
-      v203:Bool = load.local l2
-      branch v203, bb47, bb48
+      v204:Bool = load.local l2
+      branch v204, bb47, bb48
     bb24:
       v136:String = load.local l0
       v137:*Byte = field.load v136 field0
@@ -695,26 +690,28 @@ MIR
       v197:F64 = load.local l1
       v198:F64 = load.local l10
       v199:F64 = div v197 v198
-      store.local v199 l1
+      store.local v199 l13
       jump bb46
     bb45:
       v200:F64 = load.local l1
       v201:F64 = load.local l10
       v202:F64 = mul v200 v201
-      store.local v202 l1
+      store.local v202 l13
       jump bb46
     bb46:
+      v203:F64 = load.local l13
+      store.local v203 l1
       jump bb23
     bb47:
-      v204:F64 = load.local l1
-      v205:F64 = neg v204
-      store.local v205 l1
+      v205:F64 = load.local l1
+      v206:F64 = neg v205
+      store.local v206 l1
       jump bb49
     bb48:
       jump bb49
     bb49:
-      v206:F64 = load.local l1
-      return v206
+      v207:F64 = load.local l1
+      return v207
   Function main() -> S64
     bb0:
       v0:Byte = const 48

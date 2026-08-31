@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Struct field reads and writes on plain values: 's.field' targets for '=',
 // '+=', '++', and reads through indexing and nested structs.
 Point :: struct {

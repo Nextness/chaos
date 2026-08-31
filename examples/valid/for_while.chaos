@@ -1,4 +1,6 @@
 // expect-exit: 10
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // A while-style loop: "for true" repeats until a break exits.
 #entry main :: proc -> S64 {
     a := 0;

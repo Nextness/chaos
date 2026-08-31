@@ -1,4 +1,6 @@
 // expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
 // Importing core but using only one function: the rest are discarded by
 // reachability, so the binary stays small.
 #import «core»;
