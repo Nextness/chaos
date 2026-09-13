@@ -749,12 +749,57 @@ func (p *Parser) parseTypeBase() Expr {
 	}
 	if p.at(TkIdent) {
 		tok := p.bump()
-		return &IdentExpr{Span_: tok.Span, Name: tok.Text()}
+		ident := &IdentExpr{Span_: tok.Span, Name: tok.Text()}
+		if p.at(TkLt) {
+			args, closeSpan, ok := p.parseGenericTypeArgs()
+			if ok {
+				return &GenericTypeExpr{
+					Span_: Span{File: tok.Span.File, Start: tok.Span.Start, End: closeSpan.End},
+					Name:  ident,
+					Args:  args,
+				}
+			}
+			// The '<' could not form a complete type-argument list; leave it
+			// for the caller to diagnose as an unexpected token.
+		}
+		return ident
 	}
 	if p.at(TkLBracket) {
 		return p.parseArrayTypeExpr()
 	}
 	return nil
+}
+
+// parseGenericTypeArgs parses a "<Type1, Type2>" type-argument list after a
+// generic name. On success it returns the argument expressions and the closing
+// '>' token span. On failure it restores the parser position and diagnostics
+// to the state before '<' and returns ok=false, so a value context can fall
+// back to treating '<' as the comparison operator.
+func (p *Parser) parseGenericTypeArgs() ([]Expr, Span, bool) {
+	if !p.at(TkLt) {
+		return nil, Span{}, false
+	}
+	savePos, saveDiags := p.pos, len(p.diags)
+	p.bump() // consume "<"
+	var args []Expr
+	for !p.at(TkGt) && !p.at(TkEOF) {
+		arg := p.parseTypeExpr()
+		if arg == nil {
+			p.pos, p.diags = savePos, p.diags[:saveDiags]
+			return nil, Span{}, false
+		}
+		args = append(args, arg)
+		if !p.at(TkComma) {
+			break
+		}
+		p.bump() // consume ","
+	}
+	if !p.at(TkGt) {
+		p.pos, p.diags = savePos, p.diags[:saveDiags]
+		return nil, Span{}, false
+	}
+	closeTok := p.bump() // consume ">"
+	return args, closeTok.Span, true
 }
 
 // parseArrayTypeExpr parses an array type expression starting at "[": "[]T",
@@ -2565,6 +2610,29 @@ func (p *Parser) parseAtom() Expr {
 	case TkIdent:
 		p.bump()
 		ident := &IdentExpr{Span_: tok.Span, Name: tok.Text()}
+		// Explicit type arguments immediately after the name: "<T1, T2>".
+		// Requiring adjacency keeps "a < b" as a comparison while still
+		// accepting "identity<S64>(...)" and "Name<A, B>.{...}".
+		if p.at(TkLt) && p.peek().Span.Start == tok.Span.End {
+			savePos, saveDiags := p.pos, len(p.diags)
+			args, closeSpan, ok := p.parseGenericTypeArgs()
+			if ok && (p.at(TkLParen) || (p.at(TkDot) && p.peekN(1).Kind == TkLBrace)) {
+				generic := &GenericTypeExpr{
+					Span_: Span{File: tok.Span.File, Start: tok.Span.Start, End: closeSpan.End},
+					Name:  ident,
+					Args:  args,
+				}
+				if p.at(TkLParen) {
+					openTok := p.bump()
+					return p.parseCallArgs(generic, openTok.Span)
+				}
+				p.bump() // consume "."
+				return p.parseStructInit(generic, tok.Span)
+			}
+			// Not a call or struct literal: restore and treat '<' as the
+			// comparison operator.
+			p.pos, p.diags = savePos, p.diags[:saveDiags]
+		}
 		// Struct literal with explicit type: TypeName.{...}
 		if p.at(TkDot) && p.peekN(1).Kind == TkLBrace {
 			p.bump() // consume "."

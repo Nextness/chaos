@@ -1,5 +1,7 @@
 package compiler
 
+import "strings"
+
 // FormatTypeExpr renders a parsed type expression using Chaos source syntax.
 // It is shared by compiler-facing dumps and editor tooling so symbolic array
 // sizes and nested pointer/array forms are represented consistently.
@@ -24,6 +26,12 @@ func FormatTypeExpr(expr Expr) string {
 		return text
 	case *ParenExpr:
 		return "(" + FormatTypeExpr(value.Inner) + ")"
+	case *GenericTypeExpr:
+		args := make([]string, len(value.Args))
+		for i, arg := range value.Args {
+			args[i] = FormatTypeExpr(arg)
+		}
+		return FormatTypeExpr(value.Name) + "<" + strings.Join(args, ", ") + ">"
 	}
 	return ""
 }

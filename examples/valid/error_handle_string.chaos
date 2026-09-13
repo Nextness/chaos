@@ -8,9 +8,7 @@ Some_Error :: error {
 }
 
 greet :: proc (x: S64) -> (String <> Some_Error) {
-    if x < 0 {
-        return .GENERIC!;
-    }
+    if x < 0 then return .GENERIC!;
     return «hello»;
 }
 
@@ -18,8 +16,6 @@ greet :: proc (x: S64) -> (String <> Some_Error) {
     s := greet(1) unless catch {
         return -1;
     }
-    if s == «hello» {
-        return 11;
-    }
+    if s == «hello» then return 11;
     return 0;
 }

@@ -5,7 +5,7 @@
 #entry main :: proc -> S64 {
     x: S128 = -100;
     y := negate(-7);
-    if x == -100 && y == 7 { return 35; }
+    if x == -100 && y == 7 then return 35;
     return 0;
 }
 

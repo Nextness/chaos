@@ -5,6 +5,10 @@
 #entry main :: proc -> S64 {
     x: S64 = 2;
     r: S64 = 0;
-    if x == 1 { r = 10; } elif x == 2 { r = 20; } else { r = 30; }
+
+    if   x == 1 then r = 10;
+    elif x == 2 then r = 20;
+    else             r = 30;
+
     return r;
 }

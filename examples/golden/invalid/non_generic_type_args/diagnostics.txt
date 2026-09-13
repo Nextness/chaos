@@ -1,0 +1,3 @@
+[ERROR] 9:8:non_generic_type_args.chaos - type 'Foo' is not generic
+     f: Foo<S64>;
+        ^^^^^^^^ -> remove the type arguments

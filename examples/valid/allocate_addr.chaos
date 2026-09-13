@@ -8,12 +8,12 @@
     buf := #allocate 16;
     p: *S64 = buf.(*S64);
     p.* = 42;
-    if p.* != 42 { return 1; }
+    if p.* != 42 then return 1;
 
     // A pointer value assigns to Addr implicitly.
     a: Addr = p;
     q: *S64 = a.(*S64);
-    if q.* != 42 { return 2; }
+    if q.* != 42 then return 2;
 
     #deallocate buf;
     return 0;

@@ -6,6 +6,6 @@
     x: F64 = 2.5;
     y: F64 = 1.5;
     z := x + y;
-    if z > 3.0 && z < 5.0 { return 4; }
+    if z > 3.0 && z < 5.0 then return 4;
     return 0;
 }

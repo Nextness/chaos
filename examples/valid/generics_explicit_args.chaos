@@ -1,0 +1,39 @@
+// expect-exit: 0
+// expect-stdout: <empty>
+// expect-stderr: <empty>
+// Explicit type arguments select the concrete instance for structs and
+// procedures; type parameters left unspecified are inferred from the call
+// arguments.
+Pair <T: Type, U: Type> :: struct {
+    first: T;
+    second: U;
+}
+
+foo <T: Type, U: Type> :: proc (x: T, y: U) -> T {
+    return x;
+}
+
+id <T: S64 | String> :: proc (x: T) -> T {
+    return x;
+}
+
+#entry main :: proc -> S64 {
+    p := Pair<S64, String>.{first=1, second=«a»};
+    if p.first != 1 then return 1;
+    if p.second != «a» then return 2;
+
+    q: Pair<S64, String> = .{first=2, second=«b»};
+    if q.first != 2 then return 3;
+    if q.second != «b» then return 4;
+
+    r := foo<S64>(42, true);
+    if r != 42 then return 5;
+
+    i := id<String>(«hi»);
+    if i != «hi» then return 6;
+
+    j := id(7);
+    if j != 7 then return 7;
+
+    return 0;
+}

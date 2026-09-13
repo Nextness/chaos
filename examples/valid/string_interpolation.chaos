@@ -8,17 +8,17 @@
     first := «hello»;
     last := «world»;
     greeting := «{first} {last}!»;
-    if greeting != «hello world!» { return 1; }
-    if greeting.count != 12 { return 2; }
+    if greeting != «hello world!» then return 1;
+    if greeting.count != 12 then return 2;
 
     // Leading and trailing interpolation, and repeated values.
     name := «ada»;
-    if «{name}» != «ada» { return 3; }
-    if «[{name}]» != «[ada]» { return 4; }
-    if «{name}-{name}» != «ada-ada» { return 5; }
+    if «{name}» != «ada» then return 3;
+    if «[{name}]» != «[ada]» then return 4;
+    if «{name}-{name}» != «ada-ada» then return 5;
 
     // Interpolating an empty string.
     empty := «»;
-    if «a{empty}b» != «ab» { return 6; }
+    if «a{empty}b» != «ab» then return 6;
     return 0;
 }

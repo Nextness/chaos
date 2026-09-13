@@ -1,0 +1,3 @@
+[ERROR] 9:15:generic_constraint_violation_inferred.chaos - type argument S64 does not satisfy the constraints of type parameter 'T'
+     p: Pair = .{first=7};
+               ^^^^^^^^^^ -> use one of the allowed constraint types

@@ -7,6 +7,6 @@
     y: U128 = 7;
     q := x / y;
     r := x % y;
-    if q == 14 && r == 2 { return 18; }
+    if q == 14 && r == 2 then return 18;
     return 0;
 }

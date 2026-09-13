@@ -1,0 +1,8 @@
+// expect-stage: type
+// expect-error: Type is only valid as a generic type constraint
+// The Type meta-type is not a value type; it is accepted only in a generic
+// type-parameter constraint position.
+main :: proc -> S64 {
+    x: Type;
+    return 0;
+}

@@ -187,6 +187,46 @@ func findNextSourceByte(source []byte, start, end int, target byte) int {
 	return -1
 }
 
+// typeParamClauseDelimiters returns the spans of the '<' and '>' that bracket a
+// generic declaration's type-parameter clause ("Name <T: A | B> :: ..."). The
+// delimiters are located in the source between the declaration name and the
+// following '::', so comparison operators in expressions are never affected.
+// Zero spans are returned when the delimiters cannot be located.
+func typeParamClauseDelimiters(nameEnd int, params []compiler.TypeParam, sf *compiler.SourceFile) (open, close compiler.Span) {
+	if len(params) == 0 || sf == nil || nameEnd < 0 || nameEnd >= len(sf.Source) {
+		return compiler.Span{}, compiler.Span{}
+	}
+	source := sf.Source
+	firstStart := params[0].NameSpan.Start
+	lastEnd := params[0].NameSpan.End
+	for _, tp := range params {
+		if len(tp.Constraints) > 0 {
+			if end := compiler.NodeSpan(tp.Constraints[len(tp.Constraints)-1]).End; end > lastEnd {
+				lastEnd = end
+			}
+		}
+		if tp.NameSpan.End > lastEnd {
+			lastEnd = tp.NameSpan.End
+		}
+	}
+	// The clause ends where the declaration's '::' begins.
+	assign := -1
+	if rel := strings.Index(string(source[nameEnd:]), "::"); rel >= 0 {
+		assign = nameEnd + rel
+	}
+	if firstStart > nameEnd {
+		if i := findNextSourceByte(source, nameEnd, firstStart, '<'); i >= 0 {
+			open = compiler.Span{File: sf.ID, Start: i, End: i + 1}
+		}
+	}
+	if assign > lastEnd {
+		if i := findLastSourceByte(source, lastEnd, assign, '>'); i >= 0 {
+			close = compiler.Span{File: sf.ID, Start: i, End: i + 1}
+		}
+	}
+	return open, close
+}
+
 // typeToken emits a type token for an identifier type expression, but only if
 // the name is a known type (built-in or declared struct). Undeclared
 // identifiers in type position are not highlighted.
@@ -219,6 +259,31 @@ func typeToken(expr compiler.Expr, sf *compiler.SourceFile, known map[string]boo
 				*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: elemSpan.End, End: e.Span_.End}, sf, semTypeType)...)
 			}
 		}
+	case *compiler.GenericTypeExpr:
+		typeToken(e.Name, sf, known, out)
+		genericTypeArgTokens(e, sf, known, out, semTypeType)
+	}
+}
+
+// genericTypeArgTokens emits the '<...>' bracket span and each type argument of
+// a generic type expression. bracketType colors the angle brackets: type
+// tokens in type positions so "Name<A, B>" renders as a unit like "[]T" or
+// "*T", and delimiter tokens in a procedure call so "func<A>(...)" reads like
+// the declaration clause.
+func genericTypeArgTokens(e *compiler.GenericTypeExpr, sf *compiler.SourceFile, known map[string]bool, out *[]semanticToken, bracketType int) {
+	if len(e.Args) == 0 {
+		return
+	}
+	firstStart := compiler.NodeSpan(e.Args[0]).Start
+	if nameEnd := compiler.NodeSpan(e.Name).End; nameEnd < firstStart {
+		*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: nameEnd, End: firstStart}, sf, bracketType)...)
+	}
+	lastEnd := compiler.NodeSpan(e.Args[len(e.Args)-1]).End
+	if lastEnd < e.Span_.End {
+		*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: lastEnd, End: e.Span_.End}, sf, bracketType)...)
+	}
+	for _, arg := range e.Args {
+		typeToken(arg, sf, known, out)
 	}
 }
 
@@ -248,6 +313,14 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		case *compiler.CallExpr:
 			if ident, ok := e.Func.(*compiler.IdentExpr); ok {
 				out = append(out, spanToTokenRows(ident.Span_, sf, semTypeFunction)...)
+			} else if gt, ok := e.Func.(*compiler.GenericTypeExpr); ok {
+				// A call with explicit type arguments, e.g. "identity<S64>(...)".
+				// The callee reads as a function, the '<...>' as delimiters,
+				// and the type arguments as types.
+				if ident, ok := gt.Name.(*compiler.IdentExpr); ok {
+					out = append(out, spanToTokenRows(ident.Span_, sf, semTypeFunction)...)
+				}
+				genericTypeArgTokens(gt, sf, known, &out, semTypeDelimiter)
 			} else {
 				walkExpr(e.Func)
 			}
@@ -366,6 +439,8 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				out = append(out, boldTypeTokens(compiler.Span{File: e.Span_.File, Start: castStart, End: e.Span_.End}, sf)...)
 			}
 		case *compiler.ArrayTypeExpr:
+			typeToken(e, sf, known, &out)
+		case *compiler.GenericTypeExpr:
 			typeToken(e, sf, known, &out)
 		case *compiler.ErrorExpr:
 			// Parser recovery placeholder.
@@ -497,6 +572,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		out = append(out, spanToTokenRows(proc.NameSpan, sf, semTypeFunction)...)
 		outerKnown := known
 		known = cloneKnownTypes(known)
+		open, close := typeParamClauseDelimiters(proc.NameSpan.End, proc.TypeParams, sf)
+		if open.End > open.Start {
+			out = append(out, spanToTokenRows(open, sf, semTypeDelimiter)...)
+		}
 		for _, tp := range proc.TypeParams {
 			known[tp.Name] = true
 			out = append(out, spanToTokenRows(tp.NameSpan, sf, semTypeType)...)
@@ -505,6 +584,9 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			for _, constraint := range tp.Constraints {
 				typeToken(constraint, sf, known, &out)
 			}
+		}
+		if close.End > close.Start {
+			out = append(out, spanToTokenRows(close, sf, semTypeDelimiter)...)
 		}
 		for _, param := range proc.Params {
 			out = append(out, spanToTokenRows(param.NameSpan, sf, semTypeParameter)...)
@@ -526,6 +608,10 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 		out = append(out, spanToTokenRows(st.NameSpan, sf, semTypeType)...)
 		outerKnown := known
 		known = cloneKnownTypes(known)
+		open, close := typeParamClauseDelimiters(st.NameSpan.End, st.TypeParams, sf)
+		if open.End > open.Start {
+			out = append(out, spanToTokenRows(open, sf, semTypeDelimiter)...)
+		}
 		for _, tp := range st.TypeParams {
 			known[tp.Name] = true
 			out = append(out, spanToTokenRows(tp.NameSpan, sf, semTypeType)...)
@@ -534,6 +620,9 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 			for _, constraint := range tp.Constraints {
 				typeToken(constraint, sf, known, &out)
 			}
+		}
+		if close.End > close.Start {
+			out = append(out, spanToTokenRows(close, sf, semTypeDelimiter)...)
 		}
 		for _, field := range st.Fields {
 			out = append(out, spanToTokenRows(field.NameSpan, sf, semTypeVariable)...)

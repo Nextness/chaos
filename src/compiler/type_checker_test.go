@@ -729,6 +729,125 @@ func TestTypeCheckGenericProcStructType(t *testing.T) {
 	}
 }
 
+func TestTypeCheckTypeConstraintAcceptsAnyValueType(t *testing.T) {
+	// The Type constraint accepts every value type for a generic procedure:
+	// basic types and compound types alike.
+	src := "Token :: struct { kind: S64; }\nidentity <T: Type> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 {\n    a := identity(42);\n    b := identity(«s»);\n    c := identity(true);\n    t: Token;\n    t.kind = 1;\n    d := identity(t);\n    v := 3;\n    p := identity(*v);\n    return 0;\n}"
+	if diags := typeCheckSource(t, src); diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckTypeConstraintRejectsNonValueTypes(t *testing.T) {
+	// Passing the Type meta-type itself as a type argument is rejected because
+	// it is not a value type.
+	diags := typeCheckSource(t, "identity <T: Type> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 { return 0; }")
+	if diags.HasErrors() {
+		t.Errorf("declaration alone should not error: %v", diags)
+	}
+}
+
+func TestTypeCheckTypeConstraintGenericStruct(t *testing.T) {
+	// A generic struct with T: Type instantiates through the inferred literal
+	// form, the annotated form, and the explicit-argument form, and the field
+	// access uses the concrete instantiated types.
+	diags := typeCheckSource(t, "Json_Response <T: Type> :: struct { status_code: U32; content: T; }\nmain :: proc -> S64 {\n    a := Json_Response.{status_code=200, content=42};\n    if a.status_code != 200 || a.content != 42 { return 1; }\n    b: Json_Response = .{status_code=404, content=«x»};\n    if b.content != «x» { return 2; }\n    c := Json_Response<String>.{content=«y»};\n    if c.content != «y» { return 3; }\n    d: Json_Response<S64> = .{status_code=200, content=7};\n    if d.content != 7 { return 4; }\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckExplicitTypeArgsCanonicalizeWithInference(t *testing.T) {
+	// An explicit-argument instance and an inferred instance with the same
+	// type argument are the same nominal type, so values are assignable.
+	diags := typeCheckSource(t, "Json_Response <T: Type> :: struct { status_code: U32; content: T; }\nmain :: proc -> S64 {\n    a: Json_Response<String> = .{status_code=1, content=«a»};\n    b := Json_Response.{status_code=2, content=«b»};\n    a = b;\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("explicit and inferred instances should be assignable: %v", diags)
+	}
+}
+
+func TestTypeCheckNestedGenericInstanceArgument(t *testing.T) {
+	// A generic struct instance used as another generic's type argument must
+	// round-trip to the same canonical instance through substitution, in both
+	// the explicit and inferred literal forms.
+	diags := typeCheckSource(t, "Json_Response <T: Type> :: struct { status_code: U32; content: T; }\nBox <T: Type> :: struct { v: T; }\nmain :: proc -> S64 {\n    a: Box<Json_Response<String>> = .{v=Json_Response<String>.{content=«x»}};\n    if a.v.content != «x» { return 1; }\n    b: Box = .{v=Json_Response.{content=«y»}};\n    if b.v.content != «y» { return 2; }\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+}
+
+func TestTypeCheckExplicitTypeArgsOnlyCheckValues(t *testing.T) {
+	// With explicit type arguments there is no inference; the field values are
+	// checked against the forced concrete types.
+	diags := typeCheckSource(t, "Json_Response <T: Type> :: struct { status_code: U32; content: T; }\nmain :: proc -> S64 {\n    a := Json_Response<S64>.{status_code=200, content=«x»};\n    return 0;\n}")
+	if !hasError(diags, "cannot assign String to S64") {
+		t.Errorf("expected S64-instance String-content error, got %v", diags)
+	}
+}
+
+func TestTypeCheckExplicitProcTypeArgs(t *testing.T) {
+	// Explicit type arguments at a call site bind the leading type parameters;
+	// the remaining parameters are inferred from the arguments.
+	diags := typeCheckSource(t, "identity <T: Type> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 {\n    a := identity<S64>(42);\n    if a != 42 { return 1; }\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("unexpected errors: %v", diags)
+	}
+	diags = typeCheckSource(t, "foo <T: Type, U: Type> :: proc (x: T, y: U) -> T { return x; }\nmain :: proc -> S64 {\n    a := foo<S64>(42, «hi»);\n    return 0;\n}")
+	if diags.HasErrors() {
+		t.Errorf("partial explicit arguments should infer the rest: %v", diags)
+	}
+	// A fully explicit argument leaves no inference: the value is checked
+	// against the instantiated parameter type.
+	diags = typeCheckSource(t, "identity <T: Type> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 {\n    a := identity<Bool>(42);\n    return 0;\n}")
+	if !hasError(diags, "cannot assign S64 to Bool") {
+		t.Errorf("expected S64-to-Bool call error, got %v", diags)
+	}
+	// Too many type arguments are rejected.
+	diags = typeCheckSource(t, "identity <T: Type> :: proc (x: T) -> T { return x; }\nmain :: proc -> S64 {\n    a := identity<String, S64>(42);\n    return 0;\n}")
+	if !hasError(diags, "expects at most 1 type arguments") {
+		t.Errorf("expected too-many-type-arguments error, got %v", diags)
+	}
+	// Type arguments on a non-generic procedure are rejected.
+	diags = typeCheckSource(t, "f :: proc (x: S64) -> S64 { return x; }\nmain :: proc -> S64 {\n    return f<S64>(1);\n}")
+	if !hasError(diags, "is not generic") {
+		t.Errorf("expected non-generic-call error, got %v", diags)
+	}
+}
+
+func TestTypeCheckExplicitStructTypeArgsErrors(t *testing.T) {
+	// Non-generic types reject type arguments, and bare generic types without
+	// an initializer ask for explicit arguments.
+	diags := typeCheckSource(t, "Foo :: struct { a: S64; }\nmain :: proc -> S64 {\n    f: Foo<S64>;\n    return 0;\n}")
+	if !hasError(diags, "type 'Foo' is not generic") {
+		t.Errorf("expected non-generic-type error, got %v", diags)
+	}
+	diags = typeCheckSource(t, "Box <T: Type> :: struct { v: T; }\nmain :: proc -> S64 {\n    a: Box;\n    return 0;\n}")
+	if !hasError(diags, "cannot infer type arguments for generic type 'a' without an initializer") {
+		t.Errorf("expected bare-generic-without-initializer error, got %v", diags)
+	}
+	diags = typeCheckSource(t, "Pair <T: S64 | String> :: struct { first: T; }\nmain :: proc -> S64 {\n    a := Pair<Bool>.{first=true};\n    return 0;\n}")
+	if !hasError(diags, "does not satisfy the constraints") {
+		t.Errorf("expected explicit-argument constraint error, got %v", diags)
+	}
+}
+
+func TestTypeIsReservedName(t *testing.T) {
+	// Type is a reserved compiler name like U32 or String.
+	diags := typeCheckSource(t, "Type :: struct { a: S64; }\nmain :: proc -> S64 { return 0; }")
+	if !hasError(diags, "collides with a reserved compiler name") {
+		t.Errorf("expected reserved-name error for struct Type, got %v", diags)
+	}
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    Type := 5;\n    return 0;\n}")
+	if !hasError(diags, "collides with a reserved compiler name") {
+		t.Errorf("expected reserved-name error for binding Type, got %v", diags)
+	}
+	// Type is not a value type outside the generic constraint position.
+	diags = typeCheckSource(t, "main :: proc -> S64 {\n    x: Type;\n    return 0;\n}")
+	if !hasError(diags, "Type is only valid as a generic type constraint") {
+		t.Errorf("expected non-constraint Type error, got %v", diags)
+	}
+}
+
 func TestTypeCheckIncDecType(t *testing.T) {
 	// Increment/decrement requires an integer variable.
 	diags := typeCheckSource(t, "main :: proc -> S64 {\n    s := «x»;\n    s++;\n    return 0;\n}")

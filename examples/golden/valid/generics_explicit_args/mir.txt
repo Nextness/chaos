@@ -1,0 +1,118 @@
+MIR
+  Function main() -> S64
+    Local l0: Pair$T=S64_U=String_
+    Local l1: Pair$T=S64_U=String_
+    Local l2: S64
+    Local l3: String
+    Local l4: S64
+    bb0:
+      v0:S64 = const 1
+      v1:String = const "a"
+      v2:Pair$T=S64_U=String_ = struct.init v0 v1
+      store.local v2 l0
+      v3:Pair$T=S64_U=String_ = load.local l0
+      v4:S64 = field.load v3 field0
+      v5:S64 = const 1
+      v6:Bool = cmp.neq v4 v5
+      branch v6, bb1, bb2
+    bb1:
+      v7:S64 = const 1
+      return v7
+    bb2:
+      jump bb3
+    bb3:
+      v8:Pair$T=S64_U=String_ = load.local l0
+      v9:String = field.load v8 field1
+      v10:String = const "a"
+      v11:Bool = cmp.neq v9 v10
+      branch v11, bb4, bb5
+    bb4:
+      v12:S64 = const 2
+      return v12
+    bb5:
+      jump bb6
+    bb6:
+      v13:S64 = const 2
+      v14:String = const "b"
+      v15:Pair$T=S64_U=String_ = struct.init v13 v14
+      store.local v15 l1
+      v16:Pair$T=S64_U=String_ = load.local l1
+      v17:S64 = field.load v16 field0
+      v18:S64 = const 2
+      v19:Bool = cmp.neq v17 v18
+      branch v19, bb7, bb8
+    bb7:
+      v20:S64 = const 3
+      return v20
+    bb8:
+      jump bb9
+    bb9:
+      v21:Pair$T=S64_U=String_ = load.local l1
+      v22:String = field.load v21 field1
+      v23:String = const "b"
+      v24:Bool = cmp.neq v22 v23
+      branch v24, bb10, bb11
+    bb10:
+      v25:S64 = const 4
+      return v25
+    bb11:
+      jump bb12
+    bb12:
+      v26:S64 = const 42
+      v27:Bool = const true
+      v28:S64 = call v26 v27 foo$T=S64_U=Bool_
+      store.local v28 l2
+      v29:S64 = load.local l2
+      v30:S64 = const 42
+      v31:Bool = cmp.neq v29 v30
+      branch v31, bb13, bb14
+    bb13:
+      v32:S64 = const 5
+      return v32
+    bb14:
+      jump bb15
+    bb15:
+      v33:String = const "hi"
+      v34:String = call v33 id$T=String_
+      store.local v34 l3
+      v35:String = load.local l3
+      v36:String = const "hi"
+      v37:Bool = cmp.neq v35 v36
+      branch v37, bb16, bb17
+    bb16:
+      v38:S64 = const 6
+      return v38
+    bb17:
+      jump bb18
+    bb18:
+      v39:S64 = const 7
+      v40:S64 = call v39 id$T=S64_
+      store.local v40 l4
+      v41:S64 = load.local l4
+      v42:S64 = const 7
+      v43:Bool = cmp.neq v41 v42
+      branch v43, bb19, bb20
+    bb19:
+      v44:S64 = const 7
+      return v44
+    bb20:
+      jump bb21
+    bb21:
+      v45:S64 = const 0
+      return v45
+  Function foo$T=S64_U=Bool_(l0: S64, l1: Bool) -> S64
+    Local l0: S64 (param)
+    Local l1: Bool (param)
+    bb0:
+      v0:S64 = load.local l0
+      return v0
+  Function id$T=String_(l0: String) -> String
+    Local l0: String (param)
+    bb0:
+      v0:String = load.local l0
+      return v0
+  Function id$T=S64_(l0: S64) -> S64
+    Local l0: S64 (param)
+    bb0:
+      v0:S64 = load.local l0
+      return v0

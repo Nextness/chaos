@@ -455,9 +455,18 @@ func (r *resolver) collectOccurrences() {
 		case *compiler.CallExpr:
 			walkExpr(e.Func)
 			var proc *compiler.ProcDecl
-			if ident, ok := e.Func.(*compiler.IdentExpr); ok {
-				if callee := r.resolveName(ident.Name, ident.Span_.Start); callee != nil {
+			switch fn := e.Func.(type) {
+			case *compiler.IdentExpr:
+				if callee := r.resolveName(fn.Name, fn.Span_.Start); callee != nil {
 					proc = callee.proc
+				}
+			case *compiler.GenericTypeExpr:
+				// A call with explicit type arguments, e.g. "identity<S64>(...)";
+				// the named procedure drives expected types for the arguments.
+				if ident, ok := fn.Name.(*compiler.IdentExpr); ok {
+					if callee := r.resolveName(ident.Name, ident.Span_.Start); callee != nil {
+						proc = callee.proc
+					}
 				}
 			}
 			for i, arg := range e.Args {
@@ -612,6 +621,11 @@ func (r *resolver) collectOccurrences() {
 			walkExpr(e.Type)
 		case *compiler.ArrayTypeExpr:
 			walkExpr(e.Elem)
+		case *compiler.GenericTypeExpr:
+			walkExpr(e.Name)
+			for _, arg := range e.Args {
+				walkExpr(arg)
+			}
 		case *compiler.ErrorExpr:
 			// Parser recovery placeholder.
 		}

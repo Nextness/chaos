@@ -1,0 +1,10 @@
+// expect-stage: type
+// expect-error: collides with a reserved compiler name
+// Type is a reserved compiler name like U32 or String and cannot be declared.
+Type :: struct {
+    a: S64;
+}
+
+main :: proc -> S64 {
+    return 0;
+}

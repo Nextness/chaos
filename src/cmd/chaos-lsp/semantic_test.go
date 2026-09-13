@@ -262,6 +262,62 @@ func TestSemanticTokensStructInitTypeHighlighted(t *testing.T) {
 	}
 }
 
+func TestSemanticTokensGenericTypeArguments(t *testing.T) {
+	// Generic type arguments render as a unit: the name, the '<...>' angle
+	// brackets, and every argument are type tokens in type positions and in
+	// struct literals. In a generic call the callee reads as a function and
+	// the angle brackets read as delimiters, like the declaration clause.
+	source := "Box <T: Type> :: struct {\n    v: T;\n}\nmain :: proc {\n    a := Box<S64>.{v=7};\n    b := f<S64>(1);\n}\nf :: proc (x: S64) -> S64 {\n    return x;\n}"
+	want := []int{
+		0, 0, 3, semTypeType, 0, // Box (struct decl)
+		0, 4, 1, semTypeDelimiter, 0, // < (type-param clause)
+		0, 1, 1, semTypeType, 0, // T (type param)
+		0, 3, 4, semTypeType, 0, // Type (constraint)
+		0, 4, 1, semTypeDelimiter, 0, // > (type-param clause)
+		0, 5, 6, semTypeKeyword, 0, // struct
+		0, 7, 1, semTypeDelimiter, 0, // {
+		1, 4, 1, semTypeVariable, 0, // v (field)
+		0, 3, 1, semTypeType, 0, // T (field type)
+		1, 0, 1, semTypeDelimiter, 0, // }
+		1, 0, 4, semTypeFunction, 0, // main
+		0, 8, 4, semTypeKeyword, 0, // proc
+		0, 5, 1, semTypeDelimiter, 0, // {
+		1, 4, 1, semTypeVariable, 0, // a
+		0, 5, 3, semTypeType, 0, // Box (literal type)
+		0, 3, 1, semTypeType, 0, // < (use-site type argument)
+		0, 1, 3, semTypeType, 0, // S64
+		0, 3, 1, semTypeType, 0, // > (use-site type argument)
+		0, 2, 1, semTypeDelimiter, 0, // .
+		0, 1, 1, semTypeVariable, 0, // v
+		0, 2, 1, semTypeNumber, 0, // 7
+		0, 1, 1, semTypeDelimiter, 0, // }
+		1, 4, 1, semTypeVariable, 0, // b
+		0, 5, 1, semTypeFunction, 0, // f (generic callee)
+		0, 1, 1, semTypeDelimiter, 0, // < (proc call type argument)
+		0, 1, 3, semTypeType, 0, // S64
+		0, 3, 1, semTypeDelimiter, 0, // > (proc call type argument)
+		0, 1, 1, semTypeDelimiter, 0, // (
+		0, 1, 1, semTypeNumber, 0, // 1
+		0, 1, 1, semTypeDelimiter, 0, // )
+		1, 0, 1, semTypeDelimiter, 0, // }
+		1, 0, 1, semTypeFunction, 0, // f (proc decl)
+		0, 5, 4, semTypeKeyword, 0, // proc
+		0, 5, 1, semTypeDelimiter, 0, // (
+		0, 1, 1, semTypeParameter, 0, // x
+		0, 3, 3, semTypeType, 0, // S64 (param type)
+		0, 3, 1, semTypeDelimiter, 0, // )
+		0, 5, 3, semTypeType, 0, // S64 (result)
+		0, 4, 1, semTypeDelimiter, 0, // {
+		1, 4, 6, semTypeKeyword, 0, // return
+		0, 7, 1, semTypeVariable, 0, // x
+		1, 0, 1, semTypeDelimiter, 0, // }
+	}
+	got := semanticData(t, source)
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("semantic data = %v, want %v", got, want)
+	}
+}
+
 func TestSemanticTokensProcWithIfReturnAndCalls(t *testing.T) {
 	// A procedure with parameters, a return type, an if/return body, and
 	// calls used both as an initializer and as a bare statement. The '>'

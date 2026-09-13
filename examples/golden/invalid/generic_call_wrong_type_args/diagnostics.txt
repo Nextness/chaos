@@ -1,0 +1,3 @@
+[ERROR] 9:10:generic_call_wrong_type_args.chaos - call to identity expects at most 1 type arguments, got 2
+     a := identity<String, S64>(42);
+          ^^^^^^^^^^^^^^^^^^^^^ -> provide at most one type argument per type parameter

@@ -8,9 +8,7 @@ Some_Error :: error {
 }
 
 something :: proc (input1: String) -> (Void <> Some_Error) {
-    if input1 == «» {
-        return;
-    }
+    if input1 == «» then return;
     return .GENERIC!;
 }
 

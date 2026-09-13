@@ -1,0 +1,3 @@
+[ERROR] 10:5:bare_generic_no_init.chaos - cannot infer type arguments for generic type 'a' without an initializer
+     a: Box;
+     ^ -> write explicit type arguments like 'a<T>' or initialize the binding

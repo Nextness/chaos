@@ -1,0 +1,12 @@
+// expect-stage: type
+// expect-error: does not satisfy the constraints
+// Explicit type arguments must satisfy the declared constraint union.
+Pair <T: S64 | String> :: struct {
+    first: T;
+    second: T;
+}
+
+main :: proc -> S64 {
+    p := Pair<Bool>.{first=true, second=false};
+    return 0;
+}

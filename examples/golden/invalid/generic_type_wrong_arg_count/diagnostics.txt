@@ -1,0 +1,6 @@
+[ERROR] 10:10:generic_type_wrong_arg_count.chaos - type 'Pair' expects 2 type arguments, got 1
+     p := Pair<S64>.{first=1, second=2};
+          ^^^^^^^^^ -> provide one type argument per type parameter
+[ERROR] 10:10:generic_type_wrong_arg_count.chaos - unknown struct type 
+     p := Pair<S64>.{first=1, second=2};
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ -> use a declared struct type

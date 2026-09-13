@@ -1,0 +1,3 @@
+[ERROR] 11:47:generic_struct_value_mismatch.chaos - cannot assign String to S64
+     a := Json_Response<S64>.{status_code=200, content=«x»};
+                                               ^^^^^^^^^^^ -> use a value of type S64

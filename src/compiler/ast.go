@@ -234,6 +234,23 @@ func (e *StructInitExpr) nodeSpan() Span {
 
 func (e *StructInitExpr) exprNode() {}
 
+// GenericTypeExpr is a generic declaration name with explicit type arguments:
+// "Name<Type1, Type2>". It appears in type positions ("x: Name<A, B>"), in
+// struct literals ("Name<A, B>.{...}"), and as the callee of a call with
+// explicit type arguments ("name<A, B>(...)"). The type checker resolves it to
+// a concrete instantiation of the named generic struct or procedure.
+type GenericTypeExpr struct {
+	Span_ Span
+	Name  Expr   // the base type/procedure name (an IdentExpr)
+	Args  []Expr // concrete type-argument expressions
+}
+
+func (e *GenericTypeExpr) nodeSpan() Span {
+	return e.Span_
+}
+
+func (e *GenericTypeExpr) exprNode() {}
+
 // StructInitField is one entry in a struct literal. Name is empty for
 // positional values.
 type StructInitField struct {

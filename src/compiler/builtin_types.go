@@ -11,6 +11,7 @@ const (
 	BuiltinInteger
 	BuiltinFloat
 	BuiltinAddr
+	BuiltinType // compile-time-only meta-type: the any-type generic constraint
 )
 
 // BuiltinTypeInfo is the compiler-owned source of truth shared by semantic
@@ -45,6 +46,10 @@ var builtinTypes = []BuiltinTypeInfo{
 	{Name: "F64", Kind: BuiltinFloat, Bits: 64, FasmSupported: true},
 	{Name: "F128", Kind: BuiltinFloat, Bits: 128},
 	{Name: "Addr", Kind: BuiltinAddr, FasmSupported: true},
+	// Type is a compile-time-only meta-type. It has no runtime representation
+	// and no storage layout; it is recognized as a reserved type name and, in
+	// a generic type-parameter constraint position, accepts any value type.
+	{Name: "Type", Kind: BuiltinType, FasmSupported: false},
 }
 
 var builtinTypeByName = func() map[string]BuiltinTypeInfo {

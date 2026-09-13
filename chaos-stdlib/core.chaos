@@ -188,7 +188,7 @@ string_to_float :: proc (s: String) -> F64 {
             power = power * 10.0;
             j += 1;
         }
-        result = ifx exp < 0 then result / power else result * power;
+        result = ifx exp < 0 then (result / power) else (result * power);
     }
     if negative then result = -result;
     return result;

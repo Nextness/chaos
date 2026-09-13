@@ -1,0 +1,13 @@
+// expect-stage: type
+// expect-error: cannot assign String to S64
+// With explicit type arguments there is no inference; struct literal values
+// are checked against the instantiated field types.
+Json_Response <T: Type> :: struct {
+    status_code: U32;
+    content: T;
+}
+
+main :: proc -> S64 {
+    a := Json_Response<S64>.{status_code=200, content=«x»};
+    return 0;
+}

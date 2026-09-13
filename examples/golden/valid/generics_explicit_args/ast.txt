@@ -1,0 +1,48 @@
+Diagnostics:
+  (none)
+AST:
+Program
+  StructDecl Pair <T: Ident(Type), U: Ident(Type)>
+    Field first: Ident(T)
+    Field second: Ident(U)
+  ProcDecl foo <T: Ident(Type), U: Ident(Type)>
+    Param x: Ident(T)
+    Param y: Ident(U)
+    Results: Ident(T)
+    Block
+      ReturnStmt Ident(x)
+  ProcDecl id <T: Ident(S64) | Ident(String)>
+    Param x: Ident(T)
+    Results: Ident(T)
+    Block
+      ReturnStmt Ident(x)
+  ProcDecl main
+    Results: Ident(S64)
+    Block
+      VarDecl p = StructInit(GenericType(Ident(Pair), Ident(S64), Ident(String)), first=Int(1), second=String("a")) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Field(Ident(p), first) Int(1))
+        Block
+          ReturnStmt Int(1)
+      IfStmt condition=Binary(!= Field(Ident(p), second) String("a"))
+        Block
+          ReturnStmt Int(2)
+      VarDecl q: GenericType(Ident(Pair), Ident(S64), Ident(String)) = StructInit(inferred, first=Int(2), second=String("b")) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Field(Ident(q), first) Int(2))
+        Block
+          ReturnStmt Int(3)
+      IfStmt condition=Binary(!= Field(Ident(q), second) String("b"))
+        Block
+          ReturnStmt Int(4)
+      VarDecl r = Call(GenericType(Ident(foo), Ident(S64)), Int(42), Bool(true)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(r) Int(42))
+        Block
+          ReturnStmt Int(5)
+      VarDecl i = Call(GenericType(Ident(id), Ident(String)), String("hi")) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(i) String("hi"))
+        Block
+          ReturnStmt Int(6)
+      VarDecl j = Call(Ident(id), Int(7)) [mutable=true compileTime=false]
+      IfStmt condition=Binary(!= Ident(j) Int(7))
+        Block
+          ReturnStmt Int(7)
+      ReturnStmt Int(0)

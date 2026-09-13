@@ -1,0 +1,12 @@
+// expect-stage: type
+// expect-error: type 'Pair' expects 2 type arguments, got 1
+// Every type parameter needs exactly one concrete type argument.
+Pair <T: Type, U: Type> :: struct {
+    first: T;
+    second: U;
+}
+
+main :: proc -> S64 {
+    p := Pair<S64>.{first=1, second=2};
+    return 0;
+}

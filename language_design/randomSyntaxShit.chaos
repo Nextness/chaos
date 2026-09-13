@@ -17,8 +17,8 @@ Random_Error :: error {
 }
 
 Json_Response <T: Type> :: struct {
-    status_code: U32 = #0;
-    content:     T   = #0;
+    status_code: U32;
+    content:     T;
 }
 
 something_crazy :: proc (json: *Json_Response, status_code: U32) -> (Void <> Random_Error) {

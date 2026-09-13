@@ -1,0 +1,11 @@
+// expect-stage: type
+// expect-error: type 'Foo' is not generic
+// Type arguments are only valid on generic declarations.
+Foo :: struct {
+    a: S64;
+}
+
+main :: proc -> S64 {
+    f: Foo<S64>;
+    return 0;
+}
