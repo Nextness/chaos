@@ -84,8 +84,9 @@ The active single-file language includes:
 - multiple value returns, error-return unions, `unless catch`, and `if catch`;
 - fixed, runtime-sized, and dynamic arrays; range/C-style/condition loops;
   branching, arithmetic, comparisons, `return`, and `exit`;
-- generic procedures and structs with inferred or explicit type arguments and
-  type constraints;
+- generic procedures and structs with inferred or explicit type arguments,
+  type constraints, and the reserved `Type` constraint that accepts any value
+  type;
 - flat and namespaced source imports resolved relative to the importer, plus
   compiler-provided modules under `chaos-stdlib/`;
 - `ifx` ternary expressions (`x := ifx cond then a else b;`), valid only as the

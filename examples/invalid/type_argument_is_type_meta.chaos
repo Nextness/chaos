@@ -1,0 +1,12 @@
+// expect-stage: type
+// expect-error: Type is only valid as a generic type constraint
+// The Type meta-type cannot be used as a concrete type argument; writing it
+// as a value also violates the any-type constraint.
+identity <T: Type> :: proc (x: T) -> T {
+    return x;
+}
+
+main :: proc -> S64 {
+    a := identity<Type>(42);
+    return 0;
+}

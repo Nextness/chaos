@@ -1,0 +1,12 @@
+// expect-stage: type
+// expect-error: cannot infer type arguments for generic type 'a' without an initializer
+// A bare generic type needs explicit type arguments or an initializer to
+// determine its concrete type.
+Box <T: Type> :: struct {
+    v: T;
+}
+
+main :: proc -> S64 {
+    a: Box;
+    return 0;
+}

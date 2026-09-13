@@ -1,0 +1,11 @@
+// expect-stage: type
+// expect-error: does not satisfy the constraints
+// Inferred type arguments must also satisfy the declared constraint union.
+Pair <T: Bool> :: struct {
+    first: T;
+}
+
+main :: proc -> S64 {
+    p: Pair = .{first=7};
+    return 0;
+}

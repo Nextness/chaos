@@ -1,0 +1,12 @@
+// expect-stage: type
+// expect-error: cannot assign S64 to Bool
+// With a complete explicit type argument list there is no inference; the
+// call argument is checked against the instantiated parameter type.
+identity <T: Type> :: proc (x: T) -> T {
+    return x;
+}
+
+main :: proc -> S64 {
+    a := identity<Bool>(42);
+    return 0;
+}

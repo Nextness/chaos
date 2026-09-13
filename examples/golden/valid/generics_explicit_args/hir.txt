@@ -1,0 +1,42 @@
+HIR
+  Struct Pair$T=S64_U=String_
+    Field first: S64
+    Field second: String
+  Proc main() -> S64
+    Block
+      VarDecl p: Pair$T=S64_U=String_ = StructInit(Pair$T=S64_U=String_, first=Int(1), second=String("a")) [mutable=true compileTime=false]
+      If condition=Binary(!= FieldLoad(Ident(p), 0) Int(1))
+        Block
+          Return Int(1)
+      If condition=Binary(!= FieldLoad(Ident(p), 1) String("a"))
+        Block
+          Return Int(2)
+      VarDecl q: Pair$T=S64_U=String_ = StructInit(Pair$T=S64_U=String_, first=Int(2), second=String("b")) [mutable=true compileTime=false]
+      If condition=Binary(!= FieldLoad(Ident(q), 0) Int(2))
+        Block
+          Return Int(3)
+      If condition=Binary(!= FieldLoad(Ident(q), 1) String("b"))
+        Block
+          Return Int(4)
+      VarDecl r: S64 = Call(foo$T=S64_U=Bool_, Int(42), Bool(true)) [mutable=true compileTime=false]
+      If condition=Binary(!= Ident(r) Int(42))
+        Block
+          Return Int(5)
+      VarDecl i: String = Call(id$T=String_, String("hi")) [mutable=true compileTime=false]
+      If condition=Binary(!= Ident(i) String("hi"))
+        Block
+          Return Int(6)
+      VarDecl j: S64 = Call(id$T=S64_, Int(7)) [mutable=true compileTime=false]
+      If condition=Binary(!= Ident(j) Int(7))
+        Block
+          Return Int(7)
+      Return Int(0)
+  Proc foo$T=S64_U=Bool_(x: S64, y: Bool) -> S64
+    Block
+      Return Ident(x)
+  Proc id$T=String_(x: String) -> String
+    Block
+      Return Ident(x)
+  Proc id$T=S64_(x: S64) -> S64
+    Block
+      Return Ident(x)

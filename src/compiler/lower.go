@@ -206,6 +206,17 @@ func (l *Lowerer) typeOfTypeExpr(e Expr) TypeID {
 		}
 	case *PointerTypeExpr:
 		return l.types.InternPointer(l.typeOfTypeExpr(n.Elem), n.Nullable)
+	case *GenericTypeExpr:
+		// The checker resolves explicit type arguments to a concrete generic
+		// instance and records it on the type expression.
+		if l.analysis != nil {
+			if t, ok := l.analysis.TypeExprTypes[n]; ok {
+				if id := l.semanticTypeID(t); id != l.types.Unknown() {
+					return id
+				}
+			}
+		}
+		return l.types.Unknown()
 	}
 	return l.types.Unknown()
 }
@@ -1821,6 +1832,14 @@ func (l *Lowerer) lowerExpr(e Expr) HIRExpr {
 		return &HIRInterpolate{Span_: n.Span_, Literals: literals, Values: values, Type: l.types.String()}
 	case *StructInitExpr:
 		if n.Type != nil {
+			// A generic struct literal resolves to its instantiated type. Use
+			// the recorded concrete instance so inferred bindings lower with
+			// the concrete field types.
+			if inst, ok := l.analysis.StructLiteralTypes[n]; ok {
+				if id := l.semanticTypeID(inst); id != l.types.Unknown() {
+					return l.lowerStructInit(n, id)
+				}
+			}
 			return l.lowerStructInit(n, l.typeOfTypeExpr(n.Type))
 		}
 		// Inferred struct literal: the type comes from context, so it is

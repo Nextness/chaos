@@ -1,0 +1,11 @@
+// expect-stage: type
+// expect-error: expects at most 1 type arguments
+// A call supplies at most one type argument per type parameter.
+identity <T: Type> :: proc (x: T) -> T {
+    return x;
+}
+
+main :: proc -> S64 {
+    a := identity<String, S64>(42);
+    return 0;
+}

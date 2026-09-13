@@ -34,6 +34,14 @@ func substituteTypeExpr(e Expr, mapping map[string]Expr) Expr {
 		cp := *n
 		cp.Inner = substituteTypeExpr(n.Inner, mapping)
 		return &cp
+	case *GenericTypeExpr:
+		cp := *n
+		cp.Name = substituteTypeExpr(n.Name, mapping)
+		cp.Args = make([]Expr, len(n.Args))
+		for i, arg := range n.Args {
+			cp.Args[i] = substituteTypeExpr(arg, mapping)
+		}
+		return &cp
 	default:
 		return substituteExpr(e, mapping)
 	}

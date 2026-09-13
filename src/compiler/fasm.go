@@ -36,7 +36,9 @@ import (
 type FasmBackend struct{}
 
 // Name returns the backend's target name.
-func (b *FasmBackend) Name() string { return "fasm" }
+func (b *FasmBackend) Name() string {
+	return "fasm"
+}
 
 // Emit renders a MIR program as fasm assembly text.
 func (b *FasmBackend) Emit(prog *MIRProgram) (string, DiagnosticList) {

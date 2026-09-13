@@ -92,6 +92,38 @@ func TestReferencesListsAllOccurrences(t *testing.T) {
 	}
 }
 
+func TestGenericTypeArgumentDefinitionAndReferences(t *testing.T) {
+	// Definition, references, and hover must resolve the generic name in an
+	// explicit type-argument expression ("Box<S64>") and in a generic call
+	// ("f<S64>(...)") back to their declarations.
+	source := "Box <T: Type> :: struct {\n    v: T;\n}\nf <T: Type> :: proc (x: T) -> T {\n    return x;\n}\nmain :: proc -> S64 {\n    a := Box<S64>.{v=7};\n    b := f<S64>(1);\n    return 0;\n}"
+	r := buildResolverFor(t, source)
+
+	// Definition on the generic struct name in the struct literal type.
+	boxRef := offsetOf(t, source, "Box<S64>")
+	boxSym := r.definitionAt(boxRef)
+	if boxSym == nil || boxSym.structDecl == nil {
+		t.Fatalf("definition of Box in Box<S64> = %+v, want the struct declaration", boxSym)
+	}
+	if occs := r.referencesAt(boxRef); len(occs) < 2 {
+		t.Fatalf("Box references = %d, want declaration and use", len(occs))
+	}
+
+	// Definition on the generic procedure name in the call.
+	fRef := offsetOf(t, source, "f<S64>")
+	fSym := r.definitionAt(fRef)
+	if fSym == nil || fSym.proc == nil {
+		t.Fatalf("definition of f in f<S64>(...) = %+v, want the procedure declaration", fSym)
+	}
+
+	// Hover over the generic struct name renders its signature with the type
+	// parameter and constraint.
+	hover := r.hoverAt(boxRef)
+	if !strings.Contains(hover, "Box <T: Type>") {
+		t.Errorf("hover for Box = %q, want the generic signature", hover)
+	}
+}
+
 func TestIfxBranchIdentifiersResolve(t *testing.T) {
 	source := "main :: proc {\n    left := 1;\n    right := 2;\n    chosen := ifx true then left else right;\n}"
 	r := buildResolverFor(t, source)

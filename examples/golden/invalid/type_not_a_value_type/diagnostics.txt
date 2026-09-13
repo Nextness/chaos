@@ -1,0 +1,3 @@
+[ERROR] 6:8:type_not_a_value_type.chaos - Type is only valid as a generic type constraint
+     x: Type;
+        ^^^^ -> write a concrete value type here

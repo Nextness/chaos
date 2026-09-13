@@ -1,0 +1,6 @@
+[ERROR] 10:10:generic_constraint_violation_explicit.chaos - type argument Bool does not satisfy the constraints of type parameter 'T'
+     p := Pair<Bool>.{first=true, second=false};
+          ^^^^^^^^^^ -> use one of the allowed constraint types
+[ERROR] 10:10:generic_constraint_violation_explicit.chaos - unknown struct type 
+     p := Pair<Bool>.{first=true, second=false};
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ -> use a declared struct type

@@ -1,0 +1,6 @@
+[ERROR] 10:19:type_argument_is_type_meta.chaos - Type is only valid as a generic type constraint
+     a := identity<Type>(42);
+                   ^^^^ -> write a concrete value type here
+[ERROR] 10:10:type_argument_is_type_meta.chaos - type argument Type does not satisfy the constraints of type parameter 'T'
+     a := identity<Type>(42);
+          ^^^^^^^^^^^^^^^^^^ -> use one of the allowed constraint types

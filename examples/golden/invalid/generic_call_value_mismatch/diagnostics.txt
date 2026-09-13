@@ -1,0 +1,3 @@
+[ERROR] 10:25:generic_call_value_mismatch.chaos - cannot assign S64 to Bool
+     a := identity<Bool>(42);
+                         ^^ -> use a value of type Bool

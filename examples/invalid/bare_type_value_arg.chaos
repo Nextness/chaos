@@ -1,0 +1,12 @@
+// expect-stage: type
+// expect-error: type argument Type does not satisfy the constraints
+// Passing the Type meta-type itself as a call argument is rejected because it
+// is not a value type.
+identity <T: Type> :: proc (x: T) -> T {
+    return x;
+}
+
+main :: proc -> S64 {
+    a := identity(Type);
+    return 0;
+}

@@ -153,6 +153,11 @@ func NewTypeTable() *TypeTable {
 			kind = TypeKindFloat
 		case BuiltinAddr:
 			kind = TypeKindAddr
+		case BuiltinType:
+			// The compile-time Type meta-type has no runtime representation.
+			// It is interned as unknown so any accidental use in lowered code
+			// is caught as an unresolved type instead of miscompiled.
+			kind = TypeKindUnknown
 		}
 		tt.intern(info.Name, kind)
 	}

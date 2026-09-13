@@ -121,6 +121,8 @@ func (v *MIRVerifier) verifyTypeTable() {
 				want = TypeKindFloat
 			case BuiltinAddr:
 				want = TypeKindAddr
+			case BuiltinType:
+				want = TypeKindUnknown
 			}
 			if typ.Kind != want {
 				v.diags.Error(Span{}, "built-in type "+typ.Name+" has inconsistent metadata", "preserve the compiler built-in type registry")

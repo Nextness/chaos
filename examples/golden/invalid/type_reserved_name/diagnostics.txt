@@ -1,0 +1,3 @@
+[ERROR] 4:1:type_reserved_name.chaos - declaration of 'Type' collides with a reserved compiler name
+ Type :: struct {
+ ^^^^ -> choose a different name

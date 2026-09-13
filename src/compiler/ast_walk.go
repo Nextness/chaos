@@ -129,6 +129,11 @@ func WalkAST(program *Program, visit func(Node) bool) {
 			walkNode(n.Elem)
 		case *PointerTypeExpr:
 			walkNode(n.Elem)
+		case *GenericTypeExpr:
+			walkNode(n.Name)
+			for _, arg := range n.Args {
+				walkNode(arg)
+			}
 		case *ArrayInitExpr:
 			walkNode(n.Elem)
 			for _, item := range n.Items {

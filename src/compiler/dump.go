@@ -366,6 +366,14 @@ func dumpExpr(b *strings.Builder, e Expr) {
 			b.WriteString("?")
 		}
 		b.WriteString(")")
+	case *GenericTypeExpr:
+		b.WriteString("GenericType(")
+		dumpExpr(b, n.Name)
+		for _, arg := range n.Args {
+			b.WriteString(", ")
+			dumpExpr(b, arg)
+		}
+		b.WriteString(")")
 	case *DerefExpr:
 		b.WriteString("Deref(")
 		dumpExpr(b, n.Operand)

@@ -1,0 +1,3 @@
+[ERROR] 10:10:bare_type_value_arg.chaos - type argument Type does not satisfy the constraints of type parameter 'T'
+     a := identity(Type);
+          ^^^^^^^^^^^^^^ -> use one of the allowed constraint types
