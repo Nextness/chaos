@@ -5,15 +5,18 @@
 // fields. Both are readable and writable directly.
 #entry main :: proc -> S64 {
     s := «hello»;
-    if s.count != 5 { return 1; }
+    if s.count != 5 then return 1;
+
     p: *Byte = s.data;
-    if p.* != 104 { return 2; } // 'h'
+    if p.* != 104 then return 2; // 'h'
 
     new_var := «hello world»;
     a: String;
+
     a.data = new_var.data;
     a.count = new_var.count;
-    if a.count != 11 { return 3; }
-    if a.data.* != 104 { return 4; }
+    if a.count != 11 then return 3;
+    if a.data.* != 104 then return 4;
+
     return 0;
 }

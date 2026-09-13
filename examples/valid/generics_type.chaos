@@ -18,20 +18,31 @@ identity <T: Type> :: proc (x: T) -> T {
 
 #entry main :: proc -> S64 {
     a := Json_Response.{status_code=200, content=«ok»};
-    if a.status_code != 200 { return 1; }
-    if a.content != «ok» { return 2; }
+    if a.status_code != 200 then return 1;
+    if a.content != «ok» then return 2;
+
     b := Json_Response<String>.{content=«not found»};
-    if b.content != «not found» { return 3; }
+    if b.content != «not found» then return 3;
+
     c: Json_Response<String> = .{status_code=404, content=«error»};
-    if c.status_code != 404 { return 4; }
-    if c.content != «error» { return 5; }
+    if c.status_code != 404 then return 4;
+    if c.content != «error» then return 5;
+
     a = c;
-    if a.content != «error» { return 6; }
+    if a.content != «error» then return 6;
+
     i := identity<S64>(7);
-    if i != 7 { return 7; }
+    if i != 7 then return 7;
+
     s := identity(«x»);
-    if s != «x» { return 8; }
-    n: Box<Json_Response<String>> = .{v=Json_Response<String>.{content=«nested»}};
-    if n.v.content != «nested» { return 9; }
+    if s != «x» then return 8;
+
+    n: Box<Json_Response<String>> = .{
+        v=Json_Response<String>.{
+            content=«nested»
+        },
+    };
+    if n.v.content != «nested» then return 9;
+
     return 0;
 }

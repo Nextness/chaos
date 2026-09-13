@@ -264,8 +264,9 @@ func TestSemanticTokensStructInitTypeHighlighted(t *testing.T) {
 
 func TestSemanticTokensGenericTypeArguments(t *testing.T) {
 	// Generic type arguments render as a unit: the name, the '<...>' angle
-	// brackets, and every argument are type tokens. A generic callee reads as
-	// a function, not a type.
+	// brackets, and every argument are type tokens in type positions and in
+	// struct literals. In a generic call the callee reads as a function and
+	// the angle brackets read as delimiters, like the declaration clause.
 	source := "Box <T: Type> :: struct {\n    v: T;\n}\nmain :: proc {\n    a := Box<S64>.{v=7};\n    b := f<S64>(1);\n}\nf :: proc (x: S64) -> S64 {\n    return x;\n}"
 	want := []int{
 		0, 0, 3, semTypeType, 0, // Box (struct decl)
@@ -292,9 +293,9 @@ func TestSemanticTokensGenericTypeArguments(t *testing.T) {
 		0, 1, 1, semTypeDelimiter, 0, // }
 		1, 4, 1, semTypeVariable, 0, // b
 		0, 5, 1, semTypeFunction, 0, // f (generic callee)
-		0, 1, 1, semTypeType, 0, // < (use-site type argument)
+		0, 1, 1, semTypeDelimiter, 0, // < (proc call type argument)
 		0, 1, 3, semTypeType, 0, // S64
-		0, 3, 1, semTypeType, 0, // > (use-site type argument)
+		0, 3, 1, semTypeDelimiter, 0, // > (proc call type argument)
 		0, 1, 1, semTypeDelimiter, 0, // (
 		0, 1, 1, semTypeNumber, 0, // 1
 		0, 1, 1, semTypeDelimiter, 0, // )

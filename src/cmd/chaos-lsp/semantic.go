@@ -261,24 +261,26 @@ func typeToken(expr compiler.Expr, sf *compiler.SourceFile, known map[string]boo
 		}
 	case *compiler.GenericTypeExpr:
 		typeToken(e.Name, sf, known, out)
-		genericTypeArgTokens(e, sf, known, out)
+		genericTypeArgTokens(e, sf, known, out, semTypeType)
 	}
 }
 
-// genericTypeArgTokens emits the '<...>' delimiter span and each type argument
-// of a generic type expression as type tokens, so "Name<A, B>" renders as a
-// unit like "[]T" or "*T".
-func genericTypeArgTokens(e *compiler.GenericTypeExpr, sf *compiler.SourceFile, known map[string]bool, out *[]semanticToken) {
+// genericTypeArgTokens emits the '<...>' bracket span and each type argument of
+// a generic type expression. bracketType colors the angle brackets: type
+// tokens in type positions so "Name<A, B>" renders as a unit like "[]T" or
+// "*T", and delimiter tokens in a procedure call so "func<A>(...)" reads like
+// the declaration clause.
+func genericTypeArgTokens(e *compiler.GenericTypeExpr, sf *compiler.SourceFile, known map[string]bool, out *[]semanticToken, bracketType int) {
 	if len(e.Args) == 0 {
 		return
 	}
 	firstStart := compiler.NodeSpan(e.Args[0]).Start
 	if nameEnd := compiler.NodeSpan(e.Name).End; nameEnd < firstStart {
-		*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: nameEnd, End: firstStart}, sf, semTypeType)...)
+		*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: nameEnd, End: firstStart}, sf, bracketType)...)
 	}
 	lastEnd := compiler.NodeSpan(e.Args[len(e.Args)-1]).End
 	if lastEnd < e.Span_.End {
-		*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: lastEnd, End: e.Span_.End}, sf, semTypeType)...)
+		*out = append(*out, spanToTokenRows(compiler.Span{File: e.Span_.File, Start: lastEnd, End: e.Span_.End}, sf, bracketType)...)
 	}
 	for _, arg := range e.Args {
 		typeToken(arg, sf, known, out)
@@ -313,11 +315,12 @@ func astSemanticTokens(program *compiler.Program, sf *compiler.SourceFile) []sem
 				out = append(out, spanToTokenRows(ident.Span_, sf, semTypeFunction)...)
 			} else if gt, ok := e.Func.(*compiler.GenericTypeExpr); ok {
 				// A call with explicit type arguments, e.g. "identity<S64>(...)".
-				// The callee reads as a function; the type arguments as types.
+				// The callee reads as a function, the '<...>' as delimiters,
+				// and the type arguments as types.
 				if ident, ok := gt.Name.(*compiler.IdentExpr); ok {
 					out = append(out, spanToTokenRows(ident.Span_, sf, semTypeFunction)...)
 				}
-				genericTypeArgTokens(gt, sf, known, &out)
+				genericTypeArgTokens(gt, sf, known, &out, semTypeDelimiter)
 			} else {
 				walkExpr(e.Func)
 			}

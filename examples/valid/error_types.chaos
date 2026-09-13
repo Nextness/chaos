@@ -18,15 +18,10 @@ default_error :: Hash_Table_Error.NOT_FOUND!;
 
 #entry main :: proc -> S64 {
     err: Hash_Table_Error = .OUT_OF_MEMORY!;
-    if err == Hash_Table_Error.OUT_OF_MEMORY! {
-        return 1;
-    }
-    if default_error == Hash_Table_Error.NOT_FOUND! {
-        return 2;
-    }
+    if err == Hash_Table_Error.OUT_OF_MEMORY! then return 1;
+    if default_error == Hash_Table_Error.NOT_FOUND! then return 2;
+
     other: Other_Error = .GENERIC!;
-    if other == Other_Error.GENERIC! {
-        return 3;
-    }
+    if other == Other_Error.GENERIC! then return 3;
     return 0;
 }

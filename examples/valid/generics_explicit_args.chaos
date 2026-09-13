@@ -19,16 +19,21 @@ id <T: S64 | String> :: proc (x: T) -> T {
 
 #entry main :: proc -> S64 {
     p := Pair<S64, String>.{first=1, second=«a»};
-    if p.first != 1 { return 1; }
-    if p.second != «a» { return 2; }
+    if p.first != 1 then return 1;
+    if p.second != «a» then return 2;
+
     q: Pair<S64, String> = .{first=2, second=«b»};
-    if q.first != 2 { return 3; }
-    if q.second != «b» { return 4; }
+    if q.first != 2 then return 3;
+    if q.second != «b» then return 4;
+
     r := foo<S64>(42, true);
-    if r != 42 { return 5; }
+    if r != 42 then return 5;
+
     i := id<String>(«hi»);
-    if i != «hi» { return 6; }
+    if i != «hi» then return 6;
+
     j := id(7);
-    if j != 7 { return 7; }
+    if j != 7 then return 7;
+
     return 0;
 }

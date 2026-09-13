@@ -2,11 +2,14 @@
 // expect-stdout: <empty>
 // expect-stderr: <empty>
 // Structs: literal construction, copy, and equality.
-Point :: struct { x: S64; y: S64; }
+Point :: struct {
+    x: S64;
+    y: S64;
+}
 
 #entry main :: proc -> S64 {
     p: Point = .{x=1, y=2};
     q: Point = .{x=1, y=2};
-    if p == q { return 11; }
+    if p == q then return 11;
     return 0;
 }

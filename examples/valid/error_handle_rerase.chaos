@@ -8,9 +8,7 @@ Some_Error :: error {
 }
 
 f :: proc (x: S64) -> (S64 <> Some_Error) {
-    if x < 0 {
-        return .GENERIC!;
-    }
+    if x < 0 then return .GENERIC!;
     return x * 2;
 }
 

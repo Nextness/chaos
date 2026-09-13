@@ -10,8 +10,6 @@ Another_Enum :: enum {
 
 #entry main :: proc -> S64 {
     x: Another_Enum = Another_Enum.BAZ;
-    if x == .BAZ {
-        return 42;
-    }
+    if x == .BAZ then return 42;
     return 0;
 }

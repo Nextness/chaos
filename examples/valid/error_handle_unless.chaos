@@ -9,17 +9,13 @@ Some_Error :: error {
 }
 
 f :: proc (x: S64) -> (S64 <> Some_Error) {
-    if x < 0 {
-        return .GENERIC!;
-    }
+    if x < 0 then return .GENERIC!;
     return x * 2;
 }
 
 #entry main :: proc -> S64 {
     r := f(-1) unless catch err {
-        if err == .GENERIC! {
-            return 7;
-        }
+        if err == .GENERIC! then return 7;
         return 8;
     }
     return r;

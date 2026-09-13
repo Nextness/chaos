@@ -15,22 +15,24 @@ Outer :: struct {
 
 #entry main :: proc -> S64 {
     p := Point.{x=1, y=2};
-    if p.x != 1 || p.y != 2 { return 1; }
+    if p.x != 1 || p.y != 2 then return 1;
+
     p.x = 10;
     p.y += 5;
-    if p.x != 10 || p.y != 7 { return 2; }
+    if p.x != 10 || p.y != 7 then return 2;
+
     p.x++;
     p.y--;
-    if p.x != 11 || p.y != 6 { return 3; }
+    if p.x != 11 || p.y != 6 then return 3;
 
     o := Outer.{inner=Point.{x=3, y=4}, label=«hi»};
     o.inner.x = 9;
     o.label = «bye»;
-    if o.inner.x != 9 || o.label != «bye» { return 4; }
+    if o.inner.x != 9 || o.label != «bye» then return 4;
 
-    arr := []Point.{Point.{x=1, y=2}};
+    arr := []Point.{ Point.{x=1, y=2} };
     arr[0].x = 5;
-    if arr[0].x != 5 { return 5; }
+    if arr[0].x != 5 then return 5;
 
     return 0;
 }
